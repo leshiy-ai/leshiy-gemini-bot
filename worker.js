@@ -10,7 +10,7 @@ const LAST_PROMPT_KEY_SUFFIX = '_last_prompt';
 const LAST_IMAGE_DATA_KEY_SUFFIX = '_last_image_data'; 
 const LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX = '_last_prompt_message_id'; // Для редактирования меню
 const LAST_ACTION_KEY_SUFFIX = '_last_action'; // Для режима редактирования (edit_prompt)
-
+const USER_STATE_KEY_SUFFIX = '_user_state'; // <-- КРИТИЧЕСКИ ВАЖНОЕ ДОБАВЛЕНИЕ
 // ----------------------------------------------------
 // --- I. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ TELEGRAM и КОНВЕРТАЦИИ ---
 // ----------------------------------------------------
@@ -172,27 +172,33 @@ async function sendMessageWithKeyboard(chatId, text, token, keyboard) {
     }
 }
 
-// ? getPromptKeyboard - Генерирует Inline-клавиатуру для промпта
-function getPromptKeyboard(promptText) { // <-- Теперь принимает текст промпта
+// ? getPromptKeyboard - Генерирует Inline-клавиатуру для меню промпта
+function getPromptKeyboard(currentPrompt) {
+    const hasPrompt = currentPrompt && currentPrompt.trim().length > 0;
     
-    let keyboard = [
-        [
-            // Кнопка, переводящая в режим ожидания нового текста
-            { text: "?? Редактировать промпт", callback_data: `edit_prompt` },
-            // Кнопка, запускающая автоматическую перегенерацию промпта (имитация старого /retry)
-            { text: "?? Перегенерировать автоматически", callback_data: `regenerate_prompt` },
-        ],
-        [
-            { text: "? Улучшить фото (/photo)", callback_data: 'cmd:/photo' },
-            { text: "?? Создать новое (/create)", callback_data: 'cmd:/create_empty' },
-        ]
-    ];
+    let keyboard = [];
     
-    // Если передан промпт, добавляем кнопку для его немедленной генерации
-    if (promptText) {
-        // Коллбэк-данные будут простыми. САМ промпт берем из хранилища (KV)
-        keyboard.unshift([
-            { text: "?? Запустить генерацию по промпту", callback_data: `vision_generate` } 
+    if (hasPrompt) {
+        // --- 1-я строка: Основные действия с промптом ---
+        keyboard.push([
+            { text: "?? Редактировать текст", callback_data: "edit_prompt" },
+            { text: "?? Описание из фото", callback_data: "regenerate_prompt" }
+        ]);
+        
+        // --- 2-я строка: Генерация и перевод ---
+        keyboard.push([
+            { text: "?? Создать картинку", callback_data: "vision_generate" },
+            { text: "?? Перевести (RU/EN)", callback_data: "translate_prompt" } 
+        ]);
+        
+        // --- 3-я строка: Очистка ---
+        keyboard.push([
+            { text: "?? Очистить промпт/контекст", callback_data: "clear_prompt" }
+        ]);
+    } else {
+        // --- Промпта нет: Предлагаем создать ---
+        keyboard.push([
+            { text: "? Создать новый промпт", callback_data: "create_new_prompt" }
         ]);
     }
     
@@ -219,11 +225,11 @@ async function displayPromptMenu(chatId, promptText, TELEGRAM_BOT_TOKEN) {
 }
 
 // ? deleteMessage - Удаляет сообщение
-// async function deleteMessage(chatId, messageId, token) {
-//    const url = `https://api.telegram.org/bot${token}/deleteMessage`;
-//    const body = { chat_id: chatId, message_id: messageId };
-//    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-//}
+async function deleteMessage(chatId, messageId, token) {
+    const url = `https://api.telegram.org/bot${token}/deleteMessage`;
+    const body = { chat_id: chatId, message_id: messageId };
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
 
 // ? answerCallbackQuery - Обязательный ответ на нажатие кнопки
 async function answerCallbackQuery(callbackQueryId, text, token) {
@@ -999,7 +1005,7 @@ async function callWorkersAITranslate(text, envData) {
         return text;
     }
     
-    const { AI } = envData; 
+    const { AI } = envData;
     
     // Список бесплатных моделей в порядке предпочтения
     const FREE_MODELS = [
@@ -1351,6 +1357,7 @@ async function processAdminStartCommand(adminChatId, env) {
 
 // ? processAdminStateMessage (Обработка ID и Суммы в интерактивном режиме)
 async function processAdminStateMessage(adminChatId, messageText, env) {
+    // Новые, уникальные константы для админ-стейта
     const { TELEGRAM_BOT_TOKEN, LAST_PHOTO_STORAGE } = env;
     
     // Новые, уникальные константы для админ-стейта
@@ -1520,61 +1527,86 @@ async function processDebugCommand(chatId, env) {
     }
 }
 
-// ? processStopCommand (Очистка KV)
-async function processStopCommand(chatId, LAST_PHOTO_STORAGE, VEO_POLL_STORAGE, TELEGRAM_BOT_TOKEN) {
+// ? processStopCommand (Очистка KV) - ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
+async function processStopCommand(chatId, LAST_PHOTO_STORAGE, VEO_POLL_STORAGE, TELEGRAM_BOT_TOKEN, envData) {
     const chatKey = chatId.toString();
-    
+
     // --- Ключи, которые НЕЛЬЗЯ УДАЛЯТЬ ---
-    const BALANCE_KEY = chatKey + '_photo_balance'; // Ключ баланса
+    const BALANCE_KEY = chatKey + '_photo_balance'; 
     
+    // ? ИСПРАВЛЕНИЕ: Унифицируем ключ для удаления, используя суффикс из envData.
+    const PROMPT_KEY_SUFFIX = envData.LAST_PROMPT_KEY_SUFFIX || '_last_prompt';
+    const LAST_PROMPT_KEY_UNIFIED = chatKey + PROMPT_KEY_SUFFIX;
+
     // --- Список ключей для очистки ---
     const keysToDelete = [
-        chatKey + '_prompt',            // Последний промпт
-        chatKey + '_base64_image',      // Последнее обработанное изображение
-        chatKey + '_user_state',        // Режим редактирования промпта
-        // ... (добавьте сюда другие ключи, которые вы храните, например, для /video) ...
+        LAST_PROMPT_KEY_UNIFIED, // <-- УНИФИЦИРОВАННЫЙ
+        chatKey + '_prompt',            
+        chatKey + '_base64_image',      
+        chatKey + '_user_state',        
+        chatKey + '_last_action',       
+        chatKey + '_last_prompt_message_id', 
+        chatKey + '_last_prompt',       
+        chatKey + '_last_image_data',  
     ];
+    
+    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Удаляем ключ, если суффикс был undefined (ключ '235663624undefined').
+    if (!envData.LAST_PROMPT_KEY_SUFFIX) {
+        keysToDelete.push(chatKey + 'undefined'); 
+    }
+    
     try {
-        // Удаляем данные, которые нужны только для текущей сессии
+        // 1. Удаляем все сессионные данные
         for (const key of keysToDelete) {
             await LAST_PHOTO_STORAGE.delete(key);
         }
 
-        // Если у вас есть VEO_POLL_STORAGE, удалите и его данные
-        // await VEO_POLL_STORAGE.delete(chatKey); 
+        // 2. Очистка VEO (если используется)
+        if (VEO_POLL_STORAGE) {
+             await VEO_POLL_STORAGE.delete(chatKey); 
+        }
         
-        // Если баланс хранится в LAST_PHOTO_STORAGE, 
-        // МЫ ЕГО ЯВНО НЕ УДАЛЯЕМ, оставляя его там.
-        await sendMessage(chatId, "?? **Хранилище очищено!**\nВсе сохраненные данные удалены.\nБот остановлен.", TELEGRAM_BOT_TOKEN);
+        // 3. Формирование сообщения и клавиатуры
+        const message = "?? **Сброс контекста завершен!**\n" + 
+                        "Все сохраненные данные удалены. Готов к новым задачам! Выберите действие ниже.";
+                        
+        // getPromptKeyboard(null) генерирует клавиатуру "Создать новый промпт"
+        const keyboard = getPromptKeyboard(null);
+        
+        // 4. Отправка подтверждения с клавиатурой
+        await sendMessage(chatId, message, TELEGRAM_BOT_TOKEN, null, keyboard); 
+        
     } catch (e) {
         await sendMessage(chatId, `? Ошибка при очистке хранилища: <code>${e.message}</code>`, TELEGRAM_BOT_TOKEN);
     }
 }
 
-// ? processTextMessage (Текстовый чат с историей + Логика редактирования/создания промпта)
-async function processTextMessage(chatId, messageText, env) {
-    const { TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, CHAT_HISTORY_STORAGE, LAST_PHOTO_STORAGE } = env; 
+// ? processTextMessage (Текстовый чат с историей + Логика редактирования/создания промпта) - ИСПРАВЛЕНО
+async function processTextMessage(chatId, messageText, envData) {
+    const { TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, CHAT_HISTORY_STORAGE, LAST_PHOTO_STORAGE } = envData; 
     const chatKey = chatId.toString();
     
-    // --- Константы, которые должны быть определены в Секции IV или в начале файла ---
+    // --- Константы (используем те же, что и в вашем коде) ---
     const USER_STATE_KEY = chatKey + '_user_state';
     const STATE_AWAITING_PROMPT_EDIT = 'awaiting_prompt_edit';
     const STATE_AWAITING_NEW_PROMPT = 'awaiting_new_prompt'; 
-    const LAST_PROMPT_KEY = chatKey + '_prompt';
+    // ВНИМАНИЕ: Используется суффикс '_prompt' (убедитесь, что в /create и /stop используется он же!)
+    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+    
 
     // 1. ПЕРЕХВАТ: Режим редактирования ИЛИ создания промпта
     const userState = await LAST_PHOTO_STORAGE.get(USER_STATE_KEY);
 
     if (userState === STATE_AWAITING_PROMPT_EDIT || userState === STATE_AWAITING_NEW_PROMPT) {
+        
         // 1.1. Сбрасываем состояние
         await LAST_PHOTO_STORAGE.delete(USER_STATE_KEY); 
         
-        // 1.2. Сохраняем новый промпт
+        // 1.2. Сохраняем новый промпт (КРИТИЧНО: AWAIT ГАРАНТИРУЕТ ЗАПИСЬ ДО СЛЕДУЮЩЕЙ КОМАНДЫ)
         const newPrompt = messageText.trim();
         await LAST_PHOTO_STORAGE.put(LAST_PROMPT_KEY, newPrompt, { expirationTtl: 3600 });
         
-        // 1.3. Сообщение о сохранении (Единообразно для обоих случаев)
-        // Определяем, что произошло: редактирование или создание/сохранение
+        // 1.3. Сообщение о сохранении
         const actionText = (userState === STATE_AWAITING_PROMPT_EDIT) ? "отредактирован" : "сохранен";
         
         await sendMessage(chatId, 
@@ -1583,14 +1615,13 @@ async function processTextMessage(chatId, messageText, env) {
             TELEGRAM_BOT_TOKEN
         );
         
-        return; // Блокируем дальнейшую обработку чата
+        return true; // <-- ИСПРАВЛЕНО: Возвращаем true, блокируем дальнейшую обработку
     }
     
     // 2. ОБЫЧНЫЙ ЧАТ
     let history;
     try {
         const historyData = await CHAT_HISTORY_STORAGE.get(chatKey, { type: 'json' });
-        // Проверка, что история — это массив (для защиты от поврежденных данных)
         if (Array.isArray(historyData)) {
             history = historyData;
         } else {
@@ -1600,15 +1631,14 @@ async function processTextMessage(chatId, messageText, env) {
         console.error("Error retrieving chat history:", e);
         history = []; 
     } 
-    // --- !!! ЭТОТ БЛОК ДОЛЖЕН БЫТЬ ПЕРЕД try { !!! ---
+    
+    // --- !!! ЭТОТ БЛОК ПЕРЕНЕСТИ В processTextMessage, ЕСЛИ ВЫЗЫВАЕТСЯ ЧЕРЕЗ ctx.waitUntil !!! ---
     const workingMessageResponse = await sendMessage(chatId, "? *Думаю...*", TELEGRAM_BOT_TOKEN);
     const workingMessageId = workingMessageResponse.result.message_id;
+    
     try {
-        // !!! ИСПОЛЬЗУЕМ Workers AI !!!
-        // Обратите внимание: теперь мы передаем весь объект env (env) вместо только ключа API (GEMINI_API_KEY)
-        const modelResponse = await callWorkersAIChat(history, messageText, env); 
-        
-        // const modelResponse = await callGeminiChat(history, messageText, GEMINI_API_KEY); // <-- Оригинальная строка Gemini (можно закомментировать)
+        // ... (логика чата) ...
+        const modelResponse = await callWorkersAIChat(history, messageText, envData); 
         
         // 1. Отправляем ответ
         await sendMessage(chatId, modelResponse, TELEGRAM_BOT_TOKEN);
@@ -1631,62 +1661,50 @@ async function processTextMessage(chatId, messageText, env) {
         console.error("Critical error in chat processing:", e.message);
         await editMessage(chatId, workingMessageId, `? **Ошибка чата:** <code>${e.message}</code>`, TELEGRAM_BOT_TOKEN);
     }
+    
+    return false; // <-- ИСПРАВЛЕНО: Возвращаем false для обычной чат-логики
 }
 
-// ? processPromptCommand (Обрабатывает /prompt)
-async function processPromptCommand(chatId, TELEGRAM_BOT_TOKEN, LAST_PHOTO_STORAGE) {
+// ? processPromptCommand (Обрабатывает /prompt) - ФИНАЛЬНО ИСПРАВЛЕНО
+async function processPromptCommand(chatId, TELEGRAM_BOT_TOKEN, LAST_PHOTO_STORAGE, envData) {
     const chatKey = chatId.toString();
-    const promptKey = chatKey + '_prompt'; 
     
-    const lastPrompt = await LAST_PHOTO_STORAGE.get(promptKey);
+    // УНИФИКАЦИЯ КЛЮЧА: Используем суффикс из envData.
+    // Если envData еще не исправлен (п. 1), используем резервное значение, чтобы избежать '...undefined'
+    const PROMPT_KEY_SUFFIX = envData.LAST_PROMPT_KEY_SUFFIX || '_last_prompt';
+    const LAST_PROMPT_KEY = chatKey + PROMPT_KEY_SUFFIX;
 
-    let actionButtons = [];
-    let messageText = "";
-
-    if (lastPrompt) {
-        // --- ПРОМПТ СУЩЕСТВУЕТ (Полный набор опций) ---
-        actionButtons = [
-            [
-                { text: "?? Редактировать", callback_data: `edit_prompt` },        // Редактировать (уже существующий)
-                { text: "?? Перегенерировать", callback_data: `regenerate_prompt` }, // Перегенерировать (из существующего фото)
-            ],
-            // Сюда добавим опцию создания с нуля:
-            // [{ text: "?? Создать новый промпт", callback_data: 'create_new_prompt' }], // Создать (новый с нуля)
-            [{ text: "?? Создать картинку (/create)", callback_data: 'cmd:/create_empty' }],
-            [{ text: "? Улучшить фото (/photo)", callback_data: 'cmd:/photo' }],
-        ];
-
+    // Читаем промпт ОДИН РАЗ
+    const currentPrompt = await LAST_PHOTO_STORAGE.get(LAST_PROMPT_KEY);
+    
+    // --- Удалена вся дублирующая логика, заменена единым блоком ---
+    
+    let messageText;
+    // Используем getPromptKeyboard для получения объекта { inline_keyboard: [...] }
+    const keyboardObject = getPromptKeyboard(currentPrompt); 
+    
+    if (currentPrompt) {
         messageText = `
-        ? **Ваш последний сохраненный промпт:**
+        ? **Ваш текущий промпт:**
         
-        <code>${lastPrompt}</code>
+        <code>${currentPrompt}</code>
         
         Что вы хотите сделать с этим промптом?
         `;
-       
     } else {
-        // --- ПРОМПТА НЕТ (Только опции создания промпта и запуска /create) ---
-        actionButtons = [
-            [
-                { text: "?? Создать новый промпт", callback_data: 'create_new_prompt' },         // Активирует режим ввода промпта
-                { text: "?? Перегенерировать", callback_data: `regenerate_prompt` } // Активирует режим ожидания фото для промпта
-            ],
-                // Кнопка для запуска /create (чтобы пользователь мог создать картинку после того, как введет промпт)
-                [{ text: "?? Создать картинку (/create)", callback_data: 'cmd:/create_empty' }],
-                [{ text: "? Улучшить фото (/photo)", callback_data: 'cmd:/photo' }],
-            ];
-            messageText = `
-    ?? **Промпт для работы не найден.**
+        messageText = `
+        ?? **Промпт для работы не найден.**
         
-    Сначала нужно получить промпт. Вы можете:
-1. Нажать **'Создать НОВЫЙ промпт'** и ввести текст.
-2. Нажать **'Сгенерировать автоматически'** и отправить фото.
-    Выберите действие ниже:
-    `;
-        }    
-    const keyboard = { inline_keyboard: actionButtons };
-    
-    await sendMessage(chatId, messageText, TELEGRAM_BOT_TOKEN, null, keyboard); 
+        Сначала нужно получить промпт. Вы можете:
+    1. Нажать **'Создать новый промпт'** и ввести текст.
+    2. Отправить фото, чтобы сгенерировать описание автоматически.
+        Выберите действие ниже:
+        `;
+    }
+
+    // Отправляем ОДНО сообщение
+    // sendMessage принимает объект reply_markup в последнем аргументе.
+    await sendMessage(chatId, messageText, TELEGRAM_BOT_TOKEN, null, keyboardObject); 
 }
 
 // ? processRetryLogic (Логика повторного анализа промпта, для кнопки Regenerate)
@@ -1733,7 +1751,7 @@ async function processRetryLogic(chatId, TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, LAS
 async function processCreateCommand(chatId, inputPrompt, token, geminiKey, storage, envData) { 
     let loadingMessageId;
     const chatKey = chatId.toString();
-    const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX; 
+    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
     let russianPrompt = ''; // Исходный промпт (на русском)
     let englishPrompt = ''; // Переведенный промпт (на английском)
     
@@ -1758,10 +1776,8 @@ async function processCreateCommand(chatId, inputPrompt, token, geminiKey, stora
         }
 
         // 1.5. СОХРАНЕНИЕ: Сохраняем последний использованный промпт в KV
-        // Это нужно, чтобы пользователь мог повторить или изменить промпт.
-        // Используем envData.ctx.waitUntil для неблокирующей записи.
-        envData.ctx.waitUntil(storage.put(LAST_PROMPT_KEY, russianPrompt));
-
+        // Синхронная запись в хранилище (гарантирует сохранение)
+        await storage.put(LAST_PROMPT_KEY, russianPrompt);
 
         // 2. Отправляем сообщение "Перевожу..."
         const loadingMessage = await sendMessage(chatId, `?? **Перевожу промпт и запускаю генерацию...**`, token);
@@ -1779,9 +1795,9 @@ async function processCreateCommand(chatId, inputPrompt, token, geminiKey, stora
             chatId, 
             imageArrayBuffer, 
             `? **Изображение сгенерировано!**\nПромпт:\n\`${russianPrompt}\``, 
-            token
+            token,
+            envData
         );
-
         if (!success.ok) {
             throw new Error(success.description || "Неизвестная ошибка отправки фото.");
         }
@@ -1798,8 +1814,10 @@ async function processCreateCommand(chatId, inputPrompt, token, geminiKey, stora
 async function processPromptRegeneration(chatId, imageBase64, token, storage, envData) {
     let loadingMessageId;
     const chatKey = chatId.toString();
-    const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX;
-    const LAST_PROMPT_MESSAGE_ID_KEY = chatKey + LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX;
+    // --- ИСПРАВЛЕНО ЗДЕСЬ ---
+    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+    const LAST_PROMPT_MESSAGE_ID_KEY = chatKey + envData.LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX;
+    // -------------------------
     
     try {
         const loadingMessage = await sendMessage(chatId, "? **Повторный анализ фото: Генерирую новый промпт...**", token); //
@@ -1811,19 +1829,21 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
         // 2. Вызов Vision AI для генерации промпта (Uform-Gen2)
         const englishPrompt = await callWorkersAIVision(imageArrayBuffer, "", envData); //
         
-        // 3. Перевод промпта
-        const russianPrompt = await callWorkersAITranslate(englishPrompt, envData);
+        // 3. Перевод промпта (на русский для сохранения)
+        // ВАЖНО: Ваша функция callWorkersAITranslate переводит RU->EN. Здесь логичнее использовать функцию для перевода EN->RU
+        // Если такой функции нет, то сохраняем EN-промпт, как наиболее пригодный для генерации.
+        const promptToSave = englishPrompt; 
 
         // 4. Сохраняем НОВЫЙ промпт в KV
-        await storage.put(LAST_PROMPT_KEY, russianPrompt, { expirationTtl: 3600 });
+        await storage.put(LAST_PROMPT_KEY, promptToSave, { expirationTtl: 3600 });
         
         // 5. Отправляем меню промпта (Markdown)
         const finalMessage = await sendMessage(
             chatId, 
-            `? **Промпт перегенерирован!**\n\n\`${russianPrompt}\``, 
+            `? **Промпт перегенерирован!**\n\n\`${promptToSave}\``, 
             token, 
             null, 
-            getPromptKeyboard(russianPrompt) //
+            getPromptKeyboard(promptToSave) //
         );
         
         // 6. Сохраняем ID сообщения с меню
@@ -1837,14 +1857,14 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
         await sendMessage(chatId, message, token); //
     } finally {
         // if (loadingMessageId) {
-        //    envData.ctx.waitUntil(deleteMessage(chatId, loadingMessageId, token)); //
+        //    envData.ctx.waitUntil(deleteMessage(chatId, loadingMessageId, token)); //
         // }
     }
 }
 
 // ? sendAdminReport - Отправляет отформатированный отчет об ошибке администратору
 async function sendAdminReport(chatId, errorMessage, envData) {
-    if (chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
+    if (chatId === envData.ADMIN_CHAT_ID) {
         let debugMessage = `**?? АДМИН-ОТЧЕТ ПО ОШИБКЕ /create ??**\n\n`;
         debugMessage += `**Ошибка:** \`${errorMessage}\`\n`; 
         
@@ -2401,7 +2421,7 @@ async function processVoiceMessageAsync(chatId, fileId, envData, ctx) {
         if (envData.BOT_LOGS_STORAGE) {
             ctx.waitUntil(logDebug('ERROR_ASR_FAIL', errorMessage, envData));
         }
-        if (chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
+        if (chatId === envData.ADMIN_CHAT_ID) {
              ctx.waitUntil(sendMessage(chatId, `?? **АДМИН-ОТЧЕТ ASR (RAW):**\n${errorMessage.substring(0, 300)}`, envData.TELEGRAM_BOT_TOKEN));
         }
     }
@@ -2578,7 +2598,13 @@ export default {
             ctx: ctx, // Передаем контекст для waitUntil
             // !!! КРИТИЧЕСКОЕ ДОБАВЛЕНИЕ !!!
             CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, // Чтение из ENV
-            CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN, // Чтение из ENV            
+            CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN, // Чтение из ENV
+            // !!! КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ДОБАВЛЕНИЕ СУФФИКСОВ В ENVData !!!
+            LAST_PROMPT_KEY_SUFFIX: LAST_PROMPT_KEY_SUFFIX,
+            LAST_IMAGE_DATA_KEY_SUFFIX: LAST_IMAGE_DATA_KEY_SUFFIX,
+            LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX: LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX,
+            LAST_ACTION_KEY_SUFFIX: LAST_ACTION_KEY_SUFFIX,
+            USER_STATE_KEY_SUFFIX: USER_STATE_KEY_SUFFIX, // <--- Добавление
         };
 
         // Вспомогательные константы для админ-режима
@@ -2588,7 +2614,6 @@ export default {
         const ADMIN_TEMP_ID_KEY = 'admin_temp_id_' + chatId; // Ключ для временного хранения ID
 
         // Вспомогательные константы для колбэков
-        const USER_STATE_KEY_SUFFIX = '_user_state';
         const STATE_AWAITING_PROMPT_EDIT = 'awaiting_prompt_edit';
         const STATE_AWAITING_NEW_PROMPT = 'awaiting_new_prompt'; 
         
@@ -2611,19 +2636,18 @@ export default {
                     ctx.waitUntil(processStartCommand(chatId, envData.TELEGRAM_BOT_TOKEN));
                     break;
                 case '/stop':
-                    ctx.waitUntil(processStopCommand(chatId, envData.LAST_PHOTO_STORAGE, envData.VEO_POLL_STORAGE, envData.TELEGRAM_BOT_TOKEN));
+                    ctx.waitUntil(processStopCommand(chatId, envData.LAST_PHOTO_STORAGE, envData.VEO_POLL_STORAGE, envData.TELEGRAM_BOT_TOKEN, envData));
                     break;
                 case '/prompt': 
-                    ctx.waitUntil(processPromptCommand(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE));
+                    ctx.waitUntil(processPromptCommand(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData));
                     break;
-                    case '/create': 
-                        // 1. Извлекаем промпт (текст после /create)
-                        const promptForCreate = messageText.substring(command.length).trim();
+                case '/create':
+                    // 1. Извлекаем промпт (используем лучший вариант)
+                    const createPrompt = messageText.replace(/^\/create\s*/i, '').trim(); 
                         
-                        // 2. Выполняем синхронно (ВАЖНО: удаляем ctx.waitUntil)
-                        await processCreateCommand(chatId, promptForCreate, envData.TELEGRAM_BOT_TOKEN, envData.GEMINI_API_KEY_UNUSED, envData.LAST_PHOTO_STORAGE, envData);
-                        
-                        return new Response('OK', { status: 200 });
+                    // 2. Выполняем синхронно (ВАЖНО: удаляем ctx.waitUntil)
+                    // Используем await, чтобы дождаться завершения генерации перед возвратом ответа Telegram
+                    await processCreateCommand(chatId, createPrompt, envData.TELEGRAM_BOT_TOKEN, envData.GEMINI_API_KEY, envData.LAST_PHOTO_STORAGE, envData);
                     break;
                 case '/photo':
                     // !!! ПЕРЕДАЕМ ПРИВЯЗКУ AI ВМЕСТО КЛЮЧА GEMINI !!!
@@ -2632,16 +2656,16 @@ export default {
                 case '/checkvideo':
                     ctx.waitUntil(processCheckVideoCommand(chatId, envData));
                     break;
-                    case '/video':
-                        const videoPrompt = messageText.replace(/^\/video\s*/i, '').trim();
-                        ctx.waitUntil(processVideoCommand(chatId, videoPrompt, envData));
-                        break;
+                case '/video':
+                    const videoPrompt = messageText.replace(/^\/video\s*/i, '').trim();
+                    ctx.waitUntil(processVideoCommand(chatId, videoPrompt, envData));
+                    break;
                         
-                    case '/admin': // <-- ИСПРАВЛЕННЫЙ БЛОК: Убрана обработка текстовой команды /admin update_cmds
-                        // Сюда попадает ТОЛЬКО команда /admin (без параметров), 
-                        // которая открывает админ-панель с кнопками.
-                        ctx.waitUntil(processAdminStartCommand(chatId, envData)); 
-                        break;
+                case '/admin': // <-- ИСПРАВЛЕННЫЙ БЛОК: Убрана обработка текстовой команды /admin update_cmds
+                    // Сюда попадает ТОЛЬКО команда /admin (без параметров), 
+                    // которая открывает админ-панель с кнопками.
+                    ctx.waitUntil(processAdminStartCommand(chatId, envData)); 
+                    break;
                 // /activate_... теперь перехватывается выше
                 case '/retry': 
                     ctx.waitUntil(sendMessage(chatId, 'Команда `/retry` была заменена на команду `/prompt`.', envData.TELEGRAM_BOT_TOKEN));
@@ -2671,220 +2695,241 @@ export default {
             return new Response('OK', { status: 200 });
         }
 
-        // 3. ОБРАБОТКА НАЖАТИЯ INLINE-КНОПОК (callback_query)
-        if (callback) {
-            const data = callback.data;
-            const messageId = callback.message.message_id;
-            const chatKey = chatId.toString();
-            const storage = env.LAST_PHOTO_STORAGE; // Используем правильный KV-биндинг
-            const token = envData.TELEGRAM_BOT_TOKEN;
-            
-            // --- KV KEYS (ОБЯЗАТЕЛЬНОЕ ОБЪЯВЛЕНИЕ ДЛЯ ИСПОЛЬЗОВАНИЯ СУФФИКСОВ) ---
-            const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX;
-            const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
-            const LAST_ACTION_KEY = chatKey + LAST_ACTION_KEY_SUFFIX; 
-            // --- Стейты из вашего кода ---
-            const USER_STATE_KEY_SUFFIX = '_user_state';
-            const USER_STATE_KEY = chatKey + USER_STATE_KEY_SUFFIX;
-            const STATE_AWAITING_PROMPT_EDIT = 'awaiting_prompt_edit';
-            const STATE_AWAITING_NEW_PROMPT = 'awaiting_new_prompt'; 
-            
-            // 1. ОБЯЗАТЕЛЬНО: Отвечаем на колбэк, чтобы убрать часы на кнопке!
-            ctx.waitUntil(answerCallbackQuery(callback.id, "Обработка команды...", token));
-            
-            // 2. ЛОГИКА ДЛЯ ПОЛЬЗОВАТЕЛЬСКИХ КОМАНД (Начинаются с 'cmd:/')
-            if (data.startsWith('cmd:/')) {
-                const command = data.substring(5).trim(); 
+    // 3. ОБРАБОТКА НАЖАТИЯ INLINE-КНОПОК (callback_query)
+    if (callback) {
+        const data = callback.data;
+        const messageId = callback.message.message_id;
+        const chatKey = chatId.toString();
+        const storage = env.LAST_PHOTO_STORAGE; // Используем правильный KV-биндинг
+        const token = envData.TELEGRAM_BOT_TOKEN;
 
-                // Определяем, нужно ли удалять сообщение. 
-                const isStartMenuCommand = command === 'photo' || command === 'create_empty' || command === 'prompt' || command === 'stop';
-                
-                // Если колбэк пришел из сообщения, которое НЕ является стартовым меню, удаляем его
-                // if (!isStartMenuCommand) {
-                //     ctx.waitUntil(deleteMessage(chatId, messageId, token)); 
-                //}
-                
-                switch (command) {
-                    case 'photo':
-                        // !!! ПЕРЕДАЕМ ПРИВЯЗКУ AI ВМЕСТО КЛЮЧА GEMINI !!!
-                        ctx.waitUntil(processPhotoCommand(chatId, envData.TELEGRAM_BOT_TOKEN, envData, envData.LAST_PHOTO_STORAGE));
-                        break;
-                    case 'prompt': 
-                        ctx.waitUntil(processPromptCommand(chatId, token, storage));
-                        break;
-                    case 'create_empty':
-                        // Передаем новый набор аргументов (envData)
-                        // Используем envData.GEMINI_API_KEY (как в вашем коде)
-                        ctx.waitUntil(processCreateCommand(chatId, '', token, envData.GEMINI_API_KEY, storage, envData));
-                        break;
-                    case 'stop':
-                        ctx.waitUntil(processStopCommand(chatId, storage, envData.VEO_POLL_STORAGE, token));
-                        break;
-                    case 'retry': 
-                        ctx.waitUntil(sendMessage(chatId, 'Кнопка `/retry` устарела. Используйте `/prompt` или кнопки выше.', token));
-                        break;
-                    default:
-                        ctx.waitUntil(sendMessage(chatId, `Команда по кнопке не найдена. Получено: ${command}`, token));
-                        break;
-                }
-                return new Response('OK', { status: 200 });
+        // --- KV KEYS (УНИФИКАЦИЯ: ИСПОЛЬЗУЕМ СУФФИКСЫ ИЗ envData) ---
+        const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+        const LAST_IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX;
+        const LAST_ACTION_KEY = chatKey + envData.LAST_ACTION_KEY_SUFFIX;
+
+        // --- Стейты из вашего кода (Добавляем USER_STATE_KEY_SUFFIX в envData, если не было) ---
+        // ? ИСПРАВЛЕНИЕ: Используем суффикс из envData для USER_STATE_KEY, если он там есть
+        const USER_STATE_KEY = chatKey + (envData.USER_STATE_KEY_SUFFIX || '_user_state'); 
+        const STATE_AWAITING_PROMPT_EDIT = 'awaiting_prompt_edit';
+        const STATE_AWAITING_NEW_PROMPT = 'awaiting_new_prompt'; 
+
+        // 1. ОБЯЗАТЕЛЬНО: Отвечаем на колбэк, чтобы убрать часы на кнопке!
+        ctx.waitUntil(answerCallbackQuery(callback.id, "Обработка команды...", token));
+
+        // 2. ЛОГИКА ДЛЯ ПОЛЬЗОВАТЕЛЬСКИХ КОМАНД (Начинаются с 'cmd:/')
+        if (data.startsWith('cmd:/')) {
+            const command = data.substring(5).trim(); 
+
+            // Определяем, нужно ли удалять сообщение. 
+            const isStartMenuCommand = command === 'photo' || command === 'create_empty' || command === 'prompt' || command === 'stop';
+
+            switch (command) {
+                case 'photo':
+                    // !!! ПЕРЕДАЕМ ПРИВЯЗКУ AI ВМЕСТО КЛЮЧА GEMINI И LAST_PHOTO_STORAGE !!!
+                    ctx.waitUntil(processPhotoCommand(chatId, envData.TELEGRAM_BOT_TOKEN, envData, storage));
+                    break;
+                case 'prompt': 
+                    // ? ИСПРАВЛЕНИЕ: Добавлен пятый аргумент envData в processPromptCommand
+                    ctx.waitUntil(processPromptCommand(chatId, token, storage, envData)); 
+                    break;
+                case 'create_empty':
+                    // ? ИСПРАВЛЕНИЕ: Унифицирован вызов processCreateCommand
+                    ctx.waitUntil(processCreateCommand(chatId, '', token, envData.GEMINI_API_KEY, storage, envData));
+                    break;
+                case 'stop':
+                    // ? ИСПРАВЛЕНИЕ: Добавлен пятый аргумент envData в processStopCommand
+                    ctx.waitUntil(processStopCommand(chatId, storage, envData.VEO_POLL_STORAGE, token, envData)); 
+                    break;
+                case 'retry': 
+                    ctx.waitUntil(sendMessage(chatId, 'Кнопка `/retry` устарела. Используйте `/prompt` или кнопки выше.', token));
+                    break;
+                default:
+                    ctx.waitUntil(sendMessage(chatId, `Команда по кнопке не найдена. Получено: ${command}`, token));
+                    break;
             }
-            
-            // !!! НОВОЕ ИСПРАВЛЕНИЕ: ОБРАБОТКА ПРЯМЫХ КОМАНД (Начинаются с '/') !!!
-            // Это ловит кнопки, которые не имеют префикса 'cmd:/' и содержат промпт
-            else if (data.startsWith('/')) {
-                const parts = data.split(' ');
-                const command = parts[0]; // e.g., '/create'
-                const inputPrompt = parts.slice(1).join(' ').trim(); // e.g., 'cat in space'
-                
-                // Здесь обрабатываем команды, которые могут прийти в callback_data
-                switch (command) {
-                    case '/create':
-                        // Вызываем processCreateCommand с промптом из callback_data
-                        // Используем envData.GEMINI_API_KEY (как в вашем коде)
-                        ctx.waitUntil(processCreateCommand(chatId, inputPrompt, token, envData.GEMINI_API_KEY, storage, envData));
-                        break;
-                        
-                    case '/edit':
-                        // /edit без промпта аналогичен нажатию 'edit_prompt' (переключение стейта)
-                        // Дублируем вашу логику для 'edit_prompt' (создание режима редактирования)
-                        const currentPromptEdit = await storage.get(LAST_PROMPT_KEY);
-                        
-                        if (currentPromptEdit) {
-                            await storage.put(USER_STATE_KEY, STATE_AWAITING_PROMPT_EDIT, { expirationTtl: 300 }); 
-                            
-                            await editMessage(chatId, messageId, `?? **Редактирование промпта**\n\nОтправьте мне НОВЫЙ текст промпта. Я сохраню его и предложу новое меню.\n\nТекущий промпт:\n\`${currentPromptEdit}\``, token);
-                        } else {
-                            await editMessage(chatId, messageId, "?? **Ошибка:** Нечего редактировать. Отправьте фото или введите /create.", token);
-                        }
-                        break;
-
-                    default:
-                        ctx.waitUntil(sendMessage(chatId, `Команда по кнопке не найдена. Получено: ${command}`, token));
-                        break;
-                }
-                return new Response('OK', { status: 200 });
-            }
-
-            // 3. ЛОГИКА ДЛЯ ФУНКЦИЙ РЕДАКТИРОВАНИЯ/СОЗДАНИЯ ПРОМПТА (Ваш оригинальный код ниже)
-            
-            // --- ИСПРАВЛЕННАЯ ЛОГИКА ДЛЯ vision_generate ---
-            if (data === 'vision_generate') {
-                const promptToGenerate = await storage.get(LAST_PROMPT_KEY);
-
-                if (promptToGenerate) {
-                    // Вызываем существующую функцию processCreateCommand с новым набором аргументов
-                    ctx.waitUntil(processCreateCommand(
-                        chatId, 
-                        promptToGenerate, // Передаем промпт из KV
-                        token, 
-                        envData.GEMINI_API_KEY, 
-                        storage, 
-                        envData
-                    ));
-                    
-                    // ctx.waitUntil(deleteMessage(chatId, messageId, token)); // Удаляем меню
-                    
-                } else {
-                    await editMessage(chatId, messageId, `?? Промпт устарел или не найден. Сначала отправьте фото.`, token);
-                }
-                return new Response('OK', { status: 200 });
-            } 
-            
-            // --- ИСПРАВЛЕННАЯ ЛОГИКА ДЛЯ regenerate_prompt (ВЫЗЫВАЕТ НОВУЮ ФУНКЦИЮ) ---
-            else if (data === 'regenerate_prompt') {
-                const imageBase64 = await storage.get(LAST_IMAGE_DATA_KEY);
-
-                if (!imageBase64) {
-                    await editMessage(chatId, messageId, "?? **Внимание:** Нет исходного изображения для повторного анализа. Сначала отправьте фотографию.", token);
-                    return new Response('OK', { status: 200 });
-                }
-                
-                // Удаляем старое меню и запускаем новый процесс
-                // ctx.waitUntil(deleteMessage(chatId, messageId, token));
-                ctx.waitUntil(processPromptRegeneration(chatId, imageBase64, token, storage, envData)); // Вызываем НОВУЮ функцию
-
-                return new Response('OK', { status: 200 });
-            } 
-            
-            // --- ЛОГИКА edit_prompt (Использует новые KV-ключи) ---
-            else if (data === 'edit_prompt') {
-                const currentPrompt = await storage.get(LAST_PROMPT_KEY);
-                
-                if (!currentPrompt) {
-                    await editMessage(chatId, messageId, "?? **Ошибка:** Нечего редактировать. Отправьте фото или введите /create.", token);
-                    return new Response('OK', { status: 200 });
-                }
-                
-                await storage.put(USER_STATE_KEY, STATE_AWAITING_PROMPT_EDIT, { expirationTtl: 300 }); 
-                
-                await editMessage(chatId, messageId, `?? **Редактирование промпта**\n\nОтправьте мне НОВЫЙ текст промпта. Я сохраню его и предложу новое меню.\n\nТекущий промпт:\n\`${currentPrompt}\``, token);
-
-                return new Response('OK', { status: 200 });
-            } 
-            
-            // --- ЛОГИКА create_new_prompt (Использует новые KV-ключи) ---
-            else if (data === 'create_new_prompt') {
-                await storage.put(USER_STATE_KEY, STATE_AWAITING_NEW_PROMPT, { expirationTtl: 300 }); 
-                
-                ctx.waitUntil(sendMessage(chatId, 
-                    "**?? Введите новый промпт**\n\n" +
-                    "Введите текстом всё что хотите вообразить а я сохраню эту информацию, и при нажатии кнопки **'Создать картинку /create'** попытаюсь воплотить Вашу фантазию в виде изображения.", 
-                    token
-                ));
-                return new Response('OK', { status: 200 });
-            }
-            // *** Логика 'vision_generate' и 'regenerate_prompt' перенесена выше. ***
-
-            // 4. ЛОГИКА ДЛЯ АДМИН-КОМАНД (Начинаются с 'admin_')
-            if (data.startsWith('admin_')) {
-                // Проверяем, является ли пользователь администратором
-                if (chatId.toString() !== envData.ADMIN_CHAT_ID.toString()) {
-                    ctx.waitUntil(sendMessage(chatId, "? Вы не можете использовать эти админ-функции.", token));
-                    return new Response('OK', { status: 200 });
-                }
-                
-                // Вспомогательные константы для админ-режима
-                const ADMIN_STATE_KEY = chatKey + '_admin_state'; 
-                const STATE_AWAITING_ID = 'admin_awaiting_id';
-                
-                if (data === 'admin_activate') {
-                    // Устанавливаем стейт ожидания ID
-                    await storage.put(ADMIN_STATE_KEY, STATE_AWAITING_ID, { expirationTtl: 600 }); 
-                    
-                    ctx.waitUntil(sendMessage(chatId, 
-                        "? **ВЫ В РЕЖИМЕ АКТИВАЦИИ БАЛАНСА**\n\n" +
-                        "Пожалуйста, отправьте мне **Telegram ID** пользователя, для которого нужно сгенерировать команду активации." +
-                        "\nВ помощь можно использовать бот:\n??Userinfo|Get id|IDBot @UserInfoToBot" +
-                        "\n\n(Режим автоматически отключится через 10 минут)", 
-                        token
-                    ));
-                    
-                } else if (data === 'admin_debug') {
-                    ctx.waitUntil(processDebugCommand(chatId, envData));
-                } else if (data === 'admin_update_cmds') {
-                    // Логика обновления команд (исправленная вами ранее)
-                    const resultPublic = await setBotCommands(token, PUBLIC_COMMANDS, 'default');
-                    const resultAdmin = await setBotCommands(token, ADMIN_COMMANDS, 'chat', envData.ADMIN_CHAT_ID);
-                    
-                    let message = "? **Команды обновлены!**\n\n";
-                    message += `**Публичные (default) для всех:** ${resultPublic.ok ? 'Успех' : `Ошибка: ${resultPublic.description || 'Нет ответа от API'}`}\n`;
-                    message += `**Администраторские (chat ID ${envData.ADMIN_CHAT_ID}):** ${resultAdmin.ok ? 'Успех' : `Ошибка: ${resultAdmin.description || 'Нет ответа от API'}`}`;
-                    
-                    await sendMessage(chatId, message, token);
-                }
-                return new Response('OK', { status: 200 });
-            }
-
-            // Возвращаем OK для всех обработанных нажатий.
             return new Response('OK', { status: 200 });
         }
-        // !!! КОНЕЦ ИСПРАВЛЕННОГО БЛОКА INLINE-КНОПОК !!!
+
+        // !!! НОВОЕ ИСПРАВЛЕНИЕ: УДАЛЕНА ЛОГИКА ОБРАБОТКИ ПРЯМЫХ КОМАНД '/' !!!
+        // Прямые команды (вроде /create) должны обрабатываться в основном блоке fetch (handleMessage), 
+        // а не как колбэк, если только колбэк не был специально создан с этим префиксом.
+        // Если вам нужны эти кнопки, используйте 'cmd:/create' в callback_data.
+        
+        // --- ЛОГИКА vision_generate (СОЗДАТЬ КАРТИНКУ) ---
+        else if (data === 'vision_generate') {
+            const promptToGenerate = await storage.get(LAST_PROMPT_KEY);
+
+            if (promptToGenerate) {
+                // Вызываем существующую функцию processCreateCommand
+                ctx.waitUntil(processCreateCommand(
+                    chatId, 
+                    promptToGenerate, // Передаем промпт из KV
+                    token, 
+                    envData.GEMINI_API_KEY, 
+                    storage, 
+                    envData
+                ));
+            } else {
+                await editMessage(chatId, messageId, `?? Промпт устарел или не найден. Сначала отправьте фото.`, token);
+            }
+            return new Response('OK', { status: 200 });
+        } 
+        
+        // --- ЛОГИКА regenerate_prompt (ПЕРЕГЕНЕРАЦИЯ ИЗ ФОТО) ---
+        else if (data === 'regenerate_prompt') {
+            const imageBase64 = await storage.get(LAST_IMAGE_DATA_KEY); // Проверяем наличие фото
+
+            if (!imageBase64) {
+                await editMessage(chatId, messageId, "?? **Внимание:** Нет исходного изображения для повторного анализа. Сначала отправьте фотографию.", token);
+                return new Response('OK', { status: 200 });
+            }
+            
+            ctx.waitUntil(processPromptRegeneration(chatId, imageBase64, token, storage, envData)); // Вызываем функцию
+
+            return new Response('OK', { status: 200 });
+        } 
+        
+        // --- ЛОГИКА edit_prompt (РЕДАКТИРОВАНИЕ ТЕКСТА) ---
+        else if (data === 'edit_prompt') {
+            const currentPrompt = await storage.get(LAST_PROMPT_KEY); // Проверяем наличие текста промпта
+            
+            if (!currentPrompt) {
+                await editMessage(chatId, messageId, "?? **Ошибка:** Нечего редактировать. Сначала получите промпт, отправив фотографию или создайте его вручную.", token);
+                return new Response('OK', { status: 200 });
+            }
+            
+            // ? ИСПРАВЛЕНИЕ: Используем STATE_AWAITING_PROMPT_EDIT, который определен выше
+            await storage.put(USER_STATE_KEY, STATE_AWAITING_PROMPT_EDIT, { expirationTtl: 300 }); 
+            
+            await editMessage(chatId, messageId, `?? **Редактирование промпта**\n\nОтправьте мне НОВЫЙ текст промпта. Я сохраню его и предложу новое меню.\n\nТекущий промпт:\n\`${currentPrompt}\``, token);
+
+            return new Response('OK', { status: 200 });
+        } 
+        
+        // --- ЛОГИКА translate_prompt (ПЕРЕВОД) ---
+        else if (data === 'translate_prompt') {
+            // ? ИСПРАВЛЕНИЕ: используем локальную 'storage' (env.LAST_PHOTO_STORAGE)
+            const currentPrompt = await storage.get(LAST_PROMPT_KEY); 
+
+            if (!currentPrompt) {
+                await editMessage(chatId, messageId, "?? **Ошибка:** Нет промпта для перевода. Сначала получите промпт.", token);
+                return new Response('OK', { status: 200 });
+            }
+
+            // Запускаем асинхронный процесс перевода
+            ctx.waitUntil(
+                (async () => {
+                    const displayPrompt = currentPrompt.length > 30 ? currentPrompt.substring(0, 30) + '...' : currentPrompt;
+                    await editMessage(chatId, messageId, `?? **Перевожу промпт: ${displayPrompt}**`, token);
+                    
+                    try {
+                        const translatedPrompt = await callWorkersAITranslate(currentPrompt, envData); 
+                        
+                        await storage.put(LAST_PROMPT_KEY, translatedPrompt, { expirationTtl: 3600 });
+                        
+                        const isTranslated = translatedPrompt !== currentPrompt;
+                        
+                        let message = `? **Промпт обработан!**\n\n`;
+                        if (isTranslated) {
+                            message += `**Оригинал (RU):** \n\`${currentPrompt}\`\n\n**Перевод (EN):**\n\`${translatedPrompt}\``;
+                        } else {
+                            message += `Промпт был признан английским или слишком коротким, перевод не выполнен.\n\n**Текущий промпт:**\n\`${translatedPrompt}\``;
+                        }
+
+                        await editMessageWithKeyboard(
+                            chatId, messageId, 
+                            message,
+                            token,
+                            getPromptKeyboard(translatedPrompt) 
+                        );
+                    } catch (e) {
+                        await editMessage(chatId, messageId, `? **Ошибка перевода:** ${e.message}`, token);
+                    }
+                })()
+            );
+            return new Response('OK', { status: 200 });
+        }
+
+        // --- ЛОГИКА clear_prompt (ОЧИСТКА ПРОМПТА) ---
+        else if (data === 'clear_prompt') {
+            await storage.delete(LAST_PROMPT_KEY); // Удаляем промпт
+            await storage.delete(LAST_IMAGE_DATA_KEY); // Удаляем фото (также чистим контекст)
+            
+            // Очищаем стейты
+            await storage.delete(USER_STATE_KEY);
+            
+            // Отправляем сообщение о сбросе
+            const message = "?? **Промпт и контекст очищены!**\n\nТеперь вы можете создать новый промпт или загрузить фото.";
+            
+            // Используем editMessageWithKeyboard
+            await editMessageWithKeyboard(chatId, messageId, message, token, getPromptKeyboard(null)); 
+            
+            return new Response('OK', { status: 200 });
+        }
+
+        // --- ЛОГИКА create_new_prompt (Установка стейта для нового промпта) ---
+        else if (data === 'create_new_prompt') {
+            // ? ИСПРАВЛЕНИЕ: Используем STATE_AWAITING_NEW_PROMPT, который определен выше
+            await storage.put(USER_STATE_KEY, STATE_AWAITING_NEW_PROMPT, { expirationTtl: 300 }); 
+            
+            ctx.waitUntil(sendMessage(chatId, 
+                "**?? Введите новый промпт**\n\n" +
+                "Введите текстом всё что хотите вообразить а я сохраню эту информацию, и при нажатии кнопки **'Создать картинку /create'** попытаюсь воплотить Вашу фантазию в виде изображения.", 
+                token
+            ));
+            return new Response('OK', { status: 200 });
+        }
+
+        // 4. ЛОГИКА ДЛЯ АДМИН-КОМАНД (Начинаются с 'admin_')
+        else if (data.startsWith('admin_')) {
+            // Проверяем, является ли пользователь администратором
+            if (chatId.toString() !== envData.ADMIN_CHAT_ID.toString()) {
+                ctx.waitUntil(sendMessage(chatId, "? Вы не можете использовать эти админ-функции.", token));
+                return new Response('OK', { status: 200 });
+            }
+            
+            // Вспомогательные константы для админ-режима
+            const ADMIN_STATE_KEY = chatKey + '_admin_state'; 
+            const STATE_AWAITING_ID = 'admin_awaiting_id';
+            
+            if (data === 'admin_activate') {
+                // Устанавливаем стейт ожидания ID
+                await storage.put(ADMIN_STATE_KEY, STATE_AWAITING_ID, { expirationTtl: 600 }); 
+                
+                ctx.waitUntil(sendMessage(chatId, 
+                    "? **ВЫ В РЕЖИМЕ АКТИВАЦИИ БАЛАНСА**\n\n" +
+                    "Пожалуйста, отправьте мне **Telegram ID** пользователя, для которого нужно сгенерировать команду активации." +
+                    "\nВ помощь можно использовать бот:\n??Userinfo|Get id|IDBot @UserInfoToBot" +
+                    "\n\n(Режим автоматически отключится через 10 минут)", 
+                    token
+                ));
+                
+            } else if (data === 'admin_debug') {
+                ctx.waitUntil(processDebugCommand(chatId, envData));
+            } else if (data === 'admin_update_cmds') {
+                // ? ИСПРАВЛЕНИЕ: Добавлен setBotCommands, ADMIN_COMMANDS, PUBLIC_COMMANDS - предполагаем, что они определены в глобальной области
+                const resultPublic = await setBotCommands(token, PUBLIC_COMMANDS, 'default');
+                const resultAdmin = await setBotCommands(token, ADMIN_COMMANDS, 'chat', envData.ADMIN_CHAT_ID);
+                
+                let message = "? **Команды обновлены!**\n\n";
+                message += `**Публичные (default) для всех:** ${resultPublic.ok ? 'Успех' : `Ошибка: ${resultPublic.description || 'Нет ответа от API'}`}\n`;
+                message += `**Администраторские (chat ID ${envData.ADMIN_CHAT_ID}):** ${resultAdmin.ok ? 'Успех' : `Ошибка: ${resultAdmin.description || 'Нет ответа от API'}`}`;
+                
+                await sendMessage(chatId, message, token);
+            }
+            return new Response('OK', { status: 200 });
+        }
+
+        // Возвращаем OK для всех обработанных нажатий.
+        return new Response('OK', { status: 200 });
+    }
+    // !!! КОНЕЦ ИСПРАВЛЕННОГО БЛОКА INLINE-КНОПОК !!!
 
         // 4. ОБРАБОТКА ОБЫЧНОГО ТЕКСТА (ЧАТ)
         if (messageText.length > 0) {
-            
-            // --- 4.1. ОБРАБОТКА ИНТЕРАКТИВНОГО АДМИН-РЕЖИМА (ID, Сумма) ---
+                    
+            // --- 4.1. ОБРАБОТКА ИНТЕРАКТИВНОГО АДМИН-РЕЖИМА (Без изменений) ---
             if (chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
                 const isAdminModeProcessed = await processAdminStateMessage(chatId, messageText, envData);
                 if (isAdminModeProcessed) {
@@ -2892,10 +2937,22 @@ export default {
                 }
             }
 
-            // --- 4.2. ОБЫЧНАЯ ОБРАБОТКА ТЕКСТА (Для всех, кроме команд) ---
-            // Сюда попадает текст, который не был командой и не был перехвачен режимом редактирования в processTextMessage.
-            ctx.waitUntil(processTextMessage(chatId, messageText, envData));
-            return new Response('OK', { status: 200 });
+            // --- 4.2. ОБЫЧНАЯ ОБРАБОТКА ТЕКСТА (ИСПРАВЛЕНО) ---
+            
+            // 1. Сначала пытаемся обработать интерактивный ввод (сохранение промпта, которое требует await)
+            const isPromptInteraction = await processTextMessage(chatId, messageText, envData);
+
+            if (isPromptInteraction === true) { // Проверяем на явное true
+                // Если промпт был сохранен, мы возвращаем OK, блокируя завершение Worker'а, 
+                // пока запись в KV не завершится (благодаря await внутри processTextMessage).
+                return new Response('OK', { status: 200 }); 
+            } else {
+                // 2. Иначе, это обычный чат. Его можно безопасно отправить в фон.
+                // ВНИМАНИЕ: Если processTextMessage возвращает false, 
+                // то это обычная чат-логика (п. 2 в функции).
+                ctx.waitUntil(processTextMessage(chatId, messageText, envData));
+                return new Response('OK', { status: 200 });
+            }
         }
 
         // Игнорируем остальные обновления (например, стикеры, pin-сообщения)
