@@ -2,13 +2,16 @@
 
 // --- ГЛОБАЛЬНАЯ КОНСТАНТА ДЛЯ УПРАВЛЕНИЯ ДЕБАГОМ ---
 // Установите true для включения логов, false для отключения.
-const DEBUG_ENABLED = true; // <-- ИСПРАВЛЕНО: Теперь это boolean
-// Если хотите включить, используйте: const DEBUG_ENABLED = true;
+// const DEBUG_ENABLED = true; // <-- УДАЛИТЕ ЭТУ СТРОКУ
+
+// --- НОВЫЙ ГЛОБАЛЬНЫЙ КЛЮЧ ДЛЯ НАСТРОЕК ---
+const GLOBAL_DEBUG_KEY = 'global_debug_setting'; // <-- НОВЫЙ КЛЮЧ ДЛЯ KV
 
 // --- НОВЫЕ ГЛОБАЛЬНЫЕ КОНСТАНТЫ ДЛЯ KV ---
 const LAST_PROMPT_KEY_SUFFIX = '_last_prompt';
-const LAST_IMAGE_DATA_KEY_SUFFIX = '_last_image_data'; 
 const LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX = '_last_prompt_message_id'; // Для редактирования меню
+const LAST_PROMPT_LANG_KEY_SUFFIX = '_last_prompt_lang'; // <-- Язык перевода промпта RU/EN
+const LAST_IMAGE_DATA_KEY_SUFFIX = '_last_image_data'; 
 const LAST_ACTION_KEY_SUFFIX = '_last_action'; // Для режима редактирования (edit_prompt)
 const USER_STATE_KEY_SUFFIX = '_user_state'; // <-- КРИТИЧЕСКИ ВАЖНОЕ ДОБАВЛЕНИЕ
 // ----------------------------------------------------
@@ -150,9 +153,8 @@ async function sendMessageWithKeyboard(chatId, text, token, keyboard) {
     const body = { 
         chat_id: chatId, 
         text: text, 
-        parse_mode: 'HTML', 
-        reply_markup: {
-            inline_keyboard: keyboard // Массив массивов кнопок
+        parse_mode: 'Markdown',
+        reply_markup: {inline_keyboard: keyboard // Массив массивов кнопок
         }
     };
     try {
@@ -179,30 +181,54 @@ function getPromptKeyboard(currentPrompt) {
     let keyboard = [];
     
     if (hasPrompt) {
-        // --- 1-я строка: Основные действия с промптом ---
+        // --- 1-я строка: Главное меню ---
+        keyboard.push(
+            [{ text: "?? Открыть главное меню /start", callback_data: "start_command" }],
+        );
+        // --- 2-я строка: Основные действия с промптом ---
         keyboard.push([
-            { text: "?? Редактировать текст", callback_data: "edit_prompt" },
+            { text: "?? Редактировать", callback_data: "edit_prompt" },
             { text: "?? Описание из фото", callback_data: "regenerate_prompt" }
         ]);
-        
-        // --- 2-я строка: Генерация и перевод ---
+        // --- 3-я строка: Генерация и перевод ---
         keyboard.push([
-            { text: "?? Создать картинку", callback_data: "vision_generate" },
+            { text: "?? Очистить промпт", callback_data: "clear_prompt" },
             { text: "?? Перевести (RU/EN)", callback_data: "translate_prompt" } 
         ]);
-        
-        // --- 3-я строка: Очистка ---
+        // --- 4-я строка: Улучшить фото ---
         keyboard.push([
-            { text: "?? Очистить промпт/контекст", callback_data: "clear_prompt" }
+            { text: "? Улучшить/Стилизовать фото (/photo)", callback_data: 'cmd:/photo' }
         ]);
+        // --- 5-я строка: Создать картинку ---
+        keyboard.push([
+            { text: "?? Создать картинку по промпту (/create)", callback_data: 'cmd:/create_empty' }
+        ]);
+
     } else {
         // --- Промпта нет: Предлагаем создать ---
-        keyboard.push([
-            { text: "? Создать новый промпт", callback_data: "create_new_prompt" }
-        ]);
+        keyboard.push(
+            // НОВАЯ кнопка для главного меню
+            [{ text: "?? Открыть главное меню /start", callback_data: "start_command" }],
+            [{ text: "? Создать новый промпт", callback_data: "create_new_prompt" }]);
     }
     
     return { inline_keyboard: keyboard };
+}
+
+// ? getPromptSavedKeyboard - Клавиатура после сохранения/редактирования промпта
+function getPromptSavedKeyboard() {
+    const keyboard = {
+        inline_keyboard: [
+            // 1. Создать картинку (основное действие)
+            [{ text: "?? Создать картинку по промпту (/create)", callback_data: 'vision_generate' }],
+            // 2. Вернуться в меню промпта
+            [{ text: "?? Меню промпта (/prompt)", callback_data: 'cmd:/prompt' }], // <-- НОВАЯ КНОПКА
+            // 3. Вернуться в главное меню
+            [{ text: "?? Открыть главное меню /start", callback_data: "start_command" }]
+        ]
+    };
+    
+    return keyboard;
 }
 
 // ? displayPromptMenu: Показывает меню промпта (ИСПРАВЛЕНО)
@@ -271,11 +297,18 @@ async function sendMessage(chatId, text, token, replyToMessageId = null, keyboar
 async function editMessage(chatId, messageId, text, token) {
     const url = `https://api.telegram.org/bot${token}/editMessageText`;
     try {
-        await fetch(url, {
+        const response = await fetch(url, { // <-- Добавлена переменная response
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: chatId, message_id: messageId, text: text, parse_mode: 'Markdown' }),
         });
+        
+        // ?? Добавлено логирование ошибки:
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Telegram editMessage failed with status: ${response.status}. Body: ${errorText}`);
+        }
+        
     } catch (e) {
         console.error("Error editing message in Telegram:", e);
     }
@@ -302,9 +335,28 @@ async function downloadTelegramFile(filePath, token) {
     }
 }
 
-// ? logDebug (Запись лога в KV-хранилище)
-async function logDebug(type, message, env) {
-    const { BOT_LOGS_STORAGE } = env;
+// ? logDebug (КОМПЛЕКСНЫЙ ЛОГГЕР: KV + TELEGRAM) - ФИНАЛЬНАЯ ВЕРСИЯ
+async function logDebug(type, message, envData, ctx) {
+    // 1. КОНТРОЛЬ TELEGRAM-ЛОГОВ
+    // Отправляем сообщение только если флаг включен
+    if (envData.DEBUG_ENABLED) {
+        // Мы предполагаем, что вы хотите отправлять эти логи в админ-чат, 
+        // используя глобальный ADMIN_CHAT_ID.
+        const messageText = `?? **[DEBUG][${type}]** ${message}`;
+        if (envData.ADMIN_CHAT_ID && envData.TELEGRAM_BOT_TOKEN) {
+            // Используем ctx.waitUntil для неблокирующей отправки, если ctx доступен
+            if (ctx && ctx.waitUntil) {
+                ctx.waitUntil(sendMessage(envData.ADMIN_CHAT_ID, messageText, envData.TELEGRAM_BOT_TOKEN)); 
+            } else {
+                // Если ctx недоступен (например, в не-fetch контексте), отправляем синхронно
+                await sendMessage(envData.ADMIN_CHAT_ID, messageText, envData.TELEGRAM_BOT_TOKEN);
+            }
+        }
+    }
+
+    // 2. ЛОГИКА ЗАПИСИ В KV (НЕ ЗАВИСИТ ОТ DEBUG_ENABLED)
+    const { BOT_LOGS_STORAGE } = envData;
+    // Если KV-биндинг отсутствует, прекращаем запись
     if (!BOT_LOGS_STORAGE) return;
     
     const timestamp = new Date().toISOString();
@@ -314,7 +366,7 @@ async function logDebug(type, message, env) {
     let logs = await BOT_LOGS_STORAGE.get('master_log_list', { type: 'json' });
     logs = Array.isArray(logs) ? logs : [];
     
-    // Добавляем новую запись в начало (чтобы последние были первыми)
+    // Добавляем новую запись в начало
     logs.unshift(logEntry);
     
     // Обрезаем лог до 50 последних записей
@@ -372,13 +424,17 @@ async function generateUniqueToken(chatId, secretKey) {
 // editMessageWithKeyboard - Редактирует сообщение и добавляет/изменяет инлайн-кнопки
 async function editMessageWithKeyboard(chatId, messageId, text, token, replyMarkup) {
     const url = `https://api.telegram.org/bot${token}/editMessageText`;
-    
+
+    // ? ИСПРАВЛЕНИЕ: Оборачиваем replyMarkup в { inline_keyboard: ... }
+    const replyMarkupObject = { inline_keyboard: replyMarkup };
+    // ? ИСПРАВЛЕНИЕ: Добавлен parse_mode в тело запроса
     const body = { 
         chat_id: chatId, 
         message_id: messageId, 
         text: text, 
         parse_mode: 'Markdown',
-        reply_markup: replyMarkup
+        // ? ИСПРАВЛЕНО: Передаём объект, а не массив
+        reply_markup: replyMarkupObject
     };
     
     try {
@@ -387,11 +443,22 @@ async function editMessageWithKeyboard(chatId, messageId, text, token, replyMark
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        if (response.ok) { return await response.json(); } 
-        else {
-            console.error("Telegram editMessageWithKeyboard failed with status:", response.status);
-            return { ok: false, message: "Telegram API error" };
-        }
+ 
+    // Условие: Если replyMarkup был null (для удаления клавиатуры), 
+    // то нужно передать либо null, либо {}. Проще всего удалить, если null.
+    if (!replyMarkup) {
+        delete body.reply_markup;
+    }
+
+        // ?? Дополнительный шаг для дебага: Логируем ответ API
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Telegram editMessageWithKeyboard failed with status: ${response.status}. Body: ${errorText}`);
+            return { ok: false, message: "Telegram API error", fullError: errorText };
+        } 
+        
+        return await response.json(); 
+        
     } catch (e) {
         console.error("Error editing message with keyboard to Telegram:", e);
         return { ok: false, message: e.message };
@@ -405,13 +472,13 @@ async function editMessageWithKeyboard(chatId, messageId, text, token, replyMark
  * @param {ArrayBuffer} photoArrayBuffer - Бинарные данные изображения (ArrayBuffer).
  * @param {string} caption - Подпись к фотографии.
  * @param {string} token - Токен Telegram Bot API.
- * @param {Object} envData - Объект окружения с ADMIN_CHAT_ID для дебага.
+ * @param {Object} envData - Объект окружения (содержит ADMIN_CHAT_ID, DEBUG_ENABLED и ctx).
  * @returns {Promise<Object>} Ответ от Telegram API.
  */
 async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, envData) {
     const { ADMIN_CHAT_ID } = envData;
     const TELEGRAM_CAPTION_LIMIT = 1024; // Максимальный лимит Telegram
-    const SAFE_MAX_LENGTH = 990;       // <-- БЕЗОПАСНЫЙ ПОРОГ
+    const SAFE_MAX_LENGTH = 990;       // <-- БЕЗОПАСНЫЙ ПОРОГ
     const ELLIPSIS_SUFFIX = '...';
 
     // !!! НОВОЕ ИСПРАВЛЕНИЕ: ОГРАНИЧЕНИЕ ДЛИНЫ ПОДПИСИ (MAX 1024 символа) !!!
@@ -423,17 +490,19 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
         
         finalCaption = caption.substring(0, truncateLength) + ELLIPSIS_SUFFIX;
 
-        // Опционально: можно уведомить админа, что подпись была обрезана
-        if (DEBUG_ENABLED) { 
-            await sendMessage(ADMIN_CHAT_ID, `?? **[DEBUG] SendPhoto:** Подпись обрезана с ${caption.length} до ${finalCaption.length} символов (Лимит: ${TELEGRAM_CAPTION_LIMIT}).`, token);
-        }
+        // ? ИСПРАВЛЕНИЕ 1: Корректный вызов logDebug с использованием envData.ctx
+        envData.ctx.waitUntil(logDebug(
+            "SendPhoto", // Тип лога
+            `Подпись обрезана с ${caption.length} до ${finalCaption.length} символов (Лимит: ${TELEGRAM_CAPTION_LIMIT}).`, // Сообщение
+            envData // Объект с настройками
+        ));
     }
 
     if (!photoArrayBuffer || photoArrayBuffer.byteLength === 0) {
-        if (DEBUG_ENABLED) { // <-- Используем глобальную константу
-        await sendMessage(ADMIN_CHAT_ID, `? **[DEBUG] SendPhoto: Ошибка**\nПустой ArrayBuffer изображения.`, token);
+        
+        // ? ИСПРАВЛЕНИЕ 2: Замена if (DEBUG_ENABLED) на logDebug
+        envData.ctx.waitUntil(logDebug("SendPhoto", `Пустой ArrayBuffer изображения.`, envData));
         throw new Error("sendPhotoWithCaption: Пустой или невалидный ArrayBuffer изображения.");
-        }
     }
     
     const apiUrl = `https://api.telegram.org/bot${token}/sendPhoto`;
@@ -442,22 +511,20 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     const formData = new FormData();
     
     // !!! КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Используем File для ArrayBuffer, чтобы Telegram корректно принял бинарные данные.
-    // Если у вас нет глобального File, используйте Blob. Я буду использовать File, как более чистый вариант.
-    // Если File не сработает, нужно будет использовать new Blob(...)
     const imageFile = new File([photoArrayBuffer], 'image.png', { type: 'image/png' });
 
     // 2. Добавляем параметры
     formData.append('chat_id', chatId.toString());
     formData.append('caption', finalCaption);
-    // Ключевое поле 'photo' для метода sendPhoto.
     formData.append('photo', imageFile, 'image.png'); 
 
     // --- ДЕБАГ #1: ЛОГИРОВАНИЕ ПЕРЕД ОТПРАВКОЙ В TELEGRAM ---
-    if (DEBUG_ENABLED) { // <-- Используем глобальную константу
-    await sendMessage(ADMIN_CHAT_ID, 
-        `?? **[DEBUG] SendPhoto: Отправка в Telegram**\nМетод: sendPhoto\nРазмер фото (bytes): ${photoArrayBuffer.byteLength}\nChat ID: ${chatId}`, 
-        token);
-    }
+    // ? ИСПРАВЛЕНИЕ 3: Замена if (DEBUG_ENABLED) на logDebug
+    envData.ctx.waitUntil(logDebug(
+        "SendPhoto", 
+        `Отправка в Telegram. Метод: sendPhoto. Размер фото (bytes): ${photoArrayBuffer.byteLength}. Chat ID: ${chatId}`, 
+        envData
+    ));
 
     // 3. Отправляем запрос
     let response;
@@ -465,14 +532,13 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
         response = await fetch(apiUrl, {
             method: 'POST',
             body: formData,
-            // Content-Type: 'multipart/form-data' устанавливается автоматически
             signal: AbortSignal.timeout(60000)
         });
     } catch (e) {
-        if (DEBUG_ENABLED) {
-        await sendMessage(ADMIN_CHAT_ID, `? **[DEBUG] SendPhoto: Ошибка Fetch**\n${e.message}`, token);
+        
+        // ? ИСПРАВЛЕНИЕ 4: Замена if (DEBUG_ENABLED) на logDebug
+        envData.ctx.waitUntil(logDebug("SendPhoto", `Ошибка Fetch: ${e.message}`, envData));
         throw new Error(`Ошибка сети/таймаута при отправке фото в Telegram: ${e.message}`);
-        }
     }
 
     const responseText = await response.text();
@@ -480,16 +546,19 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     try { responseData = JSON.parse(responseText); } catch(e) { /* не JSON */ }
 
     // --- ДЕБАГ #2: ЛОГИРОВАНИЕ ОТВЕТА ОТ TELEGRAM ---
-    if (DEBUG_ENABLED) {
+    // ? ИСПРАВЛЕНИЕ 5: Замена if (DEBUG_ENABLED) на logDebug
     if (response.ok) {
-        await sendMessage(ADMIN_CHAT_ID, 
-            `? **[DEBUG] SendPhoto: Ответ Telegram**\nStatus: ${response.status}\nOk: ${responseData.ok}\nРезультат: ${responseData.ok ? 'Успех' : responseData.description || 'Нет описания'}`, 
-            token);
+        envData.ctx.waitUntil(logDebug(
+            "SendPhoto", 
+            `Ответ Telegram. Status: ${response.status}. Ok: ${responseData.ok}. Результат: ${responseData.ok ? 'Успех' : responseData.description || 'Нет описания'}`, 
+            envData
+        ));
     } else {
-        await sendMessage(ADMIN_CHAT_ID, 
-            `? **[DEBUG] SendPhoto: Ошибка Telegram API**\nStatus: ${response.status}\nОтвет: \`\`\`json\n${responseText.substring(0, 1000)}\n\`\`\``, 
-            token);
-        }
+        envData.ctx.waitUntil(logDebug(
+            "SendPhoto", 
+            `Ошибка Telegram API. Status: ${response.status}. Ответ: ${responseText.substring(0, 1000)}`, 
+            envData
+        ));
     }
     
     if (!response.ok || !responseData.ok) {
@@ -990,18 +1059,31 @@ async function callWorkersAIVision(imageBuffer, promptText, envData) {
 // *** 2.10. Workers AI Text (НАДЕЖНЫЙ переводчик RU/EN) - АКТИВИРОВАН ***
 /**
  * Надежно переводит текст, используя массив бесплатных моделей в качестве резерва.
- * Определяет, нужно ли переводить EN->RU или RU->EN.
+ * Определяет, нужно ли переводить EN->RU или RU->EN на основе переданных языков.
  * @param {string} text - Текст для перевода.
  * @param {Object} envData - Объект окружения, содержащий привязку AI.
+ * @param {string} sourceLang - Исходный язык ('ru' или 'en').
+ * @param {string} targetLang - Язык назначения ('ru' или 'en').
  * @returns {Promise<string>} Переведенный текст или оригинал.
  */
-async function callWorkersAITranslate(text, envData) { 
+async function callWorkersAITranslate(text, envData, sourceLang, targetLang) { 
     
-    // Определяем, нужно ли переводить с RU на EN
-    const isRussian = /[а-яА-ЯЁё]/.test(text);
+    // 1. ПРОВЕРКА: Если языки совпадают, или текст слишком короткий, или нет AI, возвращаем оригинал
+    if (sourceLang === targetLang || text.trim().length < 5 || !envData.AI) { 
+        return text;
+    }
 
-    // Если промпт уже на английском или короткий, не переводим
-    if (!isRussian || text.trim().length < 5) {
+    // 2. ДИНАМИЧЕСКИ ОПРЕДЕЛЯЕМ ПРОМПТ ПЕРЕВОДА
+    let translatePrompt;
+    
+    if (targetLang === 'en') {
+        const targetLanguageDescription = 'professional English, suitable for text-to-image AI';
+        translatePrompt = `Translate the following image generation prompt into ${targetLanguageDescription}. Keep all descriptive and technical terms. Respond ONLY with the translated text, nothing else. Prompt to translate: "${text}"`;
+    } else if (targetLang === 'ru') {
+        const targetLanguageDescription = 'Russian, suitable for user editing';
+        translatePrompt = `Translate the following image generation prompt into clear ${targetLanguageDescription}. Keep all descriptive and technical terms. Respond ONLY with the translated text, nothing else. Prompt to translate: "${text}"`;
+    } else {
+        // Запасной вариант, если targetLang не 'ru' и не 'en'
         return text;
     }
     
@@ -1013,12 +1095,7 @@ async function callWorkersAITranslate(text, envData) {
         "@cf/google/gemma-2b-it" 
     ];
 
-    if (!AI) { return text; }
-
-    const targetLanguage = 'professional English, suitable for text-to-image AI';
-    const translatePrompt = `Translate the following image generation prompt into ${targetLanguage}. Keep all descriptive and technical terms. Respond ONLY with the translated text, nothing else. Prompt to translate: "${text}"`;
-    
-    // Итерируемся по бесплатным моделям
+    // 3. ПЕРЕБОР МОДЕЛЕЙ
     for (const model of FREE_MODELS) {
         try {
             const aiResponse = await AI.run(
@@ -1034,7 +1111,7 @@ async function callWorkersAITranslate(text, envData) {
         }
     }
     
-    // Если все попытки провалились, возвращаем оригинал
+    // 4. Если все попытки провалились, возвращаем оригинал
     return text;
 }
 
@@ -1129,14 +1206,14 @@ async function callWorkersAIGeneration(prompt, envData) {
  * Вызывает внешний Workers AI API для Img2Img через JSON, ожидая ArrayBuffer в ответе.
  * @param {string} prompt - Промпт для генерации.
  * @param {string} imageBase64 - Исходное изображение в Base64.
- * @param {Object} envData - Объект окружения с токенами и ID.
+ * @param {Object} envData - Объект окружения (содержит токены, ID и ctx).
  * @returns {Promise<ArrayBuffer>} Бинарные данные сгенерированного изображения.
  */
 async function callWorkersAIImg2Img(prompt, imageBase64, envData) {
     const { 
         CLOUDFLARE_ACCOUNT_ID, 
         CLOUDFLARE_API_TOKEN,
-        ADMIN_CHAT_ID, // Используем для дебага
+        ADMIN_CHAT_ID,
         TELEGRAM_BOT_TOKEN: token
     } = envData;
 
@@ -1146,11 +1223,12 @@ async function callWorkersAIImg2Img(prompt, imageBase64, envData) {
 
     // 1. Очистка Base64: удаляем префикс, если он есть
     const cleanImageBase64 = imageBase64.startsWith('data:') ? 
-                             imageBase64.split(',')[1] : 
-                             imageBase64;
-                             
+                                 imageBase64.split(',')[1] : 
+                                 imageBase64;
+                                 
     if (!cleanImageBase64 || cleanImageBase64.length < 100) {
-        await sendMessage(ADMIN_CHAT_ID, `? [DEBUG] Img2Img: Ошибка Base64. Длина: ${cleanImageBase64?.length || 0}`, token);
+        // ? ИСПРАВЛЕНИЕ 1: Замена прямого sendMessage на await logDebug
+        await logDebug("Img2Img", `Ошибка Base64. Длина: ${cleanImageBase64?.length || 0}`, envData);
         throw new Error("Невалидные данные Base64 после очистки.");
     }
 
@@ -1165,15 +1243,18 @@ async function callWorkersAIImg2Img(prompt, imageBase64, envData) {
         strength: 0.02, // Сила творчества
         guidance: 9.5, // Точность промпта
         negative_prompt: "Text describing elements to avoid in the generated image, bad art, ugly, deformed, blurry, low quality, unnatural colors, text, watermark",
-        width: 768, // <-- ВОЗВРАЩАЕМ СТАНДАРТНОЕ РАЗРЕШЕНИЕ: Убираем "додумывание" пикселей
+        width: 768, 
         height: 1024,
     };
     
     // --- ДЕБАГ #1: ЛОГИРОВАНИЕ ОТПРАВЛЯЕМОГО ЗАПРОСА (БЕЗ Base64!) ---
-    if (DEBUG_ENABLED) { // <-- Используем глобальную константу
+    // ? ИСПРАВЛЕНИЕ 2: Замена if (DEBUG_ENABLED) на logDebug
     const debugInputs = { ...inputs, image_b64: `[Base64 длиной ${cleanImageBase64.length}]` };
-    await sendMessage(ADMIN_CHAT_ID, `?? **[DEBUG] Img2Img: Отправка запроса**\n\`\`\`json\n${JSON.stringify(debugInputs, null, 2)}\n\`\`\`\nURL: ${url}`, token);
-    }
+    envData.ctx.waitUntil(logDebug(
+        "Img2Img", 
+        `Отправка запроса. URL: ${url}. Inputs: \n\`\`\`json\n${JSON.stringify(debugInputs, null, 2)}\n\`\`\``, 
+        envData
+    ));
 
     let response;
     try {
@@ -1187,10 +1268,9 @@ async function callWorkersAIImg2Img(prompt, imageBase64, envData) {
             signal: AbortSignal.timeout(60000)
         });
     } catch (e) {
-        if (DEBUG_ENABLED) {
-        await sendMessage(ADMIN_CHAT_ID, `? **[DEBUG] Img2Img: Ошибка Fetch**\n${e.message}`, token);
+        // ? ИСПРАВЛЕНИЕ 3: Замена if (DEBUG_ENABLED) на logDebug (await, так как это критический throw)
+        await logDebug("Img2Img", `Ошибка Fetch: ${e.message}`, envData);
         throw new Error(`Ошибка сети/таймаута при вызове Workers AI: ${e.message}`);
-        }
     }
 
     // 3. Обработка ОТВЕТА
@@ -1199,38 +1279,50 @@ async function callWorkersAIImg2Img(prompt, imageBase64, envData) {
         const contentLength = response.headers.get('Content-Length');
 
         // --- ДЕБАГ #2: ЛОГИРОВАНИЕ УСПЕШНОГО ОТВЕТА ---
-        if (DEBUG_ENABLED) {
-        await sendMessage(ADMIN_CHAT_ID, `? **[DEBUG] Img2Img: Успешный ответ**\nStatus: ${response.status}\nContent-Type: ${contentType}\nContent-Length: ${contentLength || 'N/A'}`, token);
-        }
+        // ? ИСПРАВЛЕНИЕ 4: Замена if (DEBUG_ENABLED) на logDebug
+        envData.ctx.waitUntil(logDebug(
+            "Img2Img", 
+            `Успешный ответ. Status: ${response.status}. Content-Type: ${contentType}. Content-Length: ${contentLength || 'N/A'}`, 
+            envData
+        ));
 
         if (contentType && contentType.includes('image/png')) {
             // Возвращаем ArrayBuffer для отправки в Telegram
             return response.arrayBuffer(); 
         } else {
-            // Ответ 200 OK, но не изображение (например, ошибка лимитов или блокировка, возвращенная в JSON)
+            // Ответ 200 OK, но не изображение
             const errorText = await response.text();
             let errorData = {};
             try { errorData = JSON.parse(errorText); } catch(e) { /* не JSON */ }
             
             const errorMessage = errorData.errors?.[0]?.message || errorText.substring(0, 500) || 'Неизвестная ошибка 200 OK, не изображение.';
             
-            await sendMessage(ADMIN_CHAT_ID, `?? **[DEBUG] Img2Img: Не изображение**\nStatus 200, но Content-Type не PNG.\nОтвет: \`\`\`${errorMessage}\`\`\``, token);
+            // Отправляем лог о неизображении
+            envData.ctx.waitUntil(logDebug(
+                "Img2Img", 
+                `Не изображение. Status 200, но Content-Type не PNG. Ответ: ${errorMessage}`, 
+                envData
+            ));
             
             throw new Error(`Workers AI Img2Img: Непредвиденный ответ. ${errorMessage}`);
         }
     } else {
         // --- ДЕБАГ #3: ЛОГИРОВАНИЕ HTTP-ОШИБКИ (4xx, 5xx) ---
-        if (DEBUG_ENABLED) {
+        // ? ИСПРАВЛЕНИЕ 5: Замена if (DEBUG_ENABLED) на logDebug (await, так как это критический throw)
         const errorText = await response.text();
         let errorBody = {};
         try { errorBody = JSON.parse(errorText); } catch(e) { /* не JSON */ }
         
         const errorMessage = errorBody.errors?.[0]?.message || errorText.substring(0, 500) || `HTTP Error ${response.status}`;
         
-        await sendMessage(ADMIN_CHAT_ID, `? **[DEBUG] Img2Img: HTTP Ошибка**\nStatus: ${response.status}\nСообщение: \`\`\`${errorMessage}\`\`\``, token);
+        // Отправляем лог об ошибке
+        await logDebug(
+            "Img2Img", 
+            `HTTP Ошибка. Status: ${response.status}. Сообщение: ${errorMessage}`, 
+            envData
+        );
         
         throw new Error(`Workers AI External API Error: ${response.status} - ${errorMessage}`);
-        }
     }
 }
 
@@ -1330,29 +1422,50 @@ const ADMIN_COMMANDS = [
 // ----------------------------------------------------
 
 // ? processAdminStartCommand (Финальный вид: Используем кнопки для меню)
-async function processAdminStartCommand(adminChatId, env) {
-    const { TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID } = env;
+async function processAdminStartCommand(adminChatId, envData) {
+    // Деструктурируем все необходимые переменные, включая DEBUG_ENABLED
+    const { TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, DEBUG_ENABLED } = envData;
 
     if (adminChatId.toString() !== ADMIN_CHAT_ID) {
         await sendMessage(adminChatId, "? Вы не администратор этого бота.", TELEGRAM_BOT_TOKEN);
         return;
     }
     
-    // АДМИН-ПАНЕЛЬ с инлайн-кнопками
+    // 1. Определяем статус отладки
+    const debugStatus = DEBUG_ENABLED ? '? ВКЛЮЧЕНА' : '? ВЫКЛЮЧЕНА';
+
+    // 2. Формируем сообщение с ID и статусом в режиме Markdown
     const message = `
     ? **АДМИН-ПАНЕЛЬ**
     
+    **Ваш ID:** \`${ADMIN_CHAT_ID}\`
+    
+    **Отладка:** ${debugStatus}
+    
     Используйте кнопки ниже для управления ботом.
     `;
+    
     // Создаем массив кнопок для инлайн-клавиатуры
-    const keyboard = [
-        [{ text: "?? Пополнить баланс пользователя", callback_data: "admin_activate" }],
-        [{ text: "?? Показать логи и ошибки", callback_data: "admin_debug" }],
-        [{ text: '?? Обновить меню команд', callback_data: 'admin_update_cmds' } ],
-        [{ text: "?? Выход из режима администратора", callback_data: "admin_exit" }],
-    ];
+    const keyboard = getAdminKeyboardFromCommand(envData).inline_keyboard;
     
     await sendMessageWithKeyboard(adminChatId, message, TELEGRAM_BOT_TOKEN, keyboard);
+}
+
+// ? getAdminKeyboardFromCommand - ГЕНЕРИРУЕТ КЛАВИАТУРУ
+function getAdminKeyboardFromCommand(currentEnvData) {
+    // ? ИСПРАВЛЕНИЕ: Использование переданного статуса
+    const debugStatusText = currentEnvData.DEBUG_ENABLED ? '? Выключить' : '? Включить';
+    
+    const keyboard = { inline_keyboard: [
+        [{ text: "?? Пополнить баланс пользователя", callback_data: "admin_activate" }],
+        [{ text: "?? Показать логи и ошибки", callback_data: "admin_debug" }],
+        [{ text: `?? Отладка (${debugStatusText})`, callback_data: 'admin_debug_toggle' }],
+        [{ text: '?? Обновить меню команд', callback_data: 'admin_update_cmds' } ],
+        [{ text: "?? Выход из режима администратора", callback_data: "admin_exit" }],
+    ]};
+
+    // Возвращаем объект в формате Telegram (с ключом inline_keyboard)
+    return keyboard; 
 }
 
 // ? processAdminStateMessage (Обработка ID и Суммы в интерактивном режиме)
@@ -1374,12 +1487,13 @@ async function processAdminStateMessage(adminChatId, messageText, env) {
     const PRICE_PER_PHOTO = 10; // Цена в рублях
 
     // --- 1. ОЖИДАЕМ ID ПОЛЬЗОВАТЕЛЯ ---
-    if (adminState === STATE_AWAITING_ID) { // ИЗМЕНЕНО
-        const targetChatId = messageText.trim();
-        if (!/^\d+$/.test(targetChatId)) {
-            await sendMessage(adminChatId, "? Неверный формат ID. Пожалуйста, отправьте ТОЛЬКО цифры (Telegram ID пользователя).", TELEGRAM_BOT_TOKEN);
-            return true;
-        }
+    if (adminState === STATE_AWAITING_ID) { 
+            const targetChatId = messageText.trim();
+            // Улучшенная проверка: убеждаемся, что это цифры и не пустая строка
+            if (!/^\d+$/.test(targetChatId) || targetChatId.length === 0) { // <-- Улучшено
+                await sendMessage(adminChatId, "? Неверный формат ID. Пожалуйста, отправьте ТОЛЬКО цифры (Telegram ID пользователя).", TELEGRAM_BOT_TOKEN);
+                return true;
+            }
 
         // Сохраняем ID пользователя и переводим в следующий режим
         await LAST_PHOTO_STORAGE.put(ADMIN_TARGET_ID_KEY, targetChatId, { expirationTtl: 600 });
@@ -1461,71 +1575,106 @@ async function processAdminAwaitingId(adminChatId, env) {
 
 // ? processStartCommand (Начало работы)
 async function processStartCommand(chatId, TELEGRAM_BOT_TOKEN) {
+    // Используем новую функцию
+    const { messageText, keyboardObject } = getStartMenuData();
+    
+    // Отправляем сообщение
+    await sendMessage(chatId, messageText, TELEGRAM_BOT_TOKEN, null, keyboardObject);
+}
+
+// ? getStartMenuData - ГЕНЕРИРУЕТ ДАННЫЕ ДЛЯ ГЛАВНОГО МЕНЮ
+function getStartMenuData() {
     const keyboard = {
         inline_keyboard: [
             // Основные команды
             [{ text: "? Улучшить/Стилизовать фото (/photo)", callback_data: 'cmd:/photo' }],
             [{ text: "?? Создать картинку по промпту (/create)", callback_data: 'cmd:/create_empty' }],
             // Вспомогательные
-            [{ text: "?? Меню работы с промптом (/prompt)", callback_data: 'cmd:/prompt' }], // <-- ИЗМЕНЕНО
+            [{ text: "?? Меню работы с промптом (/prompt)", callback_data: 'cmd:/prompt' }],
             [{ text: "??? Очистить данные (/stop)", callback_data: 'cmd:/stop' }],
             // Сюда можно добавить: [{ text: "?? Создать видео (/video)", callback_data: 'cmd:/video_empty' }]
         ]
     };
-    const message = `
-        ?? **Добро пожаловать в Gemini AI от Leshiy!**
+    
+    const messageText = `
+    ?? **Добро пожаловать в Gemini AI от Leshiy!**
 
-        Вот что я могу:
-        Отправьте фото - я сгенерирую **промпт**.
-        **Просто начните писать** - я стану вашим собеседником.
-        **Отправьте голосовое** - я его расшифрую и отвечу.
-        /prompt для создания или перегенерации **промпта**.
-        /photo для **улучшения фото** (особенно черно-белых)
-        /create для **создания картинки** по промпту
-        /stop для **очистки** сохраненных данных.
+Вот что я могу:
+Отправьте фото - я сгенерирую **промпт**.
+**Просто начните писать** - я стану вашим собеседником.
+**Отправьте голосовое** - я его расшифрую и отвечу.
+/prompt для создания или перегенерации **промпта**.
+/photo для **улучшения фото** (особенно черно-белых)
+/create для **создания картинки** по промпту
+/stop для **очистки** сохраненных данных.
 
-        Выберите действие ниже или отправьте мне фотографию.
-    `;
+Выберите действие ниже или отправьте мне фотографию.`;
 
-    await sendMessage(chatId, message, TELEGRAM_BOT_TOKEN, null, keyboard);
+    return { messageText, keyboardObject: keyboard };
 }
 
 // ? processDebugCommand (Только для администратора: Выводит лог)
-async function processDebugCommand(chatId, env) {
-    const { TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, BOT_LOGS_STORAGE } = env;
-
-    if (chatId.toString() !== ADMIN_CHAT_ID) {
-        await sendMessage(chatId, "? Вы не администратор этого бота.", TELEGRAM_BOT_TOKEN);
-        return;
-    }
-
-    if (!BOT_LOGS_STORAGE) {
-        await sendMessage(chatId, "? KV-хранилище для логов не настроено.", TELEGRAM_BOT_TOKEN);
-        return;
-    }
+// Теперь принимает ID сообщения для редактирования статуса
+async function processDebugCommand(chatId, env, workingMessageId) {
+        const { TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, BOT_LOGS_STORAGE } = env;
     
-    await sendMessage(chatId, "? Запрашиваю последние записи логов...", TELEGRAM_BOT_TOKEN);
-
-    try {
-        let logs = await BOT_LOGS_STORAGE.get('master_log_list', { type: 'json' });
-        logs = Array.isArray(logs) ? logs : [];
-        
-        let message = `
-        **Последние ${logs.length} записей лога:**
-        <pre>${logs.join('\n')}</pre>
-        `;
-        
-        // Telegram имеет лимит в 4096 символов, поэтому может потребоваться обрезка
-        if (message.length > 4096) {
-            message = message.substring(0, 4000) + "\n... (слишком длинно, обрезано)";
-        }
-        
-        await sendMessage(chatId, message, TELEGRAM_BOT_TOKEN);
-
-    } catch (e) {
-        await sendMessage(chatId, `? Ошибка при чтении логов: ${e.message}`, TELEGRAM_BOT_TOKEN);
+        // --- Вспомогательная функция для отправки/редактирования ---
+        const sendOrEdit = async (text, messageId) => {
+            if (messageId) {
+                await editMessage(chatId, messageId, text, TELEGRAM_BOT_TOKEN);
+            } else {
+                await sendMessage(chatId, text, TELEGRAM_BOT_TOKEN);
+            }
+        };
+    
+        if (chatId.toString() !== ADMIN_CHAT_ID) {
+            await sendMessage(chatId, "? Вы не администратор этого бота.", TELEGRAM_BOT_TOKEN);
+            return;
+        }
+    
+        if (!BOT_LOGS_STORAGE) {
+            await sendOrEdit("? KV-хранилище для логов не настроено.", workingMessageId);
+            return;
+        }
+        
+        // Редактируем сообщение о начале работы
+        await sendOrEdit("? Читаю данные из хранилища...", workingMessageId);
+    
+        try {
+            let logs = await BOT_LOGS_STORAGE.get('master_log_list', { type: 'json' });
+            logs = Array.isArray(logs) ? logs : [];
+            
+            let message = `
+            **Последние ${logs.length} записей лога:**
+            <pre>${logs.join('\n')}</pre>
+            `;
+            
+            // --- ЛОГИКА ОБРЕЗКИ ЛОГОВ (4096 символов) ---
+            // Telegram имеет лимит в 4096 символов, поэтому может потребоваться обрезка
+            // Ограничиваем тело сообщения (дополнительный запас, чтобы поместился текст обрезки)
+            const MAX_TELEGRAM_LENGTH = 4096;
+            
+            if (message.length > MAX_TELEGRAM_LENGTH) {
+                // Обрезаем до безопасного предела (например, 4000)
+                message = message.substring(0, MAX_TELEGRAM_LENGTH - 60) + "\n... (слишком длинно, обрезано)</pre>";
+            }
+            
+            // --- ОТПРАВКА ЛОГОВ ---
+            // Отправляем логи как новое сообщение (в HTML mode, благодаря <pre> и <code>)
+            await sendMessage(chatId, message, TELEGRAM_BOT_TOKEN, null, null); 
+    
+            // --- ФИНАЛЬНОЕ РЕДАКТИРОВАНИЕ ---
+            // Если логи успешно отправлены, удаляем/редактируем стартовое сообщение
+            if (workingMessageId) {
+                await editMessage(chatId, workingMessageId, "? Логи доставлены!", TELEGRAM_BOT_TOKEN);
+            }
+    
+        } catch (e) {
+            // ? ОШИБКА: Редактируем сообщение с ошибкой
+            const errorMessage = `? Ошибка при чтении логов: ${e.message}`;
+            await sendOrEdit(errorMessage, workingMessageId);
+        }
     }
-}
 
 // ? processStopCommand (Очистка KV) - ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
 async function processStopCommand(chatId, LAST_PHOTO_STORAGE, VEO_POLL_STORAGE, TELEGRAM_BOT_TOKEN, envData) {
@@ -1546,7 +1695,8 @@ async function processStopCommand(chatId, LAST_PHOTO_STORAGE, VEO_POLL_STORAGE, 
         chatKey + '_user_state',        
         chatKey + '_last_action',       
         chatKey + '_last_prompt_message_id', 
-        chatKey + '_last_prompt',       
+        chatKey + '_last_prompt',
+        chatKey + '_last_prompt_lang',
         chatKey + '_last_image_data',  
     ];
     
@@ -1568,7 +1718,7 @@ async function processStopCommand(chatId, LAST_PHOTO_STORAGE, VEO_POLL_STORAGE, 
         
         // 3. Формирование сообщения и клавиатуры
         const message = "?? **Сброс контекста завершен!**\n" + 
-                        "Все сохраненные данные удалены. Готов к новым задачам! Выберите действие ниже.";
+                        "Все сохраненные данные удалены. Готов к новым задачам!\nВыберите действие ниже.";
                         
         // getPromptKeyboard(null) генерирует клавиатуру "Создать новый промпт"
         const keyboard = getPromptKeyboard(null);
@@ -1602,22 +1752,24 @@ async function processTextMessage(chatId, messageText, envData) {
         // 1.1. Сбрасываем состояние
         await LAST_PHOTO_STORAGE.delete(USER_STATE_KEY); 
         
-        // 1.2. Сохраняем новый промпт (КРИТИЧНО: AWAIT ГАРАНТИРУЕТ ЗАПИСЬ ДО СЛЕДУЮЩЕЙ КОМАНДЫ)
+        // 1.2. Сохраняем новый промпт
         const newPrompt = messageText.trim();
         await LAST_PHOTO_STORAGE.put(LAST_PROMPT_KEY, newPrompt, { expirationTtl: 3600 });
         
-        // 1.3. Сообщение о сохранении
+        // --- 1.3. ИСПРАВЛЕНО: Сообщение о сохранении С КЛАВИАТУРОЙ ---
         const actionText = (userState === STATE_AWAITING_PROMPT_EDIT) ? "отредактирован" : "сохранен";
+        const message = `? **Промпт ${actionText}!**\n\nНажмите кнопку **"?? Создать картинку"** или используйте команду \`/create\` для генерации.`;
         
-        await sendMessage(chatId, 
-            `? **Промпт ${actionText}!**\n\n` +
-            `Нажмите кнопку **"?? Создать картинку"** или используйте команду \`/create\` для генерации.`,
-            TELEGRAM_BOT_TOKEN
-        );
+        // Генерируем клавиатуру с нужными кнопками
+        const savedKeyboard = getPromptSavedKeyboard();
         
-        return true; // <-- ИСПРАВЛЕНО: Возвращаем true, блокируем дальнейшую обработку
+        // Отправляем сообщение С КЛАВИАТУРОЙ
+        // (Предполагается, что у вас есть вспомогательная функция sendMessageWithKeyboard)
+        await sendMessage(chatId, message, TELEGRAM_BOT_TOKEN, null, savedKeyboard); 
+        
+        return true; 
     }
-    
+
     // 2. ОБЫЧНЫЙ ЧАТ
     let history;
     try {
@@ -1669,41 +1821,52 @@ async function processTextMessage(chatId, messageText, envData) {
 async function processPromptCommand(chatId, TELEGRAM_BOT_TOKEN, LAST_PHOTO_STORAGE, envData) {
     const chatKey = chatId.toString();
     
-    // УНИФИКАЦИЯ КЛЮЧА: Используем суффикс из envData.
-    // Если envData еще не исправлен (п. 1), используем резервное значение, чтобы избежать '...undefined'
+    // 1. ПОСТРОЕНИЕ КЛЮЧЕЙ
     const PROMPT_KEY_SUFFIX = envData.LAST_PROMPT_KEY_SUFFIX || '_last_prompt';
     const LAST_PROMPT_KEY = chatKey + PROMPT_KEY_SUFFIX;
-
-    // Читаем промпт ОДИН РАЗ
-    const currentPrompt = await LAST_PHOTO_STORAGE.get(LAST_PROMPT_KEY);
     
-    // --- Удалена вся дублирующая логика, заменена единым блоком ---
+    // НОВЫЙ КЛЮЧ ДЛЯ ЯЗЫКА
+    const LAST_PROMPT_LANG_KEY_SUFFIX = envData.LAST_PROMPT_LANG_KEY_SUFFIX || '_last_prompt_lang';
+    const LAST_PROMPT_LANG_KEY = chatKey + LAST_PROMPT_LANG_KEY_SUFFIX;
+
+    // 2. ЧТЕНИЕ ДАННЫХ
+    const currentPrompt = await LAST_PHOTO_STORAGE.get(LAST_PROMPT_KEY);
+    let currentLang = await LAST_PHOTO_STORAGE.get(LAST_PROMPT_LANG_KEY);
+    
+    // 3. ОПРЕДЕЛЕНИЕ ЯЗЫКА И ФЛАГА
+    if (!currentLang) {
+        currentLang = currentPrompt ? 'ru' : 'нет'; // Если промпт есть, ставим RU по умолчанию
+    }
+    const flag = (currentLang === 'ru') ? '????' : (currentLang === 'en' ? '????' : '');
+    const langDisplay = (currentLang === 'нет') ? 'не задан' : `${flag} ${currentLang.toUpperCase()}`;
     
     let messageText;
-    // Используем getPromptKeyboard для получения объекта { inline_keyboard: [...] }
     const keyboardObject = getPromptKeyboard(currentPrompt); 
     
     if (currentPrompt) {
+        // 4. ИСПОЛЬЗОВАНИЕ ЯЗЫКА И ФЛАГА В СООБЩЕНИИ
         messageText = `
-        ? **Ваш текущий промпт:**
+    ? **Ваш текущий промпт:** 
         
-        <code>${currentPrompt}</code>
+    Язык: ${langDisplay}
         
-        Что вы хотите сделать с этим промптом?
+    <code>${currentPrompt}</code>
+        
+    Что вы хотите сделать с этим промптом?
         `;
     } else {
         messageText = `
-        ?? **Промпт для работы не найден.**
+?? **Промпт для работы не найден.**
         
-        Сначала нужно получить промпт. Вы можете:
-    1. Нажать **'Создать новый промпт'** и ввести текст.
-    2. Отправить фото, чтобы сгенерировать описание автоматически.
-        Выберите действие ниже:
-        `;
+Сначала нужно получить промпт. Вы можете:
+
+1. Нажать **'Создать новый промпт'** и ввести текст.
+2. Отправить мне фотографию или картинку, чтобы я сгенерировал Вам описание автоматически.
+
+Выберите действие ниже:`;
     }
 
     // Отправляем ОДНО сообщение
-    // sendMessage принимает объект reply_markup в последнем аргументе.
     await sendMessage(chatId, messageText, TELEGRAM_BOT_TOKEN, null, keyboardObject); 
 }
 
@@ -1785,7 +1948,7 @@ async function processCreateCommand(chatId, inputPrompt, token, geminiKey, stora
         loadingMessageId = loadingMessage.result.message_id;
 
         // 3. ПЕРЕВОД: Получаем английскую версию промпта для генератора
-        englishPrompt = await callWorkersAITranslate(russianPrompt, envData);
+        const englishPrompt = await callWorkersAITranslate(russianPrompt, envData, 'ru', 'en');
         
         // 4. Вызов Workers AI для генерации изображения (ВОЗВРАЩАЕТ ArrayBuffer)
         const imageArrayBuffer = await callWorkersAIGeneration(englishPrompt, envData);
@@ -1944,7 +2107,7 @@ async function processUserActivationCommand(chatId, messageText, env) {
     // 4. ФОРМИРОВАНИЕ ФИНАЛЬНОГО СООБЩЕНИЯ
     await sendMessage(chatId, 
         `? **Доступ активирован!**\n` +
-        `Вы получили **${creditsToAdd}** использований команды /photo.\n` +
+        `Вы получили **${creditsToAdd}** попыток улучшений для команды /photo.\n` +
         `${messageStatus}\n` + 
         `Спасибо за поддержку!`, 
         TELEGRAM_BOT_TOKEN 
@@ -1954,8 +2117,11 @@ async function processUserActivationCommand(chatId, messageText, env) {
 // ? processPhotoCommand (Image + Text-to-Image)
 /**
  * @description Обрабатывает команду улучшения фото (/photo), проверяет баланс, списывает кредит и вызывает генерацию. В случае сбоя возвращает кредит.
+ * @param {number} chatId - ID чата.
+ * @param {string} TELEGRAM_BOT_TOKEN - Токен Telegram Bot API (из envData).
+ * @param {Object} envData - Объект окружения (включая ctx).
+ * @param {Object} LAST_PHOTO_STORAGE - KV-биндинг.
  */
-// !!! ИСПРАВЛЕНИЕ СИГНАТУРЫ: Переименовываем третий аргумент в AI_BINDING !!!
 async function processPhotoCommand(chatId, TELEGRAM_BOT_TOKEN, envData, LAST_PHOTO_STORAGE) {
     
     // !!! ИСПРАВЛЕНИЕ ЛОГИКИ КЛЮЧЕЙ KV !!!
@@ -2006,7 +2172,7 @@ async function processPhotoCommand(chatId, TELEGRAM_BOT_TOKEN, envData, LAST_PHO
                 
 Для пополнения баланса:
 1. Оплатите желаемую сумму (минимум ${PRICE_PER_PHOTO} руб.) по ссылке:
-    ?? **<a href="${PAYMENT_LINK}">ПОПОЛНИТЬ БАЛАНС</a>** ??
+    ?? **<a href="${PAYMENT_LINK}">ПОПОЛНИТТЬ БАЛАНС</a>** ??
 2. **ОБРАТИТЕСЬ К АДМИНИСТРАТОРУ** (отправьте ему скриншот/чек и ваш Telegram ID).
         `;
         await sendMessage(chatId, message, TELEGRAM_BOT_TOKEN);
@@ -2019,13 +2185,20 @@ const userDefinedPrompt = await LAST_PHOTO_STORAGE.get(promptKey);
 const rawImageKVData = await LAST_PHOTO_STORAGE.get(originalImageBase64Key, { type: 'text' }); 
     
 // !!! КРИТИЧЕСКИЙ ЛОГ: Сразу после чтения KV !!!
-if (DEBUG_ENABLED) {
-    console.log(`[DEBUG KV] Raw KV Data read. Type: ${typeof rawImageKVData}, Length: ${rawImageKVData ? rawImageKVData.length : 'NULL'}`);
-}
+// ? ИСПРАВЛЕНИЕ 1: Замена if (DEBUG_ENABLED) + console.log на logDebug
+envData.ctx.waitUntil(logDebug(
+    "KV_READ", 
+    `Raw KV Data read. Type: ${typeof rawImageKVData}, Length: ${rawImageKVData ? rawImageKVData.length : 'NULL'}`,
+    envData
+));
     
 if (!userDefinedPrompt || !rawImageKVData) {
-    // Отправка сообщения в лог (если rawImageKVData null/undefined/пусто)
-    console.error(`[CRITICAL ERROR] Failed to retrieve KV data. Prompt existence: ${!!userDefinedPrompt}. Image data existence: ${!!rawImageKVData}.`);
+    // Отправка сообщения в лог (не критический, т.к. пользователь мог забыть отправить фото)
+    envData.ctx.waitUntil(logDebug(
+        "PROMPT_MISS", 
+        `Failed to retrieve KV data. Prompt existence: ${!!userDefinedPrompt}. Image data existence: ${!!rawImageKVData}.`,
+        envData
+    ));
     await sendMessage(chatId, `?? **Внимание:** Сначала получите промпт, отправив фотографию.`, TELEGRAM_BOT_TOKEN);
     return;
 }
@@ -2055,12 +2228,17 @@ if (base64StringForAPI.includes(',')) {
 
 // 3. ФИНАЛЬНАЯ ПРОВЕРКА
 if (base64StringForAPI.length < 100) {
-    // Вывод ошибки в лог, чтобы понять, что произошло
-    if (DEBUG_ENABLED) {
-        const errorMsg = `? **Ошибка:** Не удалось извлечь Base64 (длина ${base64StringForAPI.length}).`;
-        console.error(`DEBUG: Base64 error. Cleaned length: ${base64StringForAPI.length}.`); 
-        await sendMessage(chatId, errorMsg, TELEGRAM_BOT_TOKEN);
-    }
+    // ? ИСПРАВЛЕНИЕ 2: Замена if (DEBUG_ENABLED) на await logDebug
+    const errorMsgUser = `? **Ошибка:** Не удалось извлечь Base64 изображения для обработки. Попробуйте отправить фото снова.`;
+    
+    // Отправка ошибки в лог, чтобы понять, что произошло (await, так как return следом)
+    await logDebug(
+        "CRITICAL",
+        `Base64 error. Cleaned length: ${base64StringForAPI.length}. Failed to extract Base64.`,
+        envData
+    );
+    
+    await sendMessage(chatId, errorMsgUser, TELEGRAM_BOT_TOKEN);
     return;
 }
 
@@ -2091,7 +2269,7 @@ const originalImageBase64 = base64StringForAPI;
     } else {
         // Не VIP
         if (newBalance > 0) {
-            balanceMessage = `?? **Использование:** Списано 1 фото. Остаток: **${newBalance}** фото.`;
+            balanceMessage = `?? **Использование:** Списана 1 попытка.\nОстаток: **${newBalance}** фотографий.`;
         } else {
             balanceMessage = `?? **Внимание:** Это была ваша последняя доступная попытка! Текущий баланс: **0**.`;
         }
@@ -2099,8 +2277,8 @@ const originalImageBase64 = base64StringForAPI;
 
     await sendMessage(chatId, balanceMessage, TELEGRAM_BOT_TOKEN);
     // await sendMessage(chatId, 
-    //    `?? **Важное замечание:** Функция улучшения фото (команда /photo) иногда не может исправить неверную ориентацию (поворот) изображения. Сгенерированное фото возможно сохранит поворот оригинала.`, 
-    //    TELEGRAM_BOT_TOKEN
+    //     `?? **Важное замечание:** Функция улучшения фото (команда /photo) иногда не может исправить неверную ориентацию (поворот) изображения. Сгенерированное фото возможно сохранит поворот оригинала.`, 
+    //     TELEGRAM_BOT_TOKEN
     // );
     
 // 4. Формируем промпт и запускаем генерацию
@@ -2134,7 +2312,7 @@ try {
     const cleanPromptForTranslation = improvementPrompt.replace(/\*\*/g, '').replace(/\n/g, ' '); 
     
     // 2. Вызываем существующий переводчик
-    const translatedText = await callWorkersAITranslate(cleanPromptForTranslation, envData);
+    const translatedText = await callWorkersAITranslate(cleanPromptForTranslation, envData, 'en', 'ru'); // Предполагаем EN->RU
     
     // Проверяем, что перевод успешен и не пустой
     if (translatedText && translatedText.trim().length > 10 && translatedText !== cleanPromptForTranslation) {
@@ -2142,14 +2320,20 @@ try {
         translationSuccess = true;
     }
     
-    if (DEBUG_ENABLED) {
-        await sendMessage(envData.ADMIN_CHAT_ID, `?? **[DEBUG] Translation:** Статус: ${translationSuccess ? 'Успех' : 'Не требуется/Сбой'}. Исходный промпт: ${cleanPromptForTranslation.length}, Финальный промпт: ${finalImg2ImgPrompt.length}`, TELEGRAM_BOT_TOKEN);
-    }
+    // ? ИСПРАВЛЕНИЕ 3: Замена if (DEBUG_ENABLED) на logDebug
+    envData.ctx.waitUntil(logDebug(
+        "Translation", 
+        `Статус: ${translationSuccess ? 'Успех' : 'Не требуется/Сбой'}. Исходный промпт: ${cleanPromptForTranslation.length}, Финальный промпт: ${finalImg2ImgPrompt.length}`, 
+        envData
+    ));
     
 } catch (e) {
-    if (DEBUG_ENABLED) {
-        await sendMessage(envData.ADMIN_CHAT_ID, `? **[DEBUG] Translation Error:** Не удалось перевести промпт. Использование оригинала. Ошибка: ${e.message}`, TELEGRAM_BOT_TOKEN);
-    }
+    // ? ИСПРАВЛЕНИЕ 4: Замена if (DEBUG_ENABLED) на logDebug
+    envData.ctx.waitUntil(logDebug(
+        "Translation_ERR", 
+        `Не удалось перевести промпт. Использование оригинала. Ошибка: ${e.message}`, 
+        envData
+    ));
 }
 
 // ----------------------------------------------------
@@ -2172,15 +2356,15 @@ try {
         
         // 5. Отправка финального изображения
         // Используем finalImg2ImgPrompt, который теперь может быть английским.
-        const finalCaption = `? Готово! Ваша улучшенная фотография`;
+        const finalCaption = `? Ваша улучшенная фотография`;
         // \n\nПромпт:\n${finalImg2ImgPrompt}
-       
+        
         
         // ПЕРЕДАЕМ ArrayBuffer и envData
         await sendPhotoWithCaption(chatId, generatedImageBuffer, finalCaption, TELEGRAM_BOT_TOKEN, envData); 
         
         // Отправка завершающего сообщения, если это еще актуально
-        if (workingMessageId) await editMessage(chatId, workingMessageId, `? **Готово!** Ваша улучшенная фотография.`, TELEGRAM_BOT_TOKEN);
+        if (workingMessageId) await editMessage(chatId, workingMessageId, `? **Готово!**`, TELEGRAM_BOT_TOKEN);
         
     } catch (e) {
         // --- !!! ОБРАБОТКА ОШИБКИ И ВОЗВРАТ КРЕДИТА !!! ---
@@ -2194,11 +2378,12 @@ try {
             await LAST_PHOTO_STORAGE.put(BALANCE_KEY, balanceBeforeCharge.toString(), { expirationTtl: 3600 * 24 * 365 });
             errorMessage += `\n\n? **Кредит возвращен** из-за ошибки генерации. У Вас всего (${balanceBeforeCharge} фото)`;
         }
-        // 2. ОТПРАВКА ОШИБКИ В АДМИН-ЧАТ (это вам нужно)
+        
+        // 2. ОТПРАВКА ОШИБКИ В АДМИН-ЧАТ
         const errorString = `? Критическая ошибка генерации: ${e.message}`;
             
-        // Отправка ошибки вам в админ-чат
-        await sendMessage(envData.ADMIN_CHAT_ID, errorString, TELEGRAM_BOT_TOKEN);
+        // ? ИСПРАВЛЕНИЕ 5: Замена прямого sendMessage на await logDebug
+        await logDebug("CRITICAL", errorString, envData);
 
         // Отправка уведомления пользователю
         if (workingMessageId) await editMessage(chatId, workingMessageId, errorMessage, TELEGRAM_BOT_TOKEN);
@@ -2458,7 +2643,7 @@ async function processPhotoMessageAsync(chatId, fileId, envData, ctx) {
         
         // 5. Перевод промпта на русский через Workers AI Text
         await editMessage(chatId, loadingMessageId, "?? **Промпт сгенерирован, выполняю перевод...**", token);
-        const russianPrompt = await callWorkersAITranslate(englishPrompt, envData);
+        const russianPrompt = await callWorkersAITranslate(englishPrompt, envData, 'en', 'ru');
 
         // 6. Сохраняем промпт и Base64 изображения в KV (КРИТИЧЕСКО)
         await storage.put(LAST_PROMPT_KEY, russianPrompt, { expirationTtl: 3600 });
@@ -2581,6 +2766,16 @@ export default {
 
         if (chatId === null) { return new Response('OK', { status: 200 }); }
 
+        // 1. Асинхронное чтение глобального статуса DEBUG
+        let isDebugEnabled = false;
+        try {
+            // Читаем статус из KV. По умолчанию false, если ключа нет
+            const debugStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_DEBUG_KEY);
+            isDebugEnabled = debugStatus === 'true';
+        } catch (e) {
+            console.error("Failed to read debug status from KV:", e);
+            // Продолжаем с isDebugEnabled = false при ошибке
+        }
         const envData = { 
             TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN, 
             GEMINI_API_KEY: env.GEMINI_API_KEY, 
@@ -2595,6 +2790,7 @@ export default {
             ADMIN_CHAT_ID: env.ADMIN_CHAT_ID, 
             BOT_LOGS_STORAGE: env.BOT_LOGS_STORAGE,
             AI: env.AI,
+            // БЕЗОПАСНОЕ ГЛОБАЛИЗИРОВАНИЕ ctx ДЛЯ ЭТОГО ЗАПРОСА
             ctx: ctx, // Передаем контекст для waitUntil
             // !!! КРИТИЧЕСКОЕ ДОБАВЛЕНИЕ !!!
             CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, // Чтение из ENV
@@ -2604,7 +2800,9 @@ export default {
             LAST_IMAGE_DATA_KEY_SUFFIX: LAST_IMAGE_DATA_KEY_SUFFIX,
             LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX: LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX,
             LAST_ACTION_KEY_SUFFIX: LAST_ACTION_KEY_SUFFIX,
-            USER_STATE_KEY_SUFFIX: USER_STATE_KEY_SUFFIX, // <--- Добавление
+            USER_STATE_KEY_SUFFIX: USER_STATE_KEY_SUFFIX,
+            // --- Добавляем динамический статус отладки ---
+            DEBUG_ENABLED: isDebugEnabled, // <--- ДИНАМИЧЕСКИЙ СТАТУС
         };
 
         // Вспомогательные константы для админ-режима
@@ -2741,15 +2939,11 @@ export default {
                     // ? ИСПРАВЛЕНИЕ: Добавлен пятый аргумент envData в processStopCommand
                     ctx.waitUntil(processStopCommand(chatId, storage, envData.VEO_POLL_STORAGE, token, envData)); 
                     break;
-                case 'retry': 
-                    ctx.waitUntil(sendMessage(chatId, 'Кнопка `/retry` устарела. Используйте `/prompt` или кнопки выше.', token));
-                    break;
                 default:
                     ctx.waitUntil(sendMessage(chatId, `Команда по кнопке не найдена. Получено: ${command}`, token));
                     break;
             }
             return new Response('OK', { status: 200 });
-        }
 
         // !!! НОВОЕ ИСПРАВЛЕНИЕ: УДАЛЕНА ЛОГИКА ОБРАБОТКИ ПРЯМЫХ КОМАНД '/' !!!
         // Прямые команды (вроде /create) должны обрабатываться в основном блоке fetch (handleMessage), 
@@ -2757,7 +2951,7 @@ export default {
         // Если вам нужны эти кнопки, используйте 'cmd:/create' в callback_data.
         
         // --- ЛОГИКА vision_generate (СОЗДАТЬ КАРТИНКУ) ---
-        else if (data === 'vision_generate') {
+    } else if (data === 'vision_generate') {
             const promptToGenerate = await storage.get(LAST_PROMPT_KEY);
 
             if (promptToGenerate) {
@@ -2774,24 +2968,48 @@ export default {
                 await editMessage(chatId, messageId, `?? Промпт устарел или не найден. Сначала отправьте фото.`, token);
             }
             return new Response('OK', { status: 200 });
-        } 
-        
-        // --- ЛОГИКА regenerate_prompt (ПЕРЕГЕНЕРАЦИЯ ИЗ ФОТО) ---
-        else if (data === 'regenerate_prompt') {
-            const imageBase64 = await storage.get(LAST_IMAGE_DATA_KEY); // Проверяем наличие фото
+    
+    // --- ЛОГИКА start_command (Открыть главное меню) ---
+    } else if (data === 'start_command') {
+    const callbackId = callback.id;
+    const messageId = callback.message.message_id;
+    
+    // 1. Получаем данные главного меню
+    const { messageText, keyboardObject } = getStartMenuData();
 
-            if (!imageBase64) {
+    // 2. Редактируем сообщение (вместо отправки нового)
+    ctx.waitUntil(
+        (async () => {
+            // Отвечаем на колбэк (убираем часы)
+            await answerCallbackQuery(callbackId, "Открываю главное меню...", token); 
+
+            // Редактируем сообщение, заменяя его на меню /start
+            await editMessageWithKeyboard(
+                chatId,
+                messageId,
+                messageText,
+                token,
+                keyboardObject.inline_keyboard
+            );
+        })()
+    );
+    return new Response('OK', { status: 200 });
+
+        // --- ЛОГИКА regenerate_prompt (ПЕРЕГЕНЕРАЦИЯ ИЗ ФОТО) ---
+    } else if (data === 'regenerate_prompt') {
+        const imageBase64 = await storage.get(LAST_IMAGE_DATA_KEY); // Проверяем наличие фото
+
+        if (!imageBase64) {
                 await editMessage(chatId, messageId, "?? **Внимание:** Нет исходного изображения для повторного анализа. Сначала отправьте фотографию.", token);
                 return new Response('OK', { status: 200 });
             }
             
             ctx.waitUntil(processPromptRegeneration(chatId, imageBase64, token, storage, envData)); // Вызываем функцию
 
-            return new Response('OK', { status: 200 });
-        } 
+            return new Response('OK', { status: 200 }); 
         
         // --- ЛОГИКА edit_prompt (РЕДАКТИРОВАНИЕ ТЕКСТА) ---
-        else if (data === 'edit_prompt') {
+    } else if (data === 'edit_prompt') {
             const currentPrompt = await storage.get(LAST_PROMPT_KEY); // Проверяем наличие текста промпта
             
             if (!currentPrompt) {
@@ -2804,72 +3022,116 @@ export default {
             
             await editMessage(chatId, messageId, `?? **Редактирование промпта**\n\nОтправьте мне НОВЫЙ текст промпта. Я сохраню его и предложу новое меню.\n\nТекущий промпт:\n\`${currentPrompt}\``, token);
 
-            return new Response('OK', { status: 200 });
-        } 
+            return new Response('OK', { status: 200 }); 
         
-        // --- ЛОГИКА translate_prompt (ПЕРЕВОД) ---
-        else if (data === 'translate_prompt') {
-            // ? ИСПРАВЛЕНИЕ: используем локальную 'storage' (env.LAST_PHOTO_STORAGE)
-            const currentPrompt = await storage.get(LAST_PROMPT_KEY); 
+    // --- ЛОГИКА translate_prompt (ДВУСТОРОННИЙ ПЕРЕВОД) ---
+    } else if (data === 'translate_prompt') {
+    
+    // 1. Построение ключа для языка (предполагаем, что LAST_PROMPT_LANG_KEY_SUFFIX доступен)
+    const LAST_PROMPT_LANG_KEY = chatId + LAST_PROMPT_LANG_KEY_SUFFIX;
+    
+    // 2. Читаем текущий промпт и язык
+    const currentPrompt = await storage.get(LAST_PROMPT_KEY); 
+    let currentLang = await storage.get(LAST_PROMPT_LANG_KEY);
+    
+    // Определяем язык источника и назначения
+    if (!currentLang) {
+        currentLang = 'ru'; // Исходный промпт (после ввода пользователя) по умолчанию RU
+    }
+    const targetLang = (currentLang === 'ru') ? 'en' : 'ru';
+    const sourceLang = currentLang;
 
-            if (!currentPrompt) {
-                await editMessage(chatId, messageId, "?? **Ошибка:** Нет промпта для перевода. Сначала получите промпт.", token);
-                return new Response('OK', { status: 200 });
-            }
+    if (!currentPrompt) {
+        await editMessage(chatId, messageId, "?? **Ошибка:** Нет промпта для перевода. Сначала получите промпт.", token);
+        return new Response('OK', { status: 200 });
+    }
 
-            // Запускаем асинхронный процесс перевода
-            ctx.waitUntil(
-                (async () => {
-                    const displayPrompt = currentPrompt.length > 30 ? currentPrompt.substring(0, 30) + '...' : currentPrompt;
-                    await editMessage(chatId, messageId, `?? **Перевожу промпт: ${displayPrompt}**`, token);
-                    
-                    try {
-                        const translatedPrompt = await callWorkersAITranslate(currentPrompt, envData); 
-                        
-                        await storage.put(LAST_PROMPT_KEY, translatedPrompt, { expirationTtl: 3600 });
-                        
-                        const isTranslated = translatedPrompt !== currentPrompt;
-                        
-                        let message = `? **Промпт обработан!**\n\n`;
-                        if (isTranslated) {
-                            message += `**Оригинал (RU):** \n\`${currentPrompt}\`\n\n**Перевод (EN):**\n\`${translatedPrompt}\``;
-                        } else {
-                            message += `Промпт был признан английским или слишком коротким, перевод не выполнен.\n\n**Текущий промпт:**\n\`${translatedPrompt}\``;
-                        }
-
-                        await editMessageWithKeyboard(
-                            chatId, messageId, 
-                            message,
-                            token,
-                            getPromptKeyboard(translatedPrompt) 
-                        );
-                    } catch (e) {
-                        await editMessage(chatId, messageId, `? **Ошибка перевода:** ${e.message}`, token);
-                    }
-                })()
+    // Запускаем асинхронный процесс перевода
+    ctx.waitUntil(
+        (async () => {
+            const displayPrompt = currentPrompt.length > 30 ? currentPrompt.substring(0, 30) + '...' : currentPrompt;
+            
+            // Сообщение о начале перевода с указанием направления
+            await editMessage(
+                chatId, 
+                messageId, 
+                `?? **Перевожу:** ${sourceLang.toUpperCase()} > ${targetLang.toUpperCase()} (${displayPrompt})`, 
+                token
             );
-            return new Response('OK', { status: 200 });
-        }
+            
+            try {
+                // ВАЖНО: Ваша функция callWorkersAITranslate должна принимать sourceLang и targetLang
+                const translatedPrompt = await callWorkersAITranslate(currentPrompt, envData, sourceLang, targetLang); 
+                
+                // 3. Сохраняем новый промпт и НОВЫЙ язык
+                await storage.put(LAST_PROMPT_KEY, translatedPrompt, { expirationTtl: 3600 });
+                await storage.put(LAST_PROMPT_LANG_KEY, targetLang, { expirationTtl: 3600 });
+                
+                // 4. Готовим итоговое сообщение в режиме Markdown
+                let message = `? **Перевод выполнен!**\n\n`;
+                
+                // Определяем флаг
+                const flag = (targetLang === 'ru') ? '????' : '????';
 
-        // --- ЛОГИКА clear_prompt (ОЧИСТКА ПРОМПТА) ---
-        else if (data === 'clear_prompt') {
-            await storage.delete(LAST_PROMPT_KEY); // Удаляем промпт
-            await storage.delete(LAST_IMAGE_DATA_KEY); // Удаляем фото (также чистим контекст)
-            
-            // Очищаем стейты
-            await storage.delete(USER_STATE_KEY);
-            
-            // Отправляем сообщение о сбросе
-            const message = "?? **Промпт и контекст очищены!**\n\nТеперь вы можете создать новый промпт или загрузить фото.";
-            
-            // Используем editMessageWithKeyboard
-            await editMessageWithKeyboard(chatId, messageId, message, token, getPromptKeyboard(null)); 
-            
-            return new Response('OK', { status: 200 });
-        }
+                // Формируем сообщение с флагом
+                message += `**Язык:** ${flag} ${targetLang.toUpperCase()}\n\n**Промпт:**\n\`${translatedPrompt}\`\n\nЧто вы хотите сделать с этим промптом?`;
 
+                // 4. Редактируем сообщение с новой клавиатурой
+                const keyboardObject = getPromptKeyboard(translatedPrompt);
+
+                await editMessageWithKeyboard(
+                    chatId, messageId, 
+                    message,
+                    token,
+                    keyboardObject.inline_keyboard // <-- ПЕРЕДАЕМ ТОЛЬКО МАССИВ КНОПОК
+                );
+            } catch (e) {
+                // Ловим ошибку и сообщаем о ней
+                await editMessage(chatId, messageId, `? **Ошибка перевода:** ${e.message}`, token);
+            }
+        })()
+    );
+    return new Response('OK', { status: 200 });
+
+    // --- ЛОГИКА clear_prompt (ОЧИСТКА ПРОМПТА) ---
+    } else if (data === 'clear_prompt') {
+        
+        // 1. Построение ключа для языка (предполагаем, что LAST_PROMPT_LANG_KEY_SUFFIX доступен)
+        const LAST_PROMPT_LANG_KEY = chatId + LAST_PROMPT_LANG_KEY_SUFFIX;
+
+        // Запускаем асинхронный процесс очистки в фоне
+        ctx.waitUntil(
+            (async () => {
+                try {
+                    // 2. Удаление промпта и языка из хранилища
+                    await storage.delete(LAST_PROMPT_KEY);
+                    await storage.delete(LAST_PROMPT_LANG_KEY);
+                    
+                    const clearedPrompt = '';
+                    
+                    // 3. Готовим итоговое сообщение в режиме Markdown
+                    let message = `??? **Промпт очищен!**\n\nТеперь вы можете ввести новый промпт или использовать команду \`/create\` для генерации.`;
+
+                    // 4. Редактируем сообщение с новой клавиатурой. 
+                    // Передаем пустую строку, чтобы функция getPromptKeyboard вернула кнопки для пустого промпта.
+                    const keyboardObject = getPromptKeyboard(clearedPrompt);
+                    
+                    await editMessageWithKeyboard(
+                        chatId, messageId, 
+                        message,
+                        token,
+                        keyboardObject.inline_keyboard // Передаем только массив кнопок
+                    );
+                } catch (e) {
+                    // Ловим ошибку очистки хранилища
+                    await editMessage(chatId, messageId, `? **Ошибка очистки промпта:** ${e.message}`, token);
+                }
+            })()
+        );
+        return new Response('OK', { status: 200 });
+        
         // --- ЛОГИКА create_new_prompt (Установка стейта для нового промпта) ---
-        else if (data === 'create_new_prompt') {
+    } else if (data === 'create_new_prompt') {
             // ? ИСПРАВЛЕНИЕ: Используем STATE_AWAITING_NEW_PROMPT, который определен выше
             await storage.put(USER_STATE_KEY, STATE_AWAITING_NEW_PROMPT, { expirationTtl: 300 }); 
             
@@ -2879,52 +3141,112 @@ export default {
                 token
             ));
             return new Response('OK', { status: 200 });
-        }
 
-        // 4. ЛОГИКА ДЛЯ АДМИН-КОМАНД (Начинаются с 'admin_')
-        else if (data.startsWith('admin_')) {
-            // Проверяем, является ли пользователь администратором
-            if (chatId.toString() !== envData.ADMIN_CHAT_ID.toString()) {
-                ctx.waitUntil(sendMessage(chatId, "? Вы не можете использовать эти админ-функции.", token));
-                return new Response('OK', { status: 200 });
-            }
-            
-            // Вспомогательные константы для админ-режима
-            const ADMIN_STATE_KEY = chatKey + '_admin_state'; 
-            const STATE_AWAITING_ID = 'admin_awaiting_id';
-            
-            if (data === 'admin_activate') {
-                // Устанавливаем стейт ожидания ID
-                await storage.put(ADMIN_STATE_KEY, STATE_AWAITING_ID, { expirationTtl: 600 }); 
-                
-                ctx.waitUntil(sendMessage(chatId, 
-                    "? **ВЫ В РЕЖИМЕ АКТИВАЦИИ БАЛАНСА**\n\n" +
-                    "Пожалуйста, отправьте мне **Telegram ID** пользователя, для которого нужно сгенерировать команду активации." +
-                    "\nВ помощь можно использовать бот:\n??Userinfo|Get id|IDBot @UserInfoToBot" +
-                    "\n\n(Режим автоматически отключится через 10 минут)", 
-                    token
-                ));
-                
-            } else if (data === 'admin_debug') {
-                ctx.waitUntil(processDebugCommand(chatId, envData));
-            } else if (data === 'admin_update_cmds') {
-                // ? ИСПРАВЛЕНИЕ: Добавлен setBotCommands, ADMIN_COMMANDS, PUBLIC_COMMANDS - предполагаем, что они определены в глобальной области
-                const resultPublic = await setBotCommands(token, PUBLIC_COMMANDS, 'default');
-                const resultAdmin = await setBotCommands(token, ADMIN_COMMANDS, 'chat', envData.ADMIN_CHAT_ID);
-                
-                let message = "? **Команды обновлены!**\n\n";
-                message += `**Публичные (default) для всех:** ${resultPublic.ok ? 'Успех' : `Ошибка: ${resultPublic.description || 'Нет ответа от API'}`}\n`;
-                message += `**Администраторские (chat ID ${envData.ADMIN_CHAT_ID}):** ${resultAdmin.ok ? 'Успех' : `Ошибка: ${resultAdmin.description || 'Нет ответа от API'}`}`;
-                
-                await sendMessage(chatId, message, token);
-            }
-            return new Response('OK', { status: 200 });
-        }
-
-        // Возвращаем OK для всех обработанных нажатий.
+    // 4. ЛОГИКА ДЛЯ АДМИН-КОМАНД (Начинаются с 'admin_')
+    } else if (data.startsWith('admin_')) {
+        const storage = env.LAST_PHOTO_STORAGE;
+        const token = envData.TELEGRAM_BOT_TOKEN;
+        const GLOBAL_DEBUG_KEY = 'global_debug_setting'; // Используем ключ, определенный глобально
+    
+    // Проверяем, является ли пользователь администратором
+    if (chatId.toString() !== envData.ADMIN_CHAT_ID.toString()) {
+        ctx.waitUntil(sendMessage(chatId, "? Вы не можете использовать эти админ-функции.", token));
         return new Response('OK', { status: 200 });
     }
-    // !!! КОНЕЦ ИСПРАВЛЕННОГО БЛОКА INLINE-КНОПОК !!!
+    
+    // Вспомогательные константы для админ-режима
+    const ADMIN_STATE_KEY = chatKey + '_admin_state'; 
+    const STATE_AWAITING_ID = 'admin_awaiting_id';
+    
+    if (data === 'admin_activate') {
+        // Устанавливаем стейт ожидания ID
+        await storage.put(ADMIN_STATE_KEY, STATE_AWAITING_ID, { expirationTtl: 600 }); 
+        
+        ctx.waitUntil(sendMessage(chatId, 
+            "? **ВЫ В РЕЖИМЕ АКТИВАЦИИ БАЛАНСА**\n\n" +
+            "Пожалуйста, отправьте мне **Telegram ID** пользователя, для которого нужно сгенерировать команду активации." +
+            "\nВ помощь можно использовать бот:\n??Userinfo|Get id|IDBot @UserInfoToBot" +
+            "\n\n(Режим автоматически отключится через 10 минут)", 
+            token
+        ));
+    // --- 2. ЛОГИКА: ПОКАЗАТЬ ЛОГИ И ОШИБКИ ---    
+    } else if (data === 'admin_debug') {
+        // ? КРИТИЧНО: Используем ctx.waitUntil, чтобы дать функции время на работу
+        // Убедитесь, что вы передаете нужный объект (вероятно, envData)
+        ctx.waitUntil(processDebugCommand(chatId, envData)); 
+        return new Response('OK', { status: 200 });
+    // --- 1. ЛОГИКА: ВКЛЮЧЕНИЕ/ВЫКЛЮЧЕНИЕ ДЕБАГА ---
+    } else if (data === 'admin_debug_toggle') {
+    
+    // 1. Читаем и записываем новый статус
+    const currentStatusStr = await storage.get(GLOBAL_DEBUG_KEY);
+    const newStatus = currentStatusStr !== 'true'; // Инвертируем статус
+    await storage.put(GLOBAL_DEBUG_KEY, newStatus.toString());
+    
+    // 2. Создаем временный объект envData с новым статусом
+    const newEnvData = { ...envData, DEBUG_ENABLED: newStatus }; 
+
+    // 3. Формируем ОДНОТИПНЫЙ текст админ-панели
+    
+    // Берем ID админа из newEnvData (т.к. он был скопирован из envData)
+    const ADMIN_CHAT_ID = newEnvData.ADMIN_CHAT_ID;
+    const debugStatus = newStatus ? '? ВКЛЮЧЕНА' : '? ВЫКЛЮЧЕНА';
+    
+    const message = `
+    ? **АДМИН-ПАНЕЛЬ**
+    
+    **Ваш ID:** \`${ADMIN_CHAT_ID}\`
+    
+    **Отладка:** ${debugStatus}
+    
+    Используйте кнопки ниже для управления ботом.
+    `;
+    
+    // 4. Генерируем новое меню
+    const newKeyboard = getAdminKeyboardFromCommand(newEnvData); 
+    
+    // 5. РЕДАКТИРУЕМ СООБЩЕНИЕ (обновляем текст и кнопки)
+    ctx.waitUntil(editMessageWithKeyboard(
+        chatId, 
+        messageId, 
+        message, 
+        token, 
+        newKeyboard.inline_keyboard 
+    ));
+    
+    // 6. ПОДТВЕРЖДАЕМ КОЛБЭК
+    return new Response('OK', { status: 200 });
+        
+        // --- 2. ЛОГИКА: ВЫХОД ИЗ АДМИН-МЕНЮ ---
+        } else if (data === 'admin_exit') {
+        // Удаляем клавиатуру и отправляем подтверждение
+        ctx.waitUntil(editMessage( // <-- ИСПРАВЛЕНО: Используем правильное имя функции
+            chatId, 
+            messageId, 
+            "?? **Вы вышли из режима администратора.**\n\nНажмите /admin для возврата.", 
+            token
+        ));
+            // Также можно сбросить admin_state на всякий случай, если он был активен
+            await storage.delete(ADMIN_STATE_KEY); 
+            return new Response('OK', { status: 200 });
+    
+        } else if (data === 'admin_update_cmds') {
+            // Логика  обновления команд (admin_update_cmds)
+            const resultPublic = await setBotCommands(token, PUBLIC_COMMANDS, 'default');
+            const resultAdmin = await setBotCommands(token, ADMIN_COMMANDS, 'chat', envData.ADMIN_CHAT_ID);
+            
+            let message = "? **Команды обновлены!**\n\n";
+            message += `**Публичные (default) для всех:** ${resultPublic.ok ? 'Успех' : `Ошибка: ${resultPublic.description || 'Нет ответа от API'}`}\n`;
+            message += `**Администраторские (chat ID ${envData.ADMIN_CHAT_ID}):** ${resultAdmin.ok ? 'Успех' : `Ошибка: ${resultAdmin.description || 'Нет ответа от API'}`}`;
+            
+            await sendMessage(chatId, message, token);
+        }
+        return new Response('OK', { status: 200 });
+    }
+        // Возвращаем OK для всех обработанных нажатий.
+        return new Response('OK', { status: 200 });
+}
+// !!! КОНЕЦ ИСПРАВЛЕННОГО БЛОКА INLINE-КНОПОК !!!
 
         // 4. ОБРАБОТКА ОБЫЧНОГО ТЕКСТА (ЧАТ)
         if (messageText.length > 0) {
@@ -2938,7 +3260,7 @@ export default {
             }
 
             // --- 4.2. ОБЫЧНАЯ ОБРАБОТКА ТЕКСТА (ИСПРАВЛЕНО) ---
-            
+
             // 1. Сначала пытаемся обработать интерактивный ввод (сохранение промпта, которое требует await)
             const isPromptInteraction = await processTextMessage(chatId, messageText, envData);
 
