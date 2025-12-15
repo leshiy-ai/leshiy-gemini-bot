@@ -18,7 +18,6 @@ WORKER_HOSTNAME = "https://github.com/leshiy-ai/gemini-photo-bot"
 # Здесь Wrangler будет искать СЕКРЕТЫ, которые вы настроили
 # Он автоматически сопоставит их с env.TG_BOT_TOKEN и env.GEMINI_API_KEY
 # Вам не нужно указывать их значения здесь, только имена.
-
 # API-ключи из секретных переменных
 TELEGRAM_BOT_TOKEN = ""
 GEMINI_API_KEY = ""
