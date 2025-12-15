@@ -1,4 +1,4 @@
-🤖 Многофункциональный Telegram-бот на базе **Cloudflare Workers**, интегрирующий:
+🤖 Многофункциональный Telegram-бот "Gemini AI" by Leshiy на базе **Cloudflare Workers**
 - **Google Gemini 2.5 Flash** (текст, изображения, видео, аудио)
 - **Cloudflare Workers AI** (Stable Diffusion, Whisper)
 - **Render-сервис** для медиа-обработки (поворот, резайз, GIF, стоп-кадры)
@@ -23,6 +23,10 @@
 
 ---
 
+## 🌐 Внешние сервисы
+Медиа-конвертер: leshiy-media-converter
+(резайз, поворот, GIF, стоп-кадр → MP4/JPG/PNG)
+
 ## 🚀 Быстрый старт
 
 1. **Создайте бота в Telegram**:  
@@ -37,3 +41,6 @@
 3. **Установите вебхук**:  
    ```bash
    curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://gemini-photo-bot.<ваш-аккаунт>.workers.dev"
+
+## 📜 Лицензия
+MIT © Leshiy (Огорельцев Александр Валерьевич)
