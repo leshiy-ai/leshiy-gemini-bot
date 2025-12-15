@@ -48,5 +48,5 @@ id = "b705c798e7c44e19aa880047fa154681"
 # ID вашего хранилища нужно скопировать из Cloudflare Dashboard.
 
 # [ai] - для Workers AI
-[AI]
+[ai]
 binding = "AI"
