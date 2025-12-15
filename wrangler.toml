@@ -37,10 +37,14 @@ MODELSLAB_API_KEY = ""
 FREEPIK_API_KEY = ""
 STABILITY_API_KEY = ""
 
-# [[kv_namespaces]] - Здесь Привязки KV
+# [[kv_namespaces]] - Здесь Привязки KV LAST_PHOTO_STORAGE
 [[kv_namespaces]]
 binding = "LAST_PHOTO_STORAGE"
 id = "65ea2c9829024c618eaa90e17ebf5682" 
+# [[kv_namespaces]] - Здесь Привязка для хранения истории чата
+[[kv_namespaces]]
+binding = "CHAT_HISTORY_STORAGE"
+id = "b705c798e7c44e19aa880047fa154681"
 # ID вашего хранилища нужно скопировать из Cloudflare Dashboard.
 
 # [ai] - для Workers AI
