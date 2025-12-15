@@ -3049,8 +3049,8 @@ async function sendAudioMessage(chatId, audioBase64, mimeType, token, envData) {
     const DURATION_KEY = chatKey + AUDIO_DURATION_KEY_SUFFIX; // 🔥 НОВЫЙ КЛЮЧ ДЛИТЕЛЬНОСТИ
     
     // Проверка необходимых env-переменных и данных
-    if (!audioBase64 || !storage || !envData.WORKER_HOSTNAME) {
-        ctx.waitUntil(logDebug("SendAudio", `Отсутствует Base64, KV-Storage или WORKER_HOSTNAME.`, envData, ctx));
+    if (!audioBase64 || !storage || !envData.WORKER_DOMAIN) {
+        ctx.waitUntil(logDebug("SendAudio", `Отсутствует Base64, KV-Storage или WORKER_DOMAIN.`, envData, ctx));
         throw new Error("Не удалось отправить аудио: не настроен KV-прокси.");
     }
     
@@ -3060,7 +3060,7 @@ async function sendAudioMessage(chatId, audioBase64, mimeType, token, envData) {
     
     // 2. ВРЕМЕННОЕ СОХРАНЕНИЕ BASE64 в KV для прокси
     const tempKey = `temp_audio_${chatId}_${Date.now()}`;
-    const audioProxyUrl = `${envData.WORKER_HOSTNAME}/audio_proxy?key=${tempKey}&type=${encodeURIComponent(mimeType)}`;
+    const audioProxyUrl = `${envData.WORKER_DOMAIN}/audio_proxy?key=${tempKey}&type=${encodeURIComponent(mimeType)}`;
     
     // Устанавливаем короткий TTL для временного ключа
     await storage.put(tempKey, audioBase64, { expirationTtl: 300 }); 
@@ -15094,7 +15094,7 @@ export default {
             VIDEO_ENABLED: isVideoEnabled, 
             WORKER_DOMAIN: workerDomain,
             PAYMENT_LINK: PAYMENT_LINK,
-            WORKER_HOSTNAME: `https://${new URL(request.url).host}`,
+            WORKER_DOMAIN: `https://${new URL(request.url).host}`,
             LESHIY_RENDER_HOST: LESHIY_RENDER_HOST,
             PUBLIC_COMMANDS: PUBLIC_COMMANDS,
             ADMIN_COMMANDS: ADMIN_COMMANDS,
