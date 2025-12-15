@@ -15,7 +15,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           quiet: false 
-          command: deploy --name gemini-photo-bot worker.js --verbose 
+          command: deploy --name gemini-photo-bot worker.js
         # Блок env должен быть на том же уровне отступа, что и uses: и with:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
