@@ -1,0 +1,22 @@
+name: Deploy Cloudflare Worker
+
+on:
+  push:
+    branches:
+      - main # Развертывать при коммите в ветку 'main'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Worker using Cloudflare Action
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          # Укажите ТОЧНОЕ ИМЯ ВАШЕГО WORKER'А в Cloudflare Dashboard
+          name: gemini-photo-bot 
+          script: worker.js       
+          command: deploy
