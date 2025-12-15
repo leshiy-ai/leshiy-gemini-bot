@@ -11,7 +11,7 @@ TTS_ENABLED = "true"
 PHOTO_ENABLED = "true"
 VIDEO_ENABLED = "true"
 LESHIY_RENDER_HOST = "https://leshiy-media-converter.onrender.com"
-WORKER_DOMAIN = "https://gemini-photo-bot.leshiyalex.workers.dev"
+WORKER_DOMAIN = "https://leshiy-gemini-bot.leshiyalex.workers.dev"
 
 [secrets]
 # Здесь Wrangler будет искать СЕКРЕТЫ, которые вы настроили
