@@ -3,6 +3,7 @@ main = "worker.js"
 compatibility_date = "2025-12-15" # Дата, которую мы добавили в deploy.yml
 
 # [vars] - Здесь обычные переменные окружения, которые не являются секретами
+[vars]
 DEBUG_CHAT_ID = "235663624"
 ADMIN_CHAT_ID = "235663624"
 DEBUG_ENABLED = "true"
