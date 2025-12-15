@@ -3,6 +3,8 @@ main = "worker.js"
 compatibility_date = "2025-12-15" # Дата, которую мы добавили в deploy.yml
 
 # [vars] - Здесь обычные переменные окружения, которые не являются секретами
+DEBUG_CHAT_ID = "235663624"
+ADMIN_CHAT_ID = "235663624"
 DEBUG_ENABLED = "true"
 TTS_ENABLED = "true"
 PHOTO_ENABLED = "true"
@@ -13,8 +15,6 @@ PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/targ
 WORKER_HOSTNAME = "https://github.com/leshiy-ai/gemini-photo-bot"
 
 [secrets]
-DEBUG_CHAT_ID = "235663624"
-ADMIN_CHAT_ID = "235663624"
 # Здесь Wrangler будет искать СЕКРЕТЫ, которые вы настроили
 # Он автоматически сопоставит их с env.TELEGRAM_BOT_TOKEN и env.GEMINI_API_KEY
 # Вам не нужно указывать их значения здесь, только имена.
