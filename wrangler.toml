@@ -1,0 +1,48 @@
+name = "gemini-photo-bot"
+main = "worker.js"
+compatibility_date = "2025-12-15" # Дата, которую мы добавили в deploy.yml
+
+# [vars] - Здесь обычные переменные окружения, которые не являются секретами
+DEBUG_CHAT_ID = ""
+ADMIN_CHAT_ID = ""
+DEBUG_ENABLED = "true"
+TTS_ENABLED = "true"
+PHOTO_ENABLED = "true"
+VIDEO_ENABLED = "true"
+LESHIY_RENDER_HOST = "https://leshiy-media-converter.onrender.com"
+WORKER_DOMAIN = "https://github.com/leshiy-ai/gemini-photo-bot"
+PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link"
+WORKER_HOSTNAME = "https://github.com/leshiy-ai/gemini-photo-bot"
+
+[secrets]
+# Здесь Wrangler будет искать СЕКРЕТЫ, которые вы настроили
+# Он автоматически сопоставит их с env.TG_BOT_TOKEN и env.GEMINI_API_KEY
+# Вам не нужно указывать их значения здесь, только имена.
+// API-ключи из секретных переменных
+TELEGRAM_BOT_TOKEN = ""
+GEMINI_API_KEY = ""
+GROK_API_KEY = ""
+DEEPSEEK_API_KEY = ""
+BOTHUB_API_KEY = ""
+KIEAI_API_KEY = ""
+CLOUDFLARE_ACCOUNT_ID = ""
+CLOUDFLARE_API_TOKEN = ""
+FUSIONBRAIN_API_KEY = ""
+FUSIONBRAIN_SECRET_KEY = ""
+VOICERSS_API_KEY = ""
+OPENAI_API_KEY = ""
+OPENROUTER_API_KEY = ""
+RUNWAY_API_KEY = ""
+MODELSLAB_API_KEY = ""
+FREEPIK_API_KEY = ""
+STABILITY_API_KEY = ""
+
+# [[kv_namespaces]] - Здесь Привязки KV
+[[kv_namespaces]]
+binding = "LAST_PHOTO_STORAGE"
+id = "65ea2c9829024c618eaa90e17ebf5682" 
+# ID вашего хранилища нужно скопировать из Cloudflare Dashboard.
+
+# [ai] - для Workers AI
+[ai]
+binding = "AI"
