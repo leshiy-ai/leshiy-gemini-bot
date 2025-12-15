@@ -1160,7 +1160,7 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     // Получаем необходимые ресурсы из envData
     const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
     // Используем ваш публичный домен:
-    const PUBLIC_DOMAIN = 'https://gemini-photo-bot.leshiyalex.workers.dev';
+    const PUBLIC_DOMAIN = 'https://leshiy-gemini-bot.leshiyalex.workers.dev';
     
     if (!IMAGE_STORAGE) {
          throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing for I2V upload.");
@@ -2484,7 +2484,7 @@ async function getFileLink(file_id, TELEGRAM_BOT_TOKEN) {
  */
 function getRotatedPublicUrl(fileId, rotationDegree, chatId) {
     // **ВАЖНО:** Ваш публичный URL /kv-images/ может найти файл только по fileId:
-    const baseUrl = `https://gemini-photo-bot.leshiyalex.workers.dev/kv-images/i2v/${chatId}/${fileId}`; 
+    const baseUrl = `https://leshiy-gemini-bot.leshiyalex.workers.dev/kv-images/i2v/${chatId}/${fileId}`; 
 
     let url = `${baseUrl}.png`; // Предполагаем формат PNG
 
@@ -6665,7 +6665,7 @@ async function startKieAiAudio2Video(config, prompt, envData, videoParams, chatI
 
     // --- 3. Вызов универсальной функции Task Create ---
     
-    // https://gemini-photo-bot.leshiyalex.workers.dev/api/kieai-callback?chatId=502248112
+    // https://leshiy-gemini-bot.leshiyalex.workers.dev/api/kieai-callback?chatId=502248112
     const callBackUrl = `${envData.WORKER_DOMAIN}/api/kieai-callback?chatId=${chatKey}`;
     envData.chatKey = chatKey; 
     
@@ -14658,7 +14658,7 @@ export default {
         // 1. Извлекаем URL и Path
         const url = new URL(request.url);
         const path = url.pathname;
-        // 2. Определяем домен Worker'а (например, "https://gemini-photo-bot.leshiyalex.workers.dev")
+        // 2. Определяем домен Worker'а (например, "https://leshiy-gemini-bot.leshiyalex.workers.dev")
         const workerDomain = url.origin;
         if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
             return handleKieAiCallback(request, env, ctx);
