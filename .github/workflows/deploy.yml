@@ -16,5 +16,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          quiet: false
           # Укажите ТОЧНОЕ ИМЯ ВАШЕГО WORKER'А в Cloudflare Dashboard
           command: deploy --name gemini-photo-bot worker.js
