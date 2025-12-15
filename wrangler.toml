@@ -12,8 +12,6 @@ PHOTO_ENABLED = "true"
 VIDEO_ENABLED = "true"
 LESHIY_RENDER_HOST = "https://leshiy-media-converter.onrender.com"
 WORKER_DOMAIN = "https://gemini-photo-bot.leshiyalex.workers.dev"
-PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link"
-WORKER_HOSTNAME = "https://github.com/leshiy-ai/gemini-photo-bot"
 
 [secrets]
 # Здесь Wrangler будет искать СЕКРЕТЫ, которые вы настроили
