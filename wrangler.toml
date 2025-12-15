@@ -10,7 +10,7 @@ TTS_ENABLED = "true"
 PHOTO_ENABLED = "true"
 VIDEO_ENABLED = "true"
 LESHIY_RENDER_HOST = "https://leshiy-media-converter.onrender.com"
-WORKER_DOMAIN = "https://github.com/leshiy-ai/gemini-photo-bot"
+WORKER_DOMAIN = "https://gemini-photo-bot.leshiyalex.workers.dev"
 PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link"
 WORKER_HOSTNAME = "https://github.com/leshiy-ai/gemini-photo-bot"
 
@@ -20,22 +20,8 @@ WORKER_HOSTNAME = "https://github.com/leshiy-ai/gemini-photo-bot"
 # Вам не нужно указывать их значения здесь, только имена.
 # API-ключи из секретных переменных
 TELEGRAM_BOT_TOKEN = ""
-GEMINI_API_KEY = ""
-GROK_API_KEY = ""
-DEEPSEEK_API_KEY = ""
-BOTHUB_API_KEY = ""
-KIEAI_API_KEY = ""
 CLOUDFLARE_ACCOUNT_ID = ""
 CLOUDFLARE_API_TOKEN = ""
-FUSIONBRAIN_API_KEY = ""
-FUSIONBRAIN_SECRET_KEY = ""
-VOICERSS_API_KEY = ""
-OPENAI_API_KEY = ""
-OPENROUTER_API_KEY = ""
-RUNWAY_API_KEY = ""
-MODELSLAB_API_KEY = ""
-FREEPIK_API_KEY = ""
-STABILITY_API_KEY = ""
 
 # [[kv_namespaces]] - Здесь Привязки KV LAST_PHOTO_STORAGE
 [[kv_namespaces]]
