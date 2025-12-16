@@ -15060,7 +15060,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
              processedBuffer, 
              mode, 
              param, 
-             envData.LAST_PHOTO_STORAGE
+             envData
         );
 
         // --- 5. Успешное завершение ---
@@ -15096,10 +15096,10 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
  * @param {string} param - Параметр (разрешение '720p' или угол '90').
  * @param {Object} storage - KV-биндинг (LAST_PHOTO_STORAGE).
  */
-async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, storage) {
+async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData) {
     // 💡 Предполагаем, что envData.LAST_IMAGE_DATA_KEY_SUFFIX и envData.LAST_VIDEO_DATA_KEY_SUFFIX 
     // доступны в области видимости или переданы как часть envData.
-    
+    const storage = envData.LAST_PHOTO_STORAGE;
     const isVideo = mode === RESIZE_VIDEO_MODE;
     const chatKey = chatId.toString();
     
