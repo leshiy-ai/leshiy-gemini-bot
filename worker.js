@@ -14697,7 +14697,8 @@ async function setBotCommands(TELEGRAM_BOT_TOKEN, commands, scopeType, chatId = 
  * @throws {Error} - Выбрасывает ошибку в случае сбоя Render-сервиса или таймаута.
  */
 async function callLeshiyMp3Converter(endpoint, fetchOptions, queryParams, envData) {
-    const FULL_URL = LESHIY_RENDER_HOST + endpoint;
+    const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    const FULL_URL = RENDER_HOST_URL + endpoint;
     const timeoutSeconds = 120; // Максимальный таймаут по умолчанию 2 минуты
 
     // 1. ПРОВЕРКА ЗДОРОВЬЯ (Пробуждение Render-сервиса)
