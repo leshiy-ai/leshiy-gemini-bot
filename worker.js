@@ -9451,8 +9451,10 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
+        // Текущий активный режим
         { text: activeIcon + displayName, callback_data: 'dummy_i2r_active' },
         { 
+            // 🛑 ИСПРАВЛЕНО: Убираем проверку isVideoSaved. Оставляем только иконку 📺.
             text: `📺 Видео → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE}` 
         },
@@ -9584,14 +9586,12 @@ async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
         { 
+            // 🛑 ИСПРАВЛЕНО: Убираем проверку isPhotoSaved. Оставляем только иконку 🖼️.
             text: `🖼️ Фото → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE}` 
         },
-        { 
-            // Активный режим (Видео)
-            text: activeIcon + displayName, 
-            callback_data: 'dummy_v2r_active' 
-        }
+        // Текущий активный режим
+        { text: activeIcon + displayName, callback_data: 'dummy_v2r_active' }
     ]);
 
     // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ (РЕСАЙЗ)
@@ -18511,12 +18511,15 @@ ${historyText}`;
                     // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_resize_mode|...) ---
                     if (data.startsWith('select_resize_mode|')) {
                         const selectedMode = data.split('|')[1]; // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
-                        let menu;
-                        
-                        if (selectedMode === RESIZE_IMAGE_MODE) {
-                            menu = await getResizeImageMenuKeyboard(chatId, storage, null, isPhotoSaved);
-                        } else if (selectedMode === RESIZE_VIDEO_MODE) {
-                            menu = await getResizeVideoMenuKeyboard(chatId, storage, null, isVideoSaved);
+                        // 1. Получаем объект хранилища KV (не только envData)
+                        const storageBinding = envData.LAST_PHOTO_STORAGE;
+                        let newMenu;
+                        if (newMode === RESIZE_IMAGE_MODE) {
+                            // ПЕРЕДАЕМ ОБЪЕКТ KV-ХРАНИЛИЩА
+                            newMenu = await getResizeImageMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storageBinding);
+                        } else { // RESIZE_VIDEO_MODE
+                            // ПЕРЕДАЕМ ОБЪЕКТ KV-ХРАНИЛИЩА
+                            newMenu = await getResizeVideoMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storageBinding);
                         }
                                         
                         ctx.waitUntil(Promise.allSettled([
