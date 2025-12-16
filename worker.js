@@ -3586,61 +3586,6 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     return responseData;
 }
 
-/**
- * Редактирует сообщение, заменяя медиа (фото).
- * @param {number} chatId - ID чата.
- * @param {number} messageId - ID сообщения для редактирования.
- * @param {ArrayBuffer} photoBuffer - Бинарные данные повернутого изображения.
- * @param {string} caption - Новая подпись.
- * @param {Object} reply_markup - Инлайн-клавиатура (ВАЖНО для сохранения кнопок).
- * @param {string} token - Токен Telegram Bot API.
- */
-async function editMessageWithNewPhoto(chatId, messageId, photoBuffer, caption, reply_markup, token) {
-    // API для редактирования медиа
-    const apiUrl = `https://api.telegram.org/bot${token}/editMessageMedia`;
-
-    const formData = new FormData();
-    formData.append('chat_id', chatId.toString());
-    formData.append('message_id', messageId.toString());
-
-    // Создаем файл для прикрепления к форме
-    const fileToAttachName = 'rotated_image.png';
-    const imageFile = new File([photoBuffer], fileToAttachName, { type: 'image/png' });
-    
-    // Медиа-объект, который ссылается на прикрепленный файл
-    const media = {
-        type: 'photo',
-        media: `attach://${fileToAttachName}`, // Ссылка на имя файла в FormData
-        caption: escapeMarkdownV2(caption), // Экранируем подпись
-        parse_mode: 'MarkdownV2',
-    };
-
-    formData.append('media', JSON.stringify(media));
-    formData.append(fileToAttachName, imageFile, fileToAttachName);
-    
-    // Добавляем reply_markup для сохранения кнопок
-    if (reply_markup) {
-        formData.append('reply_markup', JSON.stringify(reply_markup));
-    }
-
-    const response = await fetch(apiUrl, {
-        method: 'POST',
-        body: formData,
-        signal: AbortSignal.timeout(60000)
-    });
-
-    const responseText = await response.text();
-    let responseData = {};
-    try { responseData = JSON.parse(responseText); } catch(e) { /* не JSON */ }
-
-    if (!response.ok || !responseData.ok) {
-        throw new Error(`Telegram API Error (editMessageMedia): ${responseData.description || 'Неизвестная ошибка редактирования медиа.'}`);
-    }
-
-    // Возвращаем данные, так как они содержат новое file_id для продолжения цепочки поворотов
-    return responseData;
-}
-
 // ФУНКЦИИ ОПЛАТЫ ЧЕРЕЗ ЗВЁЗДЫ ТЕЛЕГРАММ
 /**
  * Отправляет инвойс для оплаты Звездами.
