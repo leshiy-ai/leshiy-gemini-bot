@@ -14967,50 +14967,45 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
 
 /**
  * ✅ sendMediaToConverterInBackground - Асинхронно скачивает медиа, отправляет на Render для обработки (Resize/Rotate) и обновляет сообщение.
- *
- * @param {number} chatId - ID чата.
- * @param {string} fileId - file_id медиа (фото или видео) в Telegram.
- * @param {number} originalMessageId - ID оригинального сообщения с медиа.
- * @param {string} mode - Режим (RESIZE_VIDEO_MODE или RESIZE_IMAGE_MODE).
- * @param {string} param - Параметр (разрешение '720p' или угол '90').
- * @param {Object} envData - Объект окружения.
- * @param {string} token - Токен Telegram.
- * @param {Object} ctx - Контекст выполнения.
- * @param {Object} [originalReplyMarkup=null] - Инлайн-клавиатура оригинального сообщения.
  */
 async function sendMediaToConverterInBackground(chatId, fileId, originalMessageId, mode, param, envData, token, ctx, originalReplyMarkup = null) {
     const RENDER_HOST_URL = envData.LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
     const isVideo = mode === RESIZE_VIDEO_MODE;
     const mediaType = isVideo ? 'видео' : 'фото';
+    const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
 
-    // 1. Определение эндпоинта и таймаута
     let endpoint = '';
     let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-    let timeoutSeconds = isVideo ? 120 : 60; // 2 мин для видео, 1 мин для фото
 
     if (mode === RESIZE_VIDEO_MODE) {
         endpoint = `/resize-video?resolution=${param}`;
     } else if (mode === RESIZE_IMAGE_MODE) {
         if (param === 'MAX_RESIZE') {
-            // Ресайз фото до 1280px (Убедитесь, что ваш Render поддерживает /resize-image)
             endpoint = `/resize-image?resolution=1280p`; 
         } else {
-            // Поворот фото
             endpoint = `/rotate-image?angle=${param}`;
         }
     }
     const FINAL_RENDER_URL = RENDER_HOST_URL + endpoint;
 
     try {
-        // 2. Скачиваем исходный файл
-        await editMessage(chatId, originalMessageId, `🔄 **Обработка ${mediaType}... Скачиваю файл...**`, token);
-        const mediaBuffer = await downloadFileBuffer(fileId, token, envData);
-
-        // 3. Отправляем на Render
-        await editMessage(chatId, originalMessageId, `⚙️ **[FFmpeg] ${mediaType} - Обработка...** (до ${timeoutSeconds/60} мин.)`, token);
-        const renderFormData = new FormData();
+        // --- 0. Пробуждение Render-сервиса ---
+        ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Запуск: Пробуждение Render-хоста.`, envData));
+        await checkConverterHealth(envData);
         
-        // Ключ 'video' или 'image' должен соответствовать ожидаемому на Render-сервере
+        // --- 1. Скачиваем исходный файл ---
+        await editMessage(chatId, originalMessageId, `🔄 **Обработка ${mediaType}... Скачиваю файл...**`, token);
+        ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Начинаю скачивание файла.`, envData));
+        
+        const mediaBuffer = await downloadFileBuffer(fileId, token, envData);
+        
+        ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Скачивание завершено. Размер: ${mediaBuffer.byteLength} байт.`, envData));
+
+        // --- 2. Отправляем на Render ---
+        await editMessage(chatId, originalMessageId, `⚙️ **[FFmpeg] ${mediaType} - Обработка...** (Таймаут: ${RENDER_TIMEOUT_MS/60000} мин.)`, token);
+        ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Отправляю на Render: ${FINAL_RENDER_URL}`, envData));
+
+        const renderFormData = new FormData();
         const formKey = isVideo ? 'video' : 'image'; 
         const mediaFile = new File([mediaBuffer], `input.${isVideo ? 'mp4' : 'jpg'}`, { type: mimeType });
         renderFormData.append(formKey, mediaFile);
@@ -15018,64 +15013,75 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         const renderResponse = await fetch(FINAL_RENDER_URL, {
             method: 'POST',
             body: renderFormData,
-            signal: AbortSignal.timeout(timeoutSeconds * 1000)
+            signal: AbortSignal.timeout(RENDER_TIMEOUT_MS) // Таймаут на всю операцию FFmpeg
         });
 
         if (!renderResponse.ok) {
-            const errorDetails = await renderResponse.text().catch(() => 'No details');
-            throw new Error(`Render error: ${renderResponse.status} ${errorDetails.substring(0, 150)}`);
+            const errorDetails = await renderResponse.text().catch(() => 'Нет деталей');
+            throw new Error(`Render API: Status ${renderResponse.status}. Details: ${errorDetails.substring(0, 150)}`);
         }
 
         const processedBuffer = await renderResponse.arrayBuffer();
+        ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Render вернул результат. Размер: ${processedBuffer.byteLength} байт.`, envData));
 
-        // 4. Загружаем обработанный медиафайл в Telegram
+        // --- 3. Загружаем обработанный медиафайл в Telegram ---
         await editMessage(chatId, originalMessageId, `📤 **Загрузка обработанного файла в Telegram...**`, token);
 
+        // ... (Остальной код по загрузке в Telegram и обновлению KV)
+        
         const caption = isVideo 
-            ? `✅ Видео изменено до ${param}!` 
-            : `✅ Фото ${param === 'MAX_RESIZE' ? 'изменено' : 'повернуто на ' + param + '°'}!`;
+             ? `✅ Видео изменено до ${param}!` 
+             : `✅ Фото ${param === 'MAX_RESIZE' ? 'изменено' : 'повернуто на ' + param + '°'}!`;
 
         let editResult;
         
-        // 5. Вызываем соответствующую функцию Telegram API (Ваши готовые функции)
         if (isVideo) {
             editResult = await editMessageWithNewVideo(
                  chatId, originalMessageId, processedBuffer, caption, originalReplyMarkup, token
             );
         } else {
              editResult = await editMessageWithNewPhoto(
-                chatId, originalMessageId, processedBuffer, caption, originalReplyMarkup, token
+                 chatId, originalMessageId, processedBuffer, caption, originalReplyMarkup, token
             );
         }
 
-        // 6. Обновление KV с новым file_id
+        // --- 4. Обновление KV с новым file_id ---
         const newMediaObject = isVideo 
-            ? editResult.result?.video 
-            : editResult.result?.photo?.slice(-1)[0]; 
+             ? editResult.result?.video 
+             : editResult.result?.photo?.slice(-1)[0]; 
 
         if (!newMediaObject || !newMediaObject.file_id) {
-            throw new Error(`Telegram не вернул file_id для ${mediaType}.`);
+             throw new Error(`Telegram не вернул file_id для ${mediaType}.`);
         }
 
-        // Вызовите Вашу функцию, которая обновляет KV с новым file_id
         await updateMediaKVAfterProcessing(
-            chatId, 
-            newMediaObject, 
-            processedBuffer, 
-            mode, 
-            param, 
-            envData.LAST_PHOTO_STORAGE
+             chatId, 
+             newMediaObject, 
+             processedBuffer, 
+             mode, 
+             param, 
+             envData.LAST_PHOTO_STORAGE
         );
 
-        // 7. Успешное завершение
+        // --- 5. Успешное завершение ---
         await editMessage(chatId, originalMessageId, `✅ **Обработка ${mediaType} завершена.**`, token);
+        ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Операция завершена успешно.`, envData));
 
     } catch (error) {
-        console.error(`Ошибка при ${mode}: ${error.message}`, error);
+        const errorMessage = error.message;
+        
+        // 🛑 ГАРАНТИРОВАННОЕ ЛОГИРОВАНИЕ ОШИБКИ В АДМИН-ЧАТ (logDebug)
+        ctx.waitUntil(logDebug(
+            'RESIZE_CRITICAL', 
+            `[${chatId}] Ошибка при ${mode}: ${errorMessage.substring(0, 500)} Stack: ${error.stack ? error.stack.substring(0, 500) : 'N/A'}`, 
+            envData
+        ));
+        
+        // Сообщение пользователю
         await editMessage(
             chatId,
             originalMessageId,
-            `❌ **Ошибка при обработке ${mediaType}.** ${error.message.substring(0, 150)}`,
+            `❌ **Ошибка при обработке ${mediaType}!**\n${errorMessage.substring(0, 150)}`,
             token
         );
     }
