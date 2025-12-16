@@ -9453,15 +9453,9 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     keyboard.push([
         { text: activeIcon + displayName, callback_data: 'dummy_i2r_active' },
         { 
-            // 🛑 ИСПРАВЛЕНИЕ ЭМОДЗИ: Отображаем статус наличия видео
-            text: `${isVideoSaved ? '✅ ' : '📺 '} Видео → Ресайз/Поворот`, 
+            text: `📺 Видео → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE}` 
         },
-        { 
-            // Активный режим (Фото)
-            text: activeIcon + displayName, 
-            callback_data: 'dummy_i2r_active' 
-        }
     ]);
     
     // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ (РЕСАЙЗ)
@@ -9520,7 +9514,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     // --- ТЕКСТ СООБЩЕНИЯ ---
     // 🛑 ДОБАВЛЕНО: Инфо о текущем размере
     let currentSizeLine = currentPhotoData 
-        ? `📐 **Текущий размер:** ${currentWidth}x${currentHeight}`
+        ? `**Текущий размер:** 📐 ${currentWidth}x${currentHeight}`
         : '';
     const description = `
 📐 **Меню Поворота/Ресайза фото (Image-to-Rotate/Resize)**
@@ -9590,9 +9584,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
         { 
-            // 🛑 ИСПРАВЛЕНО: Убираем '✅ ', если activeIcon уже стоит на другом режиме. 
-            // Используем '🖼️ ' (Фото) или '✅ ' (Фото загружено)
-            text: `${isPhotoSaved ? '✅ ' : '🖼️ '} Фото → Ресайз/Поворот`, 
+            text: `🖼️ Фото → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE}` 
         },
         { 
@@ -9647,7 +9639,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     // --- ТЕКСТ СООБЩЕНИЯ ---
     // 🛑 ДОБАВЛЕНО: Инфо о текущем размере
     let currentSizeLine = currentVideoData 
-        ? `📐 **Текущий размер:** ${currentVideoData.width}x${currentVideoData.height}` 
+        ? `**Текущий размер:** 📐 ${currentVideoData.width}x${currentVideoData.height}` 
         : '';
     const description = `
 📐 **Меню изменения размера видео (Video-to-Resize)**
