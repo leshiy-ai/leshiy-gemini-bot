@@ -120,6 +120,12 @@ const RESOLUTIONS_HEIGHT = {
     '720p': 720,
     '1080p': 1080
 };
+// Константы для поворота
+const ROTATE_ANGLES = [
+    { text: '↪️ 90° влево', param: '-90' },
+    { text: '🔃 180° поворот', param: '180' },
+    { text: '↩️ 90° вправо', param: '90' }
+];
 const ANTI_FLOOD_KV_KEY_PREFIX = 'TG_UPD_';
 const USER_API_KEY_SUFFIX = '_kieai_api_key';
 const USER_LIMIT_KEY_SUFFIX = '_kieai_credits';
@@ -9398,14 +9404,6 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * Мы используем "Resize/Rotate" в широком смысле.
  */
 async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved, isVideoSaved, storage) {
-    // 🛑 ИЗМЕНЕНИЕ 1: ПОЛУЧАЕМ ТЕКУЩИЕ РАЗМЕРЫ ФОТО
-    let currentPhotoData = null;
-    let currentHeight = 0;
-    if (isPhotoSaved) {
-        currentPhotoData = await getCurrentMediaData(chatId, envData, storage, false); // false = IMAGE mode
-        currentHeight = currentPhotoData ? currentPhotoData.height : 0;
-    }
-
     // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
     let balanceStatus = '...';
     try {
@@ -9413,21 +9411,27 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     } catch (e) {
         balanceStatus = 'Ошибка чтения'; 
     }
-
+    // --- ПОЛУЧЕНИЕ ТЕКУЩИХ РАЗМЕРОВ ФОТО ---
+    let currentPhotoData = null;
+    let currentHeight = 0;
+    let currentWidth = 0;
+    if (isPhotoSaved) {
+        // storage теперь передается и не вызывает ошибку 'get'
+        currentPhotoData = await getCurrentMediaData(chatId, envData, storage, false); 
+        currentHeight = currentPhotoData ? currentPhotoData.height : 0;
+        currentWidth = currentPhotoData ? currentPhotoData.width : 0;
+    }
+    const currentRatio = currentWidth && currentHeight ? currentWidth / currentHeight : 1;
     // --- ТЕКСТ и КЛАВИАТУРА ---
     const activeIcon = '✅ ';
     const displayName = '🖼️ Фото → Поворот/Изменение размера';
     const mediaType = 'Фото';
-    const actionText = "Запустить поворот"; 
+    // Media Status Line
+    const mediaStatusLine = isPhotoSaved ? `✅ **${mediaType}** загружено.` : `⚠️ **${mediaType}** не загружено.`;
+    const canRun = isPhotoSaved;
     
     const calculatedPriceCredits = 0; 
     const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Media Converter)';
-    
-    // 🛑 ИСПРАВЛЕНО: Теперь используем isPhotoSaved
-    const canRun = isPhotoSaved; 
-    
-    // Media Status Line
-    const mediaStatusLine = isPhotoSaved ? `✅ **${mediaType}** загружено.` : `⚠️ **${mediaType}** не загружено.`;
     
     // Media Action (Кнопка загрузки/просмотра)
     const mediaAction = isPhotoSaved ? `💾 Посмотреть загруженное фото` : `📸 Загрузить фото`;
@@ -9443,41 +9447,50 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
+        { text: activeIcon + displayName, callback_data: 'dummy_i2r_active' },
         { 
-            text: activeIcon + displayName, 
-            callback_data: 'dummy_i2r_active' 
-        },
-        { 
-            // 🛑 ИСПРАВЛЕНИЕ: Отображаем статус наличия видео
-            text: `${isVideoSaved ? '✅ ' : '📺 '} Видео → Ресайз`, 
+            // 🛑 ИСПРАВЛЕНИЕ ЭМОДЗИ: Отображаем статус наличия видео
+            text: `${isVideoSaved ? '✅ ' : '📺 '} Видео → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE}` 
         }
     ]);
     
-    // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ
-    keyboard.push([{ text: "⚙️ Выберите разрешение фото:", callback_data: 'dummy_resolutions_header' }]);
+    // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ (РЕСАЙЗ)
+    keyboard.push([{ text: "⚙️ Выберите разрешение фото (WxH):", callback_data: 'dummy_resolutions_header' }]);
 
-    // 🛑 ДОБАВЛЕНО: КНОПКИ РЕСАЙЗА ФОТО (240p - 1080p)
+    // 🛑 ЛОГИКА ВЫЧИСЛЕНИЯ WxH И РЕСАЙЗА
     const resButtons = Object.keys(RESOLUTIONS_HEIGHT).map(key => {
         const targetHeight = RESOLUTIONS_HEIGHT[key];
+        
+        // Вычисляем новую ширину, сохраняя соотношение
+        let targetWidth = Math.round(targetHeight * currentRatio);
+        
+        // Формат WxH
+        const buttonTextFormat = `${targetWidth}x${targetHeight}`; 
+        
+        // Определяем иконку
         const icon = isPhotoSaved ? getResolutionIcon(currentHeight, targetHeight) : '';
+        
         return {
-            text: `${icon}${key}`, 
+            // Отображаем WxH
+            text: `${icon}${buttonTextFormat}`, 
+            // Передаем целевую высоту (240p) в колбэк
             callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${key}` 
         };
     });
     
-    // Создаем ряды: [240p, 360p, 480p], [720p, 1080p]
+    // Создаем ряды: [W1xH1, W2xH2, W3xH3], [W4xH4, W5xH5]
     for (let i = 0; i < resButtons.length; i += 3) {
         keyboard.push(resButtons.slice(i, i + 3));
     }
     
-    // 3. СТРОКА ВЫБОРА УГЛА ПОВОРОТА (Оставлена, но перемещена ниже)
+    // 3. СТРОКА ВЫБОРА УГЛА ПОВОРОТА (РОТЭЙТ)
     keyboard.push([{ text: "⚙️ Выберите угол поворота:", callback_data: 'dummy_angle_header' }]);
     
-    const angleButtons = angles.map(angle => ({
-        text: `${angle}`, 
-        callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${angle}` 
+    const angleButtons = ROTATE_ANGLES.map(angle => ({
+        text: angle.text, 
+        // 🛑 ИСПРАВЛЕНО: Теперь используем ROTATE_IMAGE_MODE
+        callback_data: `generate_resize_now|${ROTATE_IMAGE_MODE}|${angle.param}` 
     }));
     keyboard.push(angleButtons);
     
@@ -9487,17 +9500,18 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     ]);
 
     // 4. Кнопка Запуска
+    const defaultResParam = '720p'; // По умолчанию для фото
     keyboard.push([
         { 
-            text: canRun ? `🚀 ${actionText} / Ресайз сейчас` : `🚫 Недоступно: Загрузите ${mediaType}`, 
-            callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE}|90` : 'dummy_cannot_run_resize' 
+            text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Недоступно: Загрузите ${mediaType}`, 
+            callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE}|${defaultResParam}` : 'dummy_cannot_run_resize' 
         }
     ]);
     
     // --- ТЕКСТ СООБЩЕНИЯ ---
     // 🛑 ДОБАВЛЕНО: Инфо о текущем размере
     let currentSizeLine = currentPhotoData 
-        ? `📐 **Текущий размер:** ${currentPhotoData.width}x${currentPhotoData.height}` 
+        ? `📐 **Текущий размер:** ${currentWidth}x${currentHeight}`
         : '';
     const description = `
 📐 **Меню Поворота/Ресайза фото (Image-to-Rotate/Resize)**
@@ -9520,11 +9534,11 @@ ${currentSizeLine}
  * @description Генерирует меню для изменения разрешения видео (V2R).
  */
 async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved, isVideoSaved, storage) { 
-    // 🛑 ИЗМЕНЕНИЕ 1: ПОЛУЧАЕМ ТЕКУЩИЕ РАЗМЕРЫ ВИДЕО
+    // --- ПОЛУЧЕНИЕ ТЕКУЩИХ РАЗМЕРОВ ВИДЕО ---
     let currentVideoData = null;
     let currentHeight = 0;
     if (isVideoSaved) {
-        currentVideoData = await getCurrentMediaData(chatId, envData, storage, true); // true = VIDEO mode
+        currentVideoData = await getCurrentMediaData(chatId, envData, storage, true); 
         currentHeight = currentVideoData ? currentVideoData.height : 0;
     }
 
@@ -9538,16 +9552,13 @@ async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
 
     // --- ТЕКСТ и КЛАВИАТУРА ---
     const activeIcon = '✅ ';
-    const displayName = '📺 Видео → Изменить размер';
+    const displayName = '📺 Видео → Ресайз/Поворот';
     const mediaType = 'Видео';
-    const actionText = "Запустить изменение размера";
+    const canRun = isVideoSaved; 
     
     // Цена: Устанавливаем цену в 0, так как это через Leshiy Converter (пока бесплатно)
     const calculatedPriceCredits = 0; 
     const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Media Converter)';
-    
-    // 🛑 ИСПРАВЛЕНО: Теперь используем isVideoSaved
-    const canRun = isVideoSaved; 
     
     // Media Status Line
     const mediaStatusLine = isVideoSaved ? `✅ **${mediaType}** загружено.` : `⚠️ **${mediaType}** не загружено.`;
@@ -9570,20 +9581,17 @@ async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
         { 
-            // 🛑 ИСПРАВЛЕНИЕ: Исправляем эмодзи и отображаем статус наличия фото
-            text: `${isPhotoSaved ? '✅ ' : '🖼️ '} Фото → Поворот/Ресайз`, 
+            // ✅ ИСПРАВЛЕНИЕ ЭМОДЗИ: Отображаем статус наличия фото
+            text: `${isPhotoSaved ? '✅ ' : '🖼️ '} Фото → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE}` 
         },
-        { 
-            text: activeIcon + displayName, 
-            callback_data: 'dummy_v2r_active' 
-        }
+        { text: activeIcon + displayName, callback_data: 'dummy_v2r_active' }
     ]);
 
-    // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ
+    // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ (РЕСАЙЗ)
     keyboard.push([{ text: "⚙️ Выберите разрешение видео:", callback_data: 'dummy_resolutions_header' }]);
     
-    // 🛑 ДОБАВЛЕНО: КНОПКИ РЕСАЙЗА ВИДЕО (240p - 1080p)
+    // 🛑 КНОПКИ РЕСАЙЗА ВИДЕО (240p - 1080p)
     const resolutions = Object.keys(RESOLUTIONS_HEIGHT);
     const resButtons = resolutions.map(key => {
         const targetHeight = RESOLUTIONS_HEIGHT[key];
@@ -9594,22 +9602,31 @@ async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
         };
     });
     
-    // Создаем ряды: [240p, 360p, 480p], [720p, 1080p]
     for (let i = 0; i < resButtons.length; i += 3) {
         keyboard.push(resButtons.slice(i, i + 3));
     }
     
-    // 3. Статус медиа
+    // 3. СТРОКА ВЫБОРА УГЛА ПОВОРОТА (РОТЭЙТ)
+    keyboard.push([{ text: "⚙️ Выберите угол поворота:", callback_data: 'dummy_angle_header' }]);
+    
+    const angleButtons = ROTATE_ANGLES.map(angle => ({
+        text: angle.text, 
+        // 🛑 ИСПРАВЛЕНО: Теперь используем ROTATE_VIDEO_MODE
+        callback_data: `generate_resize_now|${ROTATE_VIDEO_MODE}|${angle.param}` 
+    }));
+    keyboard.push(angleButtons);
+
+    // Статус медиа
     keyboard.push([
         { text: mediaAction, callback_data: mediaCallback }
     ]);
 
     // 4. Кнопка Запуска
+    const defaultResParam = '720p'; // По умолчанию для видео
     keyboard.push([
         { 
-            text: canRun ? `🚀 ${actionText} сейчас` : `🚫 Недоступно: Загрузите ${mediaType}`, 
-            callback_data: canRun ? `generate_resize_now|${RESIZE_VIDEO_MODE}|${resolutions[2]}` : 'dummy_cannot_run_resize' 
-            // Используем 480p (resolutions[2]) по умолчанию, если нажата кнопка Запуска без выбора
+            text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Недоступно: Загрузите ${mediaType}`, 
+            callback_data: canRun ? `generate_resize_now|${RESIZE_VIDEO_MODE}|${defaultResParam}` : 'dummy_cannot_run_resize' 
         }
     ]);
 
