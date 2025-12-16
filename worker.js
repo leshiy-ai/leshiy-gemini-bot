@@ -2632,28 +2632,38 @@ async function getCurrentMediaData(chatId, envData, storage, isVideoMode) {
 }
 
 /**
- * @description Возвращает иконку "✅" если текущая высота соответствует целевой.
+ * @description Возвращает иконку "✅" для ближайшего доступного разрешения (меньшего или равного).
  * @param {number} currentHeight - Текущая высота файла, полученная из KV.
  * @param {number} targetHeight - Высота, указанная на кнопке (например, 720).
+ * @param {Object} allResolutions - Объект всех доступных разрешений (RESOLUTIONS_HEIGHT).
  * @returns {string} Иконка или пустая строка.
  */
 function getResolutionIcon(currentHeight, targetHeight, allResolutions) {
-    if (!currentHeight || !targetHeight || !allResolutions) { 
-        return '';
+    if (!currentHeight || !targetHeight || !allResolutions) return '';
+    
+    // Получаем массив только значений высоты [1080, 720, 480, 360, 240]
+    // Сортируем по убыванию, чтобы найти ближайшее совпадение сверху
+    const resolutionValues = Object.values(allResolutions).sort((a, b) => b - a);
+
+    let bestMatchHeight = 0;
+    
+    // 1. Ищем ближайшее разрешение, которое МЕНЬШЕ ИЛИ РАВНО текущей высоте
+    for (const height of resolutionValues) {
+        if (currentHeight >= height) {
+            bestMatchHeight = height;
+            break;
+        }
     }
     
-    // 1. Прямое совпадение
-    if (currentHeight === targetHeight) return '✅';
+    // 2. Если текущая высота меньше самого маленького разрешения (например, < 240p), 
+    // ставим галочку на самой маленькой кнопке (240p).
+    if (bestMatchHeight === 0 && currentHeight > 0 && resolutionValues.length > 0) {
+        bestMatchHeight = resolutionValues[resolutionValues.length - 1]; // 240p
+    }
     
-    // 2. Определение максимальной кнопки
-    const resolutionValues = Object.values(allResolutions);
-    if (resolutionValues.length === 0) return '';
-    
-    const maxTargetHeight = Math.max(...resolutionValues);
-    
-    // 3. Если файл больше, чем максимальная кнопка
-    if (targetHeight === maxTargetHeight && currentHeight > maxTargetHeight) {
-         return '✅';
+    // 3. Если целевая кнопка совпадает с лучшим совпадением, ставим галочку
+    if (targetHeight === bestMatchHeight) {
+        return '✅';
     }
     return '';
 }
@@ -9602,7 +9612,6 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     const resButtons = resolutions.map(key => {
         const targetHeight = RESOLUTIONS_HEIGHT[key];
         
-        // 🛑 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Передаем RESOLUTIONS_HEIGHT в getResolutionIcon
         const icon = isVideoSaved ? getResolutionIcon(currentHeight, targetHeight, RESOLUTIONS_HEIGHT) : '';
         
         return {
@@ -16739,10 +16748,20 @@ export default {
                     
                     const fileId = mediaObject.file_id;
                     const token = envData.TELEGRAM_BOT_TOKEN;
-
+                    // Это гарантирует, что getCurrentMediaData получит width/height/file_id немедленно.
+                    const metadataKey = chatId + envData.LAST_IMAGE_DATA_KEY_SUFFIX;
                     // 🛑 ШАГ 2: Сохраняем fileId в KV, чтобы кнопки знали, с чем работать
-                    await envData.LAST_PHOTO_STORAGE.put(chatId + LAST_FILE_ID_KEY_SUFFIX, fileId, { expirationTtl: 3600 });
-                    // НОВЫЙ ШАГ: ЗАПУСКАЕМ ФОНОВУЮ ЗАДАЧУ
+                    //await envData.LAST_PHOTO_STORAGE.put(chatId + LAST_FILE_ID_KEY_SUFFIX, fileId, { expirationTtl: 3600 });
+                    // Создаем объект для KV, который будет использоваться для получения file_id в flow.
+                    const metadataToSave = {
+                        file_id: fileId,
+                        width: mediaObject.width || null, // width может быть null для документов
+                        height: mediaObject.height || null, // height может быть null для документов
+                        mime_type: mediaObject.mime_type || 'image/jpeg' 
+                    };
+                    
+                    // Сохраняем, чтобы getResizeImageMenuKeyboard и sendMediaToConverterInBackground могли его прочитать
+                    await envData.LAST_PHOTO_STORAGE.put(metadataKey, JSON.stringify(metadataToSave), { expirationTtl: 3600 });
                     // Передаем mediaObject для сохранения метаданных (width/height).
                     ctx.waitUntil(downloadAndSaveBase64(fileId, chatId, envData, mediaObject)); 
 
