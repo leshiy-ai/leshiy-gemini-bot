@@ -9569,6 +9569,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     const currentHeight = currentMediaData ? currentMediaData.height : 0;
     const currentWidth = currentMediaData ? currentMediaData.width : 0;
     const canRun = !!currentMediaData; // Проверяем наличие метаданных
+    let defaultResParam = '720p'; 
 
     // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
     let balanceStatus = '...';
@@ -9620,7 +9621,6 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     }));
 
     // --- 4. ОПРЕДЕЛЕНИЕ КНОПКИ 'РАКЕТА' (ДИНАМИЧЕСКИ) ---
-    let defaultResParam = '720p'; 
     if (currentHeight) {
         for (const key of Object.keys(RESOLUTIONS_HEIGHT)) {
             const height = RESOLUTIONS_HEIGHT[key];
