@@ -3049,7 +3049,7 @@ async function sendAudioMessage(chatId, audioBase64, mimeType, token, envData) {
     const DURATION_KEY = chatKey + AUDIO_DURATION_KEY_SUFFIX; // 🔥 НОВЫЙ КЛЮЧ ДЛИТЕЛЬНОСТИ
     
     // Проверка необходимых env-переменных и данных
-    if (!audioBase64 || !storage || !envData.WORKER_DOMAIN) {
+    if (!audioBase64 || !storage || !envData.) {
         ctx.waitUntil(logDebug("SendAudio", `Отсутствует Base64, KV-Storage или WORKER_DOMAIN.`, envData, ctx));
         throw new Error("Не удалось отправить аудио: не настроен KV-прокси.");
     }
@@ -15092,7 +15092,6 @@ export default {
             TTS_ENABLED: isTTSEnabled, 
             PHOTO_ENABLED: isPhotoEnabled, 
             VIDEO_ENABLED: isVideoEnabled, 
-            WORKER_DOMAIN: workerDomain,
             PAYMENT_LINK: PAYMENT_LINK,
             WORKER_DOMAIN: `https://${new URL(request.url).host}`,
             LESHIY_RENDER_HOST: LESHIY_RENDER_HOST,
