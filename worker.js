@@ -9359,24 +9359,41 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * Мы используем "Resize/Rotate" в широком смысле.
  */
 async function getResizeImageMenuKeyboard(chatId, storage, prompt, isPhotoSaved, isVideoSaved) {
-    // Аналогичная логика, но кнопки будут для углов: 90, -90, 180.
     
-    // ... (Получение баланса, установка иконок и т.д. - скопировать из getResizeVideoMenuKeyboard)
-    
+    // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
+    let balanceStatus = '...';
+    try {
+        balanceStatus = await getCurrentCreditBalance(chatId, LAST_PHOTO_STORAGE);
+    } catch (e) {
+        balanceStatus = 'Ошибка чтения'; 
+    }
+
+    // --- ТЕКСТ и КЛАВИАТУРА ---
     const activeIcon = '✅ ';
     const displayName = '🖼️ Фото → Поворот/Изменение размера';
     const mediaType = 'Фото';
-    const actionText = "Запустить поворот"; // Меняем текст
+    const actionText = "Запустить поворот"; 
     
     const calculatedPriceCredits = 0; 
     const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Converter)';
-    const canRun = isMediaSaved; 
+    
+    // 🛑 ИСПРАВЛЕНО: Теперь используем isPhotoSaved
+    const canRun = isPhotoSaved; 
+    
+    // Media Status Line
+    const mediaStatusLine = isPhotoSaved ? `✅ **${mediaType}** загружено.` : `⚠️ **${mediaType}** не загружено.`;
+    
+    // Media Action (Кнопка загрузки/просмотра)
+    const mediaAction = isPhotoSaved ? `💾 Посмотреть загруженное фото` : `📸 Загрузить фото`;
+    const mediaCallback = isPhotoSaved ? 'cmd:/view_saved_photo' : 'cmd:/upload_photo'; 
 
     // Углы для поворота
     const angles = ['90', '-90', '180'];
     
     let keyboard = [];
-    // ... (Главное меню, Баланс)
+    
+    keyboard.push([{ text: "🏠 Главное меню /start", callback_data: "start_command" }]);
+    keyboard.push([{ text: '💰 Управление балансом', callback_data: 'show_balance' }]);
     
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
@@ -9385,7 +9402,8 @@ async function getResizeImageMenuKeyboard(chatId, storage, prompt, isPhotoSaved,
             callback_data: 'dummy_i2r_active' 
         },
         { 
-            text: '📺 Видео → Изменить размер', 
+            // 🛑 ИСПРАВЛЕНО: Отображаем статус наличия видео в кнопке переключения
+            text: `${isVideoSaved ? '✅ ' : '📺 '} Видео → Изменить размер`, 
             callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE}` 
         }
     ]);
@@ -9400,13 +9418,13 @@ async function getResizeImageMenuKeyboard(chatId, storage, prompt, isPhotoSaved,
     }));
     keyboard.push(angleButtons);
 
-    // Добавим кнопку для ресайза изображения, если это необходимо
+    // Добавим кнопку для ресайза изображения
     keyboard.push([{ 
         text: '🔄 Изменить размер фото до 1280px (MAX)', 
         callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|MAX_RESIZE` 
     }]);
     
-    // 3. Статус медиа и Запуск
+    // 3. Статус медиа
     keyboard.push([
         { text: mediaAction, callback_data: mediaCallback }
     ]);
@@ -9416,24 +9434,24 @@ async function getResizeImageMenuKeyboard(chatId, storage, prompt, isPhotoSaved,
         { 
             text: canRun ? `🚀 ${actionText} / Ресайз сейчас` : `🚫 Недоступно: Загрузите ${mediaType}`, 
             callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE}|90` : 'dummy_cannot_run_resize' 
-            // По умолчанию при нажатии на ROCKET делаем поворот на 90
         }
     ]);
     
-    // ... (Текст сообщения)
-    
-    let messageText = `
+    // --- ТЕКСТ СООБЩЕНИЯ ---
+    const description = `
 📐 **Меню Поворота/Ресайза фото (Image-to-Rotate/Resize)**
 
 ❔ **Как это работает:**
 Вы можете повернуть загруженную **фотографию** (90°, -90°, 180°) или изменить ее размер. Используется ваш Leshiy Media Converter.
 
 Текущий режим: **${displayName}**
-... (Остальной текст)
 `;
-    // ... (Сборка финального сообщения)
+    
+    const statusLine = `💰 **Баланс:** ${balanceStatus}`;
+    let messageText = `${description}\n${mediaStatusLine}\n\n${statusLine}\n${priceLine}\n\nВыберите угол поворота/ресайз и нажмите на кнопку (или 🚀 для поворота 90°)!`;
 
-    return { messageText: finalMessage, keyboardObject: { inline_keyboard: keyboard } };
+
+    return { messageText: messageText, keyboardObject: { inline_keyboard: keyboard } };
 }
 
 /**
@@ -9458,10 +9476,15 @@ async function getResizeVideoMenuKeyboard(chatId, storage, prompt, isPhotoSaved,
     const calculatedPriceCredits = 0; 
     const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Converter)';
     
-    const mediaAction = isMediaSaved ? `💾 Посмотреть загруженное медиа` : `📸 Загрузить видео`;
-    // Если медиа сохранено, мы можем показать, что оно доступно для ресайза
-    const mediaCallback = isMediaSaved ? 'cmd:/view_saved_media' : 'cmd:/upload_video'; 
-    const canRun = isMediaSaved; 
+    // 🛑 ИСПРАВЛЕНО: Теперь используем isVideoSaved
+    const canRun = isVideoSaved; 
+    
+    // Media Status Line
+    const mediaStatusLine = isVideoSaved ? `✅ **${mediaType}** загружено.` : `⚠️ **${mediaType}** не загружено.`;
+
+    // Media Action (Кнопка загрузки/просмотра)
+    const mediaAction = isVideoSaved ? `💾 Посмотреть загруженное видео` : `📸 Загрузить видео`;
+    const mediaCallback = isVideoSaved ? 'cmd:/view_saved_video' : 'cmd:/upload_video'; 
 
     // Добавляем выбор разрешения
     const resolutions = ['240p', '360p', '480p', '720p', '1080p'];
@@ -9474,7 +9497,8 @@ async function getResizeVideoMenuKeyboard(chatId, storage, prompt, isPhotoSaved,
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
         { 
-            text: '🖼️ Фото → Изменить размер', 
+            // 🛑 ИСПРАВЛЕНО: Отображаем статус наличия фото в кнопке переключения
+            text: `${isPhotoSaved ? '✅ ' : '🖼️ '} Фото → Изменить размер`, 
             callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE}` 
         },
         { 
@@ -9523,8 +9547,6 @@ async function getResizeVideoMenuKeyboard(chatId, storage, prompt, isPhotoSaved,
 `;
     
     const statusLine = `💰 **Баланс:** ${balanceStatus}`;
-    const mediaStatusLine = isMediaSaved ? `✅ **${mediaType}** загружено.` : `⚠️ **${mediaType}** не загружено.`;
-    
     let messageText = `${description}\n${mediaStatusLine}\n\n${statusLine}\n${priceLine}\n\nВыберите разрешение и нажмите на кнопку с этим разрешением (или 🚀 для 480p)!`;
 
     return { messageText: messageText, keyboardObject: { inline_keyboard: keyboard } };
