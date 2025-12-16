@@ -810,6 +810,16 @@ function createWavFile(pcmBuffer) {
     return buffer;
 }
 
+// Для разбивки массива кнопок на ряды (та же функция)
+function chunkArray(array, chunkSize) {
+    const results = [];
+    let tempArray = [...array]; 
+    while (tempArray.length) {
+        results.push(tempArray.splice(0, chunkSize));
+    }
+    return results;
+}
+
 /**
  * Utility функция для блокирующего ожидания.
  */
@@ -2627,22 +2637,19 @@ async function getCurrentMediaData(chatId, envData, storage, isVideoMode) {
  * @param {number} targetHeight - Высота, указанная на кнопке (например, 720).
  * @returns {string} Иконка или пустая строка.
  */
-function getResolutionIcon(currentHeight, targetHeight) {
-    if (!currentHeight || !targetHeight) {
-        return '';
-    }
-    // Если высота файла совпадает с высотой кнопки
-    if (currentHeight === targetHeight) {
-        return '✅';
-    }
-    // Если высота файла больше, и это максимально доступная кнопка (1080p),
-    // но кнопка 1080p не соответствует текущему размеру (например, 4K),
-    // то мы ставим галочку на максимальной кнопке.
-    // Это опционально, но полезно для UX:
-    if (targetHeight === 1080 && currentHeight > 1080) {
+function getResolutionIcon(currentHeight, targetHeight, allResolutions) {
+    if (!currentHeight || !targetHeight) return '';
+    
+    // 1. Прямое совпадение
+    if (currentHeight === targetHeight) return '✅';
+    
+    // 2. Определение максимальной кнопки
+    const maxTargetHeight = Math.max(...Object.values(allResolutions));
+    
+    // 3. Если файл больше, чем максимальная кнопка, ставим галочку на максимальной кнопке.
+    if (targetHeight === maxTargetHeight && currentHeight > maxTargetHeight) {
          return '✅';
     }
-
     return '';
 }
 
@@ -9415,154 +9422,104 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
 }
 
 /**
- * @description Генерирует меню для поворота изображения (I2R).
- * Мы используем "Resize/Rotate" в широком смысле.
+ * @description Генерирует клавиатуру для меню изменения размера/поворота ФОТО.
+ * @param {number} chatId ID чата.
+ * @param {Object} envData Объект переменных окружения (константы).
+ * @param {string|null} lastError Последняя ошибка для отображения в меню.
+ * @param {boolean} isPhotoSaved Статус наличия фото в KV.
+ * @param {boolean} isVideoSaved Статус наличия видео в KV.
+ * @param {Object} storage KV-биндинг (LAST_PHOTO_STORAGE).
+ * @returns {Object} { messageText, keyboardObject }
  */
-async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved, isVideoSaved, storage) {
-    // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
-    let balanceStatus = '...';
-    try {
-        balanceStatus = await getCurrentCreditBalance(chatId, storage);
-    } catch (e) {
-        balanceStatus = 'Ошибка чтения'; 
-    }
-    // 1. ПОЛУЧАЕМ ТЕКУЩИЕ ДАННЫЕ МЕДИА
-    // 🛑 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Здесь должен быть вызов getCurrentMediaData
-    const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false); // false = фото
+async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     
-    // Получаем текущую высоту (если данные существуют)
-    const currentHeight = currentMediaData ? currentMediaData.height : null;
+    // 🛑 ИСПОЛЬЗУЕМ ВАШИ КОНСТАНТЫ
+    const RESOLUTIONS_HEIGHT = envData.RESOLUTIONS_HEIGHT || {
+        '240p': 240, '360p': 360, '480p': 480, '720p': 720, '1080p': 1080
+    };
+    const ROTATE_ANGLES = envData.ROTATE_ANGLES || [
+        { text: '↪️ 90° влево', param: '-90' },
+        { text: '🔃 180° поворот', param: '180' },
+        { text: '↩️ 90° вправо', param: '90' }
+    ];
+    // --- Конец ваших констант ---
 
-    // --- ПОЛУЧЕНИЕ ТЕКУЩИХ РАЗМЕРОВ ФОТО ---
-    let currentPhotoData = null;
-    let currentWidth = 0;
-    if (isPhotoSaved) {
-        // storage теперь передается и не вызывает ошибку 'get'
-        currentPhotoData = await getCurrentMediaData(chatId, envData, storage, false); 
-        currentHeight = currentPhotoData ? currentPhotoData.height : 0;
-        currentWidth = currentPhotoData ? currentPhotoData.width : 0;
+    // 1. Получение текущих данных медиа
+    const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false);
+    const currentHeight = currentMediaData ? currentMediaData.height : null;
+    const currentWidth = currentMediaData ? currentMediaData.width : null;
+
+    let messageText = "🖼️ **Ресайз / Поворот Фото**\n\n";
+
+    if (lastError) {
+        messageText += `❌ **Ошибка:** ${lastError}\n\n`;
     }
-    const currentRatio = currentWidth && currentHeight ? currentWidth / currentHeight : 1;
-    // 2. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА
-    const resolutionButtons = IMAGE_RESIZE_RESOLUTIONS.map(res => {
-        const [heightString] = res.split('p');
-        const targetHeight = parseInt(heightString);
+
+    if (!isPhotoSaved) {
+        messageText += "⚠️ Для начала работы отправьте мне фотографию (или файл-изображение).";
+        return { messageText, keyboardObject: { inline_keyboard: [] } };
+    }
+
+    messageText += `Текущее фото: ${currentWidth}x${currentHeight} пикселей.\n\n`;
+    messageText += "Выберите размер для сжатия (уменьшения) или поворот:";
+
+    // --- 2. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА ---
+    
+    // Получаем список ключей: ['240p', '360p', ...]
+    const resolutionKeys = Object.keys(RESOLUTIONS_HEIGHT);
+    
+    const resolutionButtons = resolutionKeys.map(resKey => {
+        // Получаем целевую высоту (например, 720 из '720p')
+        const targetHeight = RESOLUTIONS_HEIGHT[resKey];
         
-        // 🛑 ИСПРАВЛЕНИЕ: Вызываем функцию для получения иконки
-        const icon = getResolutionIcon(currentHeight, targetHeight); 
+        // 🛑 ИСПОЛЬЗОВАНИЕ: getResolutionIcon
+        const icon = getResolutionIcon(currentHeight, targetHeight, RESOLUTIONS_HEIGHT); 
+        
+        const RESIZE_IMAGE_MODE = envData.RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
         
         return {
-            text: `${icon} ${res}`,
-            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${res}`
+            text: `${icon} ${resKey}`,
+            // resKey будет передан как параметр (например, '720p')
+            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${resKey}` 
         };
     });
-    // --- ТЕКСТ и КЛАВИАТУРА ---
-    const activeIcon = '✅ ';
-    const displayName = '🖼️ Фото → Поворот/Изменение размера';
-    const mediaType = 'Фото';
-    // Media Status Line
-    const mediaStatusLine = isPhotoSaved ? `✅ **${mediaType}** загружено.` : `⚠️ **${mediaType}** не загружено.`;
-    const canRun = isPhotoSaved;
-    
-    const calculatedPriceCredits = 0; 
-    const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Media Converter)';
-    
-    // Media Action (Кнопка загрузки/просмотра)
-    const mediaAction = isPhotoSaved ? `💾 Посмотреть загруженное фото` : `📸 Загрузить фото`;
-    const mediaCallback = isPhotoSaved ? 'cmd:/view_saved_photo' : 'cmd:/upload_photo'; 
 
-    // Углы для поворота
-    const angles = ['↪️ 90° влево', '🔃 180° поворот', '↩️ 90° вправо'];
+    // --- 3. ГЕНЕРАЦИЯ КНОПОК ПОВОРОТА ---
     
-    let keyboard = [];
+    const rotateButtons = ROTATE_ANGLES.map(angle => {
+        const icon = angle.text.startsWith('↪️') ? '↪️' : angle.text.startsWith('🔃') ? '🔃' : '↩️';
+        const ROTATE_IMAGE_MODE = envData.ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
+
+        return {
+            text: angle.text, // Полный текст кнопки (например, '↪️ 90° влево')
+            // param будет передан как параметр (например, '-90')
+            callback_data: `generate_resize_now|${ROTATE_IMAGE_MODE}|${angle.param}` 
+        };
+    });
     
-    keyboard.push([{ text: "🏠 Главное меню /start", callback_data: "start_command" }]);
-    keyboard.push([{ text: '💰 Управление балансом', callback_data: 'show_balance' }]);
+    // --- 4. РЯД РЕЖИМОВ (Переключение) ---
     
-    // 1. РЯД РЕЖИМОВ (Переключение)
-    keyboard.push([
-        // Текущий активный режим
-        { text: activeIcon + displayName, callback_data: 'dummy_i2r_active' },
+    const activeIcon = '✅';
+    const RESIZE_VIDEO_MODE = envData.RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
+    
+    const modeSwitchRow = [
+        { text: activeIcon + ' 🖼️ Фото: Ресайз/Поворот', callback_data: 'dummy_i2r_active' },
         { 
-            // 🛑 ИСПРАВЛЕНО: Убираем проверку isVideoSaved. Оставляем только иконку 📺.
             text: `📺 Видео → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE}` 
         },
-    ]);
-    
-    // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ (РЕСАЙЗ)
-    keyboard.push([{ text: "⚙️ Выберите разрешение фото (WxH):", callback_data: 'dummy_resolutions_header' }]);
+    ];
 
-    // 🛑 ЛОГИКА ВЫЧИСЛЕНИЯ WxH И РЕСАЙЗА
-    const resButtons = Object.keys(RESOLUTIONS_HEIGHT).map(key => {
-        const targetHeight = RESOLUTIONS_HEIGHT[key];
-        
-        // Вычисляем новую ширину, сохраняя соотношение
-        let targetWidth = Math.round(targetHeight * currentRatio);
-        
-        // Формат WxH
-        const buttonTextFormat = `${targetWidth}x${targetHeight}`; 
-        
-        // Определяем иконку
-        const icon = isPhotoSaved ? getResolutionIcon(currentHeight, targetHeight) : '';
-        
-        return {
-            // Отображаем WxH
-            text: `${icon}${buttonTextFormat}`, 
-            // Передаем целевую высоту (240p) в колбэк
-            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${key}` 
-        };
-    });
+    // --- 5. КОМПОНОВКА КЛАВИАТУРЫ ---
     
-    // Создаем ряды: [W1xH1, W2xH2, W3xH3], [W4xH4, W5xH5]
-    for (let i = 0; i < resButtons.length; i += 3) {
-        keyboard.push(resButtons.slice(i, i + 3));
-    }
-    
-    // 3. СТРОКА ВЫБОРА УГЛА ПОВОРОТА (РОТЭЙТ)
-    keyboard.push([{ text: "⚙️ Выберите угол поворота:", callback_data: 'dummy_angle_header' }]);
-    
-    const angleButtons = ROTATE_ANGLES.map(angle => ({
-        text: angle.text, 
-        // 🛑 ИСПРАВЛЕНО: Теперь используем ROTATE_IMAGE_MODE
-        callback_data: `generate_resize_now|${ROTATE_IMAGE_MODE}|${angle.param}` 
-    }));
-    keyboard.push(angleButtons);
-    
-    // 3. Статус медиа
-    keyboard.push([
-        { text: mediaAction, callback_data: mediaCallback }
-    ]);
+    const keyboard = [
+        modeSwitchRow,
+        ...chunkArray(resolutionButtons, 3), 
+        ...chunkArray(rotateButtons, 3),
+        [{ text: '❌ Отмена / Закрыть', callback_data: 'close_menu' }]
+    ];
 
-    // 4. Кнопка Запуска
-    const defaultResParam = '720p'; // По умолчанию для фото
-    keyboard.push([
-        { 
-            text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Недоступно: Загрузите ${mediaType}`, 
-            callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE}|${defaultResParam}` : 'dummy_cannot_run_resize' 
-        }
-    ]);
-    
-    // --- ТЕКСТ СООБЩЕНИЯ ---
-    // 🛑 ДОБАВЛЕНО: Инфо о текущем размере
-    let currentSizeLine = currentPhotoData 
-        ? `**Текущий размер:** 📐 ${currentWidth}x${currentHeight}`
-        : '';
-    const description = `
-📐 **Меню Поворота/Ресайза фото (Image-to-Rotate/Resize)**
-
-❔ **Как это работает:**
-Вы можете повернуть загруженную **фотографию** (90°, -90°, 180°) или изменить ее размер. Используется Leshiy Media Converter.
-
-${currentSizeLine}
-Текущий режим: **${displayName}**
-`;
-    
-    const statusLine = `💰 **Баланс:** ${balanceStatus}`;
-    let messageText = `${description}\n${mediaStatusLine}\n\n${statusLine}\n${priceLine}\n\nВыберите угол поворота/ресайз и нажмите на кнопку (или 🚀 для поворота 90°)!`;
-
-
-    return { messageText: messageText, keyboardObject: { inline_keyboard: keyboard } };
+    return { messageText, keyboardObject: { inline_keyboard: keyboard } };
 }
 
 /**
