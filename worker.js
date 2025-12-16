@@ -141,7 +141,9 @@ const DEFAULT_VOICE = VOICE_MALE;
 const SET_BASE_CALLBACK = 'setbase_'; 
 const SET_VIDEO_BASE_CALLBACK = 'set_V_base_';
 const RESIZE_VIDEO_MODE = 'VIDEO_TO_RESIZE';
+const ROTATE_VIDEO_MODE = 'VIDEO_TO_ROTATE';
 const RESIZE_IMAGE_MODE = 'IMAGE_TO_RESIZE';
+const ROTATE_IMAGE_MODE = 'IMAGE_TO_ROTATE';
 // Реализация поворота медиаконтента
 const ROTATE_LEFT_CALLBACK = 'rot_L_'; // Поворот против часовой (на 90 градусов)
 const ROTATE_RIGHT_CALLBACK = 'rot_R_'; // Поворот по часовой (на 90 градусов)
@@ -2603,11 +2605,13 @@ async function getFileLink(file_id, TELEGRAM_BOT_TOKEN) {
 // Функция для получения текущего медиа-объекта
 async function getCurrentMediaData(chatId, envData, storage, isVideoMode) {
     const chatKey = chatId.toString();
+    // 🛑 Здесь используется правильный ключ KV для получения данных.
     const dataKey = isVideoMode 
         ? chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX
         : chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX;
         
-    const rawData = await storage.get(dataKey, { type: 'text' });
+    // 🛑 Используем ПРАВИЛЬНЫЙ storage (который является объектом KV)
+    const rawData = await storage.get(dataKey, { type: 'text' }); 
     if (!rawData) return null;
     
     try {
@@ -9452,6 +9456,11 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
             // 🛑 ИСПРАВЛЕНИЕ ЭМОДЗИ: Отображаем статус наличия видео
             text: `${isVideoSaved ? '✅ ' : '📺 '} Видео → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE}` 
+        },
+        { 
+            // Активный режим (Фото)
+            text: activeIcon + displayName, 
+            callback_data: 'dummy_i2r_active' 
         }
     ]);
     
@@ -9581,11 +9590,16 @@ async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
         { 
-            // ✅ ИСПРАВЛЕНИЕ ЭМОДЗИ: Отображаем статус наличия фото
+            // 🛑 ИСПРАВЛЕНО: Убираем '✅ ', если activeIcon уже стоит на другом режиме. 
+            // Используем '🖼️ ' (Фото) или '✅ ' (Фото загружено)
             text: `${isPhotoSaved ? '✅ ' : '🖼️ '} Фото → Ресайз/Поворот`, 
             callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE}` 
         },
-        { text: activeIcon + displayName, callback_data: 'dummy_v2r_active' }
+        { 
+            // Активный режим (Видео)
+            text: activeIcon + displayName, 
+            callback_data: 'dummy_v2r_active' 
+        }
     ]);
 
     // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ (РЕСАЙЗ)
@@ -9608,10 +9622,10 @@ async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     
     // 3. СТРОКА ВЫБОРА УГЛА ПОВОРОТА (РОТЭЙТ)
     keyboard.push([{ text: "⚙️ Выберите угол поворота:", callback_data: 'dummy_angle_header' }]);
-    
+
     const angleButtons = ROTATE_ANGLES.map(angle => ({
         text: angle.text, 
-        // 🛑 ИСПРАВЛЕНО: Теперь используем ROTATE_VIDEO_MODE
+        // Используем ROTATE_VIDEO_MODE
         callback_data: `generate_resize_now|${ROTATE_VIDEO_MODE}|${angle.param}` 
     }));
     keyboard.push(angleButtons);
@@ -15070,7 +15084,7 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
 async function sendMediaToConverterInBackground(chatId, fileId, originalMessageId, mode, param, envData, token, ctx, originalReplyMarkup = null) {
     const RENDER_HOST_URL = envData.LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
     const isVideo = mode === RESIZE_VIDEO_MODE;
-    const mediaType = isVideo ? 'видео' : 'фото';
+    let mediaType = isVideo ? 'видео' : 'фото';
     const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
 
     let endpoint = '';
@@ -15212,62 +15226,77 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
 
 /**
  * @description Обновляет KV с новым file_id, метаданными и base64 после обработки Render-сервисом.
- * * @param {number} chatId - ID чата.
- * @param {object} newMediaObject - Объект фото/видео из ответа Telegram editMessageMedia.
+ * @param {number} chatId - ID чата.
+ * @param {object} newMediaObject - Объект фото/видео из ответа Telegram (содержит file_id, width, height нового файла).
  * @param {ArrayBuffer} processedBuffer - Байты обработанного медиа.
- * @param {string} mode - Режим (RESIZE_VIDEO_MODE или RESIZE_IMAGE_MODE).
+ * @param {string} mode - Режим (RESIZE_VIDEO_MODE, ROTATE_IMAGE_MODE и т.д. - глобальные константы).
  * @param {string} param - Параметр (разрешение '720p' или угол '90').
- * @param {Object} storage - KV-биндинг (LAST_PHOTO_STORAGE).
+ * @param {Object} envData - Объект окружения (содержит KV-биндинг LAST_PHOTO_STORAGE, суффиксы и ctx).
  */
 async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData) {
-    // 💡 Предполагаем, что envData.LAST_IMAGE_DATA_KEY_SUFFIX и envData.LAST_VIDEO_DATA_KEY_SUFFIX 
-    // доступны в области видимости или переданы как часть envData.
-    const storage = envData.LAST_PHOTO_STORAGE;
-    const isVideo = mode === RESIZE_VIDEO_MODE;
+    // 💡 ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЕ КОНСТАНТЫ
+    const isVideo = mode === RESIZE_VIDEO_MODE || mode === ROTATE_VIDEO_MODE;
+    
+    // Получаем KV-биндинг
+    const storage = envData.LAST_PHOTO_STORAGE; 
     const chatKey = chatId.toString();
-    
-    // Определяем ключ для сохранения, используя суффиксы из envData
-    const KV_KEY = isVideo 
-        ? chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX // Если есть отдельный суффикс для видео
-        : chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
 
-    const newFileId = newMediaObject.file_id;
+    // 1. Определяем ключ KV для сохранения, используя суффиксы
+    const suffix = isVideo 
+        ? envData.LAST_VIDEO_DATA_KEY_SUFFIX 
+        : envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
+    const KV_KEY = chatKey + suffix; 
     
-    // 1. Читаем текущие данные
+    const newFileId = newMediaObject.file_id;
+
+    if (!newFileId) {
+        envData.ctx.waitUntil(logDebug('KV_UPDATE', `[${chatId}] Не удалось обновить KV: отсутствует newFileId.`, envData));
+        return;
+    }
+    
+    // 2. Читаем текущие данные
     const rawData = await storage.get(KV_KEY);
     let currentData = {};
     try {
         currentData = rawData ? JSON.parse(rawData) : {};
     } catch (e) {
-        console.warn("KV data corrupted, starting fresh.");
+        envData.ctx.waitUntil(logDebug('KV_UPDATE', `[${chatId}] KV data corrupted, starting fresh.`, envData));
     }
 
-    // 2. Конвертация ArrayBuffer в Base64
-    const base64Content = arrayBufferToBase64(processedBuffer);
+    // 3. Конвертация ArrayBuffer в Base64
+    const base64Content = arrayBufferToBase64(processedBuffer); 
     const mimePrefix = isVideo ? 'data:video/mp4;base64,' : 'data:image/jpeg;base64,';
     
-    // 3. Обновление метаданных
+    // 4. Обновление метаданных
     currentData.file_id = newFileId;
     currentData.base64 = mimePrefix + base64Content;
     
-    // Обновляем технические метаданные, используя данные из ответа Telegram
+    // Обновляем технические метаданные, используя данные из ответа Telegram (newMediaObject)
     currentData.width = newMediaObject.width || currentData.width || null;
     currentData.height = newMediaObject.height || currentData.height || null;
     currentData.file_size = newMediaObject.file_size || currentData.file_size || null;
     currentData.mime_type = newMediaObject.mime_type || currentData.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg');
-
-    // Если это поворот (не ресайз), обновляем угол
-    if (mode === RESIZE_IMAGE_MODE && param !== 'MAX_RESIZE') {
-         // Предполагаем, что param — это строка ('90', '-90', '180')
-         currentData.rotation = (currentData.rotation || 0) + parseInt(param);
+    
+    // Если это поворот, обновляем угол (предполагаем, что param — это угол, а не размер)
+    if (mode === ROTATE_IMAGE_MODE || mode === ROTATE_VIDEO_MODE) {
+        // Добавляем новый угол к текущему
+        const newRotation = (currentData.rotation || 0) + parseInt(param);
+        currentData.rotation = newRotation % 360; // Нормализуем угол
+        
+        // При повороте размеры WxH могут поменяться местами (90/270 градусов)
+        if (Math.abs(parseInt(param)) % 180 !== 0) {
+            [currentData.width, currentData.height] = [currentData.height, currentData.width];
+        }
     }
     
     // Если это видео, обновляем длительность
     if (isVideo && newMediaObject.duration) {
-         currentData.duration = newMediaObject.duration;
+        currentData.duration = newMediaObject.duration;
     }
 
-    // 4. Сохраняем обратно в KV (TTL 1 час)
+    envData.ctx.waitUntil(logDebug('KV_UPDATE', `[${chatId}] Обновляю KV для ${isVideo ? 'видео' : 'фото'} (Key: ${KV_KEY})`, envData));
+
+    // 5. Сохраняем обратно в KV (TTL 1 час)
     await storage.put(KV_KEY, JSON.stringify(currentData), { expirationTtl: 3600 });
 }
 
