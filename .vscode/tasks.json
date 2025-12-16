@@ -2,17 +2,11 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Open Worker Preview in Browser",
+      "label": "Show Preview Link",
       "type": "shell",
-      "command": "open https://gemini-photo-bot.leshiyalex.workers.dev",
-      "windows": {
-        "command": "start https://gemini-photo-bot.leshiyalex.workers.dev"
-      },
-      "linux": {
-        "command": "xdg-open https://gemini-photo-bot.leshiyalex.workers.dev"
-      },
+      "command": "echo \"🌐 Превью вашего Worker'а: https://gemini-photo-bot.leshiyalex.workers.dev/\"",
       "problemMatcher": [],
-      "group": "none"
+      "group": "build"
     }
   ]
 }
