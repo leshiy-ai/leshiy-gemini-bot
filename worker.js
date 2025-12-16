@@ -9397,117 +9397,116 @@ async function getUpscaleImageMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPr
  * @returns {Promise<{messageText: string, keyboardObject: object}>}
  */
 async function getUpscaleVideoMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPrompt, isMediaSaved) { 
+    const KEY_VIDEO_TO_UPSCALE = 'VIDEO_TO_UPSCALE_KIEAI';
+    const activeMode = 'VIDEO_TO_UPSCALE';
+    // Предполагаем, что AI_MODELS — глобальная константа
+    const baseModelConfig = AI_MODELS[KEY_VIDEO_TO_UPSCALE]; 
     
-        const KEY_VIDEO_TO_UPSCALE = 'VIDEO_TO_UPSCALE_KIEAI';
-        const activeMode = 'VIDEO_TO_UPSCALE';
-        // Предполагаем, что AI_MODELS — глобальная константа
-        const baseModelConfig = AI_MODELS[KEY_VIDEO_TO_UPSCALE]; 
-        
-        const chatKey = chatId.toString();
-        // ✅ Используем ГЛОБАЛЬНЫЕ суффиксы (Убедитесь, что они определены)
-        const LAST_VIDEO_TASK_KEY = chatKey + LAST_ACTIVE_VIDEO_KEY_SUFFIX; 
-        
-        // --- 1. ЧТЕНИЕ Task ID из KV ---
-        const previousTaskId = await LAST_PHOTO_STORAGE.get(LAST_VIDEO_TASK_KEY);
-        const isTaskValid = previousTaskId && typeof previousTaskId === 'string'; // Флаг доступности Task ID
+    const chatKey = chatId.toString();
+    // ✅ Используем ГЛОБАЛЬНЫЕ суффиксы (Убедитесь, что они определены)
+    const LAST_VIDEO_TASK_KEY = chatKey + LAST_ACTIVE_VIDEO_KEY_SUFFIX; 
+    
+    // --- 1. ЧТЕНИЕ Task ID из KV ---
+    const previousTaskId = await LAST_PHOTO_STORAGE.get(LAST_VIDEO_TASK_KEY);
+    const isTaskValid = previousTaskId && typeof previousTaskId === 'string'; // Флаг доступности Task ID
+
+    // --- 2. ИСПРАВЛЕННЫЙ РАСЧЕТ ЦЕНЫ ---
+    let calculatedPriceCredits = 0;
+    
+    // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Проверяем, является ли pricing числом (статическая цена)
+    if (typeof baseModelConfig.pricing === 'number' && baseModelConfig.pricing > 0) {
+        // Используем статическую цену напрямую
+        calculatedPriceCredits = baseModelConfig.pricing; // --> Получим 10.0
+    }
+    // --- КОНЕЦ ИСПРАВЛЕННОГО РАСЧЕТА ЦЕНЫ ---
+    
+    // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
+    let balanceStatus = '...';
+    try {
+        // Предполагаем, что getCurrentCreditBalance - глобальная
+        balanceStatus = await getCurrentCreditBalance(chatId, LAST_PHOTO_STORAGE);
+    } catch (e) {
+        balanceStatus = 'Ошибка чтения'; 
+    }
+    
+    // --- ТЕКСТ и КЛАВИАТУРА ---
+    const activeIcon = '✅ ';
+    const displayName = '📺 Видео → Апскейл';
+    const mediaType = 'Видео';
+    const actionText = "Запустить Апскейл (V2U)";
+    const currentModelName = baseModelConfig.MODEL;
+    // Запуск V2U требует сохраненный Task ID.
+    const canRun = isTaskValid; 
+
+    const priceLine = calculatedPriceCredits > 0 
+        ? `💸 **Цена:** ${formatPrice(calculatedPriceCredits)}` 
+        : '💸 **Цена:** Бесплатно';
+        
+    
+    let keyboard = [];
+    keyboard.push([{ text: "🏠 Главное меню /start", callback_data: "start_command" }]);
+    keyboard.push([{ text: '💰 Управление балансом', callback_data: 'show_balance' }]);
+    
+    // 1. РЯД РЕЖИМОВ (Переключение)
+    keyboard.push([
+        { 
+            text: '🔍 Фото → Апскейл', 
+            callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' 
+        },
+        { 
+            text: activeIcon + displayName, 
+            callback_data: 'dummy_v2u_active' 
+        }
+    ]);
     
-        // --- 2. ИСПРАВЛЕННЫЙ РАСЧЕТ ЦЕНЫ ---
-        let calculatedPriceCredits = 0;
-        
-        // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Проверяем, является ли pricing числом (статическая цена)
-        if (typeof baseModelConfig.pricing === 'number' && baseModelConfig.pricing > 0) {
-            // Используем статическую цену напрямую
-            calculatedPriceCredits = baseModelConfig.pricing; // --> Получим 10.0
-        }
-        // --- КОНЕЦ ИСПРАВЛЕННОГО РАСЧЕТА ЦЕНЫ ---
-        
-        // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
-        let balanceStatus = '...';
-        try {
-            // Предполагаем, что getCurrentCreditBalance - глобальная
-            balanceStatus = await getCurrentCreditBalance(chatId, LAST_PHOTO_STORAGE);
-        } catch (e) {
-            balanceStatus = 'Ошибка чтения'; 
-        }
-        
-        // --- ТЕКСТ и КЛАВИАТУРА ---
-        const activeIcon = '✅ ';
-        const displayName = '📺 Видео → Апскейл';
-        const mediaType = 'Видео';
-        const actionText = "Запустить Апскейл (V2U)";
-        const currentModelName = baseModelConfig.MODEL;
-        // Запуск V2U требует сохраненный Task ID.
-        const canRun = isTaskValid; 
+    // 2. СТРОКА СТАТУСА Task ID
+    const taskStatusText = isTaskValid ? 
+        `✅ Task ID Доступен (Нажмите, чтобы проверить)` : 
+        `❌ Task ID не найден (Нужно выполнить T2V/I2V)`;
     
-        const priceLine = calculatedPriceCredits > 0 
-            ? `💸 **Цена:** ${formatPrice(calculatedPriceCredits)}` 
-            : '💸 **Цена:** Бесплатно';
-            
-        
-        let keyboard = [];
-        keyboard.push([{ text: "🏠 Главное меню /start", callback_data: "start_command" }]);
-        keyboard.push([{ text: '💰 Управление балансом', callback_data: 'show_balance' }]);
-        
-        // 1. РЯД РЕЖИМОВ (Переключение)
-        keyboard.push([
-            { 
-                text: '🔍 Фото → Апскейл', 
-                callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' 
-            },
-            { 
-                text: activeIcon + displayName, 
-                callback_data: 'dummy_v2u_active' 
-            }
-        ]);
-        
-        // 2. СТРОКА СТАТУСА Task ID
-        const taskStatusText = isTaskValid ? 
-            `✅ Task ID Доступен (Нажмите, чтобы проверить)` : 
-            `❌ Task ID не найден (Нужно выполнить T2V/I2V)`;
-        
-        //if (isTaskAvailable) {
-        keyboard.push(
-            [{
-                text: isTaskValid ? "💾 Просмотр активного задания" : "▶️ Получить активное задание ",
-                callback_data: isTaskValid ? `checkvideo|${previousTaskId.substring(0, 32)}` : `cmd:/checkvideo`
-            }]
-        );
-        /*/ 3. Кнопки Медиа и Промпт (Оставлены для удобства)
-        if (isMediaSaved) {
-            keyboard.push([
-                { text: `💾 Посмотреть загруженное ${mediaType}`, callback_data: 'cmd:/view_saved_video' }
-            ]);
-        }*/
-        keyboard.push([{ text: "✏️ Меню работы с промптом (/prompt)", callback_data: 'cmd:/prompt' }]);    
-        
-        // 4. Кнопка Запуска
-        keyboard.push([
-            { 
-                text: canRun ? `🚀 ${actionText} сейчас` : `🚫 Недоступно: Нужен Task ID`, 
-                callback_data: canRun ? `generate_upscale_now|${activeMode}` : 'dummy_cannot_run_upscale' 
-            }
-        ]);
-    
-        // --- ТЕКСТ СООБЩЕНИЯ ---
-    
-        const taskStatusLine = isTaskValid ? 
-            `✅ **Task ID доступен**. Видео готово к апскейлу.` : 
-            `❌ **Task ID не найден**. Сначала сгенерируйте видео в режиме T2V или I2V.`;
-        
-        let messageText = `🆙 **Меню увеличения разрешения видео (Video-to-Upscale)**
-    
+    //if (isTaskAvailable) {
+    keyboard.push(
+        [{
+            text: isTaskValid ? "💾 Просмотр активного задания" : "▶️ Получить активное задание ",
+            callback_data: isTaskValid ? `checkvideo|${previousTaskId.substring(0, 32)}` : `cmd:/checkvideo`
+        }]
+    );
+    /*/ 3. Кнопки Медиа и Промпт (Оставлены для удобства)
+    if (isMediaSaved) {
+        keyboard.push([
+            { text: `💾 Посмотреть загруженное ${mediaType}`, callback_data: 'cmd:/view_saved_video' }
+        ]);
+    }*/
+    keyboard.push([{ text: "✏️ Меню работы с промптом (/prompt)", callback_data: 'cmd:/prompt' }]);    
+    
+    // 4. Кнопка Запуска
+    keyboard.push([
+        { 
+            text: canRun ? `🚀 ${actionText} сейчас` : `🚫 Недоступно: Нужен Task ID`, 
+            callback_data: canRun ? `generate_upscale_now|${activeMode}` : 'dummy_cannot_run_upscale' 
+        }
+    ]);
+
+    // --- ТЕКСТ СООБЩЕНИЯ ---
+
+    const taskStatusLine = isTaskValid ? 
+        `✅ **Task ID доступен**. Видео готово к апскейлу.` : 
+        `❌ **Task ID не найден**. Сначала сгенерируйте видео в режиме T2V или I2V.`;
+    
+    let messageText = `🆙 **Меню увеличения разрешения видео (Video-to-Upscale)**
+
 ❔ **Как это работает:**
 Нейросеть увеличивает разрешение уже **сгенерированного вами видео** (по его Task ID) до Full-HD **720p** максимум.
 
 Текущий режим: **${displayName}**
 
 ${taskStatusLine}
-    `;
-        const statusLine = `💰 **Баланс:** ${balanceStatus}`;
-        const finalMessage = `${messageText}\n${statusLine}\n${priceLine}\n\nНажмите 🚀 **${actionText} сейчас**!`;
-    
-        return { messageText: finalMessage, keyboardObject: { inline_keyboard: keyboard } };
-    }
+`;
+    const statusLine = `💰 **Баланс:** ${balanceStatus}`;
+    const finalMessage = `${messageText}\n${statusLine}\n${priceLine}\n\nНажмите 🚀 **${actionText} сейчас**!`;
+
+    return { messageText: finalMessage, keyboardObject: { inline_keyboard: keyboard } };
+}
 
 // --- НОВАЯ ФУНКЦИЯ: ФОРМАТИРОВАНИЕ СТАТУСА БАЛАНСА ---
 /**
