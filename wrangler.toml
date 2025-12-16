@@ -2,6 +2,13 @@ name = "leshiy-gemini-bot"
 main = "worker.js"
 compatibility_date = "2025-12-15" # Дата, которую мы добавили в deploy.yml
 
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
 # [vars] - Здесь обычные переменные окружения, которые не являются секретами
 [vars]
 DEBUG_CHAT_ID = "235663624"
