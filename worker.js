@@ -9455,20 +9455,45 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const currentHeight = currentMediaData ? currentMediaData.height : null;
     const currentWidth = currentMediaData ? currentMediaData.width : null;
 
-    let messageText = "🖼️ **Ресайз / Поворот Фото**\n\n";
-
-    if (lastError) {
-        messageText += `❌ **Ошибка:** ${lastError}\n\n`;
+    // 1. АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА (аналогично видео)
+    let balanceStatus = '...';
+    try {
+        balanceStatus = await getCurrentCreditBalance(chatId, storage);
+    } catch (e) {
+        balanceStatus = 'Ошибка чтения'; 
     }
 
-    if (!currentMediaData) { // Проверяем наличие метаданных, а не isPhotoSaved
-        messageText += "⚠️ Для начала работы отправьте мне фотографию (или файл-изображение).";
+    const activeIcon = '✅ ';
+    const displayName = '🖼️ Фото: Ресайз/Поворот';
+    const mediaType = 'Фото';
+    const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Media Converter)';
+
+    // Статус загрузки медиа
+    const mediaStatusLine = `✅ **${mediaType}** загружено.`;
+    const mediaAction = `💾 Посмотреть загруженное фото`;
+    const mediaCallback = 'cmd:/view_saved_image'; // Предполагаю, у вас есть такая команда
+
+    let currentSizeLine = `**Текущий размер:** 📐 ${currentWidth}x${currentHeight} пикселей`; 
+
+    const description = `
+    📐 **Меню изменения размера фото (Image-to-Resize)**
+
+    ❔ **Как это работает:**
+    Вы можете изменить разрешение загруженного вами **фото** или повернуть его.
+
+    ${currentSizeLine}
+    Текущий режим: **${displayName}**
+    `;
+
+    const statusLine = `💰 **Баланс:** ${balanceStatus}`;
+    let messageText = `${description}\n${mediaStatusLine}\n\n${statusLine}\n${priceLine}\n\nВыберите разрешение и нажмите на кнопку с этим разрешением (или 🚀 для ${defaultResParam})!`;
+
+    // Если фото не загружено, текст должен быть простым (как и было)
+    if (!currentMediaData) {
+        messageText = "🖼️ **Ресайз / Поворот Фото**\n\n⚠️ Для начала работы отправьте мне фотографию (или файл-изображение).";
+        // Клавиатура должна быть пустой
         return { messageText, keyboardObject: { inline_keyboard: [] } };
     }
-
-    messageText += `Текущее фото: ${currentWidth}x${currentHeight} пикселей.\n\n`;
-    messageText += "Выберите размер для сжатия (уменьшения) или поворот:";
-
     // --- 2. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА ---
     const resolutionKeys = Object.keys(RESOLUTIONS_HEIGHT);
     
@@ -9507,7 +9532,6 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 
     // --- 5. КОМПОНОВКА КЛАВИАТУРЫ ---
     
-    const activeIcon = '✅';
     const RESIZE_VIDEO_MODE_KEY = envData.RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
     
     const keyboard = [
