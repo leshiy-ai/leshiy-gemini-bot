@@ -2621,18 +2621,29 @@ async function getCurrentMediaData(chatId, envData, storage, isVideoMode) {
     }
 }
 
-// Функция для определения значка на кнопке
+/**
+ * @description Возвращает иконку "✅" если текущая высота соответствует целевой.
+ * @param {number} currentHeight - Текущая высота файла, полученная из KV.
+ * @param {number} targetHeight - Высота, указанная на кнопке (например, 720).
+ * @returns {string} Иконка или пустая строка.
+ */
 function getResolutionIcon(currentHeight, targetHeight) {
-    if (currentHeight >= targetHeight && currentHeight < targetHeight * 1.05) {
-        // Текущий размер близок к целевому (в пределах 5%)
-        return '✅ ';
-    } else if (currentHeight > targetHeight) {
-        // Текущий размер выше целевого (Уменьшение)
-        return '➖ ';
-    } else {
-        // Текущий размер ниже целевого (Увеличение)
-        return '➕ ';
+    if (!currentHeight || !targetHeight) {
+        return '';
     }
+    // Если высота файла совпадает с высотой кнопки
+    if (currentHeight === targetHeight) {
+        return '✅';
+    }
+    // Если высота файла больше, и это максимально доступная кнопка (1080p),
+    // но кнопка 1080p не соответствует текущему размеру (например, 4K),
+    // то мы ставим галочку на максимальной кнопке.
+    // Это опционально, но полезно для UX:
+    if (targetHeight === 1080 && currentHeight > 1080) {
+         return '✅';
+    }
+
+    return '';
 }
 
 /**
@@ -9415,9 +9426,15 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
     } catch (e) {
         balanceStatus = 'Ошибка чтения'; 
     }
+    // 1. ПОЛУЧАЕМ ТЕКУЩИЕ ДАННЫЕ МЕДИА
+    // 🛑 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Здесь должен быть вызов getCurrentMediaData
+    const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false); // false = фото
+    
+    // Получаем текущую высоту (если данные существуют)
+    const currentHeight = currentMediaData ? currentMediaData.height : null;
+
     // --- ПОЛУЧЕНИЕ ТЕКУЩИХ РАЗМЕРОВ ФОТО ---
     let currentPhotoData = null;
-    let currentHeight = 0;
     let currentWidth = 0;
     if (isPhotoSaved) {
         // storage теперь передается и не вызывает ошибку 'get'
@@ -9426,6 +9443,19 @@ async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved,
         currentWidth = currentPhotoData ? currentPhotoData.width : 0;
     }
     const currentRatio = currentWidth && currentHeight ? currentWidth / currentHeight : 1;
+    // 2. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА
+    const resolutionButtons = IMAGE_RESIZE_RESOLUTIONS.map(res => {
+        const [heightString] = res.split('p');
+        const targetHeight = parseInt(heightString);
+        
+        // 🛑 ИСПРАВЛЕНИЕ: Вызываем функцию для получения иконки
+        const icon = getResolutionIcon(currentHeight, targetHeight); 
+        
+        return {
+            text: `${icon} ${res}`,
+            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${res}`
+        };
+    });
     // --- ТЕКСТ и КЛАВИАТУРА ---
     const activeIcon = '✅ ';
     const displayName = '🖼️ Фото → Поворот/Изменение размера';
@@ -15074,7 +15104,7 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
  * ✅ sendMediaToConverterInBackground - Асинхронно скачивает медиа, отправляет на Render для обработки (Resize/Rotate) и обновляет сообщение.
  */
 async function sendMediaToConverterInBackground(chatId, fileId, originalMessageId, mode, param, envData, token, ctx, originalReplyMarkup = null) {
-    const RENDER_HOST_URL = envData.LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
     const isVideo = mode === RESIZE_VIDEO_MODE;
     let mediaType = isVideo ? 'видео' : 'фото';
     const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
@@ -15090,28 +15120,28 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         errorMode = 'VIDEO_TO_RESIZE';
         mediaType = 'видео';
         const endpoint = '/resize-video';
-        FINAL_RENDER_URL = `${envData.RENDER_HOST}/resize-video?resolution=${param}`;
+        FINAL_RENDER_URL = `${RENDER_HOST_URL}/resize-video?resolution=${param}`;
         successMessage = `✅ Видео изменено до ${param}!`;
 
     } else if (mode === RESIZE_IMAGE_MODE) {
         errorMode = 'IMAGE_TO_RESIZE';
         mediaType = 'фото';
         const endpoint = '/resize-image';
-        FINAL_RENDER_URL = `${envData.RENDER_HOST}/resize-image?resolution=${param}`;
+        FINAL_RENDER_URL = `${RENDER_HOST_URL}/resize-image?resolution=${param}`;
         successMessage = `✅ Фото изменено до ${param}!`;
         
     } else if (mode === ROTATE_VIDEO_MODE) { // Для поворота видео
         errorMode = 'VIDEO_TO_ROTATE';
         mediaType = 'видео';
         const endpoint = '/rotate-video';
-        FINAL_RENDER_URL = `${envData.RENDER_HOST}/rotate-video?angle=${param}`;
+        FINAL_RENDER_URL = `${RENDER_HOST_URL}/rotate-video?angle=${param}`;
         successMessage = `✅ Видео повёрнуто на ${param}°!`;
         
     } else if (mode === ROTATE_IMAGE_MODE) { // Для поворота
         errorMode = 'IMAGE_TO_ROTATE';
         mediaType = 'фото';
         const endpoint = '/rotate-image';
-        FINAL_RENDER_URL = `${envData.RENDER_HOST}/rotate-image?angle=${param}`;
+        FINAL_RENDER_URL = `${RENDER_HOST_URL}/rotate-image?angle=${param}`;
         successMessage = `✅ Фото повёрнуто на ${param}°!`;
     }
     
