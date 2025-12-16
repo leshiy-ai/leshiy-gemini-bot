@@ -16770,7 +16770,7 @@ export default {
                     const fileId = mediaObject.file_id;
                     const token = envData.TELEGRAM_BOT_TOKEN;
                     // Это гарантирует, что getCurrentMediaData получит width/height/file_id немедленно.
-                    const metadataKey = chatId + envData.LAST_IMAGE_DATA_KEY_SUFFIX;
+                    const metadataKey = chatId + LAST_IMAGE_DATA_KEY_SUFFIX;
                     // 🛑 ШАГ 2: Сохраняем fileId в KV, чтобы кнопки знали, с чем работать
                     //await envData.LAST_PHOTO_STORAGE.put(chatId + LAST_FILE_ID_KEY_SUFFIX, fileId, { expirationTtl: 3600 });
                     // Создаем объект для KV, который будет использоваться для получения file_id в flow.
