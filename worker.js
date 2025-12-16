@@ -126,6 +126,8 @@ const VOICE_USER = 'user_voice';
 const DEFAULT_VOICE = VOICE_MALE;
 const SET_BASE_CALLBACK = 'setbase_'; 
 const SET_VIDEO_BASE_CALLBACK = 'set_V_base_';
+const RESIZE_VIDEO_MODE = 'VIDEO_TO_RESIZE';
+const RESIZE_IMAGE_MODE = 'IMAGE_TO_RESIZE';
 // Реализация поворота медиаконтента
 const ROTATE_LEFT_CALLBACK = 'rot_L_'; // Поворот против часовой (на 90 градусов)
 const ROTATE_RIGHT_CALLBACK = 'rot_R_'; // Поворот по часовой (на 90 градусов)
@@ -1652,6 +1654,115 @@ async function editMessageCaption(chatId, messageId, caption, token, replyMarkup
         // 🛑 ПЕРЕБРОС ОШИБКИ: Если произошла сетевая ошибка (таймаут, DNS и т.д.), мы ее перебрасываем.
         throw e;
     }
+}
+
+/**
+ * ✅ editMessageWithNewPhoto - Редактирует существующее сообщение, заменяя в нем фото на новое.
+ * (Использует метод editMessageMedia с multipart/form-data)
+ * * @param {number} chatId - ID чата.
+ * @param {number} messageId - ID сообщения, которое нужно отредактировать.
+ * @param {ArrayBuffer} photoBuffer - Байты нового фото (ArrayBuffer).
+ * @param {string} caption - Новая подпись.
+ * @param {object} replyMarkup - Инлайн-клавиатура (объект, например, { inline_keyboard: [...] }).
+ * @param {string} token - Токен Telegram.
+ * @returns {Promise<object>} Ответ от Telegram API.
+ */
+async function editMessageWithNewPhoto(chatId, messageId, photoBuffer, caption, replyMarkup, token) {
+    const updateMediaUrl = `https://api.telegram.org/bot${token}/editMessageMedia`;
+    const telegramFormData = new FormData();
+    
+    // 1. Формируем тело запроса
+    telegramFormData.append('chat_id', chatId.toString());
+    telegramFormData.append('message_id', messageId.toString());
+
+    const photoFileName = 'rotated_photo.jpg';
+    const photoFile = new File([photoBuffer], photoFileName, { type: 'image/jpeg' });
+    
+    // 2. Формируем медиа-payload для Telegram
+    const mediaPayload = {
+        type: 'photo',
+        media: `attach://${photoFileName}`, // Ссылка на файл в FormData
+        caption: caption,
+        parse_mode: 'Markdown'
+    };
+    
+    // 3. Добавляем медиа и файл в FormData
+    telegramFormData.append('media', JSON.stringify(mediaPayload));
+    telegramFormData.append(photoFileName, photoFile); // Сам файл
+
+    // 4. Добавляем клавиатуру
+    if (replyMarkup) {
+        // Убедимся, что replyMarkup имеет правильный формат (например, { inline_keyboard: [...] })
+        telegramFormData.append('reply_markup', JSON.stringify(replyMarkup));
+    }
+    
+    // 5. Отправка запроса
+    const response = await fetch(updateMediaUrl, {
+        method: 'POST',
+        body: telegramFormData,
+        signal: AbortSignal.timeout(60000) // Таймаут 1 минута
+    });
+
+    const responseData = await response.json();
+    if (!response.ok || !responseData.ok) {
+        throw new Error(`Telegram API error (editMessageMedia/Photo): ${responseData.description || 'Unknown'}`);
+    }
+    
+    return responseData;
+}
+
+/**
+ * ✅ editMessageWithNewVideo - Редактирует существующее сообщение, заменяя в нем видео на новое.
+ * (Использует метод editMessageMedia с multipart/form-data)
+ * * @param {number} chatId - ID чата.
+ * @param {number} messageId - ID сообщения, которое нужно отредактировать.
+ * @param {ArrayBuffer} videoBuffer - Байты нового видео (ArrayBuffer).
+ * @param {string} caption - Новая подпись.
+ * @param {object} replyMarkup - Инлайн-клавиатура (объект, например, { inline_keyboard: [...] }).
+ * @param {string} token - Токен Telegram.
+ * @returns {Promise<object>} Ответ от Telegram API.
+ */
+async function editMessageWithNewVideo(chatId, messageId, videoBuffer, caption, replyMarkup, token) {
+    const updateMediaUrl = `https://api.telegram.org/bot${token}/editMessageMedia`;
+    const telegramFormData = new FormData();
+
+    // 1. Формируем тело запроса
+    telegramFormData.append('chat_id', chatId.toString());
+    telegramFormData.append('message_id', messageId.toString());
+
+    const videoFileName = 'rotated_video.mp4';
+    const videoFile = new File([videoBuffer], videoFileName, { type: 'video/mp4' });
+
+    // 2. Формируем медиа-payload для Telegram
+    const mediaPayload = {
+        type: 'video',
+        media: `attach://${videoFileName}`, // Ссылка на файл в FormData
+        caption: caption,
+        parse_mode: 'Markdown'
+    };
+
+    // 3. Добавляем медиа и файл в FormData
+    telegramFormData.append('media', JSON.stringify(mediaPayload));
+    telegramFormData.append(videoFileName, videoFile); // Сам файл
+
+    // 4. Добавляем клавиатуру
+    if (replyMarkup) {
+        telegramFormData.append('reply_markup', JSON.stringify(replyMarkup));
+    }
+
+    // 5. Отправка запроса
+    const response = await fetch(updateMediaUrl, {
+        method: 'POST',
+        body: telegramFormData,
+        signal: AbortSignal.timeout(120000) // Таймаут 2 минуты (видео могут быть большими)
+    });
+
+    const responseData = await response.json();
+    if (!response.ok || !responseData.ok) {
+        throw new Error(`Telegram API error (editMessageMedia/Video): ${responseData.description || 'Unknown'}`);
+    }
+    
+    return responseData;
 }
 
 // ✅ deleteMessage - Удаляет сообщение
@@ -9235,6 +9346,233 @@ ${priceLine}
     return { messageText: messageText, keyboardObject: { inline_keyboard: keyboard } };
 }
 
+// ✅ sendResizeMenu - Отправляет меню /resize
+/**
+ * @description Получает текущее состояние медиа, генерирует меню Resize и отправляет/редактирует сообщение.
+ */
+async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = null) {
+    const chatKey = chatId.toString();
+    // Используем те же ключи, что и для /upscale
+    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+    const LAST_IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
+
+    try {
+        // 1. ЧТЕНИЕ ДАННЫХ ИЗ KV
+        const userDefinedPrompt = await storage.get(LAST_PROMPT_KEY);
+        const rawMediaKVData = await storage.get(LAST_IMAGE_DATA_KEY, { type: 'text' });
+        
+        // Определяем, есть ли сохраненное медиа
+        const isMediaSaved = !!rawMediaKVData; 
+
+        // 2. АСИНХРОННАЯ ГЕНЕРАЦИЯ МЕНЮ (По умолчанию для РЕСАЙЗА — видео)
+        // Начнем с меню видео, так как это более частый сценарий для Leshiy Converter.
+        const { messageText, keyboardObject } = await getResizeVideoMenuKeyboard(
+             chatId, 
+             storage, 
+             userDefinedPrompt, // Хотя промпт здесь не нужен, оставим для унификации
+             isMediaSaved // Флаг наличия последнего медиа
+        );
+        
+        // 3. Отправляем/редактируем сообщение (Используем Ваши готовые функции)
+        if (messageId) {
+            ctx.waitUntil(editMessageWithKeyboard(
+                chatId, 
+                messageId, 
+                messageText, 
+                token, 
+                keyboardObject.inline_keyboard 
+            ));
+        } else {
+            ctx.waitUntil(sendMessageWithKeyboard(
+                chatId, 
+                messageText, 
+                token, 
+                keyboardObject.inline_keyboard 
+            ));
+        }
+    } catch (e) {
+        const errorString = `Fatal error in sendResizeMenu for chat ${chatId}: ${e.message} Stack: ${e.stack ? e.stack.substring(0, 500) : 'N/A'}`;
+        ctx.waitUntil(logDebug("RESIZE_CRITICAL", errorString, envData));
+        await sendMessage(chatId, "❌ Критическая ошибка при загрузке меню изменения размера.", token);
+    }
+}
+
+/**
+ * @description Генерирует меню для поворота изображения (I2R).
+ * Мы используем "Resize/Rotate" в широком смысле.
+ */
+async function getResizeImageMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPrompt, isMediaSaved) { 
+    // Аналогичная логика, но кнопки будут для углов: 90, -90, 180.
+    
+    // ... (Получение баланса, установка иконок и т.д. - скопировать из getResizeVideoMenuKeyboard)
+    
+    const activeIcon = '✅ ';
+    const displayName = '🖼️ Фото → Поворот/Изменение размера';
+    const mediaType = 'Фото';
+    const actionText = "Запустить поворот"; // Меняем текст
+    
+    const calculatedPriceCredits = 0; 
+    const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Converter)';
+    const canRun = isMediaSaved; 
+
+    // Углы для поворота
+    const angles = ['90', '-90', '180'];
+    
+    let keyboard = [];
+    // ... (Главное меню, Баланс)
+    
+    // 1. РЯД РЕЖИМОВ (Переключение)
+    keyboard.push([
+        { 
+            text: activeIcon + displayName, 
+            callback_data: 'dummy_i2r_active' 
+        },
+        { 
+            text: '📺 Видео → Изменить размер', 
+            callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE}` 
+        }
+    ]);
+    
+    // 2. СТРОКА ВЫБОРА УГЛА ПОВОРОТА
+    keyboard.push([{ text: "⚙️ Выберите угол поворота (или 🔄 Ресайз):", callback_data: 'dummy_angle_header' }]);
+    
+    const angleButtons = angles.map(angle => ({
+        text: `${angle}°`, 
+        // Колбэк для запуска поворота изображения
+        callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${angle}` 
+    }));
+    keyboard.push(angleButtons);
+
+    // Добавим кнопку для ресайза изображения, если это необходимо
+    keyboard.push([{ 
+        text: '🔄 Изменить размер фото до 1280px (MAX)', 
+        callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|MAX_RESIZE` 
+    }]);
+    
+    // 3. Статус медиа и Запуск
+    keyboard.push([
+        { text: mediaAction, callback_data: mediaCallback }
+    ]);
+
+    // 4. Кнопка Запуска
+    keyboard.push([
+        { 
+            text: canRun ? `🚀 ${actionText} / Ресайз сейчас` : `🚫 Недоступно: Загрузите ${mediaType}`, 
+            callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE}|90` : 'dummy_cannot_run_resize' 
+            // По умолчанию при нажатии на ROCKET делаем поворот на 90
+        }
+    ]);
+    
+    // ... (Текст сообщения)
+    
+    let messageText = `
+📐 **Меню Поворота/Ресайза фото (Image-to-Rotate/Resize)**
+
+❔ **Как это работает:**
+Вы можете повернуть загруженную **фотографию** (90°, -90°, 180°) или изменить ее размер. Используется ваш Leshiy Media Converter.
+
+Текущий режим: **${displayName}**
+... (Остальной текст)
+`;
+    // ... (Сборка финального сообщения)
+
+    return { messageText: finalMessage, keyboardObject: { inline_keyboard: keyboard } };
+}
+
+/**
+ * @description Генерирует меню для изменения разрешения видео (V2R).
+ */
+async function getResizeVideoMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPrompt, isMediaSaved) { 
+    // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
+    let balanceStatus = '...';
+    try {
+        balanceStatus = await getCurrentCreditBalance(chatId, LAST_PHOTO_STORAGE);
+    } catch (e) {
+        balanceStatus = 'Ошибка чтения'; 
+    }
+
+    // --- ТЕКСТ и КЛАВИАТУРА ---
+    const activeIcon = '✅ ';
+    const displayName = '📺 Видео → Изменить размер';
+    const mediaType = 'Видео';
+    const actionText = "Запустить изменение размера";
+    
+    // Цена: Устанавливаем цену в 0, так как это через Leshiy Converter (пока бесплатно)
+    const calculatedPriceCredits = 0; 
+    const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Converter)';
+    
+    const mediaAction = isMediaSaved ? `💾 Посмотреть загруженное медиа` : `📸 Загрузить видео`;
+    // Если медиа сохранено, мы можем показать, что оно доступно для ресайза
+    const mediaCallback = isMediaSaved ? 'cmd:/view_saved_media' : 'cmd:/upload_video'; 
+    const canRun = isMediaSaved; 
+
+    // Добавляем выбор разрешения
+    const resolutions = ['240p', '360p', '480p', '720p', '1080p'];
+    
+    // --- ФОРМИРОВАНИЕ КЛАВИАТУРЫ ---
+    let keyboard = [];
+    keyboard.push([{ text: "🏠 Главное меню /start", callback_data: "start_command" }]);
+    keyboard.push([{ text: '💰 Управление балансом', callback_data: 'show_balance' }]);
+    
+    // 1. РЯД РЕЖИМОВ (Переключение)
+    keyboard.push([
+        { 
+            text: '🖼️ Фото → Изменить размер', 
+            callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE}` 
+        },
+        { 
+            text: activeIcon + displayName, 
+            callback_data: 'dummy_v2r_active' 
+        }
+    ]);
+
+    // 2. СТРОКА ВЫБОРА РАЗРЕШЕНИЯ
+    keyboard.push([{ text: "⚙️ Выберите разрешение видео:", callback_data: 'dummy_resolutions_header' }]);
+    
+    // Разбиваем разрешения на ряды по 3 кнопки
+    const resButtons = resolutions.map(res => ({
+        text: res, 
+        // ВАЖНО: Добавляем разрешение в колбэк
+        callback_data: `generate_resize_now|${RESIZE_VIDEO_MODE}|${res}` 
+    }));
+    
+    // Создаем ряды: [240p, 360p, 480p], [720p, 1080p]
+    for (let i = 0; i < resButtons.length; i += 3) {
+        keyboard.push(resButtons.slice(i, i + 3));
+    }
+    
+    // 3. Статус медиа
+    keyboard.push([
+        { text: mediaAction, callback_data: mediaCallback }
+    ]);
+
+    // 4. Кнопка Запуска
+    keyboard.push([
+        { 
+            text: canRun ? `🚀 ${actionText} сейчас` : `🚫 Недоступно: Загрузите ${mediaType}`, 
+            callback_data: canRun ? `generate_resize_now|${RESIZE_VIDEO_MODE}|${resolutions[2]}` : 'dummy_cannot_run_resize' 
+            // Используем 480p (resolutions[2]) по умолчанию, если нажата кнопка Запуска без выбора
+        }
+    ]);
+
+    // --- ТЕКСТ СООБЩЕНИЯ ---
+    const description = `
+📐 **Меню изменения размера видео (Video-to-Resize)**
+
+❔ **Как это работает:**
+Вы можете изменить разрешение загруженного вами **видео** до одного из стандартных размеров (например, 720p) без потери качества аудио. Используется ваш Leshiy Media Converter.
+
+Текущий режим: **${displayName}**
+`;
+    
+    const statusLine = `💰 **Баланс:** ${balanceStatus}`;
+    const mediaStatusLine = isMediaSaved ? `✅ **${mediaType}** загружено.` : `⚠️ **${mediaType}** не загружено.`;
+    
+    let messageText = `${description}\n${mediaStatusLine}\n\n${statusLine}\n${priceLine}\n\nВыберите разрешение и нажмите на кнопку с этим разрешением (или 🚀 для 480p)!`;
+
+    return { messageText: messageText, keyboardObject: { inline_keyboard: keyboard } };
+}
+
 // ✅ sendUpscaleMenu - Отправляет меню /upscale (I2U) или предупреждение
 /**
  * @description Получает текущее состояние медиа/промпта, генерирует меню I2U и отправляет/редактирует сообщение.
@@ -14648,6 +14986,183 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
     }
 }
 
+/**
+ * ✅ sendMediaToConverterInBackground - Асинхронно скачивает медиа, отправляет на Render для обработки (Resize/Rotate) и обновляет сообщение.
+ *
+ * @param {number} chatId - ID чата.
+ * @param {string} fileId - file_id медиа (фото или видео) в Telegram.
+ * @param {number} originalMessageId - ID оригинального сообщения с медиа.
+ * @param {string} mode - Режим (RESIZE_VIDEO_MODE или RESIZE_IMAGE_MODE).
+ * @param {string} param - Параметр (разрешение '720p' или угол '90').
+ * @param {Object} envData - Объект окружения.
+ * @param {string} token - Токен Telegram.
+ * @param {Object} ctx - Контекст выполнения.
+ * @param {Object} [originalReplyMarkup=null] - Инлайн-клавиатура оригинального сообщения.
+ */
+async function sendMediaToConverterInBackground(chatId, fileId, originalMessageId, mode, param, envData, token, ctx, originalReplyMarkup = null) {
+    const RENDER_HOST_URL = envData.LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    const isVideo = mode === RESIZE_VIDEO_MODE;
+    const mediaType = isVideo ? 'видео' : 'фото';
+
+    // 1. Определение эндпоинта и таймаута
+    let endpoint = '';
+    let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+    let timeoutSeconds = isVideo ? 120 : 60; // 2 мин для видео, 1 мин для фото
+
+    if (mode === RESIZE_VIDEO_MODE) {
+        endpoint = `/resize-video?resolution=${param}`;
+    } else if (mode === RESIZE_IMAGE_MODE) {
+        if (param === 'MAX_RESIZE') {
+            // Ресайз фото до 1280px (Убедитесь, что ваш Render поддерживает /resize-image)
+            endpoint = `/resize-image?resolution=1280p`; 
+        } else {
+            // Поворот фото
+            endpoint = `/rotate-image?angle=${param}`;
+        }
+    }
+    const FINAL_RENDER_URL = RENDER_HOST_URL + endpoint;
+
+    try {
+        // 2. Скачиваем исходный файл
+        await editMessage(chatId, originalMessageId, `🔄 **Обработка ${mediaType}... Скачиваю файл...**`, token);
+        const mediaBuffer = await downloadFileBuffer(fileId, token, envData);
+
+        // 3. Отправляем на Render
+        await editMessage(chatId, originalMessageId, `⚙️ **[FFmpeg] ${mediaType} - Обработка...** (до ${timeoutSeconds/60} мин.)`, token);
+        const renderFormData = new FormData();
+        
+        // Ключ 'video' или 'image' должен соответствовать ожидаемому на Render-сервере
+        const formKey = isVideo ? 'video' : 'image'; 
+        const mediaFile = new File([mediaBuffer], `input.${isVideo ? 'mp4' : 'jpg'}`, { type: mimeType });
+        renderFormData.append(formKey, mediaFile);
+
+        const renderResponse = await fetch(FINAL_RENDER_URL, {
+            method: 'POST',
+            body: renderFormData,
+            signal: AbortSignal.timeout(timeoutSeconds * 1000)
+        });
+
+        if (!renderResponse.ok) {
+            const errorDetails = await renderResponse.text().catch(() => 'No details');
+            throw new Error(`Render error: ${renderResponse.status} ${errorDetails.substring(0, 150)}`);
+        }
+
+        const processedBuffer = await renderResponse.arrayBuffer();
+
+        // 4. Загружаем обработанный медиафайл в Telegram
+        await editMessage(chatId, originalMessageId, `📤 **Загрузка обработанного файла в Telegram...**`, token);
+
+        const caption = isVideo 
+            ? `✅ Видео изменено до ${param}!` 
+            : `✅ Фото ${param === 'MAX_RESIZE' ? 'изменено' : 'повернуто на ' + param + '°'}!`;
+
+        let editResult;
+        
+        // 5. Вызываем соответствующую функцию Telegram API (Ваши готовые функции)
+        if (isVideo) {
+            editResult = await editMessageWithNewVideo(
+                 chatId, originalMessageId, processedBuffer, caption, originalReplyMarkup, token
+            );
+        } else {
+             editResult = await editMessageWithNewPhoto(
+                chatId, originalMessageId, processedBuffer, caption, originalReplyMarkup, token
+            );
+        }
+
+        // 6. Обновление KV с новым file_id
+        const newMediaObject = isVideo 
+            ? editResult.result?.video 
+            : editResult.result?.photo?.slice(-1)[0]; 
+
+        if (!newMediaObject || !newMediaObject.file_id) {
+            throw new Error(`Telegram не вернул file_id для ${mediaType}.`);
+        }
+
+        // Вызовите Вашу функцию, которая обновляет KV с новым file_id
+        await updateMediaKVAfterProcessing(
+            chatId, 
+            newMediaObject, 
+            processedBuffer, 
+            mode, 
+            param, 
+            envData.LAST_PHOTO_STORAGE
+        );
+
+        // 7. Успешное завершение
+        await editMessage(chatId, originalMessageId, `✅ **Обработка ${mediaType} завершена.**`, token);
+
+    } catch (error) {
+        console.error(`Ошибка при ${mode}: ${error.message}`, error);
+        await editMessage(
+            chatId,
+            originalMessageId,
+            `❌ **Ошибка при обработке ${mediaType}.** ${error.message.substring(0, 150)}`,
+            token
+        );
+    }
+}
+
+/**
+ * @description Обновляет KV с новым file_id, метаданными и base64 после обработки Render-сервисом.
+ * * @param {number} chatId - ID чата.
+ * @param {object} newMediaObject - Объект фото/видео из ответа Telegram editMessageMedia.
+ * @param {ArrayBuffer} processedBuffer - Байты обработанного медиа.
+ * @param {string} mode - Режим (RESIZE_VIDEO_MODE или RESIZE_IMAGE_MODE).
+ * @param {string} param - Параметр (разрешение '720p' или угол '90').
+ * @param {Object} storage - KV-биндинг (LAST_PHOTO_STORAGE).
+ */
+async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, storage) {
+    // 💡 Предполагаем, что envData.LAST_IMAGE_DATA_KEY_SUFFIX и envData.LAST_VIDEO_DATA_KEY_SUFFIX 
+    // доступны в области видимости или переданы как часть envData.
+    
+    const isVideo = mode === RESIZE_VIDEO_MODE;
+    const chatKey = chatId.toString();
+    
+    // Определяем ключ для сохранения, используя суффиксы из envData
+    const KV_KEY = isVideo 
+        ? chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX // Если есть отдельный суффикс для видео
+        : chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
+
+    const newFileId = newMediaObject.file_id;
+    
+    // 1. Читаем текущие данные
+    const rawData = await storage.get(KV_KEY);
+    let currentData = {};
+    try {
+        currentData = rawData ? JSON.parse(rawData) : {};
+    } catch (e) {
+        console.warn("KV data corrupted, starting fresh.");
+    }
+
+    // 2. Конвертация ArrayBuffer в Base64
+    const base64Content = arrayBufferToBase64(processedBuffer);
+    const mimePrefix = isVideo ? 'data:video/mp4;base64,' : 'data:image/jpeg;base64,';
+    
+    // 3. Обновление метаданных
+    currentData.file_id = newFileId;
+    currentData.base64 = mimePrefix + base64Content;
+    
+    // Обновляем технические метаданные, используя данные из ответа Telegram
+    currentData.width = newMediaObject.width || currentData.width || null;
+    currentData.height = newMediaObject.height || currentData.height || null;
+    currentData.file_size = newMediaObject.file_size || currentData.file_size || null;
+    currentData.mime_type = newMediaObject.mime_type || currentData.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg');
+
+    // Если это поворот (не ресайз), обновляем угол
+    if (mode === RESIZE_IMAGE_MODE && param !== 'MAX_RESIZE') {
+         // Предполагаем, что param — это строка ('90', '-90', '180')
+         currentData.rotation = (currentData.rotation || 0) + parseInt(param);
+    }
+    
+    // Если это видео, обновляем длительность
+    if (isVideo && newMediaObject.duration) {
+         currentData.duration = newMediaObject.duration;
+    }
+
+    // 4. Сохраняем обратно в KV (TTL 1 час)
+    await storage.put(KV_KEY, JSON.stringify(currentData), { expirationTtl: 3600 });
+}
+
 
 // ----------------------------------------------------
 // IV. ГЛАВНЫЙ ОБРАБОТЧИК (WEBHOOK) Fetch
@@ -15398,6 +15913,11 @@ export default {
                         await sendUpscaleMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData, ctx);
                         return new Response('OK', { status: 200 });
                     }
+                    case '/resize':
+                    case '/resize_video': // Добавим также для прямого перехода
+                    case '/resize_image':
+                        await sendResizeMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData, ctx);
+                        return new Response('OK', { status: 200 });
                     case '/test':
                         // === ТЕСТ: КОНТРОЛИРУЕМЫЙ СБОЙ (ФИНАЛЬНАЯ ПРОВЕРКА) ===
                         if (chatId.toString() === envData.ADMIN_CHAT_ID) {
@@ -17845,7 +18365,79 @@ ${historyText}`;
 
                     // Определяем статус Task ID
                     const isTaskValid = !!rawTaskData; // Есть ли Task ID для V2U
+
+                } else if (data.startsWith('select_resize_mode|') || data.startsWith('generate_resize_now|')) {
+                    const callbackQueryId = callback.id; 
+                    const chatKey = chatId.toString();
+                    const storage = envData.LAST_PHOTO_STORAGE; 
+                    const token = envData.TELEGRAM_BOT_TOKEN;
+                    const messageId = callback.message.message_id;
+
+                    // Чтение данных
+                    const rawImageKVData = await storage.get(chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX, { type: 'text' });
+                    const isMediaSaved = !!rawImageKVData;
+                    
+                    // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_resize_mode|...) ---
+                    if (data.startsWith('select_resize_mode|')) {
+                        const selectedMode = data.split('|')[1]; // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
+                        let menu;
+                        
+                        if (selectedMode === RESIZE_IMAGE_MODE) {
+                            menu = await getResizeImageMenuKeyboard(chatId, storage, null, isMediaSaved);
+                        } else if (selectedMode === RESIZE_VIDEO_MODE) {
+                            menu = await getResizeVideoMenuKeyboard(chatId, storage, null, isMediaSaved);
+                        }
                                         
+                        ctx.waitUntil(Promise.allSettled([
+                            editMessageWithKeyboard(
+                                chatId, 
+                                messageId, 
+                                menu.messageText, 
+                                token, 
+                                menu.keyboardObject
+                            ),
+                            answerCallbackQuery(callbackQueryId, `Переключено на ${selectedMode === RESIZE_VIDEO_MODE ? 'Видео' : 'Фото'} изменение размера.`, token)
+                        ]));
+                        
+                        return new Response('OK', { status: 200 });
+                    }
+                    
+                    // --- 3. ЗАПУСК ГЕНЕРАЦИИ (generate_resize_now|...) ---
+                    if (data.startsWith('generate_resize_now|')) {
+                        const parts = data.split('|');
+                        const finalMode = parts[1]; // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
+                        const actionParam = parts[2]; // Угол (90) или разрешение (720p)
+                        
+                        if (!isMediaSaved) {
+                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, "❌ Невозможно запустить. Сначала загрузите медиафайл.", token));
+                            return new Response('OK', { status: 200 });
+                        }
+                        
+                        // Получаем данные о сохраненном медиа для fileId
+                        const mediaData = JSON.parse(rawImageKVData); // rawImageKVData был получен ранее
+                        const fileId = mediaData.file_id; 
+                        const originalReplyMarkup = callback.message.reply_markup; // Сохраняем клавиатуру
+                        
+                        // Запуск асинхронной обработки в фоне
+                        ctx.waitUntil(sendMediaToConverterInBackground(
+                            chatId, 
+                            fileId, 
+                            originalMessageId, 
+                            finalMode, 
+                            actionParam, 
+                            envData, 
+                            token, 
+                            ctx,
+                            originalReplyMarkup
+                        ));
+
+                        ctx.waitUntil(Promise.allSettled([
+                            answerCallbackQuery(callbackQueryId, `Запускаю изменение размера/поворот...`, token),
+                            editMessage(chatId, messageId, `⏳ **Запускаю Изменение размера/Поворот...** (Режим: ${finalMode}, Параметр: ${actionParam})`, token)
+                        ]));
+                        
+                        return new Response('OK', { status: 200 });
+                    } // --- КОНЕЦ НОВОГО БЛОКА RESIZE ---
                     // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_upscale_mode|...) ---
                     if (data.startsWith('select_upscale_mode|')) {
                         const selectedMode = data.split('|')[1]; // 'IMAGE_TO_UPSCALE' или 'VIDEO_TO_UPSCALE'
