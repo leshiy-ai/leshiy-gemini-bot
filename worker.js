@@ -9362,12 +9362,12 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
         let menu;
         
         if (defaultMode === 'IMAGE') {
-            // 🛑 ИСПРАВЛЕНО: Передаем null вместо prompt, так как он больше не нужен
-            menu = await getResizeImageMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved);
-        } else { // defaultMode === 'VIDEO'
-            // 🛑 ИСПРАВЛЕНО: Передаем null вместо prompt
-            menu = await getResizeVideoMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved); 
-        }
+        // ✅ Добавляем 'storage' в конец аргументов
+        menu = await getResizeImageMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storage); 
+    } else { // defaultMode === 'VIDEO'
+        // ✅ Добавляем 'storage' в конец аргументов
+        menu = await getResizeVideoMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storage); 
+    }
 
         // 3. Отправляем/редактируем сообщение (Используем Ваши готовые функции)
         if (messageId) {
@@ -9397,8 +9397,7 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @description Генерирует меню для поворота изображения (I2R).
  * Мы используем "Resize/Rotate" в широком смысле.
  */
-async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved, isVideoSaved) {
-    const storage = envData.LAST_PHOTO_STORAGE;
+async function getResizeImageMenuKeyboard(chatId, envData, prompt, isPhotoSaved, isVideoSaved, storage) {
     // 🛑 ИЗМЕНЕНИЕ 1: ПОЛУЧАЕМ ТЕКУЩИЕ РАЗМЕРЫ ФОТО
     let currentPhotoData = null;
     let currentHeight = 0;
@@ -9520,8 +9519,7 @@ ${currentSizeLine}
 /**
  * @description Генерирует меню для изменения разрешения видео (V2R).
  */
-async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved, isVideoSaved) { 
-    const storage = envData.LAST_PHOTO_STORAGE;
+async function getResizeVideoMenuKeyboard(chatId, envData, prompt, isPhotoSaved, isVideoSaved, storage) { 
     // 🛑 ИЗМЕНЕНИЕ 1: ПОЛУЧАЕМ ТЕКУЩИЕ РАЗМЕРЫ ВИДЕО
     let currentVideoData = null;
     let currentHeight = 0;
@@ -15060,17 +15058,41 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
 
     let endpoint = '';
     let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-
+    // 1. ОПРЕДЕЛЕНИЕ РЕЖИМА И URL
+    let errorMode;
+    let FINAL_RENDER_URL;
+    let successMessage;
+    // Проверяем режим:
     if (mode === RESIZE_VIDEO_MODE) {
-        endpoint = `/resize-video?resolution=${param}`;
+        errorMode = 'VIDEO_TO_RESIZE';
+        mediaType = 'видео';
+        const endpoint = '/resize-video';
+        FINAL_RENDER_URL = `${envData.RENDER_HOST}/resize-video?resolution=${param}`;
+        successMessage = `✅ Видео изменено до ${param}!`;
+
     } else if (mode === RESIZE_IMAGE_MODE) {
-        if (param === 'MAX_RESIZE') {
-            endpoint = `/resize-image?resolution=1280p`; 
-        } else {
-            endpoint = `/rotate-image?angle=${param}`;
-        }
+        errorMode = 'IMAGE_TO_RESIZE';
+        mediaType = 'фото';
+        const endpoint = '/resize-image';
+        FINAL_RENDER_URL = `${envData.RENDER_HOST}/resize-image?resolution=${param}`;
+        successMessage = `✅ Фото изменено до ${param}!`;
+        
+    } else if (mode === ROTATE_VIDEO_MODE) { // Для поворота видео
+        errorMode = 'VIDEO_TO_ROTATE';
+        mediaType = 'видео';
+        const endpoint = '/rotate-video';
+        FINAL_RENDER_URL = `${envData.RENDER_HOST}/rotate-video?angle=${param}`;
+        successMessage = `✅ Видео повёрнуто на ${param}°!`;
+        
+    } else if (mode === ROTATE_IMAGE_MODE) { // Для поворота
+        errorMode = 'IMAGE_TO_ROTATE';
+        mediaType = 'фото';
+        const endpoint = '/rotate-image';
+        FINAL_RENDER_URL = `${envData.RENDER_HOST}/rotate-image?angle=${param}`;
+        successMessage = `✅ Фото повёрнуто на ${param}°!`;
     }
-    const FINAL_RENDER_URL = RENDER_HOST_URL + endpoint;
+    
+    //const FINAL_RENDER_URL = RENDER_HOST_URL + endpoint;
 
     try {
         // --- 0. Пробуждение Render-сервиса ---
