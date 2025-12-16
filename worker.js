@@ -9297,42 +9297,54 @@ ${priceLine}
  */
 async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = null) {
     const chatKey = chatId.toString();
-    // Используем те же ключи, что и для /upscale
-    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+    
+    // 🛑 ИСПРАВЛЕНИЕ: Используем ключи для ФОТО и ВИДЕО
     const LAST_IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
+    const LAST_VIDEO_DATA_KEY = chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX; 
+    // const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX; // Промпт для /resize не нужен
 
     try {
-        // 1. ЧТЕНИЕ ДАННЫХ ИЗ KV
-        const userDefinedPrompt = await storage.get(LAST_PROMPT_KEY);
-        const rawMediaKVData = await storage.get(LAST_IMAGE_DATA_KEY, { type: 'text' });
+        // 1. ЧТЕНИЕ ДАННЫХ ИЗ KV (Читаем ОБА КЛЮЧА)
+        const [rawImage, rawVideo] = await Promise.all([
+            storage.get(LAST_IMAGE_DATA_KEY, { type: 'text' }),
+            storage.get(LAST_VIDEO_DATA_KEY, { type: 'text' }),
+        ]);
         
         // Определяем, есть ли сохраненное медиа
-        const isMediaSaved = !!rawMediaKVData; 
-
-        // 2. АСИНХРОННАЯ ГЕНЕРАЦИЯ МЕНЮ (По умолчанию для РЕСАЙЗА — видео)
-        // Начнем с меню видео, так как это более частый сценарий для Leshiy Converter.
-        const { messageText, keyboardObject } = await getResizeVideoMenuKeyboard(
-             chatId, 
-             storage, 
-             userDefinedPrompt, // Хотя промпт здесь не нужен, оставим для унификации
-             isMediaSaved // Флаг наличия последнего медиа
-        );
+        const isPhotoSaved = !!rawImage; 
+        const isVideoSaved = !!rawVideo; 
         
+        // 💡 Логика по умолчанию:
+        // Если есть видео, показываем меню видео. Если нет, но есть фото, показываем фото.
+        // Если нет ничего, показываем меню видео (поскольку оно первое в колбэках).
+        const defaultMode = isVideoSaved ? 'VIDEO' : (isPhotoSaved ? 'IMAGE' : 'VIDEO');
+
+        // Выбор функции генерации меню на основе дефолтного режима
+        let menu;
+        
+        if (defaultMode === 'IMAGE') {
+            // Предполагаем, что getResizeImageMenuKeyboard принимает isPhotoSaved и isVideoSaved 
+            menu = await getResizeImageMenuKeyboard(chatId, storage, null, isPhotoSaved, isVideoSaved);
+        } else { // defaultMode === 'VIDEO'
+            // 🛑 ИСПРАВЛЕНИЕ: Передаем ОБА СТАТУСА, чтобы меню могло правильно отображать кнопки переключения
+            menu = await getResizeVideoMenuKeyboard(chatId, storage, null, isPhotoSaved, isVideoSaved); 
+        }
+
         // 3. Отправляем/редактируем сообщение (Используем Ваши готовые функции)
         if (messageId) {
             ctx.waitUntil(editMessageWithKeyboard(
                 chatId, 
                 messageId, 
-                messageText, 
+                menu.messageText, 
                 token, 
-                keyboardObject.inline_keyboard 
+                menu.keyboardObject.inline_keyboard 
             ));
         } else {
             ctx.waitUntil(sendMessageWithKeyboard(
                 chatId, 
-                messageText, 
+                menu.messageText, 
                 token, 
-                keyboardObject.inline_keyboard 
+                menu.keyboardObject.inline_keyboard 
             ));
         }
     } catch (e) {
@@ -9346,7 +9358,7 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @description Генерирует меню для поворота изображения (I2R).
  * Мы используем "Resize/Rotate" в широком смысле.
  */
-async function getResizeImageMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPrompt, isMediaSaved) { 
+async function getResizeImageMenuKeyboard(chatId, storage, prompt, isPhotoSaved, isVideoSaved) {
     // Аналогичная логика, но кнопки будут для углов: 90, -90, 180.
     
     // ... (Получение баланса, установка иконок и т.д. - скопировать из getResizeVideoMenuKeyboard)
@@ -9427,7 +9439,7 @@ async function getResizeImageMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPro
 /**
  * @description Генерирует меню для изменения разрешения видео (V2R).
  */
-async function getResizeVideoMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPrompt, isMediaSaved) { 
+async function getResizeVideoMenuKeyboard(chatId, storage, prompt, isPhotoSaved, isVideoSaved) { 
     // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
     let balanceStatus = '...';
     try {
@@ -15859,8 +15871,6 @@ export default {
                         return new Response('OK', { status: 200 });
                     }
                     case '/resize':
-                    case '/resize_video': // Добавим также для прямого перехода
-                    case '/resize_image':
                         await sendResizeMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData, ctx);
                         return new Response('OK', { status: 200 });
                     case '/test':
@@ -18318,9 +18328,13 @@ ${historyText}`;
                     const token = envData.TELEGRAM_BOT_TOKEN;
                     const messageId = callback.message.message_id;
 
-                    // Чтение данных
-                    const rawImageKVData = await storage.get(chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX, { type: 'text' });
-                    const isMediaSaved = !!rawImageKVData;
+                    // 1. Получаем статусы медиа
+                    const [rawImage, rawVideo] = await Promise.all([
+                        envData.LAST_PHOTO_STORAGE.get(chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX),
+                        envData.LAST_PHOTO_STORAGE.get(chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX),
+                    ]);
+                    const isPhotoSaved = !!rawImage;
+                    const isVideoSaved = !!rawVideo;
                     
                     // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_resize_mode|...) ---
                     if (data.startsWith('select_resize_mode|')) {
@@ -18328,9 +18342,9 @@ ${historyText}`;
                         let menu;
                         
                         if (selectedMode === RESIZE_IMAGE_MODE) {
-                            menu = await getResizeImageMenuKeyboard(chatId, storage, null, isMediaSaved);
+                            menu = await getResizeImageMenuKeyboard(chatId, storage, null, isPhotoSaved);
                         } else if (selectedMode === RESIZE_VIDEO_MODE) {
-                            menu = await getResizeVideoMenuKeyboard(chatId, storage, null, isMediaSaved);
+                            menu = await getResizeVideoMenuKeyboard(chatId, storage, null, isVideoSaved);
                         }
                                         
                         ctx.waitUntil(Promise.allSettled([
@@ -18350,18 +18364,34 @@ ${historyText}`;
                     // --- 3. ЗАПУСК ГЕНЕРАЦИИ (generate_resize_now|...) ---
                     if (data.startsWith('generate_resize_now|')) {
                         const parts = data.split('|');
-                        const finalMode = parts[1]; // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
-                        const actionParam = parts[2]; // Угол (90) или разрешение (720p)
+                        const finalMode = parts[1];      // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
+                        const actionParam = parts[2];    // Угол (90) или разрешение (720p)
                         
-                        if (!isMediaSaved) {
-                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, "❌ Невозможно запустить. Сначала загрузите медиафайл.", token));
+                        let rawMediaKVData;
+                        let fileIsPresent = false;
+                        
+                        // 🛑 ИСПРАВЛЕНИЕ 1: Определяем, какой файл нужен, и проверяем его наличие
+                        if (finalMode === 'VIDEO_TO_RESIZE') {
+                            rawMediaKVData = rawVideo; // Используем rawVideo, который уже был получен
+                            fileIsPresent = isVideoSaved;
+                        } else if (finalMode === 'IMAGE_TO_RESIZE') {
+                            rawMediaKVData = rawImage; // Используем rawImage, который уже был получен
+                            fileIsPresent = isPhotoSaved;
+                        }
+
+                        if (!fileIsPresent || !rawMediaKVData) {
+                            const mediaName = finalMode === 'VIDEO_TO_RESIZE' ? 'видеоролик' : 'фотографию';
+                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Невозможно запустить. Сначала загрузите ${mediaName}.`, token));
                             return new Response('OK', { status: 200 });
                         }
                         
-                        // Получаем данные о сохраненном медиа для fileId
-                        const mediaData = JSON.parse(rawImageKVData); // rawImageKVData был получен ранее
+                        // 🛑 ИСПРАВЛЕНИЕ 2: Используем данные, относящиеся к текущему режиму
+                        const mediaData = JSON.parse(rawMediaKVData); 
                         const fileId = mediaData.file_id; 
+                        
+                        // Остальные переменные
                         const originalReplyMarkup = callback.message.reply_markup; // Сохраняем клавиатуру
+                        const originalMessageId = callback.message.message_id; 
                         
                         // Запуск асинхронной обработки в фоне
                         ctx.waitUntil(sendMediaToConverterInBackground(
@@ -18378,7 +18408,7 @@ ${historyText}`;
 
                         ctx.waitUntil(Promise.allSettled([
                             answerCallbackQuery(callbackQueryId, `Запускаю изменение размера/поворот...`, token),
-                            editMessage(chatId, messageId, `⏳ **Запускаю Изменение размера/Поворот...** (Режим: ${finalMode}, Параметр: ${actionParam})`, token)
+                            editMessage(chatId, originalMessageId, `⏳ **Запускаю Изменение размера/Поворот...** (Режим: ${finalMode}, Параметр: ${actionParam})`, token)
                         ]));
                         
                         return new Response('OK', { status: 200 });
