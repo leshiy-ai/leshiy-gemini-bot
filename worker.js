@@ -18492,7 +18492,7 @@ ${historyText}`;
 
                     // Определяем статус Task ID
                     const isTaskValid = !!rawTaskData; // Есть ли Task ID для V2U
-
+                // ЛОГИКА КОЛБЭКОВ ДЛЯ РЕСАЙЗА
                 } else if (data.startsWith('select_resize_mode|') || data.startsWith('generate_resize_now|')) {
                     const callbackQueryId = callback.id; 
                     const chatKey = chatId.toString();
@@ -18510,25 +18510,29 @@ ${historyText}`;
                     
                     // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_resize_mode|...) ---
                     if (data.startsWith('select_resize_mode|')) {
+                        
                         const selectedMode = data.split('|')[1]; // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
-                        // 1. Получаем объект хранилища KV (не только envData)
-                        const storageBinding = envData.LAST_PHOTO_STORAGE;
                         let newMenu;
-                        if (newMode === RESIZE_IMAGE_MODE) {
-                            // ПЕРЕДАЕМ ОБЪЕКТ KV-ХРАНИЛИЩА
-                            newMenu = await getResizeImageMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storageBinding);
-                        } else { // RESIZE_VIDEO_MODE
-                            // ПЕРЕДАЕМ ОБЪЕКТ KV-ХРАНИЛИЩА
-                            newMenu = await getResizeVideoMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storageBinding);
+
+                        // 🛑 ИСПРАВЛЕНО: Использование 'selectedMode' и передача 'storage'
+                        if (selectedMode === RESIZE_IMAGE_MODE) {
+                            newMenu = await getResizeImageMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storage);
+                        } else if (selectedMode === RESIZE_VIDEO_MODE) {
+                            newMenu = await getResizeVideoMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storage);
+                        } else {
+                            // Добавьте обработку неожиданного режима
+                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, 'Неизвестный режим изменения размера.', token));
+                            return new Response('OK', { status: 200 });
                         }
-                                        
+                        
+                        // 🛑 ИСПРАВЛЕНО: Использование 'newMenu' вместо 'menu'
                         ctx.waitUntil(Promise.allSettled([
                             editMessageWithKeyboard(
                                 chatId, 
                                 messageId, 
-                                menu.messageText, 
+                                newMenu.messageText, // ИСПРАВЛЕНО
                                 token, 
-                                menu.keyboardObject
+                                newMenu.keyboardObject // ИСПРАВЛЕНО
                             ),
                             answerCallbackQuery(callbackQueryId, `Переключено на ${selectedMode === RESIZE_VIDEO_MODE ? 'Видео' : 'Фото'} изменение размера.`, token)
                         ]));
