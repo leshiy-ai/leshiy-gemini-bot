@@ -15216,6 +15216,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
     const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
     // 1. ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ ТИПА (учитываем и ресайз, и поворот)
     const isVideo = mode.includes('VIDEO');
+    let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
     let mediaType = isVideo ? 'видео' : 'фото';
     const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
 
@@ -15231,24 +15232,28 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
     // Проверяем режим:
     if (mode === RESIZE_VIDEO_MODE) {
         errorMode = 'VIDEO_TO_RESIZE';
+        mimeType = 'video/mp4';
         mediaType = 'видео';
         endpoint = '/resize-video';
         successMessage = `✅ Видео изменено до ${param}!`;
 
     } else if (mode === RESIZE_IMAGE_MODE) {
         errorMode = 'IMAGE_TO_RESIZE';
+        mimeType = 'image/jpeg';
         mediaType = 'фото';
         endpoint = '/resize-image';
         successMessage = `✅ Фото изменено до ${param}!`;
         
     } else if (mode === ROTATE_VIDEO_MODE) { // Для поворота видео
         errorMode = 'VIDEO_TO_ROTATE';
+        mimeType = 'video/mp4';
         mediaType = 'видео';
         endpoint = '/rotate-video';
         successMessage = `✅ Видео повёрнуто на ${param}°!`;
         
     } else if (mode === ROTATE_IMAGE_MODE) { // Для поворота
         errorMode = 'IMAGE_TO_ROTATE';
+        mimeType = 'image/jpeg';
         mediaType = 'фото';
         endpoint = '/rotate-image';
         successMessage = `✅ Фото повёрнуто на ${param}°!`;
