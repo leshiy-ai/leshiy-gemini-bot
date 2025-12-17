@@ -2683,19 +2683,25 @@ function getIconForMedia(currentW, currentH, targetResStr, isVideo) {
 }
 
 /**
- * Вычисляет список разрешений относительно текущего Ratio.
- * Возвращает массив объектов {p: '720p', label: '1280x720'}
+ * Вычисляет точные размеры сторон на основе Aspect Ratio исходника
+ * ориентируясь на стандартные высоты (p-резолюции)
  */
-function getCalculatedPhotoSteps(currentW, currentH) {
-    const steps = [240, 360, 480, 720, 1080, 1440];
-    const isPortrait = currentH > currentW;
-    const ratio = isPortrait ? currentW / currentH : currentH / currentW;
+function getCalculatedPhotoSteps(currentWidth, currentHeight) {
+    // Стандарты высоты, которые поддерживает твой сервер
+    const targetHeights = [240, 360, 480, 580, 720, 1080];
+    const aspect = currentWidth / currentHeight;
 
-    return steps.map(p => {
-        const otherSide = Math.round(p * ratio);
+    return targetHeights.map(h => {
+        // Вычисляем ширину: W = H * Aspect
+        // Делаем число четным (требование многих кодеков и твоего фильтра scale=-2)
+        let calculatedW = Math.round(h * aspect);
+        if (calculatedW % 2 !== 0) calculatedW++; 
+
         return {
-            p: `${p}p`,
-            label: isPortrait ? `${otherSide}x${p}` : `${p}x${otherSide}`
+            p: `${h}p`,
+            width: calculatedW,
+            height: h,
+            label: `${calculatedW}x${h}`
         };
     });
 }
@@ -9478,10 +9484,12 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @returns {Object} { messageText, keyboardObject }
  */
 async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
+    const PHOTO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '580p': 580, '720p': 720, '1080p': 1080 };
+    const PHOTO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p'];
     const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
     const ROTATE_IMAGE_MODE_KEY = ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
     const RESIZE_VIDEO_MODE_KEY = 'VIDEO_TO_RESIZE';
-    
+
     // Используем ваш статус isPhotoSaved
     const canRun = isPhotoSaved; 
 
@@ -9490,20 +9498,12 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const currentHeight = currentMediaData ? currentMediaData.height : 0;
     const currentWidth = currentMediaData ? currentMediaData.width : 0;
 
-    // Генерируем динамические шаги на основе текущего Ratio
-    // 2. Генерируем динамические шаги на основе текущего Ratio
     const dynamicSteps = (currentHeight && currentWidth) 
-        ? getCalculatedPhotoSteps(currentWidth, currentHeight) 
+        ? getCalculatedPhotoSteps(currentWidth, currentHeight)
         : [
-            {p: '240p', label: '320x240'}, 
-            {p: '360p', label: '480x360'}, 
-            {p: '480p', label: '640x480'}, 
-            {p: '720p', label: '1280x720'}, 
-            {p: '1080p', label: '1920x1080'}
-        ];
-    // 3. Логика "Ракеты" (ищем в вычисленных шагах dynamicSteps)
-    let defaultResParam = '720p'; // Дефолт
-    let defaultResLabel = '1280x720';
+            {p: '240p', label: '426x240'}, {p: '360p', label: '640x360'}, {p: '480p', label: '854x480'}, 
+            {p: '580p', label: '475x580'}, {p: '720p', label: '1280x720'}, {p: '1080p', label: '1920x1080'}
+          ];
 
     if (isPhotoSaved && currentHeight) {
         // Ищем первый шаг, который больше текущей высоты (на повышение)
@@ -9563,28 +9563,20 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 
     // 5. ГЕНЕРАЦИЯ КНОПОК С ГАЛОЧКАМИ/ПЛЮСАМИ
     const resolutionButtons = dynamicSteps.map(step => {
-        const targetHeight = parseInt(step.p);
         let icon = '';
-
         if (isPhotoSaved && currentHeight) {
-            // 1. Проверяем на "попадание" в текущее разрешение с небольшим допуском (50 пикселей)
-            // Либо если текущая высота находится между шагами
-            const diff = Math.abs(currentHeight - targetHeight);
-            
-            if (diff <= 50) { 
-                icon = '✅'; // Почти точное совпадение
-            } else if (targetHeight > currentHeight) {
-                icon = '➕'; // Апскейл
-            } else {
-                icon = '➖'; // Даунскейл
-            }
+            // Сравнение с допуском 5 пикселей (для надежности галочки)
+            if (Math.abs(currentHeight - step.height) <= 5) icon = '✅';
+            else if (step.height > currentHeight) icon = '➕';
+            else icon = '➖';
         }
-
         return {
-            text: `${icon} ${step.label}`,
-            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE_KEY}|${step.p}`
+            text: `${icon} ${step.label} (${step.p})`,
+            callback_data: `generate_resize_now|IMAGE_TO_RESIZE|${step.p}`
         };
     });
+    // Логика "Ракеты": ищем первый шаг, который больше текущего фото
+    const nextStep = dynamicSteps.find(s => s.height > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
 
     // --- 6. ГЕНЕРАЦИЯ КНОПОК ПОВОРОТА ---
     const rotateButtons = ROTATE_ANGLES.map(angle => {
@@ -9612,9 +9604,8 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         ...chunkArray(resolutionButtons, 3), 
         ...chunkArray(rotateButtons, 3),
         [{ 
-            text: canRun ? `🚀 Запустить ресайз до ${defaultResLabel}: (${defaultResParam}) сейчас` : `🚫 Загрузите фото`, 
-            // ИСПРАВЛЕНО: передаем defaultResParam (например "1024x1024"), а не "1920"
-            callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE_KEY}|${defaultResParam}` : 'dummy' 
+            text: isPhotoSaved ? `🚀 Ресайз до ${nextStep.label} (${nextStep.p})` : `🚫 Загрузите фото`, 
+            callback_data: isPhotoSaved ? `generate_resize_now|IMAGE_TO_RESIZE|${nextStep.p}` : 'dummy' 
         }]
     ];
 
@@ -15155,41 +15146,36 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
     }
     let endpoint = '';
     let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-    // 1. ОПРЕДЕЛЕНИЕ РЕЖИМА И URL
+    // 1. ОПРЕДЕЛЕНИЕ РЕЖИМА
     let errorMode;
-    let FINAL_RENDER_URL;
     let successMessage;
     // Проверяем режим:
     if (mode === RESIZE_VIDEO_MODE) {
         errorMode = 'VIDEO_TO_RESIZE';
         mediaType = 'видео';
-        const endpoint = '/resize-video';
-        FINAL_RENDER_URL = `${RENDER_HOST_URL}/resize-video?resolution=${param}`;
+        endpoint = '/resize-video';
         successMessage = `✅ Видео изменено до ${param}!`;
 
     } else if (mode === RESIZE_IMAGE_MODE) {
         errorMode = 'IMAGE_TO_RESIZE';
         mediaType = 'фото';
-        const endpoint = '/resize-image';
-        FINAL_RENDER_URL = `${RENDER_HOST_URL}/resize-image?resolution=${param}`;
+        endpoint = '/resize-image';
         successMessage = `✅ Фото изменено до ${param}!`;
         
     } else if (mode === ROTATE_VIDEO_MODE) { // Для поворота видео
         errorMode = 'VIDEO_TO_ROTATE';
         mediaType = 'видео';
-        const endpoint = '/rotate-video';
-        FINAL_RENDER_URL = `${RENDER_HOST_URL}/rotate-video?angle=${param}`;
+        endpoint = '/rotate-video';
         successMessage = `✅ Видео повёрнуто на ${param}°!`;
         
     } else if (mode === ROTATE_IMAGE_MODE) { // Для поворота
         errorMode = 'IMAGE_TO_ROTATE';
         mediaType = 'фото';
-        const endpoint = '/rotate-image';
-        FINAL_RENDER_URL = `${RENDER_HOST_URL}/rotate-image?angle=${param}`;
+        endpoint = '/rotate-image';
         successMessage = `✅ Фото повёрнуто на ${param}°!`;
     }
-    
-    //const FINAL_RENDER_URL = RENDER_HOST_URL + endpoint;
+    // Формируем URL правильно
+    const FINAL_RENDER_URL = `${RENDER_HOST_URL}${endpoint}?${mode.includes('RESIZE') ? 'resolution' : 'angle'}=${param}`
 
     try {
         // --- 0. Пробуждение Render-сервиса ---
@@ -15230,12 +15216,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         // --- 3. Загружаем обработанный медиафайл в Telegram ---
         await editMessage(chatId, originalMessageId, `📤 **Загрузка обработанного файла в Telegram...**`, token);
 
-        // ... (Остальной код по загрузке в Telegram и обновлению KV)
-        
-        const caption = isVideo 
-             ? `✅ Видео изменено до ${param}!` 
-             : `✅ Фото ${param === 'MAX_RESIZE' ? 'изменено' : 'повернуто на ' + param + '°'}!`;
-
+        const caption = successMessage; // Используем то, что определили выше
         let editResult;
         
         if (isVideo) {
