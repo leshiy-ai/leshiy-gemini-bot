@@ -2663,7 +2663,6 @@ async function getCurrentMediaData(chatId, envData, storage, isVideo = false) {
                     currentHeight = 1280; 
                 }
             }
-
             return {
                 currentWidth: currentWidth,
                 currentHeight: currentHeight,
@@ -9679,9 +9678,9 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         // Блок ориентации
         [{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
         [
-            { text: (aspectType === 'landscape' ? '✅ ' : '') + '16:9', callback_data: `set_image_aspect|landscape` },
-            { text: (aspectType === 'portrait' ? '✅ ' : '') + '3:4', callback_data: `set_image_aspect|portrait` },
-            { text: (aspectType === 'square' ? '✅ ' : '') + '1:1', callback_data: `set_image_aspect|square` },
+            { text: (aspectType === 'landscape' ? '✅ ' : '') + '16:9', callback_data: `dummy_image_aspect|landscape` },
+            { text: (aspectType === 'portrait' ? '✅ ' : '') + '3:4', callback_data: `dummy_image_aspect|portrait` },
+            { text: (aspectType === 'square' ? '✅ ' : '') + '1:1', callback_data: `dummy_image_aspect|square` },
         ],
         // Кнопка Ракеты
         [{ 
