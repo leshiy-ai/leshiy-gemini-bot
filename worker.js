@@ -9495,48 +9495,34 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 
     // 1. Получение текущих данных медиа
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false);
-    const currentHeight = currentMediaData ? currentMediaData.height : 0;
-    const currentWidth = currentMediaData ? currentMediaData.width : 0;
+    const currentHeight = currentMediaData?.height || 0;
+    const currentWidth = currentMediaData?.width || 0;
 
+    // Генерируем динамические шаги на основе Aspect Ratio
     const dynamicSteps = (currentHeight && currentWidth) 
         ? getCalculatedPhotoSteps(currentWidth, currentHeight)
         : [
             {p: '240p', label: '426x240'}, {p: '360p', label: '640x360'}, {p: '480p', label: '854x480'}, 
             {p: '580p', label: '475x580'}, {p: '720p', label: '1280x720'}, {p: '1080p', label: '1920x1080'}
           ];
-          
-    const defaultResParam = nextStep.p;
-    const defaultResLabel = nextStep.label;
 
-    // Логика "Ракеты": ищем первый шаг, который больше текущего фото
-    const nextStep = dynamicSteps.find(s => s.height > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
+    // ОПРЕДЕЛЯЕМ ПАРАМЕТРЫ ДЛЯ РАКЕТЫ (через let, чтобы можно было менять)
+    let nextStepObj = dynamicSteps.find(s => s.height > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
+    let defaultResParam = nextStepObj.p;
+    let defaultResLabel = nextStepObj.label;
 
+    // Дополнительная проверка для "Ракеты", если фото загружено
     if (isPhotoSaved && currentHeight) {
-        // Ищем первый шаг, который больше текущей высоты (на повышение)
-        const nextStep = dynamicSteps.find(s => parseInt(s.p) > currentHeight);
-        if (nextStep) {
-            defaultResParam = nextStep.p;
-            defaultResLabel = nextStep.label;
+        const foundNext = dynamicSteps.find(s => s.height > currentHeight);
+        if (foundNext) {
+            defaultResParam = foundNext.p;
+            defaultResLabel = foundNext.label;
+            nextStepObj = foundNext; // Обновляем объект для кнопки
         } else {
-            // Если фото и так огромное, берем последний доступный шаг
-            const lastStep = dynamicSteps[dynamicSteps.length - 1];
-            defaultResParam = lastStep.p;
-            defaultResLabel = lastStep.label;
-        }
-    }
-    // Если такого нет (фото уже 1080p+), берем последний доступный
-    if (!nextStep) nextStep = dynamicSteps[dynamicSteps.length - 1];
-
-
-
-    // 2. Определение лучшего разрешения для кнопки 🚀 (если файл загружен)
-    if (canRun) {
-        for (const key of Object.keys(RESOLUTIONS_HEIGHT)) {
-            const height = RESOLUTIONS_HEIGHT[key];
-            if (getResolutionIcon(currentHeight, height, RESOLUTIONS_HEIGHT) === '✅') {
-                defaultResParam = key;
-                break;
-            }
+            const last = dynamicSteps[dynamicSteps.length - 1];
+            defaultResParam = last.p;
+            defaultResLabel = last.label;
+            nextStepObj = last;
         }
     }
     
@@ -9553,11 +9539,11 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const displayName = '🖼️ Фото: Ресайз';
     const priceLine = '💸 **Цена:** Бесплатно';
     
-    let currentSizeLine = canRun 
+    const currentSizeLine = isPhotoSaved 
         ? `**Текущий размер:** 📐 ${currentWidth}x${currentHeight} пикселей` 
         : `**Текущий размер:** ❓ Нет данных`;
         
-    let mediaStatusLine = canRun 
+    const mediaStatusLine = isPhotoSaved 
         ? `✅ **Фото** загружено.` 
         : `⚠️ Для начала работы отправьте мне фотографию (или файл-изображение)`;
     
@@ -9575,7 +9561,6 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight) {
-            // Сравнение с допуском 5 пикселей (для надежности галочки)
             if (Math.abs(currentHeight - step.height) <= 5) icon = '✅';
             else if (step.height > currentHeight) icon = '➕';
             else icon = '➖';
@@ -9587,12 +9572,10 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     });
     
     // --- 6. ГЕНЕРАЦИЯ КНОПОК ПОВОРОТА ---
-    const rotateButtons = ROTATE_ANGLES.map(angle => {
-        return {
-            text: angle.text, 
-            callback_data: `generate_rotate_now|${ROTATE_IMAGE_MODE_KEY}|${angle.param}` 
-        };
-    });
+    const rotateButtons = ROTATE_ANGLES.map(angle => ({
+        text: angle.text, 
+        callback_data: `generate_rotate_now|IMAGE_TO_ROTATE|${angle.param}` 
+    }));
     
     // --- 7. КОМПОНОВКА КЛАВИАТУРЫ ---
     let keyboard = [
@@ -9606,14 +9589,14 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             { text: activeIcon + ' 🖼️ Фото → Ресайз', callback_data: 'dummy_i2r_active' },
             { 
                 text: `📺 Видео → Ресайз`, 
-                callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE_KEY}` 
+                callback_data: `select_resize_mode|VIDEO_TO_RESIZE` 
             },
         ],
         ...chunkArray(resolutionButtons, 3), 
         ...chunkArray(rotateButtons, 3),
         [{ 
-            text: isPhotoSaved ? `🚀 Ресайз до ${nextStep.label} (${nextStep.p})` : `🚫 Загрузите фото`, 
-            callback_data: isPhotoSaved ? `generate_resize_now|IMAGE_TO_RESIZE|${nextStep.p}` : 'dummy' 
+            text: isPhotoSaved ? `🚀 Ресайз до ${defaultResLabel} (${defaultResParam})` : `🚫 Загрузите фото`, 
+            callback_data: isPhotoSaved ? `generate_resize_now|IMAGE_TO_RESIZE|${defaultResParam}` : 'dummy' 
         }]
     ];
 
