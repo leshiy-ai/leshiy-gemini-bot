@@ -9642,7 +9642,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight > 0) {
-            if (Math.abs(currentHeight - step.currentHeight) <= 5) icon = '✅';
+            if (Math.abs(currentHeight - step.currentHeight) <= 100) icon = '✅';
             else if (step.currentHeight > currentHeight) icon = '➕';
             else icon = '➖';
         }
@@ -9697,7 +9697,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
  */
 async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     // Используем ГЛОБАЛЬНЫЕ КОНСТАНТЫ
-    const VIDEO_RESOLUTIONS_LIST = ['240p', '360p', '480p', '720p', '1080p'];
+    const VIDEO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p'];
     const VIDEO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '720p': 720, '1080p': 1080 };
     const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
     const ROTATE_VIDEO_MODE_KEY = ROTATE_VIDEO_MODE || 'VIDEO_TO_ROTATE';
@@ -9759,25 +9759,24 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     let messageText = `${description}\n${mediaStatusLine}\n\n${currentSizeLine}\nТекущий режим: **${displayName}**\n\n${statusLine}\n${priceLine}\n\nВыберите размер для сжатия (уменьшения) или поворот:`;
 
     // --- 5. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА ---
-    const resolutionButtons = targetHeights.map(targetHeight => {
-        let calcWidth = 0;
-        // Считаем ширину на лету для текста кнопки на основе aspectRatio
-        const [ratioW, ratioH] = aspectRatio.split(':').map(Number);
-        calcWidth = Math.round((targetHeight * ratioW) / ratioH);
-        if (calcWidth % 2 !== 0) calcWidth++; // FFmpeg scale
-
+    const resolutionButtons = VIDEO_STEPS.map(p => {
+        const targetHeight = parseInt(p);
         let icon = '';
+        
         if (isVideoSaved && currentHeight > 0) {
-            if (Math.abs(currentHeight - targetHeight) <= 5) icon = '✅';
-            else if (targetHeight > currentHeight) icon = '➕';
-            else icon = '➖';
+            // Строгое сравнение для галочки
+            if (Math.abs(currentHeight - targetHeight) <= 5) icon = '✅ ';
+            else if (targetHeight > currentHeight) icon = '➕ ';
+            else icon = '➖ ';
         }
-
-        return {
-            text: `${icon} ${targetHeight}p`,
-            callback_data: `generate_resize_now|VIDEO_TO_RESIZE|${targetHeight}p`
+        
+        return { 
+            text: `${icon}${p}`, 
+            callback_data: `generate_resize_now|VIDEO_TO_RESIZE|${p}` 
         };
     });
+    // Логика "Ракеты" для видео
+    const nextStep = VIDEO_STEPS.find(p => parseInt(p) > currentHeight) || '480p';
 
     // --- 6. ГЕНЕРАЦИЯ КНОПОК ПОВОРОТА ---
     const rotateButtons = ROTATE_ANGLES.map(angle => {
@@ -9786,9 +9785,6 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
             callback_data: `generate_rotate_now|${ROTATE_VIDEO_MODE_KEY}|${angle.param}` 
         };
     });
-    // 4. Логика "Ракеты" для видео
-    let nextStepHeight = targetHeights.find(h => h > currentHeight) || targetHeights[targetHeights.length - 1];
-    let rocketLabel = `${nextStepHeight}p`;
     
     // --- 7. КОМПОНОВКА КЛАВИАТУРЫ ---
     let keyboard = [
