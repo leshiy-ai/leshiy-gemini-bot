@@ -2612,9 +2612,11 @@ async function getFileLink(file_id, TELEGRAM_BOT_TOKEN) {
     return `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${file_path}`;
 }
 
-// Функция для получения текущего медиа-объекта (width, height, file_id)
+/**
+ * Функция для получения текущего медиа-объекта с унифицированными именами полей.
+ */
 async function getCurrentMediaData(chatId, envData, storage, isVideo = false) {
-    const key = isVideo ? `video_data_${chatId}` : `last_photo_${chatId}`;
+    const key = isVideo ? `${chatId}_last_video_data` : `${chatId}_last_image_data`;
     const rawData = await storage.get(key);
 
     if (!rawData) return null;
@@ -2623,47 +2625,61 @@ async function getCurrentMediaData(chatId, envData, storage, isVideo = false) {
         const data = JSON.parse(rawData);
         
         if (isVideo) {
-            // Для ВИДЕО: берем aspectRatio или считаем его, если его нет
-            const w = parseInt(data.width) || 0;
-            const h = parseInt(data.height) || 0;
-            let ratio = data.aspectRatio;
+            // УНИФИКАЦИЯ ДЛЯ ВИДЕО
+            let currentWidth = parseInt(data.width) || 0;
+            let currentHeight = parseInt(data.height) || 0;
+            let aspectRatio = data.aspectRatio;
             
-            if (!ratio && w && h) {
-                const r = w / h;
-                if (Math.abs(r - 1.77) < 0.1) ratio = '16:9';
-                else if (Math.abs(r - 1) < 0.1) ratio = '1:1';
-                else ratio = '3:4';
+            // Авто-определение aspectRatio по пикселям, если поле пустое
+            if (!aspectRatio && currentWidth && currentHeight) {
+                const ratioValue = currentWidth / currentHeight;
+                if (Math.abs(ratioValue - 1.77) < 0.1) aspectRatio = '16:9';
+                else if (Math.abs(ratioValue - 1) < 0.1) aspectRatio = '1:1';
+                else aspectRatio = '3:4';
             }
 
             return {
-                width: w,
-                height: h,
-                aspectRatio: ratio || '16:9',
+                currentWidth: currentWidth,
+                currentHeight: currentHeight,
+                aspectRatio: aspectRatio || '16:9',
                 file_id: data.file_id
             };
         } else {
-            // Для ФОТО: логика из твоего блока с aspect_type
-            let photoWidth = parseInt(data.width) || 0;
-            let photoHeight = parseInt(data.height) || 0;
-            let aspectType = data.aspect_type || 'portrait';
+            // УНИФИКАЦИЯ ДЛЯ ФОТО
+            let currentWidth = parseInt(data.width) || 0;
+            let currentHeight = parseInt(data.height) || 0;
+            let aspectType = data.aspect_type || 'portrait'; // из JSON в KV берем как есть
 
-            // Если размеров нет, ставим дефолты по типу
-            if (!photoWidth || !photoHeight) {
-                if (aspectType === 'landscape') { photoWidth = 1280; photoHeight = 720; }
-                else if (aspectType === 'square') { photoWidth = 1024; photoHeight = 1024; }
-                else { photoWidth = 960; photoHeight = 1280; }
+            // Если размеров нет, ставим дефолты по типу (твои значения)
+            if (!currentWidth || !currentHeight) {
+                if (aspectType === 'landscape') { 
+                    currentWidth = 1280; 
+                    currentHeight = 720; 
+                } else if (aspectType === 'square') { 
+                    currentWidth = 1024; 
+                    currentHeight = 1024; 
+                } else { 
+                    currentWidth = 960; 
+                    currentHeight = 1280; 
+                }
             }
 
             return {
-                width: photoWidth,
-                height: photoHeight,
-                aspect_type: aspectType,
+                currentWidth: currentWidth,
+                currentHeight: currentHeight,
+                aspectType: aspectType, // возвращаем уже в унифицированном стиле
                 file_id: data.file_id || (typeof data === 'string' ? data : null)
             };
         }
     } catch (e) {
-        // Если в KV лежит просто file_id (строка)
-        return { file_id: String(rawData), width: 0, height: 0, aspect_type: 'portrait', aspectRatio: '16:9' };
+        // Fallback если в KV строка или битый JSON
+        return { 
+            file_id: String(rawData), 
+            currentWidth: 0, 
+            currentHeight: 0, 
+            aspectType: 'portrait', 
+            aspectRatio: '16:9' 
+        };
     }
 }
 
@@ -2704,18 +2720,17 @@ function getResolutionIcon(currentHeight, targetHeight, allResolutions) {
 function getIconForMedia(currentW, currentH, targetResStr, isVideo) {
     if (isVideo) {
         // Для видео всё просто: targetResStr это "720p", вынимаем 720
-        const targetH = parseInt(targetResStr);
-        const videoResolutions = { "240p": 240, "360p": 360, "480p": 480, "720p": 720, "1080p": 1080 };
-        return getResolutionIcon(currentH, targetH, videoResolutions);
+        const targetHeight = parseInt(targetResStr);
+        const videoResolutions = { "240p": 240, "360p": 360, "480p": 480, "580p": 580, "720p": 720, "1080p": 1080 };
+        return getResolutionIcon(currentHeight, targetHeight, videoResolutions);
     } else {
         // Для фото: targetResStr это "1280x720", вынимаем 720
-        const targetH = parseInt(targetResStr.split('x')[1]);
+        const targetHeight = parseInt(targetResStr.split('x')[1]);
         const photoResolutions = { 
-            "1024x1024": 1024, "1280x720": 720, "720x1280": 1280, 
-            "1920x1080": 1080, "1080x1920": 1920 
+            '426x240': 240, '640x360': 360, '854x480': 480, '960x580': 580, "1280x720": 720, "1920x1080": 1080
         };
         // Передаем в твою функцию именно высоту
-        return getResolutionIcon(currentH, targetH, photoResolutions);
+        return getResolutionIcon(currentHeight, targetHeight, photoResolutions);
     }
 }
 
@@ -2739,28 +2754,28 @@ function getCalculatedSteps(width, height) {
 }
 
 /**
- * Вычисляет точные размеры сторон на основе Aspect Ratio исходника
- * ориентируясь на стандартные высоты (p-резолюции)
+ * Точный расчёт шагов ресайза на основе Aspect Ratio.
  */
-function getCalculatedPhotoSteps(w, h, aspectType = 'portrait') {
+function getCalculatedPhotoSteps(currentWidth, currentHeight, aspectType = 'portrait') {
     const targetHeights = [240, 360, 480, 580, 720, 1080];
-    let aspect = (w && h) ? w / h : 0;
+    let aspectRatio = (currentWidth && currentHeight) ? (currentWidth / currentHeight) : 0;
 
-    // Если реальных размеров нет, берем жесткие пропорции по типу
-    if (aspect === 0) {
-        if (aspectType === 'landscape') aspect = 16 / 9;
-        else if (aspectType === 'square') aspect = 1 / 1;
-        else aspect = 3 / 4; // portrait
+    // Если данных нет, используем жёсткие пропорции по типу
+    if (aspectRatio === 0) {
+        if (aspectType === 'landscape') aspectRatio = 16 / 9;
+        else if (aspectType === 'square') aspectRatio = 1 / 1;
+        else aspectRatio = 3 / 4; // portrait
     }
 
-    return targetHeights.map(height => {
-        let width = Math.round(height * aspect);
-        if (width % 2 !== 0) width++; // FFmpeg scale=-2
+    return targetHeights.map(targetHeight => {
+        let calculatedWidth = Math.round(targetHeight * aspectRatio);
+        if (calculatedWidth % 2 !== 0) calculatedWidth++; // FFmpeg требование
+        
         return { 
-            p: height + 'p', 
-            label: width + 'x' + height, 
-            height: height, 
-            width: width 
+            p: targetHeight + 'p', 
+            label: `${calculatedWidth}x${targetHeight}`, 
+            currentHeight: targetHeight, // высота шага для сравнения
+            currentWidth: calculatedWidth 
         };
     });
 }
@@ -9552,13 +9567,16 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     // Используем ваш статус isPhotoSaved
     const canRun = isPhotoSaved; 
 
-    // 1. Получение текущих данных медиа
+    // 1. Извлечение данных (используем только полные имена)
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false);
-    const currentHeight = currentMediaData?.height || 0;
-    const currentWidth = currentMediaData?.width || 0;
-    let aspectType = currentMediaData?.aspect_type || 'portrait';
+    const currentWidth = currentMediaData?.currentWidth || 0;
+    const currentHeight = currentMediaData?.currentHeight || 0;
+    const aspectType = currentMediaData?.aspectType || 'portrait';
 
-    // Генерируем динамические шаги на основе Aspect Ratio
+    // 2. Генерация динамических кнопок
+    const dynamicSteps = getCalculatedPhotoSteps(currentWidth, currentHeight, aspectType);
+
+    /*/ Генерируем динамические шаги на основе Aspect Ratio
     const dynamicSteps = (currentHeight && currentWidth) 
         ? getCalculatedPhotoSteps(currentWidth, currentHeight)
         : [
@@ -9568,28 +9586,28 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             {p: '580p', label: '475x580', height: 580}, 
             {p: '720p', label: '1280x720', height: 720}, 
             {p: '1080p', label: '1920x1080', height: 1080}
-          ];
+          ];*/
             
-    // 3. Логика "Ракеты" (используем let для возможности перезаписи)
-    let nextStepObj = dynamicSteps.find(s => s.height > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
+    // 3. Логика "Ракеты" (через let для перезаписи)
+    let nextStepObj = dynamicSteps.find(step => step.currentHeight > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
     let defaultResParam = nextStepObj.p;
     let defaultResLabel = nextStepObj.label;
-
+    
     // Дополнительная проверка для "Ракеты", если фото загружено
-    if (isPhotoSaved && currentHeight) {
-        const foundNext = dynamicSteps.find(s => s.height > currentHeight);
+    if (isPhotoSaved && currentHeight > 0) {
+        const foundNext = dynamicSteps.find(step => step.currentHeight > currentHeight);
         if (foundNext) {
+            nextStepObj = foundNext;
             defaultResParam = foundNext.p;
             defaultResLabel = foundNext.label;
-            nextStepObj = foundNext; 
         } else {
-            const last = dynamicSteps[dynamicSteps.length - 1];
-            defaultResParam = last.p;
-            defaultResLabel = last.label;
-            nextStepObj = last;
+            const lastStep = dynamicSteps[dynamicSteps.length - 1];
+            nextStepObj = lastStep;
+            defaultResParam = lastStep.p;
+            defaultResLabel = lastStep.label;
         }
     }
-    
+
     // 3. АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА
     let balanceStatus = '...';
     try {
@@ -9624,10 +9642,9 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     // 5. ГЕНЕРАЦИЯ КНОПОК С ГАЛОЧКАМИ/ПЛЮСАМИ
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
-        if (isPhotoSaved && currentHeight) {
-            // Сравнение с допуском 5 пикселей
-            if (Math.abs(currentHeight - step.height) <= 5) icon = '✅';
-            else if (step.height > currentHeight) icon = '➕';
+        if (isPhotoSaved && currentHeight > 0) {
+            if (Math.abs(currentHeight - step.currentHeight) <= 5) icon = '✅';
+            else if (step.currentHeight > currentHeight) icon = '➕';
             else icon = '➖';
         }
         return {
@@ -9659,14 +9676,14 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         ],
         ...chunkArray(resolutionButtons, 3), 
         ...chunkArray(rotateButtons, 3),
-        // БЛОК СООТНОШЕНИЯ (как в видео, но для фото)
-        [{ text: `Ориентация: ${aspectType === 'landscape' ? 'Ландшафт' : aspectType === 'square' ? 'Квадрат' : 'Портрет'}`, callback_data: 'ignore' }],
+        // Блок ориентации
+        [{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
         [
-            { text: (aspectType === 'landscape' ? '✅ ' : '') + '16:9', callback_data: `dummy_image_aspect|landscape` },
-            { text: (aspectType === 'portrait' ? '✅ ' : '') + '3:4', callback_data: `dummy_image_aspect|portrait` },
-            { text: (aspectType === 'square' ? '✅ ' : '') + '1:1', callback_data: `dummy_image_aspect|square` },
+            { text: (aspectType === 'landscape' ? '✅ ' : '') + '16:9', callback_data: `set_image_aspect|landscape` },
+            { text: (aspectType === 'portrait' ? '✅ ' : '') + '3:4', callback_data: `set_image_aspect|portrait` },
+            { text: (aspectType === 'square' ? '✅ ' : '') + '1:1', callback_data: `set_image_aspect|square` },
         ],
-
+        // Кнопка Ракеты
         [{ 
             text: isPhotoSaved ? `🚀 Ресайз до ${defaultResLabel} (${defaultResParam})` : `🚫 Загрузите фото`, 
             callback_data: isPhotoSaved ? `generate_resize_now|IMAGE_TO_RESIZE|${defaultResParam}` : 'dummy' 
