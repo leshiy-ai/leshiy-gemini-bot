@@ -9647,7 +9647,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             else icon = '➖';
         }
         return {
-            text: `${icon} ${step.label} (${step.p})`,
+            text: `${icon} ${step.label}`,
             callback_data: `generate_resize_now|IMAGE_TO_RESIZE|${step.p}`
         };
     });
@@ -9705,12 +9705,16 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
 
     // 1. Получение текущих данных медиа
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, true);
-    const currentHeight = currentMediaData ? currentMediaData.height : null;
-    const currentWidth = currentMediaData ? currentMediaData.width : null; // ДОБАВЛЕНО, чтобы не было ReferenceError
+    const currentWidth = currentMediaData?.currentWidth || 0;
+    const currentHeight = currentMediaData?.currentHeight || 0;
     const aspectRatio = currentMediaData?.aspectRatio || '16:9';
+
     // Используем ваш статус isVideoSaved
     const canRun = isVideoSaved; 
     let defaultResParam = '1080p';
+
+    // 2. Список стандартных разрешений (высота)
+    const targetHeights = [240, 360, 480, 720, 1080];
 
     // Ищем следующее большее разрешение для ракеты
     if (canRun && currentHeight) {
@@ -9755,15 +9759,26 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     let messageText = `${description}\n${mediaStatusLine}\n\n${currentSizeLine}\nТекущий режим: **${displayName}**\n\n${statusLine}\n${priceLine}\n\nВыберите размер для сжатия (уменьшения) или поворот:`;
 
     // --- 5. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА ---
-    const resolutionButtons = VIDEO_RESOLUTIONS_LIST.map(resKey => {
-        const targetHeight = VIDEO_RES_OBJ[resKey];
-        const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, VIDEO_RES_OBJ) : ''; 
+    const resolutionButtons = targetHeights.map(targetHeight => {
+        let calcWidth = 0;
+        // Считаем ширину на лету для текста кнопки на основе aspectRatio
+        const [ratioW, ratioH] = aspectRatio.split(':').map(Number);
+        calcWidth = Math.round((targetHeight * ratioW) / ratioH);
+        if (calcWidth % 2 !== 0) calcWidth++; // FFmpeg scale
+
+        let icon = '';
+        if (isVideoSaved && currentHeight > 0) {
+            if (Math.abs(currentHeight - targetHeight) <= 5) icon = '✅';
+            else if (targetHeight > currentHeight) icon = '➕';
+            else icon = '➖';
+        }
+
         return {
-            text: `${icon} ${resKey}`,
-            callback_data: `generate_resize_now|${RESIZE_VIDEO_MODE_KEY}|${resKey}` 
+            text: `${icon} ${targetHeight}p`,
+            callback_data: `generate_resize_now|VIDEO_TO_RESIZE|${targetHeight}p`
         };
     });
-    
+
     // --- 6. ГЕНЕРАЦИЯ КНОПОК ПОВОРОТА ---
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
@@ -9771,6 +9786,9 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
             callback_data: `generate_rotate_now|${ROTATE_VIDEO_MODE_KEY}|${angle.param}` 
         };
     });
+    // 4. Логика "Ракеты" для видео
+    let nextStepHeight = targetHeights.find(h => h > currentHeight) || targetHeights[targetHeights.length - 1];
+    let rocketLabel = `${nextStepHeight}p`;
     
     // --- 7. КОМПОНОВКА КЛАВИАТУРЫ ---
     let keyboard = [
@@ -9797,9 +9815,8 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
             { text: (aspectRatio === '1:1' ? '✅ ' : '') + '1:1', callback_data: `dummy_video_ratio|1:1` },
         ],
         [{ 
-            text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите видео`, 
-            // ИСПРАВЛЕНО: передаем динамический параметр (например "720p"), а не жесткий "1080p"
-            callback_data: canRun ? `generate_resize_now|${RESIZE_VIDEO_MODE_KEY}|${defaultResParam}` : 'dummy' 
+            text: isVideoSaved ? `🚀 Запустить ресайз до ${rocketLabel} сейчас` : `🚫 Загрузите видео`, 
+            callback_data: isVideoSaved ? `generate_resize_now|VIDEO_TO_RESIZE|${nextStepHeight}p` : 'dummy' 
         }]
     ];
 
