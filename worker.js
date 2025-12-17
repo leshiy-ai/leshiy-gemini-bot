@@ -9478,8 +9478,6 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @returns {Object} { messageText, keyboardObject }
  */
 async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
-    const PHOTO_RESOLUTIONS_LIST = ['1024x1024', '1280x720', '720x1280', '1920x1080', '1080x1920'];
-    const PHOTO_RES_OBJ = {'1024x1024': 1024, '1280x720': 720, '720x1280': 1280, '1920x1080': 1080, '1080x1920': 1920};
     const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
     const ROTATE_IMAGE_MODE_KEY = ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
     const RESIZE_VIDEO_MODE_KEY = 'VIDEO_TO_RESIZE';
@@ -9491,8 +9489,6 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false);
     const currentHeight = currentMediaData ? currentMediaData.height : 0;
     const currentWidth = currentMediaData ? currentMediaData.width : 0;
-    const curH = currentMediaData?.height || 0;
-    const curW = currentMediaData?.width || 0;
 
     // Генерируем динамические шаги на основе текущего Ratio
     // 2. Генерируем динамические шаги на основе текущего Ratio
@@ -9567,18 +9563,18 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 
     // 5. ГЕНЕРАЦИЯ КНОПОК С ГАЛОЧКАМИ/ПЛЮСАМИ
     const resolutionButtons = dynamicSteps.map(step => {
-        const targetH = parseInt(step.p);
+        const targetHeight = parseInt(step.p);
         let icon = '';
 
         if (isPhotoSaved && currentHeight) {
-            if (currentHeight === targetH) icon = '✅';
-            else if (targetH > currentHeight) icon = '➕';
+            if (currentHeight === targetHeight) icon = '✅';
+            else if (targetHeight > currentHeight) icon = '➕';
             else icon = '➖';
         }
 
         return {
             text: `${icon} ${step.label} (${step.p})`,
-            callback_data: `generate_resize_now|${RES_IMAGE_MODE_KEY}|${step.p}`
+            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE_KEY}|${step.p}`
         };
     });
 
@@ -9586,7 +9582,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
             text: angle.text, 
-            callback_data: `generate_rotate_now|${ROTATE_IMAGE_MODE_KEY}|${a.param}` 
+            callback_data: `generate_rotate_now|${ROTATE_IMAGE_MODE_KEY}|${angle.param}` 
         };
     });
     
