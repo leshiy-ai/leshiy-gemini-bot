@@ -15283,9 +15283,17 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Отправляю на Render: ${FINAL_RENDER_URL}`, envData));
 
         const renderFormData = new FormData();
+
+        // Используем твои существующие переменные: isVideo и mediaBuffer
         const formKey = isVideo ? 'video' : 'image'; 
-        const mediaFile = new File([mediaBuffer], `input.${isVideo ? 'mp4' : 'jpg'}`, { type: mimeType });
-        renderFormData.append(formKey, mediaFile);
+        const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+        const fileName = isVideo ? 'input.mp4' : 'input.jpg';
+
+        // Оборачиваем буфер в Blob, чтобы передать MIME-тип и имя файла
+        // Это решает проблему "пустых" файлов на стороне сервера
+        const mediaBlob = new Blob([mediaBuffer], { type: mimeType });
+        renderFormData.append(formKey, mediaBlob, fileName);
+
 
         const renderResponse = await fetch(FINAL_RENDER_URL, {
             method: 'POST',
