@@ -9468,7 +9468,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     
     // Используем ваш статус isPhotoSaved (предполагаем, что он корректно обновляется)
     const canRun = isPhotoSaved; 
-    let defaultResParam = '1024x1024';
+    let defaultResParam = '1920x1280';
 
     // 1. Получение текущих данных медиа
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false);
@@ -9478,8 +9478,8 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     // Ищем следующее большее разрешение для ракеты
     if (canRun && currentHeight) {
         for (const resKey of PHOTO_RESOLUTIONS_LIST) {
-            const targetH = PHOTO_RES_OBJ[resKey];
-            if (getResolutionIcon(currentHeight, targetH, PHOTO_RES_OBJ) === '✅') {
+            const targetHeight = PHOTO_RES_OBJ[resKey];
+            if (getResolutionIcon(currentHeight, targetHeight, PHOTO_RES_OBJ) === '✅') {
                 defaultResParam = resKey;
                 break;
             }
@@ -9543,7 +9543,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
             text: angle.text, 
-            callback_data: `generate_resize_now|${ROTATE_IMAGE_MODE_KEY}|${angle.param}` 
+            callback_data: `generate_rotate_now|${ROTATE_IMAGE_MODE_KEY}|${angle.param}` 
         };
     });
     
@@ -9556,7 +9556,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             callback_data: isPhotoSaved ? 'cmd:/view_saved_photo' : 'cmd:/upload_photo' 
         }],
         [
-            { text: activeIcon + ' 🖼️ Фото: Ресайз', callback_data: 'dummy_i2r_active' },
+            { text: activeIcon + ' 🖼️ Фото → Ресайз', callback_data: 'dummy_i2r_active' },
             { 
                 text: `📺 Видео → Ресайз`, 
                 callback_data: `select_resize_mode|${RESIZE_VIDEO_MODE_KEY}` 
@@ -9566,6 +9566,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         ...chunkArray(rotateButtons, 3),
         [{ 
             text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите фото`, 
+            // ИСПРАВЛЕНО: передаем defaultResParam (например "1024x1024"), а не "1920"
             callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE_KEY}|${defaultResParam}` : 'dummy' 
         }]
     ];
@@ -9587,15 +9588,16 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     // 1. Получение текущих данных медиа
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, true);
     const currentHeight = currentMediaData ? currentMediaData.height : null;
+    const currentWidth = currentMediaData ? currentMediaData.width : null; // ДОБАВЛЕНО, чтобы не было ReferenceError
     // Используем ваш статус isVideoSaved
     const canRun = isVideoSaved; 
-    let defaultResParam = '720p';
+    let defaultResParam = '1080p';
 
     // Ищем следующее большее разрешение для ракеты
     if (canRun && currentHeight) {
         for (const resKey of VIDEO_RESOLUTIONS_LIST) {
-            const targetH = VIDEO_RES_OBJ[resKey];
-            if (getResolutionIcon(currentHeight, targetH, VIDEO_RES_OBJ) === '✅') {
+            const targetHeight = VIDEO_RES_OBJ[resKey];
+            if (getResolutionIcon(currentHeight, targetHeight, VIDEO_RES_OBJ) === '✅') {
                 defaultResParam = resKey;
                 break;
             }
@@ -9639,7 +9641,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, VIDEO_RES_OBJ) : ''; 
         return {
             text: `${icon} ${resKey}`,
-            callback_data: `generate_resize_now|VIDEO_TO_RESIZE|${resKey}` 
+            callback_data: `generate_resize_now|${RESIZE_VIDEO_MODE_KEY}|${resKey}` 
         };
     });
     
@@ -9647,7 +9649,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
             text: angle.text, 
-            callback_data: `generate_resize_now|${ROTATE_VIDEO_MODE_KEY}|${angle.param}` 
+            callback_data: `generate_rotate_now|${ROTATE_VIDEO_MODE_KEY}|${angle.param}` 
         };
     });
     
@@ -9664,12 +9666,13 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
                 text: `🖼️ Фото → Ресайз`, 
                 callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE_KEY}` 
             },
-            { text: activeIcon + ' 📺 Видео: Ресайз', callback_data: 'dummy_v2r_active' },
+            { text: activeIcon + ' 📺 Видео → Ресайз', callback_data: 'dummy_v2r_active' },
         ],
         ...chunkArray(resolutionButtons, 3), 
         ...chunkArray(rotateButtons, 3),
         [{ 
             text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите видео`, 
+            // ИСПРАВЛЕНО: передаем динамический параметр (например "720p"), а не жесткий "1080p"
             callback_data: canRun ? `generate_resize_now|${RESIZE_VIDEO_MODE_KEY}|${defaultResParam}` : 'dummy' 
         }]
     ];
@@ -18517,7 +18520,7 @@ ${historyText}`;
                     // Определяем статус Task ID
                     const isTaskValid = !!rawTaskData; // Есть ли Task ID для V2U
                 // ЛОГИКА КОЛБЭКОВ ДЛЯ РЕСАЙЗА
-                } else if (data.startsWith('select_resize_mode|') || data.startsWith('generate_resize_now|')) {
+                } else if (data.startsWith('select_resize_mode|') || data.startsWith('generate_resize_now|') || data.startsWith('generate_rotate_now|')) {
                     const callbackQueryId = callback.id; 
                     const chatKey = chatId.toString();
                     const storage = envData.LAST_PHOTO_STORAGE; 
@@ -18568,7 +18571,7 @@ ${historyText}`;
                     if (data.startsWith('generate_resize_now|')) {
                         const parts = data.split('|');
                         const finalMode = parts[1];      // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
-                        const actionParam = parts[2];    // Угол или разрешение
+                        const actionParam = parts[2];    // Разрешение
 
                         let fileId; // Переменная для ID файла
 
@@ -18611,6 +18614,53 @@ ${historyText}`;
                         
                         return new Response('OK', { status: 200 });
                     } // --- КОНЕЦ НОВОГО БЛОКА RESIZE ---
+                    // --- ЗАПУСК ПОВОРОТА (generate_rotate_now|...) ---
+                    if (data.startsWith('generate_rotate_now|')) {
+                        const parts = data.split('|');
+                        const finalMode = parts[1];      // IMAGE_TO_ROTATE или VIDEO_TO_ROTATE
+                        const actionParam = parts[2];    // Угол
+
+                        let fileId; // Переменная для ID файла
+
+                        if (finalMode === 'VIDEO_TO_ROTATE') {
+                            // Для видео file_id лежит внутри JSON (как и было)
+                            const mediaData = JSON.parse(rawVideo);
+                            fileId = mediaData.file_id;
+                        } else if (finalMode === 'IMAGE_TO_ROTATE') {
+                            // берем file_id напрямую из его собственного ключа
+                            fileId = await envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_FILE_ID_KEY_SUFFIX);
+                        }
+
+                        if (!fileId) {
+                            const mediaName = finalMode === 'VIDEO_TO_ROTATE' ? 'видеоролик' : 'фотографию';
+                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Не нашел ID файла. Загрузите ${mediaName} еще раз.`, token));
+                            return new Response('OK', { status: 200 });
+                        }
+                        
+                        // Остальные переменные
+                        const originalReplyMarkup = callback.message.reply_markup; // Сохраняем клавиатуру
+                        const originalMessageId = callback.message.message_id; 
+                        
+                        // Запуск асинхронной обработки в фоне
+                        ctx.waitUntil(sendMediaToConverterInBackground(
+                            chatId, 
+                            fileId, 
+                            originalMessageId, 
+                            finalMode, 
+                            actionParam, 
+                            envData, 
+                            token, 
+                            ctx,
+                            originalReplyMarkup
+                        ));
+
+                        ctx.waitUntil(Promise.allSettled([
+                            answerCallbackQuery(callbackQueryId, `Запускаю поворот изображения`, token),
+                            editMessage(chatId, originalMessageId, `⏳ Запускаю Поворот изображения, Параметр: ${actionParam})`, token)
+                        ]));
+                        
+                        return new Response('OK', { status: 200 });
+                    } // --- КОНЕЦ НОВОГО БЛОКА ROTATE ---
                     // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_upscale_mode|...) ---
                     if (data.startsWith('select_upscale_mode|')) {
                         const selectedMode = data.split('|')[1]; // 'IMAGE_TO_UPSCALE' или 'VIDEO_TO_UPSCALE'
