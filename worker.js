@@ -16727,7 +16727,7 @@ export default {
                     mediaObject = message.photo.reduce((prev, current) => 
                         (prev.width * prev.height > current.width * current.height) ? prev : current);
                 
-                // 2.2. ✅ ДОБАВЛЕНО: ПРОВЕРКА НА ДОКУМЕНТ (несжатое фото/перетаскивание)
+                // 2.2. ? ДОБАВЛЕНО: ПРОВЕРКА НА ДОКУМЕНТ (несжатое фото/перетаскивание)
                 } else if (message.document) {
                     // Проверяем, что документ имеет MIME-тип изображения
                     if (message.document.mime_type && message.document.mime_type.startsWith('image/')) {
@@ -16737,25 +16737,15 @@ export default {
 
                 // 2.3. Обработка ФОТО (Photo или Document-Photo)
                 if (mediaObject) {
-                    // 🛑 ШАГ 1: Отключаем автоматический Vision!
+                    // ШАГ 1: Отключаем автоматический Vision!
                     // ctx.waitUntil(processPhotoMessageAsync(chatId, mediaObject, envData, ctx));
                     
                     const fileId = mediaObject.file_id;
                     const token = envData.TELEGRAM_BOT_TOKEN;
-                    // Это гарантирует, что getCurrentMediaData получит width/height/file_id немедленно.
-                    const metadataKey = chatId + LAST_IMAGE_DATA_KEY_SUFFIX;
-                    // 🛑 ШАГ 2: Сохраняем fileId в KV, чтобы кнопки знали, с чем работать
-                    //await envData.LAST_PHOTO_STORAGE.put(chatId + LAST_FILE_ID_KEY_SUFFIX, fileId, { expirationTtl: 3600 });
-                    // Создаем объект для KV, который будет использоваться для получения file_id в flow.
-                    const metadataToSave = {
-                        file_id: fileId,
-                        width: mediaObject.width || null, // width может быть null для документов
-                        height: mediaObject.height || null, // height может быть null для документов
-                        mime_type: mediaObject.mime_type || 'image/jpeg' 
-                    };
-                    
-                    // Сохраняем, чтобы getResizeImageMenuKeyboard и sendMediaToConverterInBackground могли его прочитать
-                    await envData.LAST_PHOTO_STORAGE.put(metadataKey, JSON.stringify(metadataToSave), { expirationTtl: 3600 });
+
+                    // ?? ШАГ 2: Сохраняем fileId в KV, чтобы кнопки знали, с чем работать
+                    await envData.LAST_PHOTO_STORAGE.put(chatId + LAST_FILE_ID_KEY_SUFFIX, fileId, { expirationTtl: 3600 });
+                    // НОВЫЙ ШАГ: ЗАПУСКАЕМ ФОНОВУЮ ЗАДАЧУ
                     // Передаем mediaObject для сохранения метаданных (width/height).
                     ctx.waitUntil(downloadAndSaveBase64(fileId, chatId, envData, mediaObject)); 
 
@@ -18562,29 +18552,24 @@ ${historyText}`;
                     if (data.startsWith('generate_resize_now|')) {
                         const parts = data.split('|');
                         const finalMode = parts[1];      // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
-                        const actionParam = parts[2];    // Угол (90) или разрешение (720p)
-                        
-                        let rawMediaKVData;
-                        let fileIsPresent = false;
-                        
-                        // 🛑 ИСПРАВЛЕНИЕ 1: Определяем, какой файл нужен, и проверяем его наличие
+                        const actionParam = parts[2];    // Угол или разрешение
+
+                        let fileId; // Переменная для ID файла
+
                         if (finalMode === 'VIDEO_TO_RESIZE') {
-                            rawMediaKVData = rawVideo; // Используем rawVideo, который уже был получен
-                            fileIsPresent = isVideoSaved;
+                            // Для видео file_id лежит внутри JSON (как и было)
+                            const mediaData = JSON.parse(rawVideo);
+                            fileId = mediaData.file_id;
                         } else if (finalMode === 'IMAGE_TO_RESIZE') {
-                            rawMediaKVData = rawImage; // Используем rawImage, который уже был получен
-                            fileIsPresent = isPhotoSaved;
+                            // берем file_id напрямую из его собственного ключа
+                            fileId = await envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_FILE_ID_KEY_SUFFIX);
                         }
 
-                        if (!fileIsPresent || !rawMediaKVData) {
+                        if (!fileId) {
                             const mediaName = finalMode === 'VIDEO_TO_RESIZE' ? 'видеоролик' : 'фотографию';
-                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Невозможно запустить. Сначала загрузите ${mediaName}.`, token));
+                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Не нашел ID файла. Загрузите ${mediaName} еще раз.`, token));
                             return new Response('OK', { status: 200 });
                         }
-                        
-                        // 🛑 ИСПРАВЛЕНИЕ 2: Используем данные, относящиеся к текущему режиму
-                        const mediaData = JSON.parse(rawMediaKVData); 
-                        const fileId = mediaData.file_id; 
                         
                         // Остальные переменные
                         const originalReplyMarkup = callback.message.reply_markup; // Сохраняем клавиатуру
