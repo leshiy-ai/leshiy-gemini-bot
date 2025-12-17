@@ -2617,8 +2617,8 @@ async function getCurrentMediaData(chatId, envData, storage, isKeySuffix) {
     const chatKey = chatId.toString();
     // 🛑 Используем суффиксы для метаданных (где лежит file_id, width, height)
     const dataKey = isKeySuffix
-        ? chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX
-        : chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX;
+        ? chatKey + LAST_VIDEO_DATA_KEY_SUFFIX
+        : chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
         
     const rawData = await storage.get(dataKey, { type: 'text' }); 
     if (!rawData) return null;
@@ -2893,7 +2893,6 @@ async function downloadFileBuffer(fileId, token, envData) {
  */
 async function downloadAndSaveBase64(fileId, chatId, envData, mediaObject, rotationDegree = 0) {
     const PHOTO_URL_KEY_SUFFIX = '_photo_url'; // Используем явное значение
-    const LAST_IMAGE_DATA_KEY_SUFFIX = envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
     const token = envData.TELEGRAM_BOT_TOKEN;
     const LAST_IMAGE_DATA_KEY = `${chatId}${LAST_IMAGE_DATA_KEY_SUFFIX}`;
     const STORAGE = envData.LAST_PHOTO_STORAGE;
@@ -9184,7 +9183,7 @@ async function sendPhotoMenu(chatId, token, storage, envData, ctx, messageId = n
     const chatKey = chatId.toString();
     // ✅ ИСПРАВЛЕНО: Используем суффиксы из envData, как в вашем рабочем коде
     const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-    const LAST_IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX;
+    const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
 
     try {
         const userDefinedPrompt = await storage.get(LAST_PROMPT_KEY);
@@ -9675,9 +9674,9 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
 async function sendUpscaleMenu(chatId, token, storage, envData, ctx, messageId = null) {
     const chatKey = chatId.toString();
     // ✅ ИСПОЛЬЗУЕМ суффиксы из envData
-    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+    const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX;
     // Предполагаем, что апскейл I2U использует тот же ключ, что и фото
-    const LAST_IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
+    const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
 
     try {
         // 1. ЧТЕНИЕ ДАННЫХ ИЗ KV
@@ -10733,7 +10732,7 @@ async function checkAndDeductBalance(chatId, LAST_PHOTO_STORAGE, cost, serviceNa
 // ✅ sendSavedPhoto - Финальная логика для обработчика view_saved_photo
 async function sendSavedPhoto(chatId, token, storage, envData, ctx) { 
     const chatKey = chatId.toString();
-    const LAST_IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX;
+    const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
 
     let base64Image = null;
     let imageData = null;
@@ -10809,7 +10808,7 @@ async function sendSavedPhoto(chatId, token, storage, envData, ctx) {
  */
 async function sendSavedVideo(chatId, token, storage, envData, callbackQueryId) {
     const chatKey = chatId.toString();
-    const videoKey = chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX;
+    const videoKey = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX;
     const rawVideoData = await storage.get(videoKey, { type: 'text' });
     
     // 🛑 Немедленный ответ на колбэк, чтобы убрать "часики" с кнопки
@@ -11734,8 +11733,8 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
     
     const token = envData.TELEGRAM_BOT_TOKEN; 
     const chatKey = chatId.toString();
-    const PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-    const IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
+    const PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX;
+    const IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
     const GENERATION_LOCK_KEY = chatKey + '_generation_in_progress';
 
     // --- 1. ПРОВЕРКА ЛОКА ---
@@ -14520,10 +14519,10 @@ async function processPhotoMessageAsync(chatId, largestPhotoObject, envData, ctx
 
     // --- KV KEYS --- (без изменений)
     const chatKey = chatId.toString();
-    const LAST_PROMPT_KEY = chatKey + (envData.LAST_PROMPT_KEY_SUFFIX || '_last_prompt');
-    const LAST_IMAGE_DATA_KEY = chatKey + (envData.LAST_IMAGE_DATA_KEY_SUFFIX || '_last_image_data');
-    const LAST_PROMPT_MESSAGE_ID_KEY = chatKey + (envData.LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX || '_last_prompt_msg_id');
-    const LAST_PROMPT_LANG_KEY = chatKey + (envData.LAST_PROMPT_LANG_KEY_SUFFIX || '_last_prompt_lang');
+    const LAST_PROMPT_KEY = chatKey + (LAST_PROMPT_KEY_SUFFIX || '_last_prompt');
+    const LAST_IMAGE_DATA_KEY = chatKey + (LAST_IMAGE_DATA_KEY_SUFFIX || '_last_image_data');
+    const LAST_PROMPT_MESSAGE_ID_KEY = chatKey + (LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX || '_last_prompt_msg_id');
+    const LAST_PROMPT_LANG_KEY = chatKey + (LAST_PROMPT_LANG_KEY_SUFFIX || '_last_prompt_lang');
 
     // УНИВЕРСАЛЬНЫЙ ВЫЗОВ зависит от настроенной в KV модели
     // 1. Определение сервиса и ключа KV - Обязательно
@@ -15244,8 +15243,8 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
 
     // 1. Определяем ключ KV для сохранения, используя суффиксы
     const suffix = isVideo 
-        ? envData.LAST_VIDEO_DATA_KEY_SUFFIX 
-        : envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
+        ? LAST_VIDEO_DATA_KEY_SUFFIX 
+        : LAST_IMAGE_DATA_KEY_SUFFIX; 
     const KV_KEY = chatKey + suffix; 
     
     const newFileId = newMediaObject.file_id;
@@ -16832,7 +16831,7 @@ export default {
 
                 // --- KV KEYS (УНИФИКАЦИЯ: ИСПОЛЬЗУЕМ СУФФИКСЫ ИЗ envData) ---
                 const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-                const LAST_IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX;
+                const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
                 const LAST_ACTION_KEY = chatKey + envData.LAST_ACTION_KEY_SUFFIX;
                 const LAST_PROMPT_LANG_KEY = chatKey + envData.LAST_PROMPT_LANG_KEY_SUFFIX;
 
@@ -18521,8 +18520,8 @@ ${historyText}`;
 
                     // 1. Получаем статусы медиа
                     const [rawImage, rawVideo] = await Promise.all([
-                        envData.LAST_PHOTO_STORAGE.get(chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX),
-                        envData.LAST_PHOTO_STORAGE.get(chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX),
+                        envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_IMAGE_DATA_KEY_SUFFIX),
+                        envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_VIDEO_DATA_KEY_SUFFIX),
                     ]);
                     const isPhotoSaved = !!rawImage;
                     const isVideoSaved = !!rawVideo;
@@ -18605,8 +18604,8 @@ ${historyText}`;
                         ));
 
                         ctx.waitUntil(Promise.allSettled([
-                            answerCallbackQuery(callbackQueryId, `Запускаю изменение размера/поворот...`, token),
-                            editMessage(chatId, originalMessageId, `⏳ **Запускаю Изменение размера/Поворот...** (Режим: ${finalMode}, Параметр: ${actionParam})`, token)
+                            answerCallbackQuery(callbackQueryId, `Запускаю изменение размера`, token),
+                            editMessage(chatId, originalMessageId, `⏳ Запускаю Изменение размера, Параметр: ${actionParam})`, token)
                         ]));
                         
                         return new Response('OK', { status: 200 });
