@@ -9698,7 +9698,6 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     // Используем ГЛОБАЛЬНЫЕ КОНСТАНТЫ
     const VIDEO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p'];
-    const VIDEO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '720p': 720, '1080p': 1080 };
     const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
     const ROTATE_VIDEO_MODE_KEY = ROTATE_VIDEO_MODE || 'VIDEO_TO_ROTATE';
     const RESIZE_IMAGE_MODE_KEY = 'IMAGE_TO_RESIZE';
@@ -9714,19 +9713,8 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     let defaultResParam = '1080p';
 
     // 2. Список стандартных разрешений (высота)
-    const targetHeights = [240, 360, 480, 720, 1080];
+    const targetHeights = [240, 360, 480, 580, 720, 1080];
 
-    // Ищем следующее большее разрешение для ракеты
-    if (canRun && currentHeight) {
-        for (const resKey of VIDEO_RESOLUTIONS_LIST) {
-            const targetHeight = VIDEO_RES_OBJ[resKey];
-            if (getResolutionIcon(currentHeight, targetHeight, VIDEO_RES_OBJ) === '✅') {
-                defaultResParam = resKey;
-                break;
-            }
-        }
-    }
-    
     // 3. АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА
     let balanceStatus = '...';
     try {
