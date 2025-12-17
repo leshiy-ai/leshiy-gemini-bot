@@ -9661,10 +9661,10 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
                 callback_data: `select_resize_mode|VIDEO_TO_RESIZE` 
             },
         ],
-        ...chunkArray(resolutionButtons, 3), 
-        ...chunkArray(rotateButtons, 3),
+        ...chunkArray(resolutionButtons, 2), 
+        //...chunkArray(rotateButtons, 3),
         // Блок ориентации
-        [{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
+        //[{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
         [
             { text: (aspectType === 'landscape' ? '✅ ' : '') + '16:9', callback_data: `dummy_image_aspect|landscape` },
             { text: (aspectType === 'portrait' ? '✅ ' : '') + '3:4', callback_data: `dummy_image_aspect|portrait` },
@@ -9777,10 +9777,10 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
             },
             { text: activeIcon + ' 📺 Видео → Ресайз', callback_data: 'dummy_v2r_active' },
         ],
-        ...chunkArray(resolutionButtons, 3), 
-        ...chunkArray(rotateButtons, 3),
+        ...chunkArray(resolutionButtons, 4), 
+        //...chunkArray(rotateButtons, 3),
         // Заголовок Соотношение
-        [{ text: `Соотношение: ${aspectRatio}`, callback_data: 'ignore' }],
+        //[{ text: `Соотношение: ${aspectRatio}`, callback_data: 'ignore' }],
         [
             { text: (aspectRatio === '16:9' ? '✅ ' : '') + '16:9', callback_data: `dummy_video_ratio|16:9` },
             { text: (aspectRatio === '3:4' ? '✅ ' : '') + '3:4', callback_data: `dummy_video_ratio|3:4` },
@@ -15214,15 +15214,17 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
  */
 async function sendMediaToConverterInBackground(chatId, fileId, originalMessageId, mode, param, envData, token, ctx, originalReplyMarkup = null) {
     const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
-    const isVideo = mode === RESIZE_VIDEO_MODE;
+    // 1. ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ ТИПА (учитываем и ресайз, и поворот)
+    const isVideo = mode.includes('VIDEO');
     let mediaType = isVideo ? 'видео' : 'фото';
     const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
+
     if (!RENDER_HOST_URL) {
         // Если переменная хоста пуста, выбрасываем явную ошибку
         throw new TypeError("Критическая ошибка: Конвертер LESHIY_RENDER_HOST не настроен в ENV."); 
     }
     let endpoint = '';
-    let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+    //let param = mode.includes('RESIZE') ? 'resolution' : 'angle';
     // 1. ОПРЕДЕЛЕНИЕ РЕЖИМА
     let errorMode;
     let successMessage;
@@ -15359,7 +15361,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
  */
 async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData) {
     // 💡 ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЕ КОНСТАНТЫ
-    const isVideo = mode === RESIZE_VIDEO_MODE || mode === ROTATE_VIDEO_MODE;
+    const isVideo = mode.includes('VIDEO');
     
     // Получаем KV-биндинг
     const storage = envData.LAST_PHOTO_STORAGE; 
