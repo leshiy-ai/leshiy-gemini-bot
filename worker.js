@@ -9383,8 +9383,8 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
     const chatKey = chatId.toString();
     
     // 🛑 ИСПРАВЛЕНИЕ: Используем ключи для ФОТО и ВИДЕО
-    const LAST_IMAGE_DATA_KEY = chatKey + envData.LAST_IMAGE_DATA_KEY_SUFFIX; 
-    const LAST_VIDEO_DATA_KEY = chatKey + envData.LAST_VIDEO_DATA_KEY_SUFFIX; 
+    const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
+    const LAST_VIDEO_DATA_KEY = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; 
     // const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX; // Промпт для /resize не нужен
 
     try {
