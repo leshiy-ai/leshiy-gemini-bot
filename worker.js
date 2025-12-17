@@ -9449,10 +9449,6 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @returns {Object} { messageText, keyboardObject }
  */
 async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
-    
-    // ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЕ КОНСТАНТЫ
-    const RESIZE_IMAGE_MODE = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
-    const ROTATE_IMAGE_MODE = ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
     const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
 
     // 1. Получение текущих данных медиа
@@ -9562,8 +9558,6 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 
 async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     // Используем ГЛОБАЛЬНЫЕ КОНСТАНТЫ
-    const RESIZE_VIDEO_MODE = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
-    const ROTATE_VIDEO_MODE = ROTATE_VIDEO_MODE || 'VIDEO_TO_ROTATE';
     const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
 
     // 1. Получение текущих данных медиа
