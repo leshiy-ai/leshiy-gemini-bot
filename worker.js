@@ -2742,12 +2742,12 @@ function getCalculatedSteps(width, height) {
  * Вычисляет точные размеры сторон на основе Aspect Ratio исходника
  * ориентируясь на стандартные высоты (p-резолюции)
  */
-function getCalculatedPhotoSteps(w, h, aspectType = null) {
+function getCalculatedPhotoSteps(w, h, aspectType = 'portrait') {
     const targetHeights = [240, 360, 480, 580, 720, 1080];
-    let aspect = w / h;
+    let aspect = (w && h) ? w / h : 0;
 
-    // Если пикселей нет, но есть тип — задаем жесткое ratio
-    if (!w || !h) {
+    // Если реальных размеров нет, берем жесткие пропорции по типу
+    if (aspect === 0) {
         if (aspectType === 'landscape') aspect = 16 / 9;
         else if (aspectType === 'square') aspect = 1 / 1;
         else aspect = 3 / 4; // portrait
@@ -2755,7 +2755,7 @@ function getCalculatedPhotoSteps(w, h, aspectType = null) {
 
     return targetHeights.map(height => {
         let width = Math.round(height * aspect);
-        if (width % 2 !== 0) width++;
+        if (width % 2 !== 0) width++; // FFmpeg scale=-2
         return { 
             p: height + 'p', 
             label: width + 'x' + height, 
@@ -9625,9 +9625,9 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight) {
-            // Если высота совпадает (с допуском 100px) — ставим ✅
-            if (Math.abs(currentHeight - step.height) <= 100) icon = '✅';
-            else if (step.height > currentHeight) icon = '➕';
+            // Сравнение с допуском 5 пикселей
+            if (Math.abs(currentHeight - step.height) <= 5) icon = '✅';
+            else if (step.height > photoHeight) icon = '➕';
             else icon = '➖';
         }
         return {
