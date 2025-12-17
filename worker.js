@@ -9799,8 +9799,8 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
             { text: (aspectRatio === '1:1' ? '✅ ' : '') + '1:1', callback_data: `dummy_video_ratio|1:1` },
         ],
         [{ 
-            text: isVideoSaved ? `🚀 Запустить ресайз до ${rocketLabel} сейчас` : `🚫 Загрузите видео`, 
-            callback_data: isVideoSaved ? `generate_resize_now|VIDEO_TO_RESIZE|${nextStepHeight}p` : 'dummy' 
+            text: isVideoSaved ? `🚀 Запустить ресайз до ${nextStep} сейчас` : `🚫 Загрузите видео`, 
+            callback_data: isVideoSaved ? `generate_resize_now|VIDEO_TO_RESIZE|${nextStep}` : 'dummy' 
         }]
     ];
 
