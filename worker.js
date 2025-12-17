@@ -2727,13 +2727,13 @@ function getIconForMedia(currentWidth, currentHeight, targetResStr, isVideo) {
     if (isVideo) {
         // Для видео всё просто: targetResStr это "720p", вынимаем 720
         const targetHeight = parseInt(targetResStr);
-        const videoResolutions = { "240p": 240, "360p": 360, "480p": 480, "580p": 580, "720p": 720, "1080p": 1080 };
+        const videoResolutions = { "240p": 240, "360p": 360, "480p": 480, "580p": 580, "720p": 720, "1080p": 1080, "2k": 1440, "4k": 2160 };
         return getResolutionIcon(currentHeight, targetHeight, videoResolutions);
     } else {
         // Для фото: targetResStr это "1280x720", вынимаем 720
         const targetHeight = parseInt(targetResStr.split('x')[1]);
         const photoResolutions = { 
-            '426x240': 240, '640x360': 360, '854x480': 480, '960x580': 580, "1280x720": 720, "1920x1080": 1080
+            '426x240': 240, '640x360': 360, '854x480': 480, '960x580': 580, "1280x720": 720, "1920x1080": 1080, '2096x1440': 1440, '3840×2160': 2160
         };
         // Передаем в твою функцию именно высоту
         return getResolutionIcon(currentHeight, targetHeight, photoResolutions);
@@ -2744,7 +2744,7 @@ function getIconForMedia(currentWidth, currentHeight, targetResStr, isVideo) {
  * Точный расчёт шагов ресайза на основе Aspect Ratio.
  */
 function getCalculatedPhotoSteps(currentWidth, currentHeight, aspectType = 'portrait') {
-    const targetHeights = [240, 360, 480, 580, 720, 1080];
+    const targetHeights = [240, 360, 480, 580, 720, 1080, 1440, 2160];
     let aspectRatio = (currentWidth && currentHeight) ? (currentWidth / currentHeight) : 0;
 
     // Если данных нет, используем жёсткие пропорции по типу
