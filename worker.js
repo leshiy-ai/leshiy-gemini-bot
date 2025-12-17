@@ -9460,9 +9460,12 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @returns {Object} { messageText, keyboardObject }
  */
 async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
-    const PHOTO_RESOLUTIONS = ['1024x1024', '1280x720', '720x1280', '1920x1080', '1080x1920'];
-    const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
+    const PHOTO_RESOLUTIONS_LIST = ['1024x1024', '1280x720', '720x1280', '1920x1080', '1080x1920'];
     const PHOTO_RES_OBJ = {'1024x1024': 1024, '1280x720': 720, '720x1280': 1280, '1920x1080': 1080, '1080x1920': 1920};
+    const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
+    const ROTATE_IMAGE_MODE_KEY = ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
+    const RESIZE_VIDEO_MODE_KEY = 'VIDEO_TO_RESIZE';
+    
     // Используем ваш статус isPhotoSaved (предполагаем, что он корректно обновляется)
     const canRun = isPhotoSaved; 
     let defaultResParam = '1024x1024';
@@ -9532,7 +9535,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, PHOTO_RES_OBJ) : ''; 
         return {
             text: `${icon} ${resKey}`,
-            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${resKey}` 
+            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE_KEY}|${resKey}` 
         };
     });
 
@@ -9540,7 +9543,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
             text: angle.text, 
-            callback_data: `generate_resize_now|${ROTATE_IMAGE_MODE}|${angle.param}` 
+            callback_data: `generate_resize_now|${ROTATE_IMAGE_MODE_KEY}|${angle.param}` 
         };
     });
     
@@ -9563,7 +9566,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         ...chunkArray(rotateButtons, 3),
         [{ 
             text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите фото`, 
-            callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE}|${defaultResParam}` : 'dummy' 
+            callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE_KEY}|${defaultResParam}` : 'dummy' 
         }]
     ];
 
@@ -9575,9 +9578,11 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
  */
 async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     // Используем ГЛОБАЛЬНЫЕ КОНСТАНТЫ
-    const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
-    const VIDEO_RESOLUTIONS = ['240p', '360p', '480p', '720p', '1080p'];
+    const VIDEO_RESOLUTIONS_LIST = ['240p', '360p', '480p', '720p', '1080p'];
     const VIDEO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '720p': 720, '1080p': 1080 };
+    const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
+    const ROTATE_VIDEO_MODE_KEY = ROTATE_VIDEO_MODE || 'VIDEO_TO_ROTATE';
+    const RESIZE_IMAGE_MODE_KEY = 'IMAGE_TO_RESIZE';
 
     // 1. Получение текущих данных медиа
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, true);
@@ -9642,7 +9647,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
             text: angle.text, 
-            callback_data: `generate_resize_now|${ROTATE_VIDEO_MODE}|${angle.param}` 
+            callback_data: `generate_resize_now|${ROTATE_VIDEO_MODE_KEY}|${angle.param}` 
         };
     });
     
@@ -9665,7 +9670,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         ...chunkArray(rotateButtons, 3),
         [{ 
             text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите видео`, 
-            callback_data: canRun ? `generate_resize_now|VIDEO_TO_RESIZE|${defaultResParam}` : 'dummy' 
+            callback_data: canRun ? `generate_resize_now|${RESIZE_VIDEO_MODE_KEY}|${defaultResParam}` : 'dummy' 
         }]
     ];
 
