@@ -2683,6 +2683,24 @@ function getIconForMedia(currentW, currentH, targetResStr, isVideo) {
 }
 
 /**
+ * Вычисляет список разрешений относительно текущего Ratio.
+ * Возвращает массив объектов {p: '720p', label: '1280x720'}
+ */
+function getCalculatedPhotoSteps(currentW, currentH) {
+    const steps = [240, 360, 480, 720, 1080, 1440];
+    const isPortrait = currentH > currentW;
+    const ratio = isPortrait ? currentW / currentH : currentH / currentW;
+
+    return steps.map(p => {
+        const otherSide = Math.round(p * ratio);
+        return {
+            p: `${p}p`,
+            label: isPortrait ? `${otherSide}x${p}` : `${p}x${otherSide}`
+        };
+    });
+}
+
+/**
  * Формирует публичный URL для исходного изображения, добавляя параметр поворота.
  * @param {string} fileId - Идентификатор файла (из Telegram).
  * @param {number} rotationDegree - Угол поворота (0, 90, 180, 270).
@@ -9466,26 +9484,45 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const ROTATE_IMAGE_MODE_KEY = ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
     const RESIZE_VIDEO_MODE_KEY = 'VIDEO_TO_RESIZE';
     
-    // Используем ваш статус isPhotoSaved (предполагаем, что он корректно обновляется)
+    // Используем ваш статус isPhotoSaved
     const canRun = isPhotoSaved; 
-    let defaultResParam = '1920x1280';
 
     // 1. Получение текущих данных медиа
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false);
-    const currentHeight = currentMediaData ? currentMediaData.height : null;
-    const currentWidth = currentMediaData ? currentMediaData.width : null;
+    const currentHeight = currentMediaData ? currentMediaData.height : 0;
+    const currentWidth = currentMediaData ? currentMediaData.width : 0;
+    const curH = currentMediaData?.height || 0;
+    const curW = currentMediaData?.width || 0;
 
-    // Ищем следующее большее разрешение для ракеты
-    if (canRun && currentHeight) {
-        for (const resKey of PHOTO_RESOLUTIONS_LIST) {
-            const targetHeight = PHOTO_RES_OBJ[resKey];
-            if (getResolutionIcon(currentHeight, targetHeight, PHOTO_RES_OBJ) === '✅') {
-                defaultResParam = resKey;
-                break;
-            }
+    // Генерируем динамические шаги на основе текущего Ratio
+    // 2. Генерируем динамические шаги на основе текущего Ratio
+    const dynamicSteps = (currentHeight && currentWidth) 
+        ? getCalculatedPhotoSteps(currentWidth, currentHeight) 
+        : [
+            {p: '240p', label: '320x240'}, 
+            {p: '360p', label: '480x360'}, 
+            {p: '480p', label: '640x480'}, 
+            {p: '720p', label: '1280x720'}, 
+            {p: '1080p', label: '1920x1080'}
+        ];
+    // 3. Логика "Ракеты" (ищем в вычисленных шагах dynamicSteps)
+    let defaultResParam = '720p'; // Дефолт
+    let defaultResLabel = '1280x720';
+
+    if (isPhotoSaved && currentHeight) {
+        // Ищем первый шаг, который больше текущей высоты (на повышение)
+        const nextStep = dynamicSteps.find(s => parseInt(s.p) > currentHeight);
+        if (nextStep) {
+            defaultResParam = nextStep.p;
+            defaultResLabel = nextStep.label;
+        } else {
+            // Если фото и так огромное, берем последний доступный шаг
+            const lastStep = dynamicSteps[dynamicSteps.length - 1];
+            defaultResParam = lastStep.p;
+            defaultResLabel = lastStep.label;
         }
     }
-    
+        
     // 2. Определение лучшего разрешения для кнопки 🚀 (если файл загружен)
     if (canRun) {
         for (const key of Object.keys(RESOLUTIONS_HEIGHT)) {
@@ -9528,14 +9565,20 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const statusLine = `💰 **Баланс:** ${balanceStatus}`;
     let messageText = `${description}\n${mediaStatusLine}\n\n${currentSizeLine}\nТекущий режим: **${displayName}**\n\n${statusLine}\n${priceLine}\n\nВыберите размер для сжатия (уменьшения) или поворот:`;
 
-    // --- 5. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА (Исправлено под WxH) ---
-    const resolutionButtons = PHOTO_RESOLUTIONS_LIST.map(resKey => {
-        const targetHeight = PHOTO_RES_OBJ[resKey];
-        // Вызываем твою функцию, передавая высоту из строки
-        const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, PHOTO_RES_OBJ) : ''; 
+    // 5. ГЕНЕРАЦИЯ КНОПОК С ГАЛОЧКАМИ/ПЛЮСАМИ
+    const resolutionButtons = dynamicSteps.map(step => {
+        const targetH = parseInt(step.p);
+        let icon = '';
+
+        if (isPhotoSaved && currentHeight) {
+            if (currentHeight === targetH) icon = '✅';
+            else if (targetH > currentHeight) icon = '➕';
+            else icon = '➖';
+        }
+
         return {
-            text: `${icon} ${resKey}`,
-            callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE_KEY}|${resKey}` 
+            text: `${icon} ${step.label} (${step.p})`,
+            callback_data: `generate_resize_now|${RES_IMAGE_MODE_KEY}|${step.p}`
         };
     });
 
@@ -9543,7 +9586,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
             text: angle.text, 
-            callback_data: `generate_rotate_now|${ROTATE_IMAGE_MODE_KEY}|${angle.param}` 
+            callback_data: `generate_rotate_now|${ROTATE_IMAGE_MODE_KEY}|${a.param}` 
         };
     });
     
@@ -9565,7 +9608,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         ...chunkArray(resolutionButtons, 3), 
         ...chunkArray(rotateButtons, 3),
         [{ 
-            text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите фото`, 
+            text: canRun ? `🚀 Запустить ресайз до ${defaultResLabel}: (${defaultResParam}) сейчас` : `🚫 Загрузите фото`, 
             // ИСПРАВЛЕНО: передаем defaultResParam (например "1024x1024"), а не "1920"
             callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE_KEY}|${defaultResParam}` : 'dummy' 
         }]
