@@ -118,7 +118,9 @@ const RESOLUTIONS_HEIGHT = {
     '360p': 360,
     '480p': 480,
     '720p': 720,
-    '1080p': 1080
+    '1080p': 1080,
+    '1440': 1440,
+    '2160': 2160
 };
 // Константы для поворота
 const ROTATE_ANGLES = [
@@ -2727,7 +2729,7 @@ function getIconForMedia(currentWidth, currentHeight, targetResStr, isVideo) {
     if (isVideo) {
         // Для видео всё просто: targetResStr это "720p", вынимаем 720
         const targetHeight = parseInt(targetResStr);
-        const videoResolutions = { "240p": 240, "360p": 360, "480p": 480, "580p": 580, "720p": 720, "1080p": 1080, "2k": 1440, "4k": 2160 };
+        const videoResolutions = { "240p": 240, "360p": 360, "480p": 480, "580p": 580, "720p": 720, "1080p": 1080, "1440p": 1440, "2160p": 2160 };
         return getResolutionIcon(currentHeight, targetHeight, videoResolutions);
     } else {
         // Для фото: targetResStr это "1280x720", вынимаем 720
@@ -9545,8 +9547,8 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @returns {Object} { messageText, keyboardObject }
  */
 async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
-    const PHOTO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '580p': 580, '720p': 720, '1080p': 1080, '2k': 1440, '4k': 2160 };
-    const PHOTO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p', '2k', '4k'];
+    const PHOTO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '580p': 580, '720p': 720, '1080p': 1080, '1440p': 1440, '2160p': 2160 };
+    const PHOTO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p', '1440p', '2160p'];
     const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
     const ROTATE_IMAGE_MODE_KEY = ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
     const RESIZE_VIDEO_MODE_KEY = 'VIDEO_TO_RESIZE';
@@ -9573,8 +9575,8 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             {p: '580p', label: '475x580', height: 580}, 
             {p: '720p', label: '1280x720', height: 720}, 
             {p: '1080p', label: '1920x1080', height: 1080}
-            {k: '2k', label: '2560x1440', height: 1440}
-            {k: '4k', label: '3840x2160', height: 2160}
+            {k: '1440p', label: '2560x1440', height: 1440}
+            {k: '2160p', label: '3840x2160', height: 2160}
           ];*/
             
     // 3. Логика "Ракеты" (через let для перезаписи)
@@ -9703,7 +9705,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     let defaultResParam = '1080p';
 
     // 2. Список стандартных разрешений (высота)
-    const targetHeights = [240, 360, 480, 580, 720, 1080];
+    const targetHeights = [240, 360, 480, 580, 720, 1080, 1440, 2160];
 
     // 3. АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА
     let balanceStatus = '...';
@@ -15396,7 +15398,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         const resMap = {
             '240p': 240, '360p': 360, '480p': 480, 
             '580p': 580, '720p': 720, '1080p': 1080,
-            '2k': 1440, '4k': 2160
+            '1440p': 1440, '2160p': 2160
         };
 
         const height = resMap[param.toLowerCase()] || parseInt(param);
