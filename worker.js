@@ -9567,11 +9567,11 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         let icon = '';
 
         if (isPhotoSaved && currentHeight) {
-            // 1. Проверяем на "попадание" в текущее разрешение с небольшим допуском (8-10 пикселей)
+            // 1. Проверяем на "попадание" в текущее разрешение с небольшим допуском (50 пикселей)
             // Либо если текущая высота находится между шагами
             const diff = Math.abs(currentHeight - targetHeight);
             
-            if (diff <= 10) { 
+            if (diff <= 50) { 
                 icon = '✅'; // Почти точное совпадение
             } else if (targetHeight > currentHeight) {
                 icon = '➕'; // Апскейл
