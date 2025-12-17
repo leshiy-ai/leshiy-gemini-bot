@@ -9593,7 +9593,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
 
     // Ищем следующее большее разрешение для ракеты
     if (canRun && currentHeight) {
-        for (const resKey of VIDEO_RES_LIST) {
+        for (const resKey of VIDEO_RESOLUTIONS_LIST) {
             const targetH = VIDEO_RES_OBJ[resKey];
             if (getResolutionIcon(currentHeight, targetH, VIDEO_RES_OBJ) === '✅') {
                 defaultResParam = resKey;
@@ -9634,7 +9634,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     let messageText = `${description}\n${mediaStatusLine}\n\n${currentSizeLine}\nТекущий режим: **${displayName}**\n\n${statusLine}\n${priceLine}\n\nВыберите размер для сжатия (уменьшения) или поворот:`;
 
     // --- 5. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА ---
-    const resolutionButtons = VIDEO_RES_LIST.map(resKey => {
+    const resolutionButtons = VIDEO_RESOLUTIONS_LIST.map(resKey => {
         const targetHeight = VIDEO_RES_OBJ[resKey];
         const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, VIDEO_RES_OBJ) : ''; 
         return {
