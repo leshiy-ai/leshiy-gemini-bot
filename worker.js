@@ -2616,69 +2616,67 @@ async function getFileLink(file_id, TELEGRAM_BOT_TOKEN) {
  * Функция для получения текущего медиа-объекта с унифицированными именами полей.
  */
 async function getCurrentMediaData(chatId, envData, storage, isVideo = false) {
-    const key = isVideo ? `${chatId}_last_video_data` : `${chatId}_last_image_data`;
-    const rawData = await storage.get(key);
-
-    if (!rawData) return null;
-
-    try {
-        const data = JSON.parse(rawData);
+    const chatKey = chatId.toString();
+    
+    if (isVideo) {
+        // 1. Получаем метаданные видео (file_id, width, height)
+        const videoDataKey = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX;
+        const rawVideoData = await storage.get(videoDataKey);
         
-        if (isVideo) {
-            // УНИФИКАЦИЯ ДЛЯ ВИДЕО
+        // 2. Получаем настройки видео (aspectRatio)
+        const videoParamsKey = chatKey + VIDEO_PARAMS_KEY_SUFFIX;
+        const videoParams = await storage.get(videoParamsKey, { type: 'json' })
+            .then(res => ({ aspectRatio: '16:9', ...res })) // дефолт если нет данных
+            .catch(() => ({ aspectRatio: '16:9' }));
+
+        if (!rawVideoData) return null;
+
+        try {
+            const data = JSON.parse(rawVideoData);
             let currentWidth = parseInt(data.width) || 0;
             let currentHeight = parseInt(data.height) || 0;
-            let aspectRatio = data.aspectRatio;
             
-            // Авто-определение aspectRatio по пикселям, если поле пустое
-            if (!aspectRatio && currentWidth && currentHeight) {
-                const ratioValue = currentWidth / currentHeight;
-                if (Math.abs(ratioValue - 1.77) < 0.1) aspectRatio = '16:9';
-                else if (Math.abs(ratioValue - 1) < 0.1) aspectRatio = '1:1';
-                else aspectRatio = '3:4';
-            }
+            // aspectRatio берем именно из настроек (videoParams)
+            let aspectRatio = videoParams.aspectRatio || '16:9';
 
             return {
-                currentWidth: currentWidth,
-                currentHeight: currentHeight,
-                aspectRatio: aspectRatio || '16:9',
+                currentWidth,
+                currentHeight,
+                aspectRatio,
                 file_id: data.file_id
             };
-        } else {
-            // УНИФИКАЦИЯ ДЛЯ ФОТО
+        } catch (e) {
+            return { currentWidth: 0, currentHeight: 0, aspectRatio: '16:9', file_id: String(rawVideoData) };
+        }
+    } else {
+        // Для ФОТО всё остается в одном ключе
+        const photoDataKey = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
+        const rawPhotoData = await storage.get(photoDataKey);
+
+        if (!rawPhotoData) return null;
+
+        try {
+            const data = JSON.parse(rawPhotoData);
             let currentWidth = parseInt(data.width) || 0;
             let currentHeight = parseInt(data.height) || 0;
-            let aspectType = data.aspect_type || 'portrait'; // из JSON в KV берем как есть
+            let aspectType = data.aspect_type || 'portrait';
 
-            // Если размеров нет, ставим дефолты по типу (твои значения)
+            // Дефолты если размеры не определились
             if (!currentWidth || !currentHeight) {
-                if (aspectType === 'landscape') { 
-                    currentWidth = 1280; 
-                    currentHeight = 720; 
-                } else if (aspectType === 'square') { 
-                    currentWidth = 1024; 
-                    currentHeight = 1024; 
-                } else { 
-                    currentWidth = 960; 
-                    currentHeight = 1280; 
-                }
+                if (aspectType === 'landscape') { currentWidth = 1280; currentHeight = 720; }
+                else if (aspectType === 'square') { currentWidth = 1024; currentHeight = 1024; }
+                else { currentWidth = 960; currentHeight = 1280; }
             }
+
             return {
-                currentWidth: currentWidth,
-                currentHeight: currentHeight,
-                aspectType: aspectType, // возвращаем уже в унифицированном стиле
-                file_id: data.file_id || (typeof data === 'string' ? data : null)
+                currentWidth,
+                currentHeight,
+                aspectType,
+                file_id: data.file_id
             };
+        } catch (e) {
+            return { currentWidth: 0, currentHeight: 0, aspectType: 'portrait', file_id: String(rawPhotoData) };
         }
-    } catch (e) {
-        // Fallback если в KV строка или битый JSON
-        return { 
-            file_id: String(rawData), 
-            currentWidth: 0, 
-            currentHeight: 0, 
-            aspectType: 'portrait', 
-            aspectRatio: '16:9' 
-        };
     }
 }
 
@@ -2706,8 +2704,17 @@ function getResolutionIcon(currentHeight, targetHeight, allResolutions) {
         bestMatchHeight = resolutionValues[resolutionValues.length - 1];
     }
     
-    if (targetHeight === bestMatchHeight) return '✅';
+    //if (targetHeight === bestMatchHeight) return '✅';
+    if (!currentHeight || !targetHeight) return '';
+
+    // 1. Если текущая высота совпадает с высотой кнопки — это ✅
+    // (Допуск 2 пикселя на случай странных округлений)
+    if (Math.abs(currentHeight - targetHeight) <= 20) return '✅';
+
+    // 2. Если кнопка предлагает размер больше текущего — это ➕
     if (targetHeight > currentHeight) return '➕';
+
+    // 3. Если кнопка предлагает размер меньше текущего — это ➖
     if (targetHeight < currentHeight) return '➖';
     
     return '';
@@ -2716,7 +2723,7 @@ function getResolutionIcon(currentHeight, targetHeight, allResolutions) {
 /**
  * ПОСРЕДНИК: Подготавливает данные для фото или видео
  */
-function getIconForMedia(currentW, currentH, targetResStr, isVideo) {
+function getIconForMedia(currentWidth, currentHeight, targetResStr, isVideo) {
     if (isVideo) {
         // Для видео всё просто: targetResStr это "720p", вынимаем 720
         const targetHeight = parseInt(targetResStr);
@@ -2731,25 +2738,6 @@ function getIconForMedia(currentW, currentH, targetResStr, isVideo) {
         // Передаем в твою функцию именно высоту
         return getResolutionIcon(currentHeight, targetHeight, photoResolutions);
     }
-}
-
-/**
- * Генерирует массив шагов на основе реального соотношения сторон.
- */
-function getCalculatedSteps(width, height) {
-    const targetHeights = [240, 360, 480, 580, 720, 1080];
-    const aspect = width / height;
-
-    return targetHeights.map(h => {
-        let w = Math.round(h * aspect);
-        if (w % 2 !== 0) w++; // FFmpeg scale=-2 требует чётности
-        return {
-            p: `${h}p`,
-            height: h,
-            width: w,
-            label: `${w}x${h}`
-        };
-    });
 }
 
 /**
