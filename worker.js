@@ -2683,6 +2683,25 @@ function getIconForMedia(currentW, currentH, targetResStr, isVideo) {
 }
 
 /**
+ * Генерирует массив шагов на основе реального соотношения сторон.
+ */
+function getCalculatedSteps(width, height) {
+    const targetHeights = [240, 360, 480, 580, 720, 1080];
+    const aspect = width / height;
+
+    return targetHeights.map(h => {
+        let w = Math.round(h * aspect);
+        if (w % 2 !== 0) w++; // FFmpeg scale=-2 требует чётности
+        return {
+            p: `${h}p`,
+            height: h,
+            width: w,
+            label: `${w}x${h}`
+        };
+    });
+}
+
+/**
  * Вычисляет точные размеры сторон на основе Aspect Ratio исходника
  * ориентируясь на стандартные высоты (p-резолюции)
  */
@@ -9521,7 +9540,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         if (foundNext) {
             defaultResParam = foundNext.p;
             defaultResLabel = foundNext.label;
-            nextStepObj = foundNext; // Обновляем объект для кнопки
+            nextStepObj = foundNext; 
         } else {
             const last = dynamicSteps[dynamicSteps.length - 1];
             defaultResParam = last.p;
@@ -9565,8 +9584,8 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight) {
-            // ГАЛОЧКА: только если текущий размер совпадает с шагом
-            if (Math.abs(currentHeight - step.height) <= 5) icon = '✅';
+            // Если высота совпадает (с допуском 20px) — ставим ✅
+            if (Math.abs(currentHeight - step.height) <= 20) icon = '✅';
             else if (step.height > currentHeight) icon = '➕';
             else icon = '➖';
         }
