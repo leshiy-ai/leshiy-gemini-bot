@@ -9504,6 +9504,12 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             {p: '240p', label: '426x240'}, {p: '360p', label: '640x360'}, {p: '480p', label: '854x480'}, 
             {p: '580p', label: '475x580'}, {p: '720p', label: '1280x720'}, {p: '1080p', label: '1920x1080'}
           ];
+          
+    const defaultResParam = nextStep.p;
+    const defaultResLabel = nextStep.label;
+
+    // Логика "Ракеты": ищем первый шаг, который больше текущего фото
+    const nextStep = dynamicSteps.find(s => s.height > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
 
     if (isPhotoSaved && currentHeight) {
         // Ищем первый шаг, который больше текущей высоты (на повышение)
@@ -9518,7 +9524,11 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             defaultResLabel = lastStep.label;
         }
     }
-        
+    // Если такого нет (фото уже 1080p+), берем последний доступный
+    if (!nextStep) nextStep = dynamicSteps[dynamicSteps.length - 1];
+
+
+
     // 2. Определение лучшего разрешения для кнопки 🚀 (если файл загружен)
     if (canRun) {
         for (const key of Object.keys(RESOLUTIONS_HEIGHT)) {
@@ -9575,9 +9585,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             callback_data: `generate_resize_now|IMAGE_TO_RESIZE|${step.p}`
         };
     });
-    // Логика "Ракеты": ищем первый шаг, который больше текущего фото
-    const nextStep = dynamicSteps.find(s => s.height > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
-
+    
     // --- 6. ГЕНЕРАЦИЯ КНОПОК ПОВОРОТА ---
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
