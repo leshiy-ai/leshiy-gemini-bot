@@ -9502,11 +9502,15 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const dynamicSteps = (currentHeight && currentWidth) 
         ? getCalculatedPhotoSteps(currentWidth, currentHeight)
         : [
-            {p: '240p', label: '426x240'}, {p: '360p', label: '640x360'}, {p: '480p', label: '854x480'}, 
-            {p: '580p', label: '475x580'}, {p: '720p', label: '1280x720'}, {p: '1080p', label: '1920x1080'}
+            {p: '240p', label: '426x240', height: 240}, 
+            {p: '360p', label: '640x360', height: 360}, 
+            {p: '480p', label: '854x480', height: 480}, 
+            {p: '580p', label: '475x580', height: 580}, 
+            {p: '720p', label: '1280x720', height: 720}, 
+            {p: '1080p', label: '1920x1080', height: 1080}
           ];
 
-    // ОПРЕДЕЛЯЕМ ПАРАМЕТРЫ ДЛЯ РАКЕТЫ (через let, чтобы можно было менять)
+    // 3. Логика "Ракеты" (используем let для возможности перезаписи)
     let nextStepObj = dynamicSteps.find(s => s.height > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
     let defaultResParam = nextStepObj.p;
     let defaultResLabel = nextStepObj.label;
@@ -9561,6 +9565,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight) {
+            // ГАЛОЧКА: только если текущий размер совпадает с шагом
             if (Math.abs(currentHeight - step.height) <= 5) icon = '✅';
             else if (step.height > currentHeight) icon = '➕';
             else icon = '➖';
