@@ -9627,7 +9627,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         if (isPhotoSaved && currentHeight) {
             // Сравнение с допуском 5 пикселей
             if (Math.abs(currentHeight - step.height) <= 5) icon = '✅';
-            else if (step.height > photoHeight) icon = '➕';
+            else if (step.height > currentHeight) icon = '➕';
             else icon = '➖';
         }
         return {
