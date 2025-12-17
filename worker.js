@@ -2640,34 +2640,46 @@ async function getCurrentMediaData(chatId, envData, storage, isKeySuffix) {
 function getResolutionIcon(currentHeight, targetHeight, allResolutions) {
     if (!currentHeight || !targetHeight || !allResolutions) return '';
     
+    // Превращаем объект/массив в отсортированный список высот
     const resolutionValues = Object.values(allResolutions).sort((a, b) => b - a);
     let bestMatchHeight = 0;
     
-    // 1. Определение bestMatchHeight (где должна стоять ГАЛОЧКА)
     for (const height of resolutionValues) {
         if (currentHeight >= height) {
             bestMatchHeight = height;
             break;
         }
     }
-    // Если меньше самого маленького, то bestMatchHeight = самое маленькое
     if (bestMatchHeight === 0 && currentHeight > 0 && resolutionValues.length > 0) {
         bestMatchHeight = resolutionValues[resolutionValues.length - 1];
     }
     
-    // 2. Логика иконок
-    if (targetHeight === bestMatchHeight) {
-        // Текущее разрешение, на которое указывает логика "не больше"
-        return '✅';
-    } else if (targetHeight > currentHeight) {
-        // Целевое разрешение больше текущего файла = Увеличение
-        return '➕';
-    } else if (targetHeight < currentHeight) {
-        // Целевое разрешение меньше текущего файла = Уменьшение
-        return '➖';
-    }
+    if (targetHeight === bestMatchHeight) return '✅';
+    if (targetHeight > currentHeight) return '➕';
+    if (targetHeight < currentHeight) return '➖';
     
-    return ''; // Если вдруг разрешение совпало, но не является bestMatchHeight (что маловероятно)
+    return '';
+}
+
+/**
+ * ПОСРЕДНИК: Подготавливает данные для фото или видео
+ */
+function getIconForMedia(currentW, currentH, targetResStr, isVideo) {
+    if (isVideo) {
+        // Для видео всё просто: targetResStr это "720p", вынимаем 720
+        const targetH = parseInt(targetResStr);
+        const videoResolutions = { "240p": 240, "360p": 360, "480p": 480, "720p": 720, "1080p": 1080 };
+        return getResolutionIcon(currentH, targetH, videoResolutions);
+    } else {
+        // Для фото: targetResStr это "1280x720", вынимаем 720
+        const targetH = parseInt(targetResStr.split('x')[1]);
+        const photoResolutions = { 
+            "1024x1024": 1024, "1280x720": 720, "720x1280": 1280, 
+            "1920x1080": 1080, "1080x1920": 1920 
+        };
+        // Передаем в твою функцию именно высоту
+        return getResolutionIcon(currentH, targetH, photoResolutions);
+    }
 }
 
 /**
@@ -9448,18 +9460,28 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @returns {Object} { messageText, keyboardObject }
  */
 async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
+    const PHOTO_RESOLUTIONS = ['1024x1024', '1280x720', '720x1280', '1920x1080', '1080x1920'];
     const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
-
-    // 1. Получение текущих данных медиа
-    const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false); // false = фото
-    const currentHeight = currentMediaData ? currentMediaData.height : null;
-    const currentWidth = currentMediaData ? currentMediaData.width : null;
-    
+    const PHOTO_RES_OBJ = {'1024x1024': 1024, '1280x720': 720, '720x1280': 1280, '1920x1080': 1080, '1080x1920': 1920};
     // Используем ваш статус isPhotoSaved (предполагаем, что он корректно обновляется)
     const canRun = isPhotoSaved; 
-    
-    // defaultResParam должен быть в начале. Используем 360p, как вы указали.
-    let defaultResParam = '360p'; 
+    let defaultResParam = '1024x1024';
+
+    // 1. Получение текущих данных медиа
+    const currentMediaData = await getCurrentMediaData(chatId, envData, storage, false);
+    const currentHeight = currentMediaData ? currentMediaData.height : null;
+    const currentWidth = currentMediaData ? currentMediaData.width : null;
+
+    // Ищем следующее большее разрешение для ракеты
+    if (canRun && currentHeight) {
+        for (const resKey of PHOTO_RESOLUTIONS_LIST) {
+            const targetH = PHOTO_RES_OBJ[resKey];
+            if (getResolutionIcon(currentHeight, targetH, PHOTO_RES_OBJ) === '✅') {
+                defaultResParam = resKey;
+                break;
+            }
+        }
+    }
     
     // 2. Определение лучшего разрешения для кнопки 🚀 (если файл загружен)
     if (canRun) {
@@ -9503,13 +9525,11 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const statusLine = `💰 **Баланс:** ${balanceStatus}`;
     let messageText = `${description}\n${mediaStatusLine}\n\n${currentSizeLine}\nТекущий режим: **${displayName}**\n\n${statusLine}\n${priceLine}\n\nВыберите размер для сжатия (уменьшения) или поворот:`;
 
-    // --- 5. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА ---
-    const resolutionKeys = Object.keys(RESOLUTIONS_HEIGHT);
-    const resolutionButtons = resolutionKeys.map(resKey => {
-        const targetHeight = RESOLUTIONS_HEIGHT[resKey];
-        // Иконки (✅, ➕, ➖) показываются только если файл загружен
-        const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, RESOLUTIONS_HEIGHT) : ''; 
-        
+    // --- 5. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА (Исправлено под WxH) ---
+    const resolutionButtons = PHOTO_RESOLUTIONS_LIST.map(resKey => {
+        const targetHeight = PHOTO_RES_OBJ[resKey];
+        // Вызываем твою функцию, передавая высоту из строки
+        const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, PHOTO_RES_OBJ) : ''; 
         return {
             text: `${icon} ${resKey}`,
             callback_data: `generate_resize_now|${RESIZE_IMAGE_MODE}|${resKey}` 
@@ -9524,9 +9544,14 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         };
     });
     
-    // --- 7. КОМПОНОВКА КЛАВИАТУРЫ (без кнопки "Отмена/Закрыть") ---
-    
+    // --- 7. КОМПОНОВКА КЛАВИАТУРЫ ---
     let keyboard = [
+        [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
+        [{ text: '💰 Меню управления балансом', callback_data: 'show_balance' }],
+        [{
+            text: isPhotoSaved ? "💾 Посмотреть загруженное фото" : "📸 Загрузить фотографию", 
+            callback_data: isPhotoSaved ? 'cmd:/view_saved_photo' : 'cmd:/upload_photo' 
+        }],
         [
             { text: activeIcon + ' 🖼️ Фото: Ресайз', callback_data: 'dummy_i2r_active' },
             { 
@@ -9536,16 +9561,10 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         ],
         ...chunkArray(resolutionButtons, 3), 
         ...chunkArray(rotateButtons, 3),
-        [
-            { 
-                text: canRun 
-                    ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` 
-                    : `🚫 Недоступно: Загрузите фото`, // ТЕКСТ МЕНЯЕТСЯ
-                callback_data: canRun 
-                    ? `generate_resize_now|${RESIZE_IMAGE_MODE}|${defaultResParam}` 
-                    : 'dummy_cannot_run_resize' 
-            }
-        ]
+        [{ 
+            text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите фото`, 
+            callback_data: canRun ? `generate_resize_now|${RESIZE_IMAGE_MODE}|${defaultResParam}` : 'dummy' 
+        }]
     ];
 
     return { messageText, keyboardObject: { inline_keyboard: keyboard } };
@@ -9554,28 +9573,25 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 /**
  * @description Генерирует меню для изменения разрешения видео (V2R).
  */
-
 async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     // Используем ГЛОБАЛЬНЫЕ КОНСТАНТЫ
     const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
+    const VIDEO_RESOLUTIONS = ['240p', '360p', '480p', '720p', '1080p'];
+    const VIDEO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '720p': 720, '1080p': 1080 };
 
     // 1. Получение текущих данных медиа
-    const currentMediaData = await getCurrentMediaData(chatId, envData, storage, true); // true = видео
+    const currentMediaData = await getCurrentMediaData(chatId, envData, storage, true);
     const currentHeight = currentMediaData ? currentMediaData.height : null;
-    const currentWidth = currentMediaData ? currentMediaData.width : null;
-    
     // Используем ваш статус isVideoSaved
     const canRun = isVideoSaved; 
-    
-    // defaultResParam должен быть в начале.
-    let defaultResParam = '720p'; // Для видео по умолчанию часто ставят 720p
-    
-    // 2. Определение лучшего разрешения для кнопки 🚀 (если файл загружен)
-    if (canRun) {
-        for (const key of Object.keys(RESOLUTIONS_HEIGHT)) {
-            const height = RESOLUTIONS_HEIGHT[key];
-            if (getResolutionIcon(currentHeight, height, RESOLUTIONS_HEIGHT) === '✅') {
-                defaultResParam = key;
+    let defaultResParam = '720p';
+
+    // Ищем следующее большее разрешение для ракеты
+    if (canRun && currentHeight) {
+        for (const resKey of VIDEO_RES_LIST) {
+            const targetH = VIDEO_RES_OBJ[resKey];
+            if (getResolutionIcon(currentHeight, targetH, VIDEO_RES_OBJ) === '✅') {
+                defaultResParam = resKey;
                 break;
             }
         }
@@ -9613,19 +9629,15 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     let messageText = `${description}\n${mediaStatusLine}\n\n${currentSizeLine}\nТекущий режим: **${displayName}**\n\n${statusLine}\n${priceLine}\n\nВыберите размер для сжатия (уменьшения) или поворот:`;
 
     // --- 5. ГЕНЕРАЦИЯ КНОПОК РЕСАЙЗА ---
-    const resolutionKeys = Object.keys(RESOLUTIONS_HEIGHT);
-    const resolutionButtons = resolutionKeys.map(resKey => {
-        const targetHeight = RESOLUTIONS_HEIGHT[resKey];
-        // Иконки (✅, ➕, ➖) показываются только если файл загружен
-        const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, RESOLUTIONS_HEIGHT) : ''; 
-        
+    const resolutionButtons = VIDEO_RES_LIST.map(resKey => {
+        const targetHeight = VIDEO_RES_OBJ[resKey];
+        const icon = canRun ? getResolutionIcon(currentHeight, targetHeight, VIDEO_RES_OBJ) : ''; 
         return {
             text: `${icon} ${resKey}`,
-            // Callback всегда активен, но конвертер должен проверить наличие file_id
-            callback_data: `generate_resize_now|${RESIZE_VIDEO_MODE}|${resKey}` 
+            callback_data: `generate_resize_now|VIDEO_TO_RESIZE|${resKey}` 
         };
     });
-
+    
     // --- 6. ГЕНЕРАЦИЯ КНОПОК ПОВОРОТА ---
     const rotateButtons = ROTATE_ANGLES.map(angle => {
         return {
@@ -9634,9 +9646,14 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         };
     });
     
-    // --- 7. КОМПОНОВКА КЛАВИАТУРЫ (без кнопки "Отмена/Закрыть") ---
-    
+    // --- 7. КОМПОНОВКА КЛАВИАТУРЫ ---
     let keyboard = [
+        [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
+        [{ text: '💰 Меню управления балансом', callback_data: 'show_balance' }],
+        [{
+            text: isVideoSaved ? "💾 Посмотреть загруженное видео" : "📹 Загрузить видеоролик", 
+            callback_data: isVideoSaved ? 'cmd:/view_saved_video' : 'cmd:/upload_video'
+        }],
         [
             { 
                 text: `🖼️ Фото → Ресайз`, 
@@ -9646,16 +9663,10 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         ],
         ...chunkArray(resolutionButtons, 3), 
         ...chunkArray(rotateButtons, 3),
-        [
-            { 
-                text: canRun 
-                    ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` 
-                    : `🚫 Недоступно: Загрузите видео`, // ТЕКСТ МЕНЯЕТСЯ
-                callback_data: canRun 
-                    ? `generate_resize_now|${RESIZE_VIDEO_MODE}|${defaultResParam}` 
-                    : 'dummy_cannot_run_resize' 
-            }
-        ]
+        [{ 
+            text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите видео`, 
+            callback_data: canRun ? `generate_resize_now|VIDEO_TO_RESIZE|${defaultResParam}` : 'dummy' 
+        }]
     ];
 
     return { messageText, keyboardObject: { inline_keyboard: keyboard } };
@@ -16727,7 +16738,7 @@ export default {
                     mediaObject = message.photo.reduce((prev, current) => 
                         (prev.width * prev.height > current.width * current.height) ? prev : current);
                 
-                // 2.2. ? ДОБАВЛЕНО: ПРОВЕРКА НА ДОКУМЕНТ (несжатое фото/перетаскивание)
+                // 2.2. ДОБАВЛЕНО: ПРОВЕРКА НА ДОКУМЕНТ (несжатое фото/перетаскивание)
                 } else if (message.document) {
                     // Проверяем, что документ имеет MIME-тип изображения
                     if (message.document.mime_type && message.document.mime_type.startsWith('image/')) {
@@ -16737,9 +16748,9 @@ export default {
 
                 // 2.3. Обработка ФОТО (Photo или Document-Photo)
                 if (mediaObject) {
-                    // ШАГ 1: Отключаем автоматический Vision!
-                    // ctx.waitUntil(processPhotoMessageAsync(chatId, mediaObject, envData, ctx));
-                    
+                    // ШАГ 1: Отключаем автоматический Vision!
+                    // ctx.waitUntil(processPhotoMessageAsync(chatId, mediaObject, envData, ctx));
+
                     const fileId = mediaObject.file_id;
                     const token = envData.TELEGRAM_BOT_TOKEN;
 
