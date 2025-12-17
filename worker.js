@@ -2613,20 +2613,57 @@ async function getFileLink(file_id, TELEGRAM_BOT_TOKEN) {
 }
 
 // Функция для получения текущего медиа-объекта (width, height, file_id)
-async function getCurrentMediaData(chatId, envData, storage, isKeySuffix) {
-    const chatKey = chatId.toString();
-    // 🛑 Используем суффиксы для метаданных (где лежит file_id, width, height)
-    const dataKey = isKeySuffix
-        ? chatKey + LAST_VIDEO_DATA_KEY_SUFFIX
-        : chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
-        
-    const rawData = await storage.get(dataKey, { type: 'text' }); 
+async function getCurrentMediaData(chatId, envData, storage, isVideo = false) {
+    const key = isVideo ? `video_data_${chatId}` : `last_photo_${chatId}`;
+    const rawData = await storage.get(key);
+
     if (!rawData) return null;
-    
+
     try {
-        return JSON.parse(rawData);
+        const data = JSON.parse(rawData);
+        
+        if (isVideo) {
+            // Для ВИДЕО: берем aspectRatio или считаем его, если его нет
+            const w = parseInt(data.width) || 0;
+            const h = parseInt(data.height) || 0;
+            let ratio = data.aspectRatio;
+            
+            if (!ratio && w && h) {
+                const r = w / h;
+                if (Math.abs(r - 1.77) < 0.1) ratio = '16:9';
+                else if (Math.abs(r - 1) < 0.1) ratio = '1:1';
+                else ratio = '3:4';
+            }
+
+            return {
+                width: w,
+                height: h,
+                aspectRatio: ratio || '16:9',
+                file_id: data.file_id
+            };
+        } else {
+            // Для ФОТО: логика из твоего блока с aspect_type
+            let photoWidth = parseInt(data.width) || 0;
+            let photoHeight = parseInt(data.height) || 0;
+            let aspectType = data.aspect_type || 'portrait';
+
+            // Если размеров нет, ставим дефолты по типу
+            if (!photoWidth || !photoHeight) {
+                if (aspectType === 'landscape') { photoWidth = 1280; photoHeight = 720; }
+                else if (aspectType === 'square') { photoWidth = 1024; photoHeight = 1024; }
+                else { photoWidth = 960; photoHeight = 1280; }
+            }
+
+            return {
+                width: photoWidth,
+                height: photoHeight,
+                aspect_type: aspectType,
+                file_id: data.file_id || (typeof data === 'string' ? data : null)
+            };
+        }
     } catch (e) {
-        return null;
+        // Если в KV лежит просто file_id (строка)
+        return { file_id: String(rawData), width: 0, height: 0, aspect_type: 'portrait', aspectRatio: '16:9' };
     }
 }
 
@@ -9644,7 +9681,6 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
  */
 async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     // Используем ГЛОБАЛЬНЫЕ КОНСТАНТЫ
-    const { seconds, aspectRatio, resolution, mode: currentMode } = videoParams
     const VIDEO_RESOLUTIONS_LIST = ['240p', '360p', '480p', '720p', '1080p'];
     const VIDEO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '720p': 720, '1080p': 1080 };
     const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
@@ -9655,6 +9691,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     const currentMediaData = await getCurrentMediaData(chatId, envData, storage, true);
     const currentHeight = currentMediaData ? currentMediaData.height : null;
     const currentWidth = currentMediaData ? currentMediaData.width : null; // ДОБАВЛЕНО, чтобы не было ReferenceError
+    const aspectRatio = currentMediaData?.aspectRatio || '16:9';
     // Используем ваш статус isVideoSaved
     const canRun = isVideoSaved; 
     let defaultResParam = '1080p';
@@ -9739,10 +9776,9 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         // Заголовок Соотношение
         [{ text: `Соотношение: ${aspectRatio}`, callback_data: 'ignore' }],
         [
-            // Галочки для Соотношения
-            { text: (aspectRatio === '16:9' ? '✅ ' : '') + '16:9 (Ландшафт)', callback_data: `dummy_video_ratio|16:9` },
-            { text: (aspectRatio === '3:4' ? '✅ ' : '') + '3:4 (Портрет)', callback_data: `dummy_video_ratio|3:4` },
-            { text: (aspectRatio === '1:1' ? '✅ ' : '') + '1:1 (Квадрат)', callback_data: `dummy_video_ratio|1:1` },
+            { text: (aspectRatio === '16:9' ? '✅ ' : '') + '16:9', callback_data: `dummy_video_ratio|16:9` },
+            { text: (aspectRatio === '3:4' ? '✅ ' : '') + '3:4', callback_data: `dummy_video_ratio|3:4` },
+            { text: (aspectRatio === '1:1' ? '✅ ' : '') + '1:1', callback_data: `dummy_video_ratio|1:1` },
         ],
         [{ 
             text: canRun ? `🚀 Запустить ресайз до ${defaultResParam} сейчас` : `🚫 Загрузите видео`, 
