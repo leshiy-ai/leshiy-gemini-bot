@@ -9545,8 +9545,8 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @returns {Object} { messageText, keyboardObject }
  */
 async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
-    const PHOTO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '580p': 580, '720p': 720, '1080p': 1080 };
-    const PHOTO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p'];
+    const PHOTO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '580p': 580, '720p': 720, '1080p': 1080, '2k': 1440, '4k': 2160 };
+    const PHOTO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p', '2k', '4k'];
     const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
     const ROTATE_IMAGE_MODE_KEY = ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
     const RESIZE_VIDEO_MODE_KEY = 'VIDEO_TO_RESIZE';
@@ -9573,6 +9573,8 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             {p: '580p', label: '475x580', height: 580}, 
             {p: '720p', label: '1280x720', height: 720}, 
             {p: '1080p', label: '1920x1080', height: 1080}
+            {k: '2k', label: '2560x1440', height: 1440}
+            {k: '4k', label: '3840x2160', height: 2160}
           ];*/
             
     // 3. Логика "Ракеты" (через let для перезаписи)
@@ -9630,7 +9632,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight > 0) {
-            if (Math.abs(currentHeight - step.currentHeight) <= 100) icon = '✅';
+            if (Math.abs(currentHeight - step.currentHeight) <= 50) icon = '✅';
             else if (step.currentHeight > currentHeight) icon = '➕';
             else icon = '➖';
         }
@@ -9661,7 +9663,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
                 callback_data: `select_resize_mode|VIDEO_TO_RESIZE` 
             },
         ],
-        ...chunkArray(resolutionButtons, 2), 
+        ...chunkArray(resolutionButtons, 4), 
         //...chunkArray(rotateButtons, 3),
         // Блок ориентации
         //[{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
@@ -15365,69 +15367,64 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
  * @param {Object} envData - Объект окружения (содержит KV-биндинг LAST_PHOTO_STORAGE, суффиксы и ctx).
  */
 async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData) {
-    // 💡 ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЕ КОНСТАНТЫ
     const isVideo = mode.includes('VIDEO');
-    
-    // Получаем KV-биндинг
     const storage = envData.LAST_PHOTO_STORAGE; 
     const chatKey = chatId.toString();
-
-    // 1. Определяем ключ KV для сохранения, используя суффиксы
-    const suffix = isVideo 
-        ? LAST_VIDEO_DATA_KEY_SUFFIX 
-        : LAST_IMAGE_DATA_KEY_SUFFIX; 
+    const suffix = isVideo ? LAST_VIDEO_DATA_KEY_SUFFIX : LAST_IMAGE_DATA_KEY_SUFFIX; 
     const KV_KEY = chatKey + suffix; 
     
     const newFileId = newMediaObject.file_id;
+    if (!newFileId) return;
 
-    if (!newFileId) {
-        envData.ctx.waitUntil(logDebug('KV_UPDATE', `[${chatId}] Не удалось обновить KV: отсутствует newFileId.`, envData));
-        return;
-    }
-    
-    // 2. Читаем текущие данные
-    const rawData = await storage.get(KV_KEY);
     let currentData = {};
     try {
+        const rawData = await storage.get(KV_KEY);
         currentData = rawData ? JSON.parse(rawData) : {};
-    } catch (e) {
-        envData.ctx.waitUntil(logDebug('KV_UPDATE', `[${chatId}] KV data corrupted, starting fresh.`, envData));
-    }
+    } catch (e) { currentData = {}; }
 
-    // 3. Конвертация ArrayBuffer в Base64
+    // Конвертация в Base64 для превью
     const base64Content = arrayBufferToBase64(processedBuffer); 
     const mimePrefix = isVideo ? 'data:video/mp4;base64,' : 'data:image/jpeg;base64,';
     
-    // 4. Обновление метаданных
     currentData.file_id = newFileId;
     currentData.base64 = mimePrefix + base64Content;
-    
-    // Обновляем технические метаданные, используя данные из ответа Telegram (newMediaObject)
-    currentData.width = newMediaObject.width || currentData.width || null;
-    currentData.height = newMediaObject.height || currentData.height || null;
-    currentData.file_size = newMediaObject.file_size || currentData.file_size || null;
-    currentData.mime_type = newMediaObject.mime_type || currentData.mime_type || (isVideo ? 'video/mp4' : 'image/jpeg');
-    
-    // Если это поворот, обновляем угол (предполагаем, что param — это угол, а не размер)
-    if (mode === ROTATE_IMAGE_MODE || mode === ROTATE_VIDEO_MODE) {
-        // Добавляем новый угол к текущему
-        const newRotation = (currentData.rotation || 0) + parseInt(param);
-        currentData.rotation = newRotation % 360; // Нормализуем угол
-        
-        // При повороте размеры WxH могут поменяться местами (90/270 градусов)
-        if (Math.abs(parseInt(param)) % 180 !== 0) {
+    currentData.file_size = newMediaObject.file_id_size || newMediaObject.file_size || currentData.file_size;
+
+    // --- ОБРАБОТКА РАЗРЕШЕНИЙ (включая 2K и 4K) ---
+    if (mode.includes('RESIZE')) {
+        // Карта соответствия строк и реальной высоты
+        const resMap = {
+            '240p': 240, '360p': 360, '480p': 480, 
+            '580p': 580, '720p': 720, '1080p': 1080,
+            '2k': 1440, '4k': 2160
+        };
+
+        const height = resMap[param.toLowerCase()] || parseInt(param);
+        if (!isNaN(height)) {
+            currentData.height = height;
+            // Ширину берем из того, что вернул Telegram после загрузки
+            currentData.width = newMediaObject.width || currentData.width;
+        }
+    } else {
+        currentData.width = newMediaObject.width || currentData.width;
+        currentData.height = newMediaObject.height || currentData.height;
+    }
+
+    // Логика поворота (остается прежней)
+    if (mode.includes('ROTATE')) {
+        const angle = parseInt(param);
+        if (Math.abs(angle) % 180 !== 0) {
             [currentData.width, currentData.height] = [currentData.height, currentData.width];
         }
     }
-    
-    // Если это видео, обновляем длительность
-    if (isVideo && newMediaObject.duration) {
-        currentData.duration = newMediaObject.duration;
+
+    // Обновляем тип аспекта для фото (чтобы меню знало, куда ставить галочки)
+    if (!isVideo) {
+        if (currentData.width > currentData.height) currentData.aspect_type = 'landscape';
+        else if (currentData.width === currentData.height) currentData.aspect_type = 'square';
+        else currentData.aspect_type = 'portrait';
     }
 
-    envData.ctx.waitUntil(logDebug('KV_UPDATE', `[${chatId}] Обновляю KV для ${isVideo ? 'видео' : 'фото'} (Key: ${KV_KEY})`, envData));
-
-    // 5. Сохраняем обратно в KV (TTL 1 час)
     await storage.put(KV_KEY, JSON.stringify(currentData), { expirationTtl: 3600 });
 }
 
