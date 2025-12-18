@@ -18692,32 +18692,98 @@ ${historyText}`;
                         
                         return new Response('OK', { status: 200 });
                     }
-                // ЛОГИКА ДЛЯ КОЛБЭКОВ МЕНЮ АПСКЕЙЛА (I2U / V2U)
-                } else if (data.startsWith('select_upscale_mode|') || data.startsWith('generate_upscale_now|')) {
-                    
-                    // 1. Инициализация переменных (используем Вашу нотацию)
-                    const callbackQueryId = callback.id; 
-                    const chatKey = chatId.toString(); // chatId должен быть определен ранее в области видимости
-                    const storage = envData.LAST_PHOTO_STORAGE; 
-                    const token = envData.TELEGRAM_BOT_TOKEN;
-                    const messageId = callback.message.message_id;
+                    // ЛОГИКА ДЛЯ КОЛБЭКОВ МЕНЮ АПСКЕЙЛА (I2U / V2U)
+                    } else if (data.startsWith('select_upscale_mode|') || data.startsWith('generate_upscale_now|')) {
+                        
+                        // 1. Инициализация переменных (используем Вашу нотацию)
+                        const callbackQueryId = callback.id; 
+                        const chatKey = chatId.toString(); // chatId должен быть определен ранее в области видимости
+                        const storage = envData.LAST_PHOTO_STORAGE; 
+                        const token = envData.TELEGRAM_BOT_TOKEN;
+                        const messageId = callback.message.message_id;
 
-                    // Константы суффиксов
-                    const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
-                    const LAST_VIDEO_TASK_KEY = chatKey + LAST_ACTIVE_VIDEO_KEY_SUFFIX; // <-- НОВЫЙ СУФФИКС для Task ID
+                        // Константы суффиксов
+                        const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
+                        const LAST_VIDEO_TASK_KEY = chatKey + LAST_ACTIVE_VIDEO_KEY_SUFFIX; // <-- НОВЫЙ СУФФИКС для Task ID
 
-                    // 2. Чтение данных
-                    const [lastPrompt, rawImageKVData, rawTaskData] = await Promise.all([ // <-- ДОБАВЛЕНО rawTaskData
-                        storage.get(LAST_PROMPT_KEY),
-                        storage.get(LAST_IMAGE_KEY, { type: 'text' }), 
-                        storage.get(LAST_VIDEO_TASK_KEY), // <-- Чтение данных Task ID (taskDataRaw из handleCheckVideoCommand)
-                    ]);
+                        // 2. Чтение данных
+                        const [lastPrompt, rawImageKVData, rawTaskData] = await Promise.all([ // <-- ДОБАВЛЕНО rawTaskData
+                            storage.get(LAST_PROMPT_KEY),
+                            storage.get(LAST_IMAGE_KEY, { type: 'text' }), 
+                            storage.get(LAST_VIDEO_TASK_KEY), // <-- Чтение данных Task ID (taskDataRaw из handleCheckVideoCommand)
+                        ]);
 
-                    // Определяем статус медиа (фото или видео)
-                    const isMediaSaved = !!rawImageKVData && rawImageKVData.length > 100;
+                        // Определяем статус медиа (фото или видео)
+                        const isMediaSaved = !!rawImageKVData && rawImageKVData.length > 100;
 
-                    // Определяем статус Task ID
-                    const isTaskValid = !!rawTaskData; // Есть ли Task ID для V2U
+                        // Определяем статус Task ID
+                        const isTaskValid = !!rawTaskData; // Есть ли Task ID для V2U
+                                            
+                        // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_upscale_mode|...) ---
+                        if (data.startsWith('select_upscale_mode|')) {
+                            const selectedMode = data.split('|')[1]; // 'IMAGE_TO_UPSCALE' или 'VIDEO_TO_UPSCALE'
+                            let menu;
+                            
+                            if (selectedMode === 'IMAGE_TO_UPSCALE') {
+                                menu = await getUpscaleImageMenuKeyboard(chatId, storage, lastPrompt, isMediaSaved);
+                            } else if (selectedMode === 'VIDEO_TO_UPSCALE') {
+                                menu = await getUpscaleVideoMenuKeyboard(chatId, storage, lastPrompt, isMediaSaved);
+                            }
+                                                    
+                            ctx.waitUntil(Promise.allSettled([
+                                editMessageWithKeyboard(
+                                    chatId, 
+                                    messageId, 
+                                    menu.messageText, 
+                                    token, 
+                                    menu.keyboardObject
+                                ),
+                                answerCallbackQuery(callbackQueryId, `Переключено на ${selectedMode === 'VIDEO_TO_UPSCALE' ? 'Видео' : 'Фото'} апскейл.`, token)
+                            ]));
+                            
+                            return new Response('OK', { status: 200 });
+                        }                    
+                        // --- 3. ЗАПУСК ГЕНЕРАЦИИ (generate_upscale_now|...) ---
+                        if (data.startsWith('generate_upscale_now|')) {
+                            const parts = data.split('|');
+                            const finalMode = parts[1]; // IMAGE_TO_UPSCALE или VIDEO_TO_UPSCALE
+                            
+                            let canRun = false;
+                            let requiredText = '';
+                        
+                            if (finalMode === 'IMAGE_TO_UPSCALE') {
+                                // Условие для I2U: нужно сохраненное фото
+                                canRun = isMediaSaved; 
+                                requiredText = "фотографию";
+                            } else if (finalMode === 'VIDEO_TO_UPSCALE') {
+                                // Условие для V2U: нужен сохраненный Task ID
+                                canRun = isTaskValid; // Используем новый флаг isTaskValid
+                                requiredText = "Task ID предыдущего задания (/checkvideo)";
+                            } else {
+                                // Неизвестный режим
+                                ctx.waitUntil(answerCallbackQuery(callbackQueryId, "Ошибка: Неизвестный режим апскейла", token));
+                                return new Response('OK', { status: 200 });
+                            }
+                        
+                            if (!canRun) {
+                                // Единое сообщение об ошибке для обоих режимов
+                                ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Невозможно запустить. Сначала получите ${requiredText}.`, token));
+                                return new Response('OK', { status: 200 });
+                            }
+                            
+                            // Логика запуска, которая использует:
+                            // - finalMode (для выбора I2U или V2U)
+                            // - Task ID (если finalMode == V2U, то taskDataRaw доступен через rawTaskData)
+                            ctx.waitUntil(processUpscaleGenerateCommand(finalMode, chatId, envData, storage, rawTaskData)); // <-- Передаем rawTaskData
+                            
+                            ctx.waitUntil(Promise.allSettled([
+                                answerCallbackQuery(callbackQueryId, "Запускаю апскейл...", token),
+                                editMessage(chatId, messageId, `⏳ Запускаю Апскейл Режим: ${finalMode}`, token)
+                            ]));
+                            
+                            return new Response('OK', { status: 200 });
+                        } // --- КОНЕЦ НОВОГО БЛОКА АПСКЕЙЛА ---
+
                 // ЛОГИКА КОЛБЭКОВ ДЛЯ РЕСАЙЗА
                 } else if (data.startsWith('select_resize_mode|') || data.startsWith('generate_resize_now|') || data.startsWith('generate_rotate_now|')) {
                     const callbackQueryId = callback.id; 
