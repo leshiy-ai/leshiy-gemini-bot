@@ -9638,9 +9638,9 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight > 0) {
-            if (Math.abs(currentHeight - step.currentHeight) <= 85) icon = '▶️'; //была ✔️ зелёная галочка
-            else if (step.currentHeight > currentHeight) icon = '⏩'; //был ➕ плюс
-            else icon = '⏪'; //был ➖ минус
+            if (Math.abs(currentHeight - step.currentHeight) <= 85) icon = '✔️'; //была ✔️ зелёная галочка
+            else if (step.currentHeight > currentHeight) icon = '➕'; //был ➕ плюс
+            else icon = '➖'; //был ➖ минус
         }
         return {
             text: `${icon} ${step.label}`,
@@ -9680,9 +9680,9 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         // Блок ориентации
         //[{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
         [
-            { text: (aspectType === 'landscape' ? '↔️ ' : '') + '16:9', callback_data: `dummy_image_aspect|landscape` },
-            { text: (aspectType === 'portrait' ? '↔️ ' : '') + '3:4', callback_data: `dummy_image_aspect|portrait` },
-            { text: (aspectType === 'square' ? '↔️ ' : '') + '1:1', callback_data: `dummy_image_aspect|square` },
+            { text: (aspectType === 'landscape' ? '☑️ ' : '') + '16:9', callback_data: `ignore_image_aspect|landscape` },
+            { text: (aspectType === 'portrait' ? '☑️ ' : '') + '3:4', callback_data: `ignore_image_aspect|portrait` },
+            { text: (aspectType === 'square' ? '☑️ ' : '') + '1:1', callback_data: `ignore_image_aspect|square` },
         ],
         // Кнопка Ракеты
         [{ 
@@ -9754,9 +9754,9 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         
         if (isVideoSaved && currentHeight > 0) {
             // Строгое сравнение для галочки
-            if (Math.abs(currentHeight - targetHeight) <= 50) icon = '▶️ '; //✔️
-            else if (targetHeight > currentHeight) icon = '⏩ '; //➕
-            else icon = '⏪ '; //➖
+            if (Math.abs(currentHeight - targetHeight) <= 85) icon = '✔️ '; //✔️
+            else if (targetHeight > currentHeight) icon = '➕ '; //➕
+            else icon = '➖ '; //➖
         }
         
         return { 
@@ -9800,9 +9800,9 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         // Заголовок Соотношение
         //[{ text: `Соотношение: ${aspectRatio}`, callback_data: 'ignore' }],
         [
-            { text: (aspectRatio === '16:9' ? '↔️ ' : '') + '16:9', callback_data: `dummy_video_ratio|16:9` },
-            { text: (aspectRatio === '3:4' ? '↔️ ' : '') + '3:4', callback_data: `dummy_video_ratio|3:4` },
-            { text: (aspectRatio === '1:1' ? '↔️ ' : '') + '1:1', callback_data: `dummy_video_ratio|1:1` },
+            { text: (aspectRatio === '16:9' ? '☑️ ' : '') + '16:9', callback_data: `dummy_video_ratio|16:9` },
+            { text: (aspectRatio === '3:4' ? '☑️ ' : '') + '3:4', callback_data: `dummy_video_ratio|3:4` },
+            { text: (aspectRatio === '1:1' ? '☑️ ' : '') + '1:1', callback_data: `dummy_video_ratio|1:1` },
         ],
         [{ 
             text: isVideoSaved ? `🚀 Запустить ресайз до ${nextStep} сейчас` : `🚫 Загрузите видео`, 
