@@ -15224,22 +15224,21 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
 
     // 1. ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ ТИПА (учитываем и ресайз, и поворот)
     const isVideo = lastMediaType === 'video';
-    let formKey = isVideo ? 'video' : 'image';
-    let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-    let mediaType = isVideo ? 'видео' : 'фото';
-    let fileName = isVideo ? 'video.mp4' : 'image.jpg';
+    // 1. Сначала ОБЪЯВЛЯЕМ переменные (пустые), чтобы они были видны везде
+    let errorMode = '';
+    let mimeType = '';
+    let mediaType = '';
+    let fileName = '';
+    let endpoint = '';
+    let successMessage = '';
+    let formKey = ''; // Добавим сразу и ключ для формы
     const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
 
     if (!RENDER_HOST_URL) {
         // Если переменная хоста пуста, выбрасываем явную ошибку
         throw new TypeError("Критическая ошибка: Конвертер LESHIY_RENDER_HOST не настроен в ENV."); 
     }
-    let endpoint = '';
-    //let param = mode.includes('RESIZE') ? 'resolution' : 'angle';
     // 1. ОПРЕДЕЛЕНИЕ РЕЖИМА
-    let errorMode;
-    let successMessage;
-    // Проверяем режим:
     if (mode === RESIZE_VIDEO_MODE) {
         errorMode = 'VIDEO_TO_RESIZE';
         mimeType = 'video/mp4';
