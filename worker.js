@@ -15395,9 +15395,16 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // Конвертация в Base64 для превью
     const base64Content = arrayBufferToBase64(processedBuffer); 
     const mimePrefix = isVideo ? 'data:video/mp4;base64,' : 'data:image/jpeg;base64,';
-    
-    currentData.file_id = newFileId;
-    currentData.base64 = mimePrefix + base64Content;
+    // Для видео крайне важно затереть СТАРЫЙ URL, иначе бот попытается качать по нему
+    if (isVideo) {
+        delete currentData.url; // Удаляем протухшую ссылку
+        currentData.mime_type = 'video/mp4';
+    }
+    // Технические параметры
+    //currentData.file_id = newFileId;
+    //currentData.base64 = mimePrefix + base64Content;
+    currentData.width = newMediaObject.width || currentData.width;
+    currentData.height = newMediaObject.height || currentData.height;
     currentData.file_size = newMediaObject.file_id_size || newMediaObject.file_size || currentData.file_size;
 
     // --- ОБРАБОТКА РАЗРЕШЕНИЙ (включая 2K и 4K) ---
