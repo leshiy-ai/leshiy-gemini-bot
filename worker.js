@@ -9754,9 +9754,9 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         
         if (isVideoSaved && currentHeight > 0) {
             // Строгое сравнение для галочки
-            if (Math.abs(currentHeight - targetHeight) <= 50) icon = '▶️'; //✔️
-            else if (targetHeight > currentHeight) icon = '⏩'; //➕
-            else icon = '⏪'; //➖
+            if (Math.abs(currentHeight - targetHeight) <= 50) icon = '▶️ '; //✔️
+            else if (targetHeight > currentHeight) icon = '⏩ '; //➕
+            else icon = '⏪ '; //➖
         }
         
         return { 
