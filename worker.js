@@ -15224,9 +15224,10 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
 
     // 1. ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ ТИПА (учитываем и ресайз, и поворот)
     const isVideo = lastMediaType === 'video';
+    let formKey = isVideo ? 'video' : 'image';
     let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
     let mediaType = isVideo ? 'видео' : 'фото';
-    let fileName = isVideo ? 'video.mp4' : 'input.jpg';
+    let fileName = isVideo ? 'video.mp4' : 'image.jpg';
     const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
 
     if (!RENDER_HOST_URL) {
