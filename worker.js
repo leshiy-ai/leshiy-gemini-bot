@@ -9638,7 +9638,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight > 0) {
-            if (Math.abs(currentHeight - step.currentHeight) <= 50) icon = '✅';
+            if (Math.abs(currentHeight - step.currentHeight) <= 50) icon = '✔️';
             else if (step.currentHeight > currentHeight) icon = '➕';
             else icon = '➖';
         }
@@ -9667,22 +9667,22 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             },
         ],
         // РЯД РЕЖИМОВ (Кнопка переключения на Upscale)
-        [{ text: '🔍 Фото → Апскейл', callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
-         { text: '📺 Видео → Апскейл', callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE' }],
-        // Кнопки поворота
-        ...chunkArray(rotateButtons, 3),
+        //[{ text: '🔍 Фото → Апскейл', callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
+        // { text: '📺 Видео → Апскейл', callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE' }],
         [{
             text: isPhotoSaved ? "💾 Посмотреть загруженное фото" : "📸 Загрузить фотографию", 
             callback_data: isPhotoSaved ? 'cmd:/view_saved_photo' : 'cmd:/upload_photo' 
         }],
         // Кнопки с плюсами минусами и галочкой
         ...chunkArray(resolutionButtons, 4), 
+        // Кнопки поворота
+        ...chunkArray(rotateButtons, 3),
         // Блок ориентации
         //[{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
         [
-            { text: (aspectType === 'landscape' ? '✅ ' : '') + '16:9', callback_data: `dummy_image_aspect|landscape` },
-            { text: (aspectType === 'portrait' ? '✅ ' : '') + '3:4', callback_data: `dummy_image_aspect|portrait` },
-            { text: (aspectType === 'square' ? '✅ ' : '') + '1:1', callback_data: `dummy_image_aspect|square` },
+            { text: (aspectType === 'landscape' ? '☑️ ' : '') + '16:9', callback_data: `dummy_image_aspect|landscape` },
+            { text: (aspectType === 'portrait' ? '☑️ ' : '') + '3:4', callback_data: `dummy_image_aspect|portrait` },
+            { text: (aspectType === 'square' ? '☑️ ' : '') + '1:1', callback_data: `dummy_image_aspect|square` },
         ],
         // Кнопка Ракеты
         [{ 
@@ -9754,7 +9754,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         
         if (isVideoSaved && currentHeight > 0) {
             // Строгое сравнение для галочки
-            if (Math.abs(currentHeight - targetHeight) <= 50) icon = '✅ ';
+            if (Math.abs(currentHeight - targetHeight) <= 50) icon = '✔️ ';
             else if (targetHeight > currentHeight) icon = '➕ ';
             else icon = '➖ ';
         }
@@ -9787,22 +9787,22 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
             { text: activeIcon + ' 🎦 Видео → Ресайз', callback_data: 'dummy_v2r_active' },
         ],
         // РЯД РЕЖИМОВ (Кнопка переключения на Upscale)
-        [{ text: '🔍 Фото → Апскейл', callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
-         { text: '📺 Видео → Апскейл', callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE' }],
-        // Кнопки с углами поворота
-        ...chunkArray(rotateButtons, 3),
+        //[{ text: '🔍 Фото → Апскейл', callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
+        // { text: '📺 Видео → Апскейл', callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE' }],
         [{
             text: isVideoSaved ? "💾 Посмотреть загруженное видео" : "📹 Загрузить видеоролик", 
             callback_data: isVideoSaved ? 'cmd:/view_saved_video' : 'cmd:/upload_video'
         }],
         // Кнопки с плюсами минусами и галочкой
         ...chunkArray(resolutionButtons, 4), 
+        // Кнопки с углами поворота
+        ...chunkArray(rotateButtons, 3),
         // Заголовок Соотношение
         //[{ text: `Соотношение: ${aspectRatio}`, callback_data: 'ignore' }],
         [
-            { text: (aspectRatio === '16:9' ? '✅ ' : '') + '16:9 (Ландшафт)', callback_data: `dummy_video_ratio|16:9` },
-            { text: (aspectRatio === '3:4' ? '✅ ' : '') + '3:4 (Портрет)', callback_data: `dummy_video_ratio|3:4` },
-            { text: (aspectRatio === '1:1' ? '✅ ' : '') + '1:1 (Квадрат)', callback_data: `dummy_video_ratio|1:1` },
+            { text: (aspectRatio === '16:9' ? '☑️ ' : '') + '16:9 (Ландшафт)', callback_data: `dummy_video_ratio|16:9` },
+            { text: (aspectRatio === '3:4' ? '☑️ ' : '') + '3:4 (Портрет)', callback_data: `dummy_video_ratio|3:4` },
+            { text: (aspectRatio === '1:1' ? '☑️ ' : '') + '1:1 (Квадрат)', callback_data: `dummy_video_ratio|1:1` },
         ],
         [{ 
             text: isVideoSaved ? `🚀 Запустить ресайз до ${nextStep} сейчас` : `🚫 Загрузите видео`, 
