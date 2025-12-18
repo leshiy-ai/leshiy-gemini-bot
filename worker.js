@@ -15291,7 +15291,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         const formKey = isVideo ? 'video' : 'image';
         // Используем твои существующие переменные: isVideo и mediaBuffer
         const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-        const fileName = isVideo ? 'video.mp4' : 'image.jpg';
+        const fileName = isVideo ? 'video.mp4' : 'input.jpg';
 
         // Оборачиваем буфер в Blob, чтобы передать MIME-тип и имя файла
         // Это решает проблему "пустых" файлов на стороне сервера
