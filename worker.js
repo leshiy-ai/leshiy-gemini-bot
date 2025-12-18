@@ -9582,20 +9582,6 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 
     // 2. Генерация динамических кнопок
     const dynamicSteps = getCalculatedPhotoSteps(currentWidth, currentHeight, aspectType);
-
-    /*/ Генерируем динамические шаги на основе Aspect Ratio
-    const dynamicSteps = (currentHeight && currentWidth) 
-        ? getCalculatedPhotoSteps(currentWidth, currentHeight)
-        : [
-            {p: '240p', label: '426x240', height: 240}, 
-            {p: '360p', label: '640x360', height: 360}, 
-            {p: '480p', label: '854x480', height: 480}, 
-            {p: '580p', label: '475x580', height: 580}, 
-            {p: '720p', label: '1280x720', height: 720}, 
-            {p: '1080p', label: '1920x1080', height: 1080}
-            {k: '1440p', label: '2560x1440', height: 1440}
-            {k: '2160p', label: '3840x2160', height: 2160}
-          ];*/
             
     // 3. Логика "Ракеты" (через let для перезаписи)
     let nextStepObj = dynamicSteps.find(step => step.currentHeight > currentHeight) || dynamicSteps[dynamicSteps.length - 1];
@@ -9627,8 +9613,8 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
 
     // --- 4. ФОРМИРОВАНИЕ ТЕКСТА (Строго по типу ФОТО) ---
     const activeIcon = '✅ ';
-    const displayName = '🖼️ Фото: Ресайз';
-    const priceLine = '💸 **Цена:** Бесплатно';
+    const displayName = '🔄 Фото: Ресайз';
+    const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Media Converter)';
     
     const currentSizeLine = isPhotoSaved 
         ? `**Текущий размер:** 📐 ${currentWidth}x${currentHeight} пикселей` 
@@ -9674,7 +9660,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         [{ text: '💰 Меню управления балансом', callback_data: 'show_balance' }],
         
         [
-            { text: activeIcon + ' 🖼️ Фото → Ресайз', callback_data: 'dummy_i2r_active' },
+            { text: activeIcon + ' 🔄 Фото → Ресайз', callback_data: 'dummy_i2r_active' },
             { 
                 text: `🎦 Видео → Ресайз`, 
                 callback_data: `select_resize_mode|VIDEO_TO_RESIZE` 
@@ -9795,7 +9781,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         [{ text: '💰 Меню управления балансом', callback_data: 'show_balance' }],
         [
             { 
-                text: `🖼️ Фото → Ресайз`, 
+                text: `🔄 Фото → Ресайз`, 
                 callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE_KEY}` 
             },
             { text: activeIcon + ' 🎦 Видео → Ресайз', callback_data: 'dummy_v2r_active' },
