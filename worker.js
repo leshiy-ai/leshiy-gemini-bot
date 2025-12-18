@@ -15422,32 +15422,34 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         // --- ФИНАЛЬНАЯ ОТПРАВКА РЕЗУЛЬТАТА ---
         try {
             let responseData;
-            
+            let newMediaObject = null; // Объявляем заранее, чтобы не было ReferenceError
+
             if (mediaType === 'видео') {
                 responseData = await sendVideoWithCaption(chatId, processedBuffer, successMessage, token, envData);
+                if (responseData && responseData.ok) {
+                    newMediaObject = responseData.result.video;
+                }
             } else {
                 responseData = await sendPhotoWithCaption(chatId, processedBuffer, successMessage, token, envData);
-            }
-            if (responseData && responseData.ok && responseData.result) {
-                // Объявляем ту самую переменную, которую потеряли
-                let newMediaObject;
-                if (mediaType === 'видео') {
-                    newMediaObject = responseData.result.video;
-                } else {
-                    // Для фото берем последний (самый крупный) объект из массива photo
+                if (responseData && responseData.ok) {
                     const photoArray = responseData.result.photo;
                     newMediaObject = photoArray && photoArray.length > 0 ? photoArray[photoArray.length - 1] : null;
                 }
-                // Теперь вызываем обновление KV, передавая созданный объект
-                if (newMediaObject) {
-                    await updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData);
-                    // Опционально: сообщаем в старом меню, что всё готово
-                    await editMessage(chatId, originalMessageId, `✅ Результат доставлен!`, token);
-                    }
             }
+
+            // --- ОБНОВЛЕНИЕ KV (С учетом различий структур) ---
+            if (newMediaObject) {
+                // Мы передаем processedBuffer, чтобы updateMediaKVAfterProcessing 
+                // сам решил, делать из него base64 (для фото) или нет (для видео)
+                await updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData);
+                
+                // Отредактируем старое меню, чтобы пользователь видел статус
+                await editMessage(chatId, originalMessageId, `✅ ${mediaType === 'видео' ? 'Видео' : 'Фото'} готово и отправлено!`, token);
+            }
+
         } catch (sendError) {
-            ctx.waitUntil(logDebug('RESIZE_CRITICAL', `[${chatId}] Ошибка при ${errorMode}: ${sendError.message}`, envData));
-            await editMessage(chatId, originalMessageId, `❌ Ошибка при отправке результата!`, token);
+            ctx.waitUntil(logDebug('RESIZE_CRITICAL', `[${chatId}] Ошибка: ${sendError.message}`, envData));
+            await editMessage(chatId, originalMessageId, `❌ Ошибка при отправке: ${sendError.message}`, token);
         }
 
         await updateMediaKVAfterProcessing(
@@ -15516,6 +15518,18 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         delete currentData.url; // Удаляем протухшую ссылку
         currentData.mime_type = 'video/mp4';
     }
+    // Внутри функции обновления KV:
+    if (isVideo) {
+        // Для видео просто сохраняем метаданные
+        currentData.file_id = newFileId;
+        currentData.mime_type = 'video/mp4';
+        // Можно сохранить маленькое превью, если очень нужно, 
+        // но обычно для видео в KV base64 не хранят (слишком жирно)
+    } else {
+        // Только для фото делаем base64
+        const base64Content = arrayBufferToBase64(processedBuffer);
+        currentData.base64 = 'data:image/jpeg;base64,' + base64Content;
+    }
     // Технические параметры
     //currentData.file_id = newFileId;
     //currentData.base64 = mimePrefix + base64Content;
@@ -15543,7 +15557,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         currentData.height = newMediaObject.height || currentData.height;
     }
 
-    // Логика поворота (остается прежней)
+    // Логика поворота
     if (mode.includes('ROTATE')) {
         const angle = parseInt(param);
         if (Math.abs(angle) % 180 !== 0) {
