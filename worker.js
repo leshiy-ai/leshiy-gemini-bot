@@ -15452,15 +15452,6 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
             await editMessage(chatId, originalMessageId, `❌ Ошибка при отправке: ${sendError.message}`, token);
         }
 
-        await updateMediaKVAfterProcessing(
-             chatId, 
-             newMediaObject, 
-             processedBuffer, 
-             mode, 
-             param, 
-             envData
-        );
-
         // --- 5. Успешное завершение ---
         await editMessage(chatId, originalMessageId, `✅ **Обработка ${mediaType} завершена.**`, token);
         ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Операция завершена успешно.`, envData));
@@ -18217,76 +18208,6 @@ ${historyText}`;
                     }
                     
                     return new Response('OK', { status: 200 }); 
-                    } else if (data.startsWith(SET_VIDEO_BASE_CALLBACK)) {
-                    const chatId = callback.message.chat.id;
-                    const messageId = callback.message.message_id;
-                    
-                    // --- ОСНОВНОЙ КЛЮЧ ДЛЯ ВИДЕО: содержит актуальные Base64 и file_id после всех операций ---
-                    const FINAL_VIDEO_KV_KEY = chatId + '_last_video_data'; 
-                    const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; // Используем то же хранилище
-                    
-                    try {
-                        // 1. Уведомление пользователя
-                        await answerCallbackQuery(callback.id, "✅ Видео устанавливается как исходное", envData.TELEGRAM_BOT_TOKEN);
-                        await editMessageCaption(chatId, messageId, "⏳ Установка видео как нового исходного", envData.TELEGRAM_BOT_TOKEN); 
-
-                        // --- ИСПРАВЛЕНИЕ: Получаем данные из КНОПКИ (временный ключ), а не из пустого поля base64 ---
-                        const shortCallbackKey = data.replace(SET_VIDEO_BASE_CALLBACK, '');
-                        const KV_KEY_TEMP = `callback_${chatId}_${shortCallbackKey}`;
-                        const tempVideoDataRaw = await CALLBACK_TEMP_STORAGE.get(KV_KEY_TEMP);
-                        if (!tempVideoDataRaw) {
-                            throw new Error("Не найдены актуальные данные видео. Срок действия истек.");
-                        }
-                        const tempVideoData = JSON.parse(tempVideoDataRaw);
-                        
-                        // 2. ЧТЕНИЕ АКТУАЛЬНОГО СОСТОЯНИЯ ИЗ ОСНОВНОГО ХРАНИЛИЩА
-                        const finalVideoDataRaw = await CALLBACK_TEMP_STORAGE.get(FINAL_VIDEO_KV_KEY);
-                        // Если основного хранилища еще нет — создаем объект, если есть — парсим
-                        const finalVideoData = finalVideoDataRaw ? JSON.parse(finalVideoDataRaw) : {};
-                        
-                        // 3. ПРОВЕРКА: Для видео нам нужен fileId, а не base64
-                        if (!tempVideoData.fileId) {
-                            throw new Error("Отсутствует идентификатор видео (fileId) для сохранения.");
-                        }
-                        
-                        // 4. СБРОС И СОХРАНЕНИЕ: Переносим данные из кнопки в основную базу
-                        finalVideoData.file_id = tempVideoData.fileId;
-                        finalVideoData.width = tempVideoData.width || finalVideoData.width;
-                        finalVideoData.height = tempVideoData.height || finalVideoData.height;
-                        finalVideoData.rotation = 0; // Сбрасываем поворот в ноль
-
-                        await CALLBACK_TEMP_STORAGE.put(
-                            FINAL_VIDEO_KV_KEY, 
-                            JSON.stringify(finalVideoData), 
-                            { expirationTtl: 86400 } // Видео храним дольше (сутки)
-                        );
-
-                        // 5. Успешное завершение: Изолируем редактирование подписи
-                        try {
-                            await editMessageCaption(chatId, messageId, "✅ Видео успешно установлено как исходное", envData.TELEGRAM_BOT_TOKEN);
-                        } catch (captionError) {
-                            // Если не можем редактировать подпись (например, если сообщение слишком старое),
-                            // логируем это, но не прерываем выполнение.
-                            logDebug('[SET_BASE] Caption Error', `Failed to edit caption: ${captionError.message}`, envData);
-                            await sendMessage(chatId, "✅ Исходное видео обновлено! (Не удалось обновить подпись сообщения)", envData.TELEGRAM_BOT_TOKEN);
-                        }
-                    } catch (e) {
-                        // Логирование и обработка ошибок
-                        logDebug('[SET_BASE] CRITICAL ERROR', e.message, envData);
-                        await editMessageCaption(chatId, messageId, `❌ Критическая ошибка:\n${escapeMarkdownV2(e.message.substring(0, 200))}`, envData.TELEGRAM_BOT_TOKEN);
-                        return new Response('OK', { status: 200 }); 
-                    }
-                    
-                    // 6. Очистка временного ключа
-                    try {
-                        const shortCallbackKey = data.replace(SET_VIDEO_BASE_CALLBACK, '');
-                        const KV_KEY_TEMP = `callback_${chatId}_${shortCallbackKey}`; 
-                        await CALLBACK_TEMP_STORAGE.delete(KV_KEY_TEMP);
-                    } catch (e) {
-                        logDebug('[SET_BASE] Cleanup Error', `Failed to delete temp key: ${e.message}`, envData);
-                    }
-                    
-                    return new Response('OK', { status: 200 }); // ГАРАНТИРУЕМ ВОЗВРАТ УСПЕХА
                 } else if (data.startsWith(ROTATE_LEFT_CALLBACK) || data.startsWith(ROTATE_RIGHT_CALLBACK) || data.startsWith(ROTATE_180_CALLBACK)) {
                     const chatId = callback.message.chat.id;
                     const messageId = callback.message.message_id;
@@ -18351,6 +18272,78 @@ ${historyText}`;
                     }
                     // Очищаем временный ключ сразу после использования
                     return new Response('OK', { status: 200 }); 
+                } else if (data.startsWith(SET_VIDEO_BASE_CALLBACK)) {
+                    const chatId = callback.message.chat.id;
+                    const messageId = callback.message.message_id;
+                    
+                    // --- ОСНОВНОЙ КЛЮЧ ДЛЯ ВИДЕО: содержит актуальные Base64 и file_id после всех операций ---
+                    const FINAL_VIDEO_KV_KEY = chatId + '_last_video_data'; 
+                    const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; // Используем то же хранилище
+                    
+                    try {
+                        // 1. Уведомление пользователя
+                        await answerCallbackQuery(callback.id, "✅ Видео устанавливается как исходное", envData.TELEGRAM_BOT_TOKEN);
+                        await editMessageCaption(chatId, messageId, "⏳ Установка видео как нового исходного", envData.TELEGRAM_BOT_TOKEN); 
+
+                        // --- ИСПРАВЛЕНИЕ: Получаем данные из КНОПКИ (временный ключ), а не из пустого поля base64 ---
+                        const shortCallbackKey = data.replace(SET_VIDEO_BASE_CALLBACK, '');
+                        const KV_KEY_TEMP = `callback_${chatId}_${shortCallbackKey}`;
+                        const tempVideoDataRaw = await CALLBACK_TEMP_STORAGE.get(KV_KEY_TEMP);
+                        if (!tempVideoDataRaw) {
+                            throw new Error("Не найдены актуальные данные видео. Срок действия истек.");
+                        }
+                        const tempVideoData = JSON.parse(tempVideoDataRaw);
+                        
+                        // 2. ЧТЕНИЕ АКТУАЛЬНОГО СОСТОЯНИЯ ИЗ ОСНОВНОГО ХРАНИЛИЩА
+                        const finalVideoDataRaw = await CALLBACK_TEMP_STORAGE.get(FINAL_VIDEO_KV_KEY);
+                        // Если основного хранилища еще нет — создаем объект, если есть — парсим
+                        const finalVideoData = finalVideoDataRaw ? JSON.parse(finalVideoDataRaw) : {};
+                        
+                        // 3. ПРОВЕРКА: Для видео нам нужен fileId, а не base64
+                        if (!tempVideoData.fileId) {
+                            throw new Error("Отсутствует идентификатор видео (fileId) для сохранения.");
+                        }
+                        
+                        // 4. СБРОС И СОХРАНЕНИЕ: Переносим данные из кнопки в основную базу
+                        finalVideoData.file_id = tempVideoData.fileId;
+                        finalVideoData.width = tempVideoData.width || finalVideoData.width;
+                        finalVideoData.height = tempVideoData.height || finalVideoData.height;
+                        finalVideoData.rotation = 0; // Сбрасываем поворот в ноль
+
+                        await CALLBACK_TEMP_STORAGE.put(
+                            FINAL_VIDEO_KV_KEY, 
+                            JSON.stringify(finalVideoData), 
+                            { expirationTtl: 86400 } // Видео храним дольше (сутки)
+                        );
+                        
+                        // 5. Успешное завершение: Изолируем редактирование подписи
+                        try {
+                            await editMessageCaption(chatId, messageId, "✅ Видео успешно установлено как исходное", envData.TELEGRAM_BOT_TOKEN);
+                        } catch (captionError) {
+                            // Если не можем редактировать подпись (например, если сообщение слишком старое),
+                            // логируем это, но не прерываем выполнение.
+                            logDebug('[SET_BASE] Caption Error', `Failed to edit caption: ${captionError.message}`, envData);
+                            await sendMessage(chatId, "✅ Исходное видео обновлено! (Не удалось обновить подпись сообщения)", envData.TELEGRAM_BOT_TOKEN);
+                        }
+                    } catch (e) {
+                        // Логирование и обработка ошибок
+                        logDebug('[SET_BASE] CRITICAL ERROR', e.message, envData);
+                        await editMessageCaption(chatId, messageId, `❌ Критическая ошибка:\n${escapeMarkdownV2(e.message.substring(0, 200))}`, envData.TELEGRAM_BOT_TOKEN);
+                        return new Response('OK', { status: 200 }); 
+                    }
+                    
+                    // 6. Изолированная очистка временного ключа
+                    try {
+                        const shortCallbackKey = data.replace(SET_VIDEO_BASE_CALLBACK, '');
+                        const KV_KEY_TEMP = `callback_${chatId}_${shortCallbackKey}`; 
+                        await CALLBACK_TEMP_STORAGE.delete(KV_KEY_TEMP);
+                        logDebug('[SET_BASE] Cleanup', `Temporary key ${KV_KEY_TEMP} deleted.`, envData);
+                    } catch (e) {
+                        logDebug('[SET_BASE] Cleanup Error', `Failed to delete temp key: ${e.message}`, envData);
+                        // Мы игнорируем эту ошибку, так как она не влияет на основное сохранение.
+                    }
+                    
+                    return new Response('OK', { status: 200 }); // ГАРАНТИРУЕМ ВОЗВРАТ УСПЕХА
                 } else if (data.startsWith(ROTATE_VIDEO_LEFT_CALLBACK) || data.startsWith(ROTATE_VIDEO_RIGHT_CALLBACK) || data.startsWith(ROTATE_VIDEO_180_CALLBACK)) {
                     const chatId = callback.message.chat.id;
                     const messageId = callback.message.message_id;
