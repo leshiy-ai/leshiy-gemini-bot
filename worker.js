@@ -2683,66 +2683,6 @@ async function getCurrentMediaData(chatId, envData, storage, isVideo = false) {
 }
 
 /**
- * @description Возвращает иконку "✅", "➕", "➖" для визуального сравнения текущего размера с кнопкой.
- * @param {number} currentHeight - Текущая высота файла.
- * @param {number} targetHeight - Высота, указанная на кнопке (например, 720).
- * @param {Object} allResolutions - Объект всех доступных разрешений.
- * @returns {string} Иконка: '✅', '➕', '➖' или пустая строка.
- */
-function getResolutionIcon(currentHeight, targetHeight, allResolutions) {
-    if (!currentHeight || !targetHeight || !allResolutions) return '';
-    
-    // Превращаем объект/массив в отсортированный список высот
-    const resolutionValues = Object.values(allResolutions).sort((a, b) => b - a);
-    let bestMatchHeight = 0;
-    
-    for (const height of resolutionValues) {
-        if (currentHeight >= height) {
-            bestMatchHeight = height;
-            break;
-        }
-    }
-    if (bestMatchHeight === 0 && currentHeight > 0 && resolutionValues.length > 0) {
-        bestMatchHeight = resolutionValues[resolutionValues.length - 1];
-    }
-    
-    //if (targetHeight === bestMatchHeight) return '✅';
-    if (!currentHeight || !targetHeight) return '';
-
-    // 1. Если текущая высота совпадает с высотой кнопки — это ✅
-    // (Допуск 2 пикселя на случай странных округлений)
-    if (Math.abs(currentHeight - targetHeight) <= 20) return '✅';
-
-    // 2. Если кнопка предлагает размер больше текущего — это ➕
-    if (targetHeight > currentHeight) return '➕';
-
-    // 3. Если кнопка предлагает размер меньше текущего — это ➖
-    if (targetHeight < currentHeight) return '➖';
-    
-    return '';
-}
-
-/**
- * ПОСРЕДНИК: Подготавливает данные для фото или видео
- */
-function getIconForMedia(currentWidth, currentHeight, targetResStr, isVideo) {
-    if (isVideo) {
-        // Для видео всё просто: targetResStr это "720p", вынимаем 720
-        const targetHeight = parseInt(targetResStr);
-        const videoResolutions = { "240p": 240, "360p": 360, "480p": 480, "580p": 580, "720p": 720, "1080p": 1080, "1440p": 1440, "2160p": 2160 };
-        return getResolutionIcon(currentHeight, targetHeight, videoResolutions);
-    } else {
-        // Для фото: targetResStr это "1280x720", вынимаем 720
-        const targetHeight = parseInt(targetResStr.split('x')[1]);
-        const photoResolutions = { 
-            '426x240': 240, '640x360': 360, '854x480': 480, '960x580': 580, "1280x720": 720, "1920x1080": 1080, '2096x1440': 1440, '3840×2160': 2160
-        };
-        // Передаем в твою функцию именно высоту
-        return getResolutionIcon(currentHeight, targetHeight, photoResolutions);
-    }
-}
-
-/**
  * Точный расчёт шагов ресайза на основе Aspect Ratio.
  */
 function getCalculatedPhotoSteps(currentWidth, currentHeight, aspectType = 'portrait') {
@@ -9562,7 +9502,6 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
     // 🛑 ИСПРАВЛЕНИЕ: Используем ключи для ФОТО и ВИДЕО
     const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
     const LAST_VIDEO_DATA_KEY = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; 
-    // const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX; // Промпт для /resize не нужен
 
     try {
         // 1. ЧТЕНИЕ ДАННЫХ ИЗ KV (Читаем ОБА КЛЮЧА)
@@ -18891,13 +18830,19 @@ ${historyText}`;
                     } // --- КОНЕЦ НОВОГО БЛОКА RESIZE ---
                     // --- ЗАПУСК ПОВОРОТА (generate_rotate_now|...) ---
                     if (data.startsWith('generate_rotate_now|')) {
+                        const chatKey = chatId.toString();
                         const parts = data.split('|');
                         const finalMode = parts[1];      // IMAGE_TO_ROTATE или VIDEO_TO_ROTATE
-                        const actionParam = parts[2];    // Угол
+                        const actionParam = parts[2];    // Разрешение
 
                         let fileId; // Переменная для ID файла
 
                         if (finalMode === 'VIDEO_TO_ROTATE') {
+                            const rawVideo = await envData.LAST_PHOTO_STORAGE.get(chatId + '_last_video_data');
+                            if (!rawVideo) {
+                                ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Данные видео не найдены`, token));
+                                return new Response('OK', { status: 200 });
+                            }
                             // Для видео file_id лежит внутри JSON (как и было)
                             const mediaData = JSON.parse(rawVideo);
                             fileId = mediaData.file_id;
@@ -18906,10 +18851,19 @@ ${historyText}`;
                             fileId = await envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_FILE_ID_KEY_SUFFIX);
                         }
 
+                        // ✅ ГЛАВНАЯ ПРОВЕРКА: Если ключа нет или он протух
                         if (!fileId) {
-                            const mediaName = finalMode === 'VIDEO_TO_ROTATE' ? 'видеоролик' : 'фотографию';
-                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Не нашел ID файла. Загрузите ${mediaName} еще раз.`, token));
-                            return new Response('OK', { status: 200 });
+                            const mediaName = finalMode === 'VIDEO_TO_ROTATE' ? 'видео' : 'фото';
+                            
+                            // 1. Убираем "часики" с кнопки
+                            await answerCallbackQuery(callbackQueryId, `❌ Данные ${mediaName} устарели.`, token);
+                            
+                            // 2. Информируем в чате
+                            await editMessage(chatId, originalMessageId, 
+                                `⚠️ **Ошибка: файл не найден.**\n\nСкорее всего, прошло более часа с момента загрузки. Пожалуйста, отправьте ${mediaName} боту еще раз.`, 
+                                token
+                            );
+                            return new Response('OK', { status: 200 }); // Завершаем выполнение
                         }
                         
                         // Остальные переменные
@@ -18931,7 +18885,7 @@ ${historyText}`;
 
                         ctx.waitUntil(Promise.allSettled([
                             answerCallbackQuery(callbackQueryId, `Запускаю поворот изображения`, token),
-                            editMessage(chatId, originalMessageId, `⏳ Запускаю Поворот изображения, Параметр: ${actionParam})`, token)
+                            editMessage(chatId, originalMessageId, `⏳ Запускаю Поворот изображения, Параметр: ${actionParam}`, token)
                         ]));
                         
                         return new Response('OK', { status: 200 });
