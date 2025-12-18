@@ -9676,10 +9676,13 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         [
             { text: activeIcon + ' 🖼️ Фото → Ресайз', callback_data: 'dummy_i2r_active' },
             { 
-                text: `📺 Видео → Ресайз`, 
+                text: `🎦 Видео → Ресайз`, 
                 callback_data: `select_resize_mode|VIDEO_TO_RESIZE` 
             },
         ],
+        // РЯД РЕЖИМОВ (Кнопка переключения на Upscale)
+        [{ text: '🔍 Фото → Апскейл', callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
+         { text: '📺 Видео → Апскейл', callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE' }],
         // Кнопки поворота
         ...chunkArray(rotateButtons, 3),
         [{
@@ -9737,7 +9740,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
 
     // --- 4. ФОРМИРОВАНИЕ ТЕКСТА (Строго по типу ВИДЕО) ---
     const activeIcon = '✅ ';
-    const displayName = '📺 Видео: Ресайз';
+    const displayName = '🎦 Видео: Ресайз';
     const priceLine = '💸 **Цена:** Бесплатно (через Leshiy Media Converter)';
     
     let currentSizeLine = canRun 
@@ -9795,8 +9798,11 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
                 text: `🖼️ Фото → Ресайз`, 
                 callback_data: `select_resize_mode|${RESIZE_IMAGE_MODE_KEY}` 
             },
-            { text: activeIcon + ' 📺 Видео → Ресайз', callback_data: 'dummy_v2r_active' },
+            { text: activeIcon + ' 🎦 Видео → Ресайз', callback_data: 'dummy_v2r_active' },
         ],
+        // РЯД РЕЖИМОВ (Кнопка переключения на Upscale)
+        [{ text: '🔍 Фото → Апскейл', callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
+         { text: '📺 Видео → Апскейл', callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE' }],
         // Кнопки с углами поворота
         ...chunkArray(rotateButtons, 3),
         [{
