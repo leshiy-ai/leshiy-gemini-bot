@@ -9565,8 +9565,8 @@ async function sendResizeMenu(chatId, token, storage, envData, ctx, messageId = 
  * @returns {Object} { messageText, keyboardObject }
  */
 async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
-    const PHOTO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '580p': 580, '720p': 720, '1080p': 1080, '1440p': 1440, '2160p': 2160 };
-    const PHOTO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p', '1440p', '2160p'];
+    const PHOTO_RES_OBJ = { '240p': 240, '360p': 360, '480p': 480, '640p': 640, '720p': 720, '1080p': 1080, '1440p': 1440, '2160p': 2160 };
+    const PHOTO_STEPS = ['240p', '360p', '480p', '640p', '720p', '1080p', '1440p', '2160p'];
     const RESIZE_IMAGE_MODE_KEY = RESIZE_IMAGE_MODE || 'IMAGE_TO_RESIZE';
     const ROTATE_IMAGE_MODE_KEY = ROTATE_IMAGE_MODE || 'IMAGE_TO_ROTATE';
     const RESIZE_VIDEO_MODE_KEY = 'VIDEO_TO_RESIZE';
@@ -9698,7 +9698,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
  */
 async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     // Используем ГЛОБАЛЬНЫЕ КОНСТАНТЫ
-    const VIDEO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p', '1440p', '2160p'];
+    const VIDEO_STEPS = ['240p', '360p', '480p', '580p', '640p', '720p', '1080p', '1440p'];
     const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
     const ROTATE_VIDEO_MODE_KEY = ROTATE_VIDEO_MODE || 'VIDEO_TO_ROTATE';
     const RESIZE_IMAGE_MODE_KEY = 'IMAGE_TO_RESIZE';
@@ -9714,7 +9714,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     let defaultResParam = '1080p';
 
     // 2. Список стандартных разрешений (высота)
-    const targetHeights = [240, 360, 480, 580, 720, 1080, 1440, 2160];
+    const targetHeights = [240, 360, 480, 580, 640, 720, 1080, 1440, 2160];
 
     // 3. АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА
     let balanceStatus = '...';
@@ -15333,27 +15333,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         await editMessage(chatId, originalMessageId, `📤 **Загрузка обработанного файла в Telegram...**`, token);
 
         const caption = successMessage; // Используем то, что определили выше
-        /*
-        let editResult;
-        if (isVideo) {
-            editResult = await editMessageWithNewVideo(
-                 chatId, originalMessageId, processedBuffer, caption, originalReplyMarkup, token
-            );
-        } else {
-             editResult = await editMessageWithNewPhoto(
-                 chatId, originalMessageId, processedBuffer, caption, originalReplyMarkup, token
-            );
-        }
-
-        // --- 4. Обновление KV с новым file_id ---
-        const newMediaObject = isVideo 
-             ? editResult.result?.video 
-             : editResult.result?.photo?.slice(-1)[0]; 
-
-        if (!newMediaObject || !newMediaObject.file_id) {
-             throw new Error(`Telegram не вернул file_id для ${mediaType}.`);
-        }
-        */
+       
         // --- ФИНАЛЬНАЯ ОТПРАВКА РЕЗУЛЬТАТА ---
         try {
             let responseData;
@@ -15468,8 +15448,8 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         // Карта соответствия строк и реальной высоты
         const resMap = {
             '240p': 240, '360p': 360, '480p': 480, 
-            '580p': 580, '720p': 720, '1080p': 1080,
-            '1440p': 1440, '2160p': 2160
+            '580p': 580, '640p': 640, '720p': 720, 
+            '1080p': 1080, '1440p': 1440, '2160p': 2160
         };
 
         const height = resMap[param.toLowerCase()] || parseInt(param);
