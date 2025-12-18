@@ -3287,11 +3287,6 @@ async function runDelayedVideoCheck(chatId, pollData, envData, delaySeconds = 10
 async function sendVideoWithCaption(chatId, videoArrayBuffer, caption, token, envData) {
     const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; 
     const CALLBACK_EXPIRATION_TTL = 3600;
-    const ROTATE_LEFT_CALLBACK = 'rot_L_'; 
-    const ROTATE_RIGHT_CALLBACK = 'rot_R_';
-    const ROTATE_180_CALLBACK = 'rot_180_'; // Убедись, что константа есть
-    const SET_BASE_CALLBACK = 'setbase_';
-
     if (!videoArrayBuffer || videoArrayBuffer.byteLength === 0) {
         throw new Error("sendVideoWithCaption: Пустой ArrayBuffer видео.");
     }
@@ -3345,11 +3340,11 @@ async function sendVideoWithCaption(chatId, videoArrayBuffer, caption, token, en
             const inlineKeyboard = {
                 inline_keyboard: [
                     [
-                        { text: "↪️ 90° влево", callback_data: `${ROTATE_LEFT_CALLBACK}${shortCallbackKey}` },
-                        { text: "🔃 180° поворот", callback_data: `${ROTATE_180_CALLBACK}${shortCallbackKey}` },
-                        { text: "↩️ 90° вправо", callback_data: `${ROTATE_RIGHT_CALLBACK}${shortCallbackKey}` }
+                        { text: "↪️ 90° влево", callback_data: `${ROTATE_VIDEO_LEFT_CALLBACK}${shortCallbackKey}` },
+                        { text: "🔃 180° поворот", callback_data: `${ROTATE_VIDEO_180_CALLBACK}${shortCallbackKey}` },
+                        { text: "↩️ 90° вправо", callback_data: `${ROTATE_VIDEO_RIGHT_CALLBACK}${shortCallbackKey}` }
                     ],
-                    [{ text: "🎬 Установить как основной видеоролик", callback_data: `${SET_BASE_CALLBACK}${shortCallbackKey}`}]
+                    [{ text: "🎬 Установить как основной видеоролик", callback_data: `${SET_VIDEO_BASE_CALLBACK}${shortCallbackKey}`}]
                 ]
             };
 
@@ -3703,12 +3698,6 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     const TELEGRAM_CAPTION_LIMIT = 1024;
     const SAFE_MAX_LENGTH = 990;
     const ELLIPSIS_SUFFIX = '...';
-    
-    // --- КОНСТАНТЫ ДЛЯ КНОПКИ ---
-    // Убедитесь, что эти константы определены глобально или в envData:
-    const SET_BASE_CALLBACK = 'setbase_'; 
-    const ROTATE_LEFT_CALLBACK = 'rot_L_'; 
-    const ROTATE_RIGHT_CALLBACK = 'rot_R_';
     const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; 
     const CALLBACK_EXPIRATION_TTL = 3600;
 
