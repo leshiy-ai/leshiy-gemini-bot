@@ -18217,71 +18217,7 @@ ${historyText}`;
                     }
                     
                     return new Response('OK', { status: 200 }); 
-                } else if (data.startsWith(ROTATE_LEFT_CALLBACK) || data.startsWith(ROTATE_RIGHT_CALLBACK) || data.startsWith(ROTATE_180_CALLBACK)) {
-                    const chatId = callback.message.chat.id;
-                    const messageId = callback.message.message_id;
-
-                    let angle = '0';
-                    let shortCallbackKey = '';
-                
-                    if (data.startsWith(ROTATE_LEFT_CALLBACK)) {
-                        angle = '-90'; // Угол для Render: -90 влево
-                        shortCallbackKey = data.replace(ROTATE_LEFT_CALLBACK, '');
-                    } else if (data.startsWith(ROTATE_RIGHT_CALLBACK)) {
-                        angle = '90'; // Угол для Render: 90 вправо
-                        shortCallbackKey = data.replace(ROTATE_RIGHT_CALLBACK, '');
-                    } else if (data.startsWith(ROTATE_180_CALLBACK)) {
-                        angle = '180'; // Угол для Render: 180
-                        shortCallbackKey = data.replace(ROTATE_180_CALLBACK, '');
-                    }
-                    angle = angle.toString().trim(); // Если угол не 0, он будет '90', '-90' или '180'.
-                    const KV_KEY = `callback_${chatId}_${shortCallbackKey}`; 
-                
-                    const token = env.TELEGRAM_BOT_TOKEN;
-                    const originalMessageId = callback.message.message_id;
-                    // 🛑 КРИТИЧНО: Сохраняем текущую клавиатуру
-                    const originalReplyMarkup = callback.message.reply_markup; 
-                
-                    try {
-                        // 1. 🛑 СРАЗУ ОТВЕЧАЕМ НА КОЛБЭК!
-                        await answerCallbackQuery(callback.id, `🔄 Запускаю поворот фото...`, token);
-                        
-                        // 2. Извлекаем fileId из KV
-                        const stateJSON = await env.LAST_PHOTO_STORAGE.get(KV_KEY);
-                        if (!stateJSON) {
-                            // Редактируем подпись оригинального сообщения
-                            await editMessageCaption(chatId, originalMessageId, "❌ Ошибка: Срок действия кнопки истек", token, originalReplyMarkup);
-                            return new Response('OK', { status: 200 }); 
-                        }
-                        const rotationState = JSON.parse(stateJSON);
-                        const fileId = rotationState.fileId; 
-                        
-                        // 3. 📢 ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ для статуса
-                        const loadingMessage = await sendMessageMarkdown(chatId, `⏳ **Начинаю преобразование...**`, token);
-                        const loadingMessageId = loadingMessage.result.message_id;
-                
-                        // 4. Запуск асинхронной задачи (здесь должно быть обеспечено, что ctx определен)
-                        ctx.waitUntil(
-                            runPhotoRotationInBackground(
-                                chatId, 
-                                fileId, 
-                                originalMessageId, 
-                                loadingMessageId, // НОВЫЙ АРГУМЕНТ
-                                originalReplyMarkup, 
-                                angle, 
-                                env, 
-                                token,
-                                ctx // Передаем ctx, как обсуждалось ранее
-                            )
-                        );
-                
-                    } catch (e) {
-                        console.error("Critical Rotate Error (Launch):", e);
-                        await sendMessage(chatId, `❌ Критическая ошибка Worker'а: ${e.message.substring(0, 150)}`, token); 
-                    }
-                    // Очищаем временный ключ сразу после использования
-                    return new Response('OK', { status: 200 }); 
-                } else if (data.startsWith(SET_VIDEO_BASE_CALLBACK)) {
+                    } else if (data.startsWith(SET_VIDEO_BASE_CALLBACK)) {
                     const chatId = callback.message.chat.id;
                     const messageId = callback.message.message_id;
                     
@@ -18351,6 +18287,70 @@ ${historyText}`;
                     }
                     
                     return new Response('OK', { status: 200 }); // ГАРАНТИРУЕМ ВОЗВРАТ УСПЕХА
+                } else if (data.startsWith(ROTATE_LEFT_CALLBACK) || data.startsWith(ROTATE_RIGHT_CALLBACK) || data.startsWith(ROTATE_180_CALLBACK)) {
+                    const chatId = callback.message.chat.id;
+                    const messageId = callback.message.message_id;
+
+                    let angle = '0';
+                    let shortCallbackKey = '';
+                
+                    if (data.startsWith(ROTATE_LEFT_CALLBACK)) {
+                        angle = '-90'; // Угол для Render: -90 влево
+                        shortCallbackKey = data.replace(ROTATE_LEFT_CALLBACK, '');
+                    } else if (data.startsWith(ROTATE_RIGHT_CALLBACK)) {
+                        angle = '90'; // Угол для Render: 90 вправо
+                        shortCallbackKey = data.replace(ROTATE_RIGHT_CALLBACK, '');
+                    } else if (data.startsWith(ROTATE_180_CALLBACK)) {
+                        angle = '180'; // Угол для Render: 180
+                        shortCallbackKey = data.replace(ROTATE_180_CALLBACK, '');
+                    }
+                    angle = angle.toString().trim(); // Если угол не 0, он будет '90', '-90' или '180'.
+                    const KV_KEY = `callback_${chatId}_${shortCallbackKey}`; 
+                
+                    const token = env.TELEGRAM_BOT_TOKEN;
+                    const originalMessageId = callback.message.message_id;
+                    // 🛑 КРИТИЧНО: Сохраняем текущую клавиатуру
+                    const originalReplyMarkup = callback.message.reply_markup; 
+                
+                    try {
+                        // 1. 🛑 СРАЗУ ОТВЕЧАЕМ НА КОЛБЭК!
+                        await answerCallbackQuery(callback.id, `🔄 Запускаю поворот фото...`, token);
+                        
+                        // 2. Извлекаем fileId из KV
+                        const stateJSON = await env.LAST_PHOTO_STORAGE.get(KV_KEY);
+                        if (!stateJSON) {
+                            // Редактируем подпись оригинального сообщения
+                            await editMessageCaption(chatId, originalMessageId, "❌ Ошибка: Срок действия кнопки истек", token, originalReplyMarkup);
+                            return new Response('OK', { status: 200 }); 
+                        }
+                        const rotationState = JSON.parse(stateJSON);
+                        const fileId = rotationState.fileId; 
+                        
+                        // 3. 📢 ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ для статуса
+                        const loadingMessage = await sendMessageMarkdown(chatId, `⏳ **Начинаю преобразование...**`, token);
+                        const loadingMessageId = loadingMessage.result.message_id;
+                
+                        // 4. Запуск асинхронной задачи (здесь должно быть обеспечено, что ctx определен)
+                        ctx.waitUntil(
+                            runPhotoRotationInBackground(
+                                chatId, 
+                                fileId, 
+                                originalMessageId, 
+                                loadingMessageId, // НОВЫЙ АРГУМЕНТ
+                                originalReplyMarkup, 
+                                angle, 
+                                env, 
+                                token,
+                                ctx // Передаем ctx, как обсуждалось ранее
+                            )
+                        );
+                
+                    } catch (e) {
+                        console.error("Critical Rotate Error (Launch):", e);
+                        await sendMessage(chatId, `❌ Критическая ошибка Worker'а: ${e.message.substring(0, 150)}`, token); 
+                    }
+                    // Очищаем временный ключ сразу после использования
+                    return new Response('OK', { status: 200 }); 
                 } else if (data.startsWith(ROTATE_VIDEO_LEFT_CALLBACK) || data.startsWith(ROTATE_VIDEO_RIGHT_CALLBACK) || data.startsWith(ROTATE_VIDEO_180_CALLBACK)) {
                     const chatId = callback.message.chat.id;
                     const messageId = callback.message.message_id;
