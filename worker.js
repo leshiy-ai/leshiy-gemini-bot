@@ -9638,9 +9638,9 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     const resolutionButtons = dynamicSteps.map(step => {
         let icon = '';
         if (isPhotoSaved && currentHeight > 0) {
-            if (Math.abs(currentHeight - step.currentHeight) <= 50) icon = '🟰'; //✔️
-            else if (step.currentHeight > currentHeight) icon = '➕';
-            else icon = '➖';
+            if (Math.abs(currentHeight - step.currentHeight) <= 85) icon = '▶️'; //была ✔️ зелёная галочка
+            else if (step.currentHeight > currentHeight) icon = '⏩'; //был ➕ плюс
+            else icon = '⏪'; //был ➖ минус
         }
         return {
             text: `${icon} ${step.label}`,
@@ -9754,9 +9754,9 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         
         if (isVideoSaved && currentHeight > 0) {
             // Строгое сравнение для галочки
-            if (Math.abs(currentHeight - targetHeight) <= 50) icon = '🟰 '; //✔️
-            else if (targetHeight > currentHeight) icon = '➕ ';
-            else icon = '➖ ';
+            if (Math.abs(currentHeight - targetHeight) <= 50) icon = '▶️'; //✔️
+            else if (targetHeight > currentHeight) icon = '⏩'; //➕
+            else icon = '⏪'; //➖
         }
         
         return { 
