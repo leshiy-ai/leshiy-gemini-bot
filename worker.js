@@ -15218,8 +15218,12 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
  */
 async function sendMediaToConverterInBackground(chatId, fileId, originalMessageId, mode, param, envData, token, ctx, originalReplyMarkup = null) {
     const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    const chatKey = chatId.toString();
+    // 1. ПРОВЕРЯЕМ РЕАЛЬНЫЙ ТИП МЕДИА (самый надежный способ)
+    const lastMediaType = await envData.LAST_PHOTO_STORAGE.get(`${chatKey}_last_media_type`);
+
     // 1. ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ ТИПА (учитываем и ресайз, и поворот)
-    const isVideo = mode.includes('VIDEO');
+    const isVideo = lastMediaType === 'video';
     let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
     let mediaType = isVideo ? 'видео' : 'фото';
     const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
@@ -15283,11 +15287,11 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Отправляю на Render: ${FINAL_RENDER_URL}`, envData));
 
         const renderFormData = new FormData();
-
+        // 1. Убеждаемся, что formKey совпадает с тем, что ждет multer.single()
+        const formKey = isVideo ? 'video' : 'image';
         // Используем твои существующие переменные: isVideo и mediaBuffer
-        const formKey = isVideo ? 'video' : 'image'; 
         const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-        const fileName = isVideo ? 'input.mp4' : 'input.jpg';
+        const fileName = isVideo ? 'video.mp4' : 'image.jpg';
 
         // Оборачиваем буфер в Blob, чтобы передать MIME-тип и имя файла
         // Это решает проблему "пустых" файлов на стороне сервера
