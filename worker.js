@@ -9689,7 +9689,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
  */
 async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isPhotoSaved, isVideoSaved, storage) {
     // Используем ГЛОБАЛЬНЫЕ КОНСТАНТЫ
-    const VIDEO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p'];
+    const VIDEO_STEPS = ['240p', '360p', '480p', '580p', '720p', '1080p', '1440p', '2160p'];
     const RESIZE_VIDEO_MODE_KEY = RESIZE_VIDEO_MODE || 'VIDEO_TO_RESIZE';
     const ROTATE_VIDEO_MODE_KEY = ROTATE_VIDEO_MODE || 'VIDEO_TO_ROTATE';
     const RESIZE_IMAGE_MODE_KEY = 'IMAGE_TO_RESIZE';
@@ -9745,7 +9745,7 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         
         if (isVideoSaved && currentHeight > 0) {
             // Строгое сравнение для галочки
-            if (Math.abs(currentHeight - targetHeight) <= 5) icon = '✅ ';
+            if (Math.abs(currentHeight - targetHeight) <= 50) icon = '✅ ';
             else if (targetHeight > currentHeight) icon = '➕ ';
             else icon = '➖ ';
         }
