@@ -15245,14 +15245,16 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         mediaType = 'видео';
         fileName = 'video.mp4';
         endpoint = '/resize-video';
+        formKey = 'video';
         successMessage = `✅ Видео изменено до ${param}!`;
 
     } else if (mode === RESIZE_IMAGE_MODE) {
         errorMode = 'IMAGE_TO_RESIZE';
         mimeType = 'image/jpeg';
         mediaType = 'фото';
-        fileName = 'input.jpg';
+        fileName = 'image.jpg';
         endpoint = '/resize-image';
+        formKey = 'image';
         successMessage = `✅ Фото изменено до ${param}!`;
         
     } else if (mode === ROTATE_VIDEO_MODE) { // Для поворота видео
@@ -15261,14 +15263,16 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         mediaType = 'видео';
         fileName = 'video.mp4';
         endpoint = '/rotate-video';
+        formKey = 'video';
         successMessage = `✅ Видео повёрнуто на ${param}°!`;
         
     } else if (mode === ROTATE_IMAGE_MODE) { // Для поворота
         errorMode = 'IMAGE_TO_ROTATE';
         mimeType = 'image/jpeg';
         mediaType = 'фото';
-        fileName = 'input.jpg';
+        fileName = 'image.jpg';
         endpoint = '/rotate-image';
+        formKey = 'image';
         successMessage = `✅ Фото повёрнуто на ${param}°!`;
     }
     // Формируем URL правильно
@@ -15290,14 +15294,13 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         // --- 2. Отправляем на Render ---
         await editMessage(chatId, originalMessageId, `⚙️ **[FFmpeg] ${mediaType} - Обработка...** (Таймаут: ${RENDER_TIMEOUT_MS/60000} мин.)`, token);
         ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Отправляю на Render: ${FINAL_RENDER_URL}`, envData));
-
+        // Подготавливаем FormData
         const renderFormData = new FormData();
-        // 1. Убеждаемся, что formKey совпадает с тем, что ждет multer.single()
+        /*/ 1. Убеждаемся, что formKey совпадает с тем, что ждет multer.single()
         const formKey = isVideo ? 'video' : 'image';
-        // Используем твои существующие переменные: isVideo и mediaBuffer
-        //const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-        //const fileName = isVideo ? 'video.mp4' : 'input.jpg';
-
+        const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+        const fileName = isVideo ? 'video.mp4' : 'image.jpg';
+        */
         // Оборачиваем буфер в Blob, чтобы передать MIME-тип и имя файла
         // Это решает проблему "пустых" файлов на стороне сервера
         const mediaBlob = new Blob([mediaBuffer], { type: mimeType });
