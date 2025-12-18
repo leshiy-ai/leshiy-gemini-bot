@@ -9249,7 +9249,7 @@ function getStartMenuData(isPhotoSaved, isVideoSaved) {
              { text: "🎙️ Озвучить Текст", callback_data: 'cmd:/say_empty' }],
             [{ text: "📖 Делать Шедевры", callback_data: 'cmd:/text_empty' },
              { text: "✨ Улучшить Фото", callback_data: 'cmd:/photo' }],
-            [{ text: `🔄 Сжать Фото`, callback_data: `select_resize_mode|IMAGE_TO_RESIZE` },
+            [{ text: `🔄 Ресайзить Фото`, callback_data: `select_resize_mode|IMAGE_TO_RESIZE` },
              { text: `🎦 Подогнать Видео`, callback_data: `select_resize_mode|VIDEO_TO_RESIZE` }],
             [{ text: "🔍 Увеличить Фото", callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
              { text: "📺 Повысить Видео", callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE' }],
