@@ -18832,6 +18832,11 @@ ${historyText}`;
                         let fileId; // Переменная для ID файла
 
                         if (finalMode === 'VIDEO_TO_RESIZE') {
+                            const rawVideo = await envData.LAST_PHOTO_STORAGE.get(chatId + '_last_video_data');
+                            if (!rawVideo) {
+                                ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Данные видео не найдены`, token));
+                                return new Response('OK', { status: 200 });
+                            }
                             // Для видео file_id лежит внутри JSON (как и было)
                             const mediaData = JSON.parse(rawVideo);
                             fileId = mediaData.file_id;
@@ -18865,7 +18870,7 @@ ${historyText}`;
 
                         ctx.waitUntil(Promise.allSettled([
                             answerCallbackQuery(callbackQueryId, `Запускаю изменение размера`, token),
-                            editMessage(chatId, originalMessageId, `⏳ Запускаю Изменение размера, Параметр: ${actionParam})`, token)
+                            editMessage(chatId, originalMessageId, `⏳ Запускаю Изменение размера, Параметр: ${actionParam}`, token)
                         ]));
                         
                         return new Response('OK', { status: 200 });
