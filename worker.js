@@ -3281,6 +3281,96 @@ async function runDelayedVideoCheck(chatId, pollData, envData, delaySeconds = 10
     }
 }
 
+/**
+ * ✅ sendVideoWithCaption - Отправка видео через ArrayBuffer с кнопками и сохранением в KV.
+ */
+async function sendVideoWithCaption(chatId, videoArrayBuffer, caption, token, envData) {
+    const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; 
+    const CALLBACK_EXPIRATION_TTL = 3600;
+    const ROTATE_LEFT_CALLBACK = 'rot_L_'; 
+    const ROTATE_RIGHT_CALLBACK = 'rot_R_';
+    const ROTATE_180_CALLBACK = 'rot_180_'; // Убедись, что константа есть
+    const SET_BASE_CALLBACK = 'setbase_';
+
+    if (!videoArrayBuffer || videoArrayBuffer.byteLength === 0) {
+        throw new Error("sendVideoWithCaption: Пустой ArrayBuffer видео.");
+    }
+
+    const apiUrl = `https://api.telegram.org/bot${token}/sendVideo`;
+    const formData = new FormData();
+    // Используем Blob/File для передачи видео
+    const videoFile = new File([videoArrayBuffer], 'video.mp4', { type: 'video/mp4' });
+
+    formData.append('chat_id', chatId.toString());
+    formData.append('caption', caption); // Для видео обычно проще использовать Markdown
+    formData.append('video', videoFile, 'video.mp4');
+    formData.append('parse_mode', 'Markdown');
+
+    // 1. ОТПРАВКА ВИДЕО
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(300000) // 5 минут для видео
+    });
+
+    const responseText = await response.text();
+    let responseData = {};
+    try { responseData = JSON.parse(responseText); } catch(e) { }
+
+    if (!response.ok || !responseData.ok) {
+        throw new Error(`Telegram Video API Error: ${responseData.description || responseText}`);
+    }
+
+    // 2. БЛОК ДОБАВЛЕНИЯ КНОПОК (как в sendPhoto)
+    try {
+        const messageId = responseData.result.message_id;
+        const videoObject = responseData.result.video;
+        const fileId = videoObject ? videoObject.file_id : null;
+
+        if (fileId) {
+            const shortCallbackKey = generateShortId(); // Твоя функция генерации ID
+            const KV_KEY = `callback_${chatId}_${shortCallbackKey}`;
+
+            // Сохраняем состояние видео в KV
+            const rotationState = {
+                fileId: fileId,
+                rotation: 0,
+                width: videoObject.width || null,
+                height: videoObject.height || null,
+                type: 'video' // Пометка, что это видео
+            };
+
+            await CALLBACK_TEMP_STORAGE.put(KV_KEY, JSON.stringify(rotationState), { expirationTtl: CALLBACK_EXPIRATION_TTL });
+
+            const inlineKeyboard = {
+                inline_keyboard: [
+                    [
+                        { text: "↪️ 90° влево", callback_data: `${ROTATE_LEFT_CALLBACK}${shortCallbackKey}` },
+                        { text: "🔃 180° поворот", callback_data: `${ROTATE_180_CALLBACK}${shortCallbackKey}` },
+                        { text: "↩️ 90° вправо", callback_data: `${ROTATE_RIGHT_CALLBACK}${shortCallbackKey}` }
+                    ],
+                    [{ text: "🎬 Установить как основной видеоролик", callback_data: `${SET_BASE_CALLBACK}${shortCallbackKey}`}]
+                ]
+            };
+
+            // Добавляем клавиатуру к уже отправленному видео
+            await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: inlineKeyboard
+                })
+            });
+        }
+    } catch (e) {
+        console.error("Ошибка при добавлении кнопок к видео:", e);
+    }
+
+    return responseData;
+}
+
 // ✅ Отправка видео (ОБНОВЛЕННАЯ: поддерживает caption, использует Markdown)
 async function sendVideo(chatId, videoUrl, token, caption = "") {
     const url = `https://api.telegram.org/bot${token}/sendVideo`;
@@ -15296,16 +15386,10 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         ctx.waitUntil(logDebug('RESIZE_FLOW', `[${chatId}] Отправляю на Render: ${FINAL_RENDER_URL}`, envData));
         // Подготавливаем FormData
         const renderFormData = new FormData();
-        /*/ 1. Убеждаемся, что formKey совпадает с тем, что ждет multer.single()
-        const formKey = isVideo ? 'video' : 'image';
-        const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-        const fileName = isVideo ? 'video.mp4' : 'image.jpg';
-        */
         // Оборачиваем буфер в Blob, чтобы передать MIME-тип и имя файла
         // Это решает проблему "пустых" файлов на стороне сервера
         const mediaBlob = new Blob([mediaBuffer], { type: mimeType });
         renderFormData.append(formKey, mediaBlob, fileName);
-
 
         const renderResponse = await fetch(FINAL_RENDER_URL, {
             method: 'POST',
@@ -15325,8 +15409,8 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         await editMessage(chatId, originalMessageId, `📤 **Загрузка обработанного файла в Telegram...**`, token);
 
         const caption = successMessage; // Используем то, что определили выше
+        /*
         let editResult;
-        
         if (isVideo) {
             editResult = await editMessageWithNewVideo(
                  chatId, originalMessageId, processedBuffer, caption, originalReplyMarkup, token
@@ -15345,7 +15429,34 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         if (!newMediaObject || !newMediaObject.file_id) {
              throw new Error(`Telegram не вернул file_id для ${mediaType}.`);
         }
+        */
+        // --- ФИНАЛЬНАЯ ОТПРАВКА РЕЗУЛЬТАТА ---
+        try {
+            let responseData;
+            
+            // Вместо редактирования - отправляем НОВОЕ сообщение
+            if (isVideo) {
+                // Отправляем видео новым сообщением
+                responseData = await sendVideoWithCaption(chatId, processedBuffer, successMessage, token, envData);
+            } else {
+                // Твоя существующая функция - она сама добавит кнопки и отправит новым фото
+                responseData = await sendPhotoWithCaption(chatId, processedBuffer, successMessage, token, envData);
+            }
 
+            // Обновляем KV, чтобы кнопки в меню (если их нажать снова) знали о новом файле
+            if (responseData && responseData.result) {
+                const newMediaObject = isVideo ? responseData.result.video : responseData.result.photo.pop();
+                await updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData);
+                
+                // Опционально: сообщаем в старом меню, что всё готово
+                await editMessage(chatId, originalMessageId, `✅ Результат отправлен ниже!`, token);
+            }
+
+        } catch (sendError) {
+            ctx.waitUntil(logDebug('SEND_FINAL_ERROR', `[${chatId}] Ошибка отправки: ${sendError.message}`, envData));
+            await editMessage(chatId, originalMessageId, `❌ Ошибка при доставке результата: ${sendError.message}`, token);
+        }
+        
         await updateMediaKVAfterProcessing(
              chatId, 
              newMediaObject, 
