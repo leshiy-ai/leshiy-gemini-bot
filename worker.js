@@ -9680,9 +9680,9 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
         // Блок ориентации
         //[{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
         [
-            { text: (aspectType === 'landscape' ? '📏 ' : '') + '16:9', callback_data: `ignore_image_aspect|landscape` },
-            { text: (aspectType === 'portrait' ? '📏 ' : '') + '3:4', callback_data: `ignore_image_aspect|portrait` },
-            { text: (aspectType === 'square' ? '📏 ' : '') + '1:1', callback_data: `ignore_image_aspect|square` },
+            { text: (aspectType === 'landscape' ? '🔳 ' : '') + '16:9', callback_data: `ignore_image_aspect|landscape` },
+            { text: (aspectType === 'portrait' ? '🔳 ' : '') + '3:4', callback_data: `ignore_image_aspect|portrait` },
+            { text: (aspectType === 'square' ? '🔳 ' : '') + '1:1', callback_data: `ignore_image_aspect|square` },
         ],
         // Кнопка Ракеты
         [{ 
@@ -9800,9 +9800,9 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
         // Заголовок Соотношение
         //[{ text: `Соотношение: ${aspectRatio}`, callback_data: 'ignore' }],
         [
-            { text: (aspectRatio === '16:9' ? '📏 ' : '') + '16:9', callback_data: `dummy_video_ratio|16:9` },
-            { text: (aspectRatio === '3:4' ? '📏 ' : '') + '3:4', callback_data: `dummy_video_ratio|3:4` },
-            { text: (aspectRatio === '1:1' ? '📏 ' : '') + '1:1', callback_data: `dummy_video_ratio|1:1` },
+            { text: (aspectRatio === '16:9' ? '🔲 ' : '') + '16:9', callback_data: `dummy_video_ratio|16:9` },
+            { text: (aspectRatio === '3:4' ? '🔲 ' : '') + '3:4', callback_data: `dummy_video_ratio|3:4` },
+            { text: (aspectRatio === '1:1' ? '🔲 ' : '') + '1:1', callback_data: `dummy_video_ratio|1:1` },
         ],
         [{ 
             text: isVideoSaved ? `🚀 Запустить ресайз до ${nextStep} сейчас` : `🚫 Загрузите видео`, 
@@ -9923,7 +9923,11 @@ async function getUpscaleImageMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPr
     let keyboard = [];
     keyboard.push([{ text: "🏠 Главное меню /start", callback_data: "start_command" }]);
     keyboard.push([{ text: '💰 Управление балансом', callback_data: 'show_balance' }]);
-
+    // РЯД РЕЖИМОВ (Кнопка переключения на Resize)
+    keyboard.push([
+        { text: `🔄 Фото → Ресайз`, callback_data: `select_resize_mode|IMAGE_TO_RESIZE` },
+        { text: `🎦 Видео → Ресайз`, callback_data: `select_resize_mode|VIDEO_TO_RESIZE` }
+    ]);
     // РЯД РЕЖИМОВ (Кнопка переключения на V2U)
     keyboard.push([
         { 
@@ -10024,7 +10028,11 @@ async function getUpscaleVideoMenuKeyboard(chatId, LAST_PHOTO_STORAGE, currentPr
     let keyboard = [];
     keyboard.push([{ text: "🏠 Главное меню /start", callback_data: "start_command" }]);
     keyboard.push([{ text: '💰 Управление балансом', callback_data: 'show_balance' }]);
-    
+    // РЯД РЕЖИМОВ (Кнопка переключения на Resize)
+    keyboard.push([
+        { text: `🔄 Фото → Ресайз`, callback_data: `select_resize_mode|IMAGE_TO_RESIZE` },
+        { text: `🎦 Видео → Ресайз`, callback_data: `select_resize_mode|VIDEO_TO_RESIZE` }
+    ]);
     // 1. РЯД РЕЖИМОВ (Переключение)
     keyboard.push([
         { 
