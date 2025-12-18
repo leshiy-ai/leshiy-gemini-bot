@@ -9733,10 +9733,7 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
     let keyboard = [
         [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
         [{ text: '💰 Меню управления балансом', callback_data: 'show_balance' }],
-        [{
-            text: isPhotoSaved ? "💾 Посмотреть загруженное фото" : "📸 Загрузить фотографию", 
-            callback_data: isPhotoSaved ? 'cmd:/view_saved_photo' : 'cmd:/upload_photo' 
-        }],
+        
         [
             { text: activeIcon + ' 🖼️ Фото → Ресайз', callback_data: 'dummy_i2r_active' },
             { 
@@ -9744,8 +9741,14 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
                 callback_data: `select_resize_mode|VIDEO_TO_RESIZE` 
             },
         ],
+        // Кнопки поворота
+        ...chunkArray(rotateButtons, 3),
+        [{
+            text: isPhotoSaved ? "💾 Посмотреть загруженное фото" : "📸 Загрузить фотографию", 
+            callback_data: isPhotoSaved ? 'cmd:/view_saved_photo' : 'cmd:/upload_photo' 
+        }],
+        // Кнопки с плюсами минусами и галочкой
         ...chunkArray(resolutionButtons, 4), 
-        //...chunkArray(rotateButtons, 3),
         // Блок ориентации
         //[{ text: `Ориентация изображения: ${aspectType === 'landscape' ? '16:9' : aspectType === 'square' ? '1:1' : '3:4'}`, callback_data: 'ignore' }],
         [
@@ -9759,7 +9762,6 @@ async function getResizeImageMenuKeyboard(chatId, envData, lastError = null, isP
             callback_data: isPhotoSaved ? `generate_resize_now|IMAGE_TO_RESIZE|${defaultResParam}` : 'dummy' 
         }]
     ];
-
     return { messageText, keyboardObject: { inline_keyboard: keyboard } };
 }
 
@@ -9849,10 +9851,6 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
     let keyboard = [
         [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
         [{ text: '💰 Меню управления балансом', callback_data: 'show_balance' }],
-        [{
-            text: isVideoSaved ? "💾 Посмотреть загруженное видео" : "📹 Загрузить видеоролик", 
-            callback_data: isVideoSaved ? 'cmd:/view_saved_video' : 'cmd:/upload_video'
-        }],
         [
             { 
                 text: `🖼️ Фото → Ресайз`, 
@@ -9860,14 +9858,20 @@ async function getResizeVideoMenuKeyboard(chatId, envData, lastError = null, isP
             },
             { text: activeIcon + ' 📺 Видео → Ресайз', callback_data: 'dummy_v2r_active' },
         ],
+        // Кнопки с углами поворота
+        ...chunkArray(rotateButtons, 3),
+        [{
+            text: isVideoSaved ? "💾 Посмотреть загруженное видео" : "📹 Загрузить видеоролик", 
+            callback_data: isVideoSaved ? 'cmd:/view_saved_video' : 'cmd:/upload_video'
+        }],
+        // Кнопки с плюсами минусами и галочкой
         ...chunkArray(resolutionButtons, 4), 
-        //...chunkArray(rotateButtons, 3),
         // Заголовок Соотношение
         //[{ text: `Соотношение: ${aspectRatio}`, callback_data: 'ignore' }],
         [
-            { text: (aspectRatio === '16:9' ? '✅ ' : '') + '16:9', callback_data: `dummy_video_ratio|16:9` },
-            { text: (aspectRatio === '3:4' ? '✅ ' : '') + '3:4', callback_data: `dummy_video_ratio|3:4` },
-            { text: (aspectRatio === '1:1' ? '✅ ' : '') + '1:1', callback_data: `dummy_video_ratio|1:1` },
+            { text: (aspectRatio === '16:9' ? '✅ ' : '') + '16:9 (Ландшафт)', callback_data: `dummy_video_ratio|16:9` },
+            { text: (aspectRatio === '3:4' ? '✅ ' : '') + '3:4 (Портрет)', callback_data: `dummy_video_ratio|3:4` },
+            { text: (aspectRatio === '1:1' ? '✅ ' : '') + '1:1 (Квадрат)', callback_data: `dummy_video_ratio|1:1` },
         ],
         [{ 
             text: isVideoSaved ? `🚀 Запустить ресайз до ${nextStep} сейчас` : `🚫 Загрузите видео`, 
@@ -18846,10 +18850,19 @@ ${historyText}`;
                             fileId = await envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_FILE_ID_KEY_SUFFIX);
                         }
 
+                        // ✅ ГЛАВНАЯ ПРОВЕРКА: Если ключа нет или он протух
                         if (!fileId) {
-                            const mediaName = finalMode === 'VIDEO_TO_RESIZE' ? 'видеоролик' : 'фотографию';
-                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Не нашел ID файла. Загрузите ${mediaName} еще раз.`, token));
-                            return new Response('OK', { status: 200 });
+                            const mediaName = finalMode === 'VIDEO_TO_RESIZE' ? 'видео' : 'фото';
+                            
+                            // 1. Убираем "часики" с кнопки
+                            await answerCallbackQuery(callbackQueryId, `❌ Данные ${mediaName} устарели.`, token);
+                            
+                            // 2. Информируем в чате
+                            await editMessage(chatId, originalMessageId, 
+                                `⚠️ **Ошибка: файл не найден.**\n\nСкорее всего, прошло более часа с момента загрузки. Пожалуйста, отправьте ${mediaName} боту еще раз.`, 
+                                token
+                            );
+                            return new Response('OK', { status: 200 }); // Завершаем выполнение
                         }
                         
                         // Остальные переменные
