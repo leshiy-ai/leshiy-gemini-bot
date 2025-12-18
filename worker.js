@@ -15226,6 +15226,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
     const isVideo = lastMediaType === 'video';
     let mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
     let mediaType = isVideo ? 'видео' : 'фото';
+    let fileName = isVideo ? 'video.mp4' : 'input.jpg';
     const RENDER_TIMEOUT_MS = isVideo ? 180000 : 90000; // 3 мин для видео, 1.5 мин для фото
 
     if (!RENDER_HOST_URL) {
@@ -15242,6 +15243,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         errorMode = 'VIDEO_TO_RESIZE';
         mimeType = 'video/mp4';
         mediaType = 'видео';
+        fileName = 'video.mp4';
         endpoint = '/resize-video';
         successMessage = `✅ Видео изменено до ${param}!`;
 
@@ -15249,6 +15251,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         errorMode = 'IMAGE_TO_RESIZE';
         mimeType = 'image/jpeg';
         mediaType = 'фото';
+        fileName = 'input.jpg';
         endpoint = '/resize-image';
         successMessage = `✅ Фото изменено до ${param}!`;
         
@@ -15256,6 +15259,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         errorMode = 'VIDEO_TO_ROTATE';
         mimeType = 'video/mp4';
         mediaType = 'видео';
+        fileName = 'video.mp4';
         endpoint = '/rotate-video';
         successMessage = `✅ Видео повёрнуто на ${param}°!`;
         
@@ -15263,6 +15267,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         errorMode = 'IMAGE_TO_ROTATE';
         mimeType = 'image/jpeg';
         mediaType = 'фото';
+        fileName = 'input.jpg';
         endpoint = '/rotate-image';
         successMessage = `✅ Фото повёрнуто на ${param}°!`;
     }
@@ -15290,8 +15295,8 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         // 1. Убеждаемся, что formKey совпадает с тем, что ждет multer.single()
         const formKey = isVideo ? 'video' : 'image';
         // Используем твои существующие переменные: isVideo и mediaBuffer
-        const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-        const fileName = isVideo ? 'video.mp4' : 'input.jpg';
+        //const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+        //const fileName = isVideo ? 'video.mp4' : 'input.jpg';
 
         // Оборачиваем буфер в Blob, чтобы передать MIME-тип и имя файла
         // Это решает проблему "пустых" файлов на стороне сервера
