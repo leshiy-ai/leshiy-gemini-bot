@@ -15434,29 +15434,33 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         try {
             let responseData;
             
-            // Вместо редактирования - отправляем НОВОЕ сообщение
-            if (isVideo) {
-                // Отправляем видео новым сообщением
+            if (mediaType === 'видео') {
                 responseData = await sendVideoWithCaption(chatId, processedBuffer, successMessage, token, envData);
             } else {
-                // Твоя существующая функция - она сама добавит кнопки и отправит новым фото
                 responseData = await sendPhotoWithCaption(chatId, processedBuffer, successMessage, token, envData);
             }
-
-            // Обновляем KV, чтобы кнопки в меню (если их нажать снова) знали о новом файле
-            if (responseData && responseData.result) {
-                const newMediaObject = isVideo ? responseData.result.video : responseData.result.photo.pop();
-                await updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData);
-                
-                // Опционально: сообщаем в старом меню, что всё готово
-                await editMessage(chatId, originalMessageId, `✅ Результат отправлен ниже!`, token);
+            if (responseData && responseData.ok && responseData.result) {
+                // Объявляем ту самую переменную, которую потеряли
+                let newMediaObject;
+                if (mediaType === 'видео') {
+                    newMediaObject = responseData.result.video;
+                } else {
+                    // Для фото берем последний (самый крупный) объект из массива photo
+                    const photoArray = responseData.result.photo;
+                    newMediaObject = photoArray && photoArray.length > 0 ? photoArray[photoArray.length - 1] : null;
+                }
+                // Теперь вызываем обновление KV, передавая созданный объект
+                if (newMediaObject) {
+                    await updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuffer, mode, param, envData);
+                    // Опционально: сообщаем в старом меню, что всё готово
+                    await editMessage(chatId, originalMessageId, `✅ Результат доставлен!`, token);
+                    }
             }
-
         } catch (sendError) {
-            ctx.waitUntil(logDebug('SEND_FINAL_ERROR', `[${chatId}] Ошибка отправки: ${sendError.message}`, envData));
-            await editMessage(chatId, originalMessageId, `❌ Ошибка при доставке результата: ${sendError.message}`, token);
+            ctx.waitUntil(logDebug('RESIZE_CRITICAL', `[${chatId}] Ошибка при ${errorMode}: ${sendError.message}`, envData));
+            await editMessage(chatId, originalMessageId, `❌ Ошибка при отправке результата!`, token);
         }
-        
+
         await updateMediaKVAfterProcessing(
              chatId, 
              newMediaObject, 
