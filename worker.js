@@ -9249,7 +9249,9 @@ function getStartMenuData(isPhotoSaved, isVideoSaved) {
              { text: "🎙️ Озвучить Текст", callback_data: 'cmd:/say_empty' }],
             [{ text: "📖 Делать Шедевры", callback_data: 'cmd:/text_empty' },
              { text: "✨ Улучшить Фото", callback_data: 'cmd:/photo' }],
-             [{ text: "🔍 Увеличить Фото", callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
+            [{ text: `🔄 Сжать Фото`, callback_data: `select_resize_mode|IMAGE_TO_RESIZE` },
+             { text: `🎦 Подогнать Видео`, callback_data: `select_resize_mode|VIDEO_TO_RESIZE` }],
+            [{ text: "🔍 Увеличить Фото", callback_data: 'select_upscale_mode|IMAGE_TO_UPSCALE' },
              { text: "📺 Повысить Видео", callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE' }],
             [{ text: "📹 Сгенерить Видео", callback_data: 'set_video_mode|T2V' },
              { text: "🎬 Оживить Фото", callback_data: 'set_video_mode|I2V' }],
@@ -9275,6 +9277,7 @@ function getStartMenuData(isPhotoSaved, isVideoSaved) {
 ✨ /photo для **улучшения фото** (особенно черно-белых).
 🎬 /video для создания **видеороликов**.
 🗣 /avatar для создания **аватара**.
+🔄 /resize для изменения размера фото и видео.
 🔍 /upscale для увеличения разрешения фото и видео.
 🎙️ /say для **озвучивания** текста голосом.
 💾 /media для управления **сохраненными данными**.
