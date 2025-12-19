@@ -15348,7 +15348,6 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         // --- 2. ПАРАМЕТРЫ (Исправляем опечатку) ---
         const startParam = "0";
         const endParam = "3"; // Фиксируем 3 секунды для теста
-
         const queryParams = new URLSearchParams({
             start: startParam,
             end: endParam,
@@ -15356,8 +15355,10 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
             fps: format === 'mp4' ? '25' : '10',
             width: format === 'mp4' ? '512' : '480'
         });
+        // --- ПОДГОТОВКА ДАННЫХ (Важно!) ---
+        const formData = new FormData();
+        formData.append('video', videoBlob, 'input.mp4'); 
 
-        // Исправленный лог (теперь точно без ошибок с именами переменных)
         await logDebug('[CONVERTER_SEND]', `Format: ${format}, Time: ${startParam}-${endParam}s`, envData);
 
         // --- 3. ОТПРАВКА ---
