@@ -15391,7 +15391,6 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         // Отправка результата
         const sendMethod = format === 'gif' ? 'sendAnimation' : 'sendVideo';
         const fieldName = format === 'gif' ? 'animation' : 'video';
-        
         const sendFormData = new FormData();
         sendFormData.append('chat_id', chatId);
         sendFormData.append(fieldName, new Blob([resultBuffer], { type: format === 'gif' ? 'image/gif' : 'video/mp4' }), `result.${format}`);
