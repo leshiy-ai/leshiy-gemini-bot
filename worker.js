@@ -17050,15 +17050,22 @@ export default {
                         ? "🎭 **Обнаружен стикер!**\nХотите превратить его в видео (MP4)?" 
                         : "🎞️ **Обнаружена GIF-анимация!**\nЕё можно конвертировать в видео (MP4) для экономии трафика или ресайза.";
 
-                    const keyboard = {
-                        inline_keyboard: [
-                            [{ text: "📽️ Конвертировать в MP4", callback_data: `convert_gif_to_video` }],
-                            [{ text: "🗑️ Игнорировать", callback_data: `delete_message` }]
-                        ]
-                    };
-
-                    // Чтобы не было ошибки MarkdownV2 на точках, используем sendMessage как обычно
-                    await sendMessage(chatId, text, token, keyboard);
+                    // Заменяем текущий sendMessage в блоке GIF на этот:
+                    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: chatId,
+                            text: text,
+                            parse_mode: 'Markdown', // Убедись, что мод совпадает с текстом
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [{ text: "📽️ Конвертировать в MP4", callback_data: `convert_gif_to_video` }],
+                                    [{ text: "🗑️ Игнорировать", callback_data: `delete_message` }]
+                                ]
+                            }
+                        })
+                    });
                     
                     // Прерываем дальнейшую обработку, чтобы бот не пытался отвечать на это как на текст
                     return new Response('OK', { status: 200 });
@@ -19130,6 +19137,11 @@ ${historyText}`;
                     ));
 
                     return new Response('OK', { status: 200 });
+                } else if (data === 'delete_message') {
+                    await deleteMessage(chatId, callback.message.message_id, token);
+                    await answerCallbackQuery(callbackQueryId, "Меню закрыто", token);
+                    return new Response('OK', { status: 200 });
+                
                 // ОБРАБОТКА КОЛБЭКОВ МЕНЮ ГОЛОСА
                 } else if (data.startsWith('say_') || data === 'ignore_empty_text') {
                     // 1. Инициализация переменных
