@@ -10811,7 +10811,7 @@ async function checkAndDeductBalance(chatId, LAST_PHOTO_STORAGE, cost, serviceNa
     
     // Используем НОВЫЕ КЛЮЧИ
     // Баланс теперь в Кредитах. Меняем суффикс, чтобы не было путаницы.
-    const BALANCE_KEY = chatKey + '_credit_balance'; // 🛑 ИЗМЕНЕНИЕ: _photo_balance -> _credit_balance
+    const BALANCE_KEY = chatKey + '_credit_balance'; // 🛑 _credit_balance
     const SUBSCRIPTION_END_KEY = chatKey + '_sub_end_credit'; // 🛑 ИЗМЕНЕНИЕ: _sub_end_credit -> _sub_end_credit
 
     // 1. ПРОВЕРКА АКТИВНОЙ ПОДПИСКИ (логика взята из processPhotoCommand)
@@ -13665,7 +13665,6 @@ async function processUpscaleGenerateCommand(mode, chatId, envData, LAST_PHOTO_S
     const LAST_IMAGE_DATA_KEY_SUFFIX = '_last_image_data';
     const LAST_VIDEO_DATA_KEY_SUFFIX = '_last_video_data';
     const GENERATION_LOCK_KEY = chatId.toString() + '_generation_in_progress';
-    const BALANCE_KEY = chatId.toString() + '_photo_balance';
     const VIDEO_PARAMS_KEY_SUFFIX = '_video_params'; 
     
     // 1. ОПРЕДЕЛЕНИЕ КЛЮЧЕЙ И КОНФИГУРАЦИЙ
@@ -15398,7 +15397,7 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         logDebug('[CONVERTER_REQUEST]', `Format: ${format}, Width: ${queryParams.get('width')}, Duration: ${endParam-startParam}s`, envData);
         // Сохраняем метаданные гифки после конвертации
         const gifMetadata = {
-            file_id: "internal_ffmpeg_res",
+            file_id: "",
             type: "gif",
             width: videoData.width,
             height: videoData.height
