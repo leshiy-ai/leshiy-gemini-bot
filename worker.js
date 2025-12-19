@@ -19112,6 +19112,8 @@ ${historyText}`;
                     
                 // Колбэк - Конвертация GIF в Видео
                 } else if (data === 'convert_gif_to_video') {
+                    const callbackQueryId = callbackQuery.id;
+                    const token = envData.TELEGRAM_BOT_TOKEN;
                     const GIF_DATA_KEY = `${chatId}_last_gif_data`;
                     const rawData = await envData.LAST_PHOTO_STORAGE.get(GIF_DATA_KEY);
 
@@ -19138,6 +19140,8 @@ ${historyText}`;
 
                     return new Response('OK', { status: 200 });
                 } else if (data === 'delete_message') {
+                    const callbackQueryId = callbackQuery.id;
+                    const token = envData.TELEGRAM_BOT_TOKEN;
                     await deleteMessage(chatId, callback.message.message_id, token);
                     await answerCallbackQuery(callbackQueryId, "Меню закрыто", token);
                     return new Response('OK', { status: 200 });
