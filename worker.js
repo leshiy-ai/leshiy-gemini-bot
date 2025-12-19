@@ -15415,7 +15415,7 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         const sendFormData = new FormData();
         sendFormData.append('chat_id', chatId);
         sendFormData.append(fieldName, new Blob([resultBuffer], { type: format === 'gif' ? 'image/gif' : 'video/mp4' }), `result.${format}`);
-        sendFormData.append('caption', `✅ Готово! (0-5 сек)`);
+        sendFormData.append('caption', `✅ Ваша GIF-анимация!`);
 
         await fetch(`https://api.telegram.org/bot${token}/${sendMethod}`, {
             method: 'POST',
