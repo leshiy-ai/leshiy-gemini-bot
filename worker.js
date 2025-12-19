@@ -15345,27 +15345,21 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
             videoBlob = await mediaResponse.blob();
         }
 
-        // --- 2. ПАРАМЕТРЫ С ВЕТВЛЕНИЕМ ---
-        // Внутри sendVideoToGifInBackground
+        // --- 2. ПАРАМЕТРЫ (Адаптируем под капризы сервера) ---
+        let targetWidth = videoData.width || 480;
+        if (format === 'mp4') {
+            // 512 дает нечетную высоту 419 (ошибка). 
+            // 480 даст высоту 392 (четное -> успех).
+            targetWidth = 480; 
+        }
         let params = {
             start: '0',
-            end: '5', // Обязательный для твоего сервера
+            end: '5', 
             format: format,
             fps: format === 'mp4' ? '30' : '10',
-            // Гарантируем четную ширину для MP4
-            width: format === 'mp4' ? '512' : (videoData.width || '480')
+            width: targetWidth.toString()
+            // height НЕ ДОБАВЛЯЕМ, сервер его не ждет и может сломаться
         };
-        if (format === 'mp4') {
-            // Параметры для видео-стикера (стандарт TG)
-            params.width = '512';
-            params.height = '512';
-            params.fps = '30'; // Стикеры лучше делать плавными
-        } else {
-            // Параметры для обычной GIF (сохраняем размер видео)
-            // Если ширина нечетная, FFmpeg может выдать ошибку, 
-            // поэтому используем округление или оставляем как есть
-            params.width = videoData.width || '480';
-        }
         const queryParams = new URLSearchParams(params);
 
         // --- 3. ОТПРАВКА НА СЕРВЕР ---
