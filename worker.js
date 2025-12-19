@@ -15400,7 +15400,7 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
 
         const resultBuffer = await converterResponse.arrayBuffer();
         // Логируем запрос для контроля
-        logDebug('[CONVERTER_REQUEST]', `Format: ${format}, Width: ${queryParams.get('width')}, Duration: ${endVal-startVal}s`, envData);
+        logDebug('[CONVERTER_REQUEST]', `Format: ${format}, Width: ${queryParams.get('width')}, Duration: ${endParam-startParam}s`, envData);
         // Сохраняем метаданные гифки после конвертации
         const gifMetadata = {
             file_id: "internal_ffmpeg_res",
