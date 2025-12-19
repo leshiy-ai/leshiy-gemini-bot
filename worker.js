@@ -15319,7 +15319,8 @@ async function sendGifToConverterInBackground(chatId, fileId, messageId, envData
     }
 }
 
-async function sendVideoToGifInBackground(chatId, fileId, messageId, format, envData, token) {
+async function sendVideoToGifInBackground(chatId, videoData, messageId, format, envData, token) {
+    const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
     try {
         // Прогрев сервера через твой Health Check
         const isAlive = await checkConverterHealth(envData);
@@ -15333,7 +15334,7 @@ async function sendVideoToGifInBackground(chatId, fileId, messageId, format, env
             videoBlob = new Blob([cachedVideo], { type: 'video/mp4' });
         } else {
             // Важно: проверь, как называется ключ в твоем JSON (file_id или fileId)
-            const targetFileId = videoData.file_id || videoData.fileId; 
+            const targetFileId = videoData.file_id; 
             const fileInfoResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${targetFileId}`);
             const fileInfo = await fileInfoResponse.json();
             
@@ -15366,6 +15367,19 @@ async function sendVideoToGifInBackground(chatId, fileId, messageId, format, env
 
         const resultBuffer = await converterResponse.arrayBuffer();
 
+        // Сохраняем метаданные гифки после конвертации
+        const gifMetadata = {
+            file_id: "internal_ffmpeg_res",
+            type: "гиф",
+            width: videoData.width,
+            height: videoData.height
+        };
+        // Записываем в _last_gif_data
+        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_gif_data`, JSON.stringify(gifMetadata));
+
+        // И не забываем обновить основной тип медиа
+        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "animation");
+        
         // Отправка результата
         const sendMethod = format === 'gif' ? 'sendAnimation' : 'sendVideo';
         const fieldName = format === 'gif' ? 'animation' : 'video';
@@ -17138,12 +17152,14 @@ export default {
                     // ✅ Сохраняем в KV (используем правильные переменные)
                     const GIF_DATA_KEY = `${chatId}_last_gif_data`;
                     await envData.LAST_PHOTO_STORAGE.put(GIF_DATA_KEY, JSON.stringify({
-                        fileId: currentFileId,
+                        file_id: currentFileId,
                         type: mediaType,
                         width: currentWidth,
                         height: currentHeight
                     }), { expirationTtl: 3600 });
-
+                    // И не забываем обновить основной тип медиа
+                    await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "animation"); 
+                    
                     const text = mediaType === 'стикер' 
                         ? "🎭 **Обнаружен стикер!**\nХотите превратить его в видео (MP4)?" 
                         : "🎞️ **Обнаружена GIF-анимация!**\nЕё можно конвертировать в видео (MP4) для экономии трафика или ресайза.";
@@ -19229,7 +19245,7 @@ ${historyText}`;
 
                     ctx.waitUntil(sendGifToConverterInBackground(
                         chatId,
-                        gifData.fileId,
+                        gifData.file_id,
                         originalMessageId,
                         envData,
                         token
@@ -19256,7 +19272,7 @@ ${historyText}`;
 
                     ctx.waitUntil(sendVideoToGifInBackground(
                         chatId,
-                        videoData.fileId,
+                        videoData,
                         originalMessageId,
                         format,
                         envData,
