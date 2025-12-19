@@ -15345,14 +15345,28 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
             videoBlob = await mediaResponse.blob();
         }
 
-        // --- 2. ПАРАМЕТРЫ (ОБЯЗАТЕЛЬНО ОСТАВЛЯЕМ) ---
-        const queryParams = new URLSearchParams({
+        // --- 2. ПАРАМЕТРЫ С ВЕТВЛЕНИЕМ ---
+        // Внутри sendVideoToGifInBackground
+        let params = {
             start: '0',
-            end: '5',
-            format: format, // 'gif' или 'mp4' из колбэка
-            fps: '10',
-            width: videoData.width || '480'
-        });
+            end: '5', // Обязательный для твоего сервера
+            format: format,
+            fps: format === 'mp4' ? '30' : '10',
+            // Гарантируем четную ширину для MP4
+            width: format === 'mp4' ? '512' : (videoData.width || '480')
+        };
+        if (format === 'mp4') {
+            // Параметры для видео-стикера (стандарт TG)
+            params.width = '512';
+            params.height = '512';
+            params.fps = '30'; // Стикеры лучше делать плавными
+        } else {
+            // Параметры для обычной GIF (сохраняем размер видео)
+            // Если ширина нечетная, FFmpeg может выдать ошибку, 
+            // поэтому используем округление или оставляем как есть
+            params.width = videoData.width || '480';
+        }
+        const queryParams = new URLSearchParams(params);
 
         // --- 3. ОТПРАВКА НА СЕРВЕР ---
         const formData = new FormData();
@@ -17159,7 +17173,7 @@ export default {
                     }), { expirationTtl: 3600 });
                     // И не забываем обновить основной тип медиа
                     await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "animation"); 
-                    
+
                     const text = mediaType === 'стикер' 
                         ? "🎭 **Обнаружен стикер!**\nХотите превратить его в видео (MP4)?" 
                         : "🎞️ **Обнаружена GIF-анимация!**\nЕё можно конвертировать в видео (MP4) для экономии трафика или ресайза.";
