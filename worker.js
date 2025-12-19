@@ -15238,6 +15238,62 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
     }
 }
 
+async function sendGifToConverterInBackground(chatId, fileId, messageId, envData, token) {
+    const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    try {
+        // --- 1. ПРОБУЖДЕНИЕ И ПРОВЕРКА СЕРВЕРА ---
+        // Используем готовую функцию. Она подождет до 45 сек, пока Render проснется.
+        const isAlive = await checkConverterHealth(envData);
+        
+        if (!isAlive) {
+            throw new Error("Конвертер не отвечает. Попробуйте позже, когда сервер проснется.");
+        }
+
+        // --- 2. ПОДГОТОВКА ФАЙЛА ---
+        const fileInfoResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+        const fileInfo = await fileInfoResponse.json();
+        if (!fileInfo.ok) throw new Error('Ошибка получения пути файла');
+        
+        const fileUrl = `https://api.telegram.org/file/bot${token}/${fileInfo.result.file_path}`;
+        const mediaResponse = await fetch(fileUrl);
+        const fileBlob = await mediaResponse.blob();
+
+        // --- 3. КОНВЕРТАЦИЯ ---
+        const formData = new FormData();
+        formData.append('gif', fileBlob, 'input.gif');
+
+        // Отправляем на проснувшийся сервер
+        const converterResponse = await fetch(`${LESHIY_RENDER_HOST}/gif2video`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!converterResponse.ok) {
+            const errorText = await converterResponse.text();
+            throw new Error(`Ошибка конвертера: ${errorText}`);
+        }
+
+        const videoBuffer = await converterResponse.arrayBuffer();
+
+        // --- 4. ОТПРАВКА РЕЗУЛЬТАТА ---
+        const sendFormData = new FormData();
+        sendFormData.append('chat_id', chatId);
+        sendFormData.append('video', new Blob([videoBuffer], { type: 'video/mp4' }), 'converted.mp4');
+        sendFormData.append('caption', '✅ Гифка превращена в видео!');
+
+        await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
+            method: 'POST',
+            body: sendFormData
+        });
+
+        await deleteMessage(chatId, messageId, token);
+
+    } catch (e) {
+        logDebug('[GIF2VIDEO_BG]', e.message, envData);
+        await editMessage(chatId, messageId, `❌ Ошибка: ${e.message}`, token);
+    }
+}
+
 /**
  * ✅ sendMediaToConverterInBackground - Асинхронно скачивает медиа, отправляет на Render для обработки (Resize/Rotate) и обновляет сообщение.
  */
@@ -15808,10 +15864,17 @@ export default {
         let isPhoto = isMessage && message.photo && message.photo.length > 0;
         let isVoice = isMessage && !!message.voice;
         let isVideo = isMessage && (!!message.video || !!message.video_note);
+        let isAnimation = isMessage && !!message.animation; // Это GIF
+        let isSticker = isMessage && !!message.sticker;     // Это стикер
         const video = isVideo ? (message.video || message.video_note) : undefined;
         const voice = isVoice ? message.voice : undefined; // Voice object
         const audio = message.audio; // Аудиофайл (вероятно MP3)
-        const document = message.document; // <--- НОВОЕ ПОЛЕ
+        const animation = isAnimation ? message.animation : undefined; // Объект GIF
+        const sticker = isSticker ? message.sticker : undefined;       // Объект стикера
+        const document = message.document; // <--- Документ
+
+        // ✅ ПРОВЕРКА НА GIF ВНУТРИ ДОКУМЕНТОВ (иногда Telegram шлет гифки как файлы)
+        if (document && document.mime_type === 'image/gif') {isAnimation = true;}
 
         // ✅ НОВЫЙ БЛОК ДЛЯ ЭМОДЗИ (Вставить после определения messageText):
         if (isEmoji.length > 0) {
@@ -16965,7 +17028,42 @@ export default {
 
                     return new Response('OK', { status: 200 });
                 }
-                
+
+                // ОБРАБОТКА GIF и Стикеров - Анимации
+                if (isAnimation || isSticker) {
+                    // Вызываем твою новую функцию, которую мы обсуждали шагом ранее
+                    const currentFileId = isAnimation ? animation.file_id : sticker.file_id;
+                    const mediaType = isAnimation ? 'гиф' : 'стикер';
+                    const currentWidth = (animation || sticker).width;
+                    const currentHeight = (animation || sticker).height;
+                    
+                    // ✅ Сохраняем в KV (используем правильные переменные)
+                    const GIF_DATA_KEY = `${chatId}_last_gif_data`;
+                    await envData.LAST_PHOTO_STORAGE.put(GIF_DATA_KEY, JSON.stringify({
+                        fileId: currentFileId,
+                        type: mediaType,
+                        width: currentWidth,
+                        height: currentHeight
+                    }), { expirationTtl: 3600 });
+
+                    const text = mediaType === 'стикер' 
+                        ? "🎭 **Обнаружен стикер!**\nХотите превратить его в видео (MP4)?" 
+                        : "🎞️ **Обнаружена GIF-анимация!**\nЕё можно конвертировать в видео (MP4) для экономии трафика или ресайза.";
+
+                    const keyboard = {
+                        inline_keyboard: [
+                            [{ text: "📽️ Конвертировать в MP4", callback_data: `convert_gif_to_video` }],
+                            [{ text: "🗑️ Игнорировать", callback_data: `delete_message` }]
+                        ]
+                    };
+
+                    // Чтобы не было ошибки MarkdownV2 на точках, используем sendMessage как обычно
+                    await sendMessage(chatId, text, token, keyboard);
+                    
+                    // Прерываем дальнейшую обработку, чтобы бот не пытался отвечать на это как на текст
+                    return new Response('OK', { status: 200 });
+                } // КОНЕЦ БЛОКА ОБРАБОТКИ GIF и Стикеров - Анимации
+
                 // 2.4. Обработка ГОЛОСОВОГО СООБЩЕНИЯ (voice безопасно извлечен в начале fetch)
                 if (voice) { 
                     const voiceFileId = voice.file_id;
@@ -19003,8 +19101,35 @@ ${historyText}`;
                         ]));
                         
                         return new Response('OK', { status: 200 });
-                    } // --- КОНЕЦ НОВОГО БЛОКА АПСКЕЙЛА ---
+                    }// --- КОНЕЦ НОВОГО БЛОКА АПСКЕЙЛА ---
+                    
+                // Колбэк - Конвертация GIF в Видео
+                } else if (data === 'convert_gif_to_video') {
+                    const GIF_DATA_KEY = `${chatId}_last_gif_data`;
+                    const rawData = await envData.LAST_PHOTO_STORAGE.get(GIF_DATA_KEY);
 
+                    if (!rawData) {
+                        await answerCallbackQuery(callbackQueryId, "❌ Данные устарели. Пришлите файл снова.", token);
+                        return new Response('OK', { status: 200 });
+                    }
+
+                    const gifData = JSON.parse(rawData);
+                    const originalMessageId = callback.message.message_id;
+
+                    // Индикация работы
+                    await answerCallbackQuery(callbackQueryId, "🎬 Начинаю конвертацию...", token);
+                    await editMessage(chatId, originalMessageId, "⏳ **Магия FFmpeg:** превращаю анимацию в видео...", token);
+
+                    // Запуск фонового процесса
+                    ctx.waitUntil(sendGifToConverterInBackground(
+                        chatId,
+                        gifData.fileId,
+                        originalMessageId,
+                        envData,
+                        token
+                    ));
+
+                    return new Response('OK', { status: 200 });
                 // ОБРАБОТКА КОЛБЭКОВ МЕНЮ ГОЛОСА
                 } else if (data.startsWith('say_') || data === 'ignore_empty_text') {
                     // 1. Инициализация переменных
