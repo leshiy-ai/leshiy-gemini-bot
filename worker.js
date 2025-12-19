@@ -17044,7 +17044,7 @@ export default {
                                     [{text: "🎧 Транскрибировать видео в текст", callback_data: 'cmd:/video_transcribe'}],
                                     [{ text: '👀 Проанализировать видеоконтент', callback_data: 'cmd:/video_analysis' }],
                                     [{text: "💿 Сохранить аудиодорожку как голос", callback_data: 'cmd:/grab_audio'}],
-                                    [{ text: "🎞️ Сделать GIF-ку (5 сек)", callback_data: "video_to_gif:gif" }],
+                                    [{ text: "🎞️ Сконвертировать видео в GIF-ку", callback_data: "video_to_gif:gif" }],
                                     // 1. НОВАЯ КНОПКА: Захват кадра (Frame Grab)
                                     [{text: "🖼️ Сохранить стоп-кадр как фото", callback_data: 'cmd:/grab_frame'}],
                                     // 3. Режимы V2V и A2V
