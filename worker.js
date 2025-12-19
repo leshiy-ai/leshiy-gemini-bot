@@ -15400,7 +15400,7 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         // Сохраняем метаданные гифки после конвертации
         const gifMetadata = {
             file_id: "internal_ffmpeg_res",
-            type: "гиф",
+            type: "gif",
             width: videoData.width,
             height: videoData.height
         };
@@ -16002,12 +16002,10 @@ export default {
         let isVoice = isMessage && !!message.voice;
         let isVideo = isMessage && (!!message.video || !!message.video_note);
         let isAnimation = isMessage && !!message.animation; // Это GIF
-        let isSticker = isMessage && !!message.sticker;     // Это стикер
         const video = isVideo ? (message.video || message.video_note) : undefined;
         const voice = isVoice ? message.voice : undefined; // Voice object
         const audio = message.audio; // Аудиофайл (вероятно MP3)
         const animation = isAnimation ? message.animation : undefined; // Объект GIF
-        const sticker = isSticker ? message.sticker : undefined;       // Объект стикера
         const document = message.document; // <--- Документ
 
         // ✅ ПРОВЕРКА НА GIF ВНУТРИ ДОКУМЕНТОВ (иногда Telegram шлет гифки как файлы)
@@ -17046,10 +17044,7 @@ export default {
                                     [{text: "🎧 Транскрибировать видео в текст", callback_data: 'cmd:/video_transcribe'}],
                                     [{ text: '👀 Проанализировать видеоконтент', callback_data: 'cmd:/video_analysis' }],
                                     [{text: "💿 Сохранить аудиодорожку как голос", callback_data: 'cmd:/grab_audio'}],
-                                    [
-                                    { text: "🎞️ Сделать GIF (5 сек)", callback_data: "video_to_gif:gif" },
-                                    { text: "🎭 Видео-стикер (5 сек)", callback_data: "video_to_gif:mp4" }
-                                    ],
+                                    [{ text: "🎞️ Сделать GIF-ку (5 сек)", callback_data: "video_to_gif:gif" }],
                                     // 1. НОВАЯ КНОПКА: Захват кадра (Frame Grab)
                                     [{text: "🖼️ Сохранить стоп-кадр как фото", callback_data: 'cmd:/grab_frame'}],
                                     // 3. Режимы V2V и A2V
@@ -17166,17 +17161,16 @@ export default {
                             reply_markup: inlineKeyboard
                         })
                     });
-
                     return new Response('OK', { status: 200 });
                 }
 
-                // ОБРАБОТКА GIF и Стикеров - Анимации
-                if (isAnimation || isSticker) {
+                // ОБРАБОТКА GIF Анимации
+                if (isAnimation) {
                     // Вызываем твою новую функцию, которую мы обсуждали шагом ранее
-                    const currentFileId = isAnimation ? animation.file_id : sticker.file_id;
-                    const mediaType = isAnimation ? 'гиф' : 'стикер';
-                    const currentWidth = (animation || sticker).width;
-                    const currentHeight = (animation || sticker).height;
+                    const currentFileId = animation.file_id;
+                    const mediaType = 'gif';
+                    const currentWidth = (animation).width;
+                    const currentHeight = (animation).height;
                     
                     // ✅ Сохраняем в KV (используем правильные переменные)
                     const GIF_DATA_KEY = `${chatId}_last_gif_data`;
@@ -17189,9 +17183,7 @@ export default {
                     // И не забываем обновить основной тип медиа
                     await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "animation"); 
 
-                    const text = mediaType === 'стикер' 
-                        ? "🎭 **Обнаружен стикер!**\nХотите превратить его в видео (MP4)?" 
-                        : "🎞️ **Обнаружена GIF-анимация!**\nЕё можно конвертировать в видео (MP4) для экономии трафика или ресайза.";
+                    const text = "🎞️ **Обнаружена GIF-анимация!**\nЕё можно конвертировать в видео (MP4) для экономии трафика или ресайза.";
 
                     // Заменяем текущий sendMessage в блоке GIF на этот:
                     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
