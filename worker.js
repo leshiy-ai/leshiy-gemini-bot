@@ -15346,21 +15346,21 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         }
 
         // --- 2. ПАРАМЕТРЫ (Адаптируем под капризы сервера) ---
-        let targetWidth = videoData.width || 480;
-        if (format === 'mp4') {
-            // 512 дает нечетную высоту 419 (ошибка). 
-            // 480 даст высоту 392 (четное -> успех).
-            targetWidth = 480; 
-        }
-        let params = {
-            start: '00:00:00', // Формат таймкода более понятен FFmpeg
-            end: '00:00:05',   // Тоже в формате таймкода
-            format: format,
-            fps: format === 'mp4' ? '30' : '10',
-            width: targetWidth.toString()
-            // height НЕ ДОБАВЛЯЕМ, сервер его не ждет и может сломаться
-        };
-        const queryParams = new URLSearchParams(params);
+        // Используем простые числа, так как сервер делает parseFloat()
+        const startTime = 0;
+        const duration = 5; // Длительность 5 секунд
+        const endTime = startTime + duration;
+
+        const queryParams = new URLSearchParams({
+            start: startTime.toString(), // "0"
+            end: endTime.toString(),     // "5"
+            format: format,              // "gif" или "mp4"
+            fps: format === 'mp4' ? '30' : '10', // Плавность для видео, экономия для GIF
+            width: format === 'mp4' ? '512' : (videoData.width || '480')
+        });
+
+        // Для отладки в консоли Cloudflare (поможет, если что-то не так)
+        console.log(`Запрос: ${format}, Width: ${queryParams.get('width')}, End: ${endTime}`);
 
         // --- 3. ОТПРАВКА НА СЕРВЕР ---
         const formData = new FormData();
