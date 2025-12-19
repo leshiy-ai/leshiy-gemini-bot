@@ -19288,7 +19288,7 @@ ${historyText}`;
 
                     await answerCallbackQuery(callbackQueryId, `Создаю ${format}...`, token);
                     await editMessage(chatId, originalMessageId, `⏳ Нарезаю первые 5 секунд видео в ${format.toUpperCase()}...`, token);
-
+                    await editMessage(chatId, originalMessageId, "⏳ **Магия FFmpeg:** превращаю видео в гифку...", token);
                     ctx.waitUntil(sendVideoToGifInBackground(
                         chatId,
                         videoData,
