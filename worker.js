@@ -15241,6 +15241,10 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
 async function sendGifToConverterInBackground(chatId, fileId, messageId, envData, token) {
     const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
     try {
+        // --- 1. ПОЛУЧАЕМ ИСХОДНЫЕ ДАННЫЕ ИЗ KV ---
+        const gifDataRaw = await envData.LAST_PHOTO_STORAGE.get(`${chatId}_last_gif_data`);
+        const gifData = gifDataRaw ? JSON.parse(gifDataRaw) : { width: 512, height: 512 };
+
         // --- 1. ПРОБУЖДЕНИЕ И ПРОВЕРКА СЕРВЕРА ---
         // Используем готовую функцию. Она подождет до 45 сек, пока Render проснется.
         const isAlive = await checkConverterHealth(envData);
@@ -15274,6 +15278,27 @@ async function sendGifToConverterInBackground(chatId, fileId, messageId, envData
         }
 
         const videoBuffer = await converterResponse.arrayBuffer();
+        // --- 5. ЗАПИСЬ В БАЗУ (KV) ---
+        // Сохраняем сам файл (бинарно)
+        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_video`, videoBuffer);
+
+        // Сохраняем метаданные точно в вашем формате
+        const videoMetadata = {
+            file_id: "internal_ffmpeg_res",
+            url: "", 
+            mime_type: "video/mp4",
+            file_size: videoBuffer.byteLength,
+            width: gifData.width,   // Наследуем из гифки
+            height: gifData.height, // Наследуем из гифки
+            duration: 5,
+            thumb: {}
+        };
+        
+        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_video_data`, JSON.stringify(videoMetadata));
+        
+        // Обновляем сопутствующие ключи
+        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "video");
+        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_file_id`, "internal_ffmpeg_res");
 
         // --- 4. ОТПРАВКА РЕЗУЛЬТАТА ---
         const sendFormData = new FormData();
@@ -15291,6 +15316,75 @@ async function sendGifToConverterInBackground(chatId, fileId, messageId, envData
     } catch (e) {
         logDebug('[GIF2VIDEO_BG]', e.message, envData);
         await editMessage(chatId, messageId, `❌ Ошибка: ${e.message}`, token);
+    }
+}
+
+async function sendVideoToGifInBackground(chatId, fileId, messageId, format, envData, token) {
+    try {
+        // Прогрев сервера через твой Health Check
+        const isAlive = await checkConverterHealth(envData);
+        if (!isAlive) throw new Error("Конвертер спит и не хочет просыпаться.");
+
+        // --- 1. ПОЛУЧАЕМ ВИДЕО (Бинарник ИЛИ Telegram) ---
+        let videoBlob;
+        const cachedVideo = await envData.LAST_PHOTO_STORAGE.get(`${chatId}_last_video`, { type: "arrayBuffer" });
+
+        if (cachedVideo) {
+            videoBlob = new Blob([cachedVideo], { type: 'video/mp4' });
+        } else {
+            // Важно: проверь, как называется ключ в твоем JSON (file_id или fileId)
+            const targetFileId = videoData.file_id || videoData.fileId; 
+            const fileInfoResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${targetFileId}`);
+            const fileInfo = await fileInfoResponse.json();
+            
+            if (!fileInfo.ok) throw new Error('Telegram не отдал путь к файлу');
+            
+            const fileUrl = `https://api.telegram.org/file/bot${token}/${fileInfo.result.file_path}`;
+            const mediaResponse = await fetch(fileUrl);
+            videoBlob = await mediaResponse.blob();
+        }
+
+        // --- 2. ПАРАМЕТРЫ (ОБЯЗАТЕЛЬНО ОСТАВЛЯЕМ) ---
+        const queryParams = new URLSearchParams({
+            start: '0',
+            end: '5',
+            format: format, // 'gif' или 'mp4' из колбэка
+            fps: '10',
+            width: videoData.width || '480'
+        });
+
+        // --- 3. ОТПРАВКА НА СЕРВЕР ---
+        const formData = new FormData();
+        formData.append('video', videoBlob, 'input.mp4');
+
+        const converterResponse = await fetch(`${RENDER_HOST_URL}/video2gif?${queryParams.toString()}`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!converterResponse.ok) throw new Error(await converterResponse.text());
+
+        const resultBuffer = await converterResponse.arrayBuffer();
+
+        // Отправка результата
+        const sendMethod = format === 'gif' ? 'sendAnimation' : 'sendVideo';
+        const fieldName = format === 'gif' ? 'animation' : 'video';
+        
+        const sendFormData = new FormData();
+        sendFormData.append('chat_id', chatId);
+        sendFormData.append(fieldName, new Blob([resultBuffer], { type: format === 'gif' ? 'image/gif' : 'video/mp4' }), `result.${format}`);
+        sendFormData.append('caption', `✅ Готово! (0-5 сек)`);
+
+        await fetch(`https://api.telegram.org/bot${token}/${sendMethod}`, {
+            method: 'POST',
+            body: sendFormData
+        });
+
+        await deleteMessage(chatId, messageId, token);
+
+    } catch (e) {
+        logDebug('[VIDEO2GIF_ERROR]', e.message, envData);
+        await editMessage(chatId, messageId, `❌ Ошибка нарезки: ${e.message}`, token);
     }
 }
 
@@ -16909,6 +17003,10 @@ export default {
                                     [{text: "🎧 Транскрибировать видео в текст", callback_data: 'cmd:/video_transcribe'}],
                                     [{ text: '👀 Проанализировать видеоконтент', callback_data: 'cmd:/video_analysis' }],
                                     [{text: "💿 Сохранить аудиодорожку как голос", callback_data: 'cmd:/grab_audio'}],
+                                    [
+                                    { text: "🎞️ Сделать GIF (5 сек)", callback_data: "video_to_gif:gif" },
+                                    { text: "🎭 Видео-стикер (5 сек)", callback_data: "video_to_gif:mp4" }
+                                    ],
                                     // 1. НОВАЯ КНОПКА: Захват кадра (Frame Grab)
                                     [{text: "🖼️ Сохранить стоп-кадр как фото", callback_data: 'cmd:/grab_frame'}],
                                     // 3. Режимы V2V и A2V
@@ -17060,7 +17158,7 @@ export default {
                             parse_mode: 'Markdown', // Убедись, что мод совпадает с текстом
                             reply_markup: {
                                 inline_keyboard: [
-                                    [{ text: "📽️ Конвертировать в MP4", callback_data: `convert_gif_to_video` }],
+                                    [{ text: "📽️ Конвертировать в MP4", callback_data: `gif_to_video` }],
                                     [{ text: "🗑️ Игнорировать", callback_data: `delete_message` }]
                                 ]
                             }
@@ -19110,8 +19208,8 @@ ${historyText}`;
                         return new Response('OK', { status: 200 });
                     }// --- КОНЕЦ НОВОГО БЛОКА АПСКЕЙЛА ---
                     
-                // Колбэк - Конвертация GIF в Видео
-                } else if (data === 'convert_gif_to_video') {
+                // Колбэк gif_to_video - Конвертация GIF в Видео
+                } else if (data === 'gif_to_video') {
                     // Исправлено: используем callback.id вместо callbackQuery.id
                     const callbackQueryId = callback.id; 
                     const token = envData.TELEGRAM_BOT_TOKEN;
@@ -19133,6 +19231,34 @@ ${historyText}`;
                         chatId,
                         gifData.fileId,
                         originalMessageId,
+                        envData,
+                        token
+                    ));
+                    return new Response('OK', { status: 200 });
+
+                // Колбэк video_to_gif - Конвертация Видео в GIF
+                } else if (data.startsWith('video_to_gif:')) {
+                    const format = data.split(':')[1]; // gif или mp4
+                    const callbackQueryId = callback.id;
+                    const VIDEO_DATA_KEY = `${chatId}_last_video_data`; // Используем твой ключ для видео
+                    const rawData = await envData.LAST_PHOTO_STORAGE.get(VIDEO_DATA_KEY);
+
+                    if (!rawData) {
+                        await answerCallbackQuery(callbackQueryId, "❌ Видео не найдено. Пришлите его снова.", token);
+                        return new Response('OK', { status: 200 });
+                    }
+
+                    const videoData = JSON.parse(rawData);
+                    const originalMessageId = callback.message.message_id;
+
+                    await answerCallbackQuery(callbackQueryId, `Создаю ${format}...`, token);
+                    await editMessage(chatId, originalMessageId, `⏳ Нарезаю первые 5 секунд видео в ${format.toUpperCase()}...`, token);
+
+                    ctx.waitUntil(sendVideoToGifInBackground(
+                        chatId,
+                        videoData.fileId,
+                        originalMessageId,
+                        format,
                         envData,
                         token
                     ));
