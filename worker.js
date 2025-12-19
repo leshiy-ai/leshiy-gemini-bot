@@ -15359,9 +15359,8 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
             width: format === 'mp4' ? '512' : (videoData.width || '480')
         });
 
-        // Для отладки в консоли Cloudflare (поможет, если что-то не так)
-        console.log(`Запрос: ${format}, Width: ${queryParams.get('width')}, End: ${endTime}`);
-
+        // Логируем запрос для контроля
+        logDebug('[CONVERTER_REQUEST]', `Format: ${format}, Width: ${queryParams.get('width')}, Duration: ${endVal-startVal}s`, envData);
         // --- 3. ОТПРАВКА НА СЕРВЕР ---
         const formData = new FormData();
         formData.append('video', videoBlob, 'input.mp4');
@@ -15374,7 +15373,8 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         if (!converterResponse.ok) throw new Error(await converterResponse.text());
 
         const resultBuffer = await converterResponse.arrayBuffer();
-
+        // Логируем запрос для контроля
+        logDebug('[CONVERTER_REQUEST]', `Format: ${format}, Width: ${queryParams.get('width')}, Duration: ${endVal-startVal}s`, envData);
         // Сохраняем метаданные гифки после конвертации
         const gifMetadata = {
             file_id: "internal_ffmpeg_res",
