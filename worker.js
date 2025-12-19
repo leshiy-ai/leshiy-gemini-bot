@@ -15385,7 +15385,8 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
 
         // --- 3. ОТПРАВКА ---
         const formDataForServer = new FormData();
-        formDataForServer.append('video', videoBlob, 'input.mp4');
+        const uniqueFileName = `input-${Date.now()}.mp4`;
+        formDataForServer.append('video', videoBlob, uniqueFileName);
 
         const converterResponse = await fetch(`${RENDER_HOST_URL}/video2gif?${queryParams.toString()}`, {
             method: 'POST',
