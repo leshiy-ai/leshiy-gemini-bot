@@ -15353,8 +15353,8 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
             targetWidth = 480; 
         }
         let params = {
-            start: '0',
-            end: '5', 
+            start: '00:00:00', // Формат таймкода более понятен FFmpeg
+            end: '00:00:05',   // Тоже в формате таймкода
             format: format,
             fps: format === 'mp4' ? '30' : '10',
             width: targetWidth.toString()
