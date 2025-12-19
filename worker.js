@@ -15326,67 +15326,62 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         const isAlive = await checkConverterHealth(envData);
         if (!isAlive) throw new Error("Конвертер спит и не хочет просыпаться.");
 
-        // --- 1. ПОЛУЧАЕМ ВИДЕО (Бинарник ИЛИ Telegram) ---
-        let videoBlob;
-        const cachedVideo = await envData.LAST_PHOTO_STORAGE.get(`${chatId}_last_video`, { type: "arrayBuffer" });
+        // --- 1. ПОЛУЧАЕМ АКТУАЛЬНЫЙ FILE_ID ---
+        let targetFileId = videoData?.file_id;
 
-        if (cachedVideo) {
-            videoBlob = new Blob([cachedVideo], { type: 'video/mp4' });
-        } else {
-            // Важно: проверь, как называется ключ в твоем JSON (file_id или fileId)
-            const targetFileId = videoData.file_id; 
-            const fileInfoResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${targetFileId}`);
-            const fileInfo = await fileInfoResponse.json();
-            
-            if (!fileInfo.ok) throw new Error('Telegram не отдал путь к файлу');
-            
-            const fileUrl = `https://api.telegram.org/file/bot${token}/${fileInfo.result.file_path}`;
-            const mediaResponse = await fetch(fileUrl);
-            videoBlob = await mediaResponse.blob();
+        if (!targetFileId) {
+            // Если в текущем событии нет данных, парсим JSON из хранилища
+            const storedData = await envData.LAST_PHOTO_STORAGE.get(`${chatId}_last_video_data`);
+            if (storedData) {
+                try {
+                    const parsed = JSON.parse(storedData);
+                    targetFileId = parsed.file_id;
+                    // Обновляем videoData, чтобы ширина и длительность были доступны ниже
+                    videoData = parsed; 
+                } catch (e) {
+                    await logDebug('[PARSE_ERROR]', 'Не удалось распарсить last_video_data', envData);
+                }
+            }
         }
 
-        // --- 2. ПАРАМЕТРЫ С ВЕТВЛЕНИЕМ (Синхронизация с parseFloat на сервере) ---
+        if (!targetFileId) throw new Error('file_id не найден');
+
+        // --- 2. СКАЧИВАЕМ ФАЙЛ ЗАНОВО (Гарантия отсутствия кэша) ---
+        const fileInfoResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${targetFileId}`);
+        const fileInfo = await fileInfoResponse.json();
+        if (!fileInfo.ok) throw new Error('TG не отдал путь');
+
+        const fileUrl = `https://api.telegram.org/file/bot${token}/${fileInfo.result.file_path}`;
+        const mediaResponse = await fetch(fileUrl);
+        const videoBlob = await mediaResponse.blob();
+
+        await logDebug('[FILE_READY]', `Size: ${videoBlob.size} bytes. Source: Telegram`, envData);
+
+        // --- 3. ПАРАМЕТРЫ С ГИБКИМ ВЕТВЛЕНИЕМ ---
         let startParam = "0";
-        let endParam = "3"; // Значение по умолчанию
+        let endParam = (parseFloat(videoData.duration) || 3).toString();
+        if (parseFloat(endParam) > 5) endParam = "5"; // Ограничение сервера
+
         let targetWidth;
-        let targetFps;
-
-        // Рассчитываем длительность
-        const videoDuration = parseFloat(videoData.duration || 0);
-        if (videoDuration > 0 && videoDuration <= 5) {
-            endParam = videoDuration.toString();
-        } else {
-            endParam = "4.5"; // Если видео длинное, режем первые 4.5 сек
-        }
-
-        // Ветвление форматов
         if (format === 'mp4') {
-            // Для стикера: 480 безопаснее для четности, чем 512
-            targetWidth = "480"; 
-            targetFps = "30";
-            if (parseFloat(endParam) > 3) endParam = "3"; // Стикеры TG до 3 сек
+            targetWidth = "480"; // Безопасное четное число
+            if (parseFloat(endParam) > 3) endParam = "3"; // Лимит стикера
         } else {
-            // Для GIF: берем родную ширину
             targetWidth = (videoData.width || 480).toString();
-            targetFps = "12";
         }
 
-        // Собираем объект параметров
         const queryParams = new URLSearchParams({
             start: startParam,
             end: endParam,
             format: format,
-            fps: targetFps,
+            fps: format === 'mp4' ? '30' : '12',
             width: targetWidth
         });
 
-        // Логируем строго те переменные, которые создали
-        await logDebug('[CONVERTER_SEND]', `Mode: ${format}, Time: ${startParam}-${endParam}, Width: ${targetWidth}`, envData);
-
-        // --- 3. ОТПРАВКА ---
+        // --- 4. ОТПРАВКА С УНИКАЛЬНЫМ ИМЕНЕМ ---
         const formDataForServer = new FormData();
-        const uniqueFileName = `input-${Date.now()}.mp4`;
-        formDataForServer.append('video', videoBlob, uniqueFileName);
+        // Уникальное имя гарантирует, что Multer на сервере создаст НОВЫЙ файл
+        formDataForServer.append('video', videoBlob, `video-${Date.now()}.mp4`);
 
         const converterResponse = await fetch(`${RENDER_HOST_URL}/video2gif?${queryParams.toString()}`, {
             method: 'POST',
