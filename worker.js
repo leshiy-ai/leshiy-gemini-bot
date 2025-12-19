@@ -15278,41 +15278,40 @@ async function sendGifToConverterInBackground(chatId, fileId, messageId, envData
         }
 
         const videoBuffer = await converterResponse.arrayBuffer();
-        // --- 5. ЗАПИСЬ В БАЗУ (KV) ---
-        // Сохраняем сам файл (бинарно)
-        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_video`, videoBuffer);
-
-        // Сохраняем метаданные точно в вашем формате
-        const videoMetadata = {
-            file_id: "internal_ffmpeg_res",
-            url: "", 
-            mime_type: "video/mp4",
-            file_size: videoBuffer.byteLength,
-            width: gifData.width,   // Наследуем из гифки
-            height: gifData.height, // Наследуем из гифки
-            duration: 5,
-            thumb: {}
-        };
-        
-        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_video_data`, JSON.stringify(videoMetadata));
-        
-        // Обновляем сопутствующие ключи
-        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "video");
-        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_file_id`, "internal_ffmpeg_res");
-
-        // --- 4. ОТПРАВКА РЕЗУЛЬТАТА ---
+        // --- 5. ОТПРАВКА В TELEGRAM (Чтобы получить новый file_id) ---
         const sendFormData = new FormData();
         sendFormData.append('chat_id', chatId);
-        sendFormData.append('video', new Blob([videoBuffer], { type: 'video/mp4' }), 'converted.mp4');
+        const videoBlob = new Blob([videoBuffer], { type: 'video/mp4' });
+        sendFormData.append('video', videoBlob, 'result.mp4');
         sendFormData.append('caption', '✅ Гифка превращена в видео!');
 
-        await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
+        const tgResponse = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
             method: 'POST',
             body: sendFormData
         });
 
-        await deleteMessage(chatId, messageId, token);
+        const tgResult = await tgResponse.json();
+        if (!tgResult.ok) throw new Error(`Ошибка TG: ${tgResult.description}`);
 
+        // Вытаскиваем данные о видео, которые присвоил Telegram
+        const sentVideo = tgResult.result.video;
+
+        // --- 6. ЗАПИСЬ МЕТАДАННЫХ В KV (Искореняем бинарник, оставляем JSON) ---
+        const videoMetadata = {
+            file_id: sentVideo.file_id,
+            mime_type: sentVideo.mime_type || "video/mp4",
+            file_size: sentVideo.file_size,
+            width: sentVideo.width,
+            height: sentVideo.height,
+            duration: sentVideo.duration,
+            thumb: sentVideo.thumb || {}
+        };
+
+        // 3. Записываем метаданные как основное "последнее видео"
+        await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_video_data`, JSON.stringify(videoMetadata));
+        //await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "video");
+        //await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_file_id`, sentVideo.file_id);
+        //await logDebug('[SUCCESS]', `Видео сохранено в KV через file_id: ${sentVideo.file_id.slice(-8)}`, envData);
     } catch (e) {
         logDebug('[GIF2VIDEO_BG]', e.message, envData);
         await editMessage(chatId, messageId, `❌ Ошибка: ${e.message}`, token);
