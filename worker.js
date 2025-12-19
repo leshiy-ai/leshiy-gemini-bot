@@ -15345,30 +15345,32 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
             videoBlob = await mediaResponse.blob();
         }
 
-        // --- 2. ПАРАМЕТРЫ (Адаптируем под капризы сервера) ---
-        // Используем простые числа, так как сервер делает parseFloat()
-        const startTime = 0;
-        const duration = 5; // Длительность 5 секунд
-        const endTime = startTime + duration;
+        // --- 2. ПАРАМЕТРЫ (Исправляем опечатку) ---
+        const startParam = "0";
+        const endParam = "3"; // Фиксируем 3 секунды для теста
 
         const queryParams = new URLSearchParams({
-            start: startTime.toString(), // "0"
-            end: endTime.toString(),     // "5"
-            format: format,              // "gif" или "mp4"
-            fps: format === 'mp4' ? '30' : '10', // Плавность для видео, экономия для GIF
-            width: format === 'mp4' ? '512' : (videoData.width || '480')
+            start: startParam,
+            end: endParam,
+            format: format,
+            fps: format === 'mp4' ? '25' : '10',
+            width: format === 'mp4' ? '512' : '480'
         });
 
-        // Логируем запрос для контроля
-        logDebug('[CONVERTER_REQUEST]', `Format: ${format}, Width: ${queryParams.get('width')}, Duration: ${endVal-startVal}s`, envData);
-        // --- 3. ОТПРАВКА НА СЕРВЕР ---
-        const formData = new FormData();
-        formData.append('video', videoBlob, 'input.mp4');
+        // Исправленный лог (теперь точно без ошибок с именами переменных)
+        await logDebug('[CONVERTER_SEND]', `Format: ${format}, Time: ${startParam}-${endParam}s`, envData);
 
+        // --- 3. ОТПРАВКА ---
         const converterResponse = await fetch(`${RENDER_HOST_URL}/video2gif?${queryParams.toString()}`, {
             method: 'POST',
             body: formData
         });
+
+        if (!converterResponse.ok) {
+            const errorText = await converterResponse.text();
+            await logDebug('[CONVERTER_ERROR]', `Status: ${converterResponse.status}, Msg: ${errorText}`, envData);
+            throw new Error(`Конвертер: ${errorText}`);
+        }
 
         if (!converterResponse.ok) throw new Error(await converterResponse.text());
 
