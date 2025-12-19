@@ -15345,26 +15345,51 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
             videoBlob = await mediaResponse.blob();
         }
 
-        // --- 2. ПАРАМЕТРЫ (Исправляем опечатку) ---
-        const startParam = "0";
-        const endParam = "3"; // Фиксируем 3 секунды для теста
+        // --- 2. ПАРАМЕТРЫ С ВЕТВЛЕНИЕМ (Синхронизация с parseFloat на сервере) ---
+        let startParam = "0";
+        let endParam = "3"; // Значение по умолчанию
+        let targetWidth;
+        let targetFps;
+
+        // Рассчитываем длительность
+        const videoDuration = parseFloat(videoData.duration || 0);
+        if (videoDuration > 0 && videoDuration <= 5) {
+            endParam = videoDuration.toString();
+        } else {
+            endParam = "4.5"; // Если видео длинное, режем первые 4.5 сек
+        }
+
+        // Ветвление форматов
+        if (format === 'mp4') {
+            // Для стикера: 480 безопаснее для четности, чем 512
+            targetWidth = "480"; 
+            targetFps = "30";
+            if (parseFloat(endParam) > 3) endParam = "3"; // Стикеры TG до 3 сек
+        } else {
+            // Для GIF: берем родную ширину
+            targetWidth = (videoData.width || 480).toString();
+            targetFps = "12";
+        }
+
+        // Собираем объект параметров
         const queryParams = new URLSearchParams({
             start: startParam,
             end: endParam,
             format: format,
-            fps: format === 'mp4' ? '25' : '10',
-            width: format === 'mp4' ? '512' : '480'
+            fps: targetFps,
+            width: targetWidth
         });
-        // --- ПОДГОТОВКА ДАННЫХ (Важно!) ---
-        const formData = new FormData();
-        formData.append('video', videoBlob, 'input.mp4'); 
 
-        await logDebug('[CONVERTER_SEND]', `Format: ${format}, Time: ${startParam}-${endParam}s`, envData);
+        // Логируем строго те переменные, которые создали
+        await logDebug('[CONVERTER_SEND]', `Mode: ${format}, Time: ${startParam}-${endParam}, Width: ${targetWidth}`, envData);
 
         // --- 3. ОТПРАВКА ---
+        const formDataForServer = new FormData();
+        formDataForServer.append('video', videoBlob, 'input.mp4');
+
         const converterResponse = await fetch(`${RENDER_HOST_URL}/video2gif?${queryParams.toString()}`, {
             method: 'POST',
-            body: formData
+            body: formDataForServer
         });
 
         if (!converterResponse.ok) {
@@ -15372,8 +15397,6 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
             await logDebug('[CONVERTER_ERROR]', `Status: ${converterResponse.status}, Msg: ${errorText}`, envData);
             throw new Error(`Конвертер: ${errorText}`);
         }
-
-        if (!converterResponse.ok) throw new Error(await converterResponse.text());
 
         const resultBuffer = await converterResponse.arrayBuffer();
         // Логируем запрос для контроля
