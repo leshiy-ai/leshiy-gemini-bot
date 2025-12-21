@@ -313,8 +313,8 @@ const AI_MODELS = {
     TEXT_TO_IMAGE_KIEAI: { 
         SERVICE: 'KIEAI', 
         FUNCTION: startKieAiTextToImage,
-        //MODEL: 'google/nano-banana', 
-        MODEL: 'grok-imagine/text-to-image', 
+        MODEL: 'google/nano-banana', 
+        //MODEL: 'grok-imagine/text-to-image', // 6 фоток сразу
         API_KEY: 'KIEAI_API_KEY', 
         BASE_URL: 'https://api.kie.ai/api/v1',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
