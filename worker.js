@@ -13103,44 +13103,7 @@ async function startVideoGenerationLogic(chatId, lastPrompt, workingMessageId, e
 
     // 2. Окончательная стоимость: округляем вверх, так как списание всегда идет целыми кредитами
     const finalVideoCost = Math.ceil(rawVideoCost); 
-    
-    // ========================================================
-    // 🔥 ТЕСТОВЫЙ ПЕРЕХВАТ (DRY RUN) ДЛЯ АДМИНА
-    // Если вы админ и включен дебаг, бот просто покажет JSON и остановится
-    // ========================================================
-    if (chatId.toString() === envData.ADMIN_CHAT_ID && envData.DEBUG_ENABLED) {
-        // Формируем объект так, как его увидит API KIE.AI
-        const dryRunData = {
-            taskId: "DRY_RUN_TEST",
-            model: activeConfigKey,
-            input: {
-                prompt: finalPrompt.substring(0, 100) + "...",
-                resolution: currentResolution,
-                duration: durationInSeconds,
-                // Если у вас есть переменная ratio (соотношение сторон), добавьте её сюда:
-                // aspect_ratio: ratio || "16:9" 
-            },
-            billing: {
-                raw_price: rawVideoCost.toFixed(4),
-                total_deduct: finalVideoCost,
-                service: videoServiceName
-            }
-        };
 
-        const testReport = `🧪 **ТЕСТ ПАРАМЕТРОВ ВИДЕО (DRY RUN)**\n\n` +
-            `✅ **Resolution:** \`${currentResolution}\`\n` +
-            `✅ **Duration:** \`${durationInSeconds}s\`\n` +
-            `💰 **Cost:** \`${finalVideoCost}\` credits\n\n` +
-            `📦 **JSON Payload:**\n\`\`\`json\n${JSON.stringify(dryRunData.input, null, 2)}\n\`\`\``;
-
-        await sendMessage(chatId, testReport, envData.TELEGRAM_BOT_TOKEN);
-        
-        // ВАЖНО: Если мы хотим просто проверить кнопки, не списывая деньги — выходим
-        // Если вы хотите, чтобы заказ реально улетел — закомментируйте return ниже
-        return; 
-    }
-    // ========================================================
-    
     // 🛑 ВЫЗОВ УНИВЕРСАЛЬНОЙ ФУНКЦИИ
     const balanceCheckResult = await checkAndDeductBalance(
         chatId, 
