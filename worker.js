@@ -373,15 +373,17 @@ const AI_MODELS = {
         SERVICE: 'KIEAI', 
         FUNCTION: startKieAiVideo2Video, // <-- НОВАЯ ФУНКЦИЯ-ОБРАБОТЧИК
         //MODEL: 'wan/2-2-animate-move', 
-        MODEL: 'wan/2-2-animate-replace', 
+        //MODEL: 'wan/2-2-animate-replace', 
+        MODEL: 'kling-2.6/motion-control', 
         API_KEY: 'KIEAI_API_KEY', 
         BASE_URL: 'https://api.kie.ai/api/v1',
-        // ✅ ДИНАМИЧЕСКАЯ ЦЕНА (Посекундная)
+        pricing: 9
+        // ✅ ДИНАМИЧЕСКАЯ ЦЕНА Wan (Посекундная)
         pricing: {
-            '480p': 6.0,  // Тариф за сек, 480p
-            '580p': 9.5,  // Тариф за сек, 580p
-            '720p': 12.5, // Тариф за сек, 720p
-            '1080p': 12.5 // Тариф за сек, 1080p
+            //'480p': 6.0,  // Тариф за сек, 480p
+            //'580p': 9.5,  // Тариф за сек, 580p
+            '720p': 6, // Тариф за сек, 720p
+            '1080p': 9 // Тариф за сек, 1080p
         }
     },
     // [infinitalk/from-audio] (Через KIE.AI API, ПЛАТНЫЙ, 3 кредита/сек минимально)
