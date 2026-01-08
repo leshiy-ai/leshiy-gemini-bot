@@ -369,18 +369,29 @@ const AI_MODELS = {
         pricing: 10.0
     },
     // [wan/2-2-animate-move] (Через KIE.AI API, ПЛАТНЫЙ, 6 кредитов/сек)
-    VIDEO_TO_VIDEO_KIEAI: { 
+    VIDEO_TO_VIDEO_KIEAI_WAN: { 
         SERVICE: 'KIEAI', 
-        FUNCTION: startKieAiVideo2Video, // <-- НОВАЯ ФУНКЦИЯ-ОБРАБОТЧИК
+        FUNCTION: startKieAiWanVideo2Video, // <-- НОВАЯ ФУНКЦИЯ-ОБРАБОТЧИК
         //MODEL: 'wan/2-2-animate-move', 
-        //MODEL: 'wan/2-2-animate-replace', 
+        MODEL: 'wan/2-2-animate-replace', 
+        API_KEY: 'KIEAI_API_KEY', 
+        BASE_URL: 'https://api.kie.ai/api/v1',
+        // ✅ ДИНАМИЧЕСКАЯ ЦЕНА (Посекундная)
+        pricing: {
+            '480p': 6.0,  // Тариф за сек, 480p
+            '580p': 9.5,  // Тариф за сек, 580p
+            '720p': 12.5, // Тариф за сек, 720p
+            '1080p': 12.5 // Тариф за сек, 1080p
+        }
+    },
+    VIDEO_TO_VIDEO_KIEAI_Kling: { 
+        SERVICE: 'KIEAI', 
+        FUNCTION: startKieAiKlingVideo2Video, // <-- НОВАЯ ФУНКЦИЯ-ОБРАБОТЧИК
         MODEL: 'kling-2.6/motion-control', 
         API_KEY: 'KIEAI_API_KEY', 
         BASE_URL: 'https://api.kie.ai/api/v1',
-        // ✅ ДИНАМИЧЕСКАЯ ЦЕНА Wan (Посекундная)
+        // ✅ ДИНАМИЧЕСКАЯ ЦЕНА Kling (Посекундная)
         pricing: {
-            //'480p': 6.0,  // Тариф за сек, 480p
-            //'580p': 9.5,  // Тариф за сек, 580p
             '720p': 6, // Тариф за сек, 720p
             '1080p': 9 // Тариф за сек, 1080p
         }
@@ -6762,8 +6773,8 @@ async function startKieAiImageToVideo(modelConfig, prompt, imageUrl, mimeType, a
     return taskId;
 }
 
-// ✅ startKieAiVideo2Video - Запускает асинхронную задачу Video Upscale (Video-to-Video) через KIE.AI
-async function startKieAiVideo2Video(activeModelConfig, imageUrl, videoUrl, API_KEY_VALUE, chatId, envData) { 
+// ✅ startKieAiWanVideo2Video - Запускает асинхронную задачу Wan Video-to-Video через KIE.AI
+async function startKieAiWanVideo2Video(activeModelConfig, imageUrl, videoUrl, API_KEY_VALUE, chatId, envData) { 
     const storage = envData.LAST_PHOTO_STORAGE;
     const token = envData.TELEGRAM_BOT_TOKEN;
     const LAST_ACTIVE_TASK_KEY_SUFFIX = '_active_video_task';
@@ -6771,17 +6782,17 @@ async function startKieAiVideo2Video(activeModelConfig, imageUrl, videoUrl, API_
     // 🛑 КРИТИЧНО: Формирование Callback URL
     const callbackUrl = `${envData.WORKER_DOMAIN}/api/kieai-callback?chatId=${chatId}`;
 
-    // Документация требует input_urls для фото и video_urls для видео
+    // ✅ Формируем объект 'input' для Wan 2.2 Animate API
+    // Документация требует video_url, image_url и опционально resolution
     const input = {
-        input_urls: imageUrl,
-        video_urls: videoUrl, 
-        mode: "720p", // Используем 720p по умолчанию
-        character_orientation: "image"
+        video_url: videoUrl, 
+        image_url: imageUrl,
+        resolution: "480p", // Используем 480p по умолчанию
     };
 
     // --- 1. ЛОГИРОВАНИЕ ---
     if (envData.DEBUG_ENABLED && envData.DEBUG_CHAT_ID) {
-        const debugMessage = `🛠️ *[KIE.ai Video2Video Request]*\n\n*Chat ID:* ${chatId}\n*Model:* ${activeModelConfig.MODEL}\n\n*Input Body:*\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\n*Callback URL:* \`${callbackUrl}\``;
+        const debugMessage = `🛠️ *[KIE.ai Wan Animate Request]*\n\n*Chat ID:* ${chatId}\n*Model:* ${activeModelConfig.MODEL}\n\n*Input Body:*\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\n*Callback URL:* \`${callbackUrl}\``;
         await sendMessageMarkdown(envData.DEBUG_CHAT_ID, debugMessage, envData.TELEGRAM_BOT_TOKEN);
     }
 
@@ -6805,6 +6816,54 @@ async function startKieAiVideo2Video(activeModelConfig, imageUrl, videoUrl, API_
     await sendMessageMarkdown(
         chatId,
         `🎬 **Анимация персонажа запущена!**\nМодель: \`${activeModelConfig.MODEL}\`\nJob ID: \`${taskId}\`\n\n*⚠️ Это может занять некоторое время. По готовности будет доставлено автоматически.*`,
+        token
+    );
+    return taskId;
+}
+
+// ✅ startKieAiKlingVideo2Video - Запускает асинхронную задачу Kling Video-to-Video через KIE.AI
+async function startKieAiKlingVideo2Video(activeModelConfig, imageUrl, videoUrl, API_KEY_VALUE, chatId, envData) { 
+    const storage = envData.LAST_PHOTO_STORAGE;
+    const token = envData.TELEGRAM_BOT_TOKEN;
+    const LAST_ACTIVE_TASK_KEY_SUFFIX = '_active_video_task';
+
+    // 🛑 КРИТИЧНО: Формирование Callback URL
+    const callbackUrl = `${envData.WORKER_DOMAIN}/api/kieai-callback?chatId=${chatId}`;
+
+    // Документация требует input_urls для фото и video_urls для видео
+    const input = {
+        input_urls: imageUrl,
+        video_urls: videoUrl, 
+        mode: "720p", // Используем 720p по умолчанию
+        character_orientation: "image"
+    };
+
+    // --- 1. ЛОГИРОВАНИЕ ---
+    if (envData.DEBUG_ENABLED && envData.DEBUG_CHAT_ID) {
+        const debugMessage = `🛠️ *[KIE.ai Kling Video2Video Request]*\n\n*Chat ID:* ${chatId}\n*Model:* ${activeModelConfig.MODEL}\n\n*Input Body:*\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\n*Callback URL:* \`${callbackUrl}\``;
+        await sendMessageMarkdown(envData.DEBUG_CHAT_ID, debugMessage, envData.TELEGRAM_BOT_TOKEN);
+    }
+
+    // --- 2. СОЗДАНИЕ ЗАДАНИЯ ЧЕРЕЗ УНИВЕРСАЛЬНУЮ ФУНКЦИЮ createTaskKieAi ---
+    // Здесь мы передаем activeModelConfig.BASE_URL = 'https://api.kie.ai/api/v1/jobs/createTask'
+    const taskId = await createTaskKieAi(chatId, activeModelConfig, input, { ...envData, chatId }, callbackUrl);
+
+    if (!taskId) { 
+        return null;
+    }
+    
+    // --- 3. СОХРАНЕНИЕ TASK ID ---
+    const LAST_ACTIVE_TASK_KEY = chatId.toString() + LAST_ACTIVE_TASK_KEY_SUFFIX; 
+    const taskData = { 
+        taskId: taskId, 
+        model: activeModelConfig.MODEL,
+    };
+    await storage.put(LAST_ACTIVE_TASK_KEY, JSON.stringify(taskData), { expirationTtl: 60 * 60 * 24 });
+    
+    // --- 4. УВЕДОМЛЕНИЕ О ЗАПУСКЕ ---
+    await sendMessageMarkdown(
+        chatId,
+        `🎬 **Редактирование персонажа запущена!**\nМодель: \`${activeModelConfig.MODEL}\`\nJob ID: \`${taskId}\`\n\n*⚠️ Это может занять некоторое время. По готовности будет доставлено автоматически.*`,
         token
     );
     return taskId;
