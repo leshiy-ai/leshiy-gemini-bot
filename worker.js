@@ -6835,7 +6835,7 @@ async function startKieAiKlingVideo2Video(activeModelConfig, imageUrl, videoUrl,
         input_urls: imageUrl,
         video_urls: videoUrl, 
         mode: "720p", // Используем 720p по умолчанию
-        character_orientation: "image"
+        character_orientation: "video"
     };
 
     // --- 1. ЛОГИРОВАНИЕ ---
