@@ -6771,17 +6771,17 @@ async function startKieAiVideo2Video(activeModelConfig, imageUrl, videoUrl, API_
     // 🛑 КРИТИЧНО: Формирование Callback URL
     const callbackUrl = `${envData.WORKER_DOMAIN}/api/kieai-callback?chatId=${chatId}`;
 
-    // ✅ Формируем объект 'input' для Wan 2.2 Animate API
-    // Документация требует video_url, image_url и опционально resolution
+    // Документация требует input_urls для фото и video_urls для видео
     const input = {
-        video_url: videoUrl, 
-        image_url: imageUrl,
-        resolution: "480p", // Используем 480p по умолчанию
+        input_urls: imageUrl,
+        video_urls: videoUrl, 
+        mode: "720p", // Используем 720p по умолчанию
+        character_orientation: "image"
     };
 
     // --- 1. ЛОГИРОВАНИЕ ---
     if (envData.DEBUG_ENABLED && envData.DEBUG_CHAT_ID) {
-        const debugMessage = `🛠️ *[KIE.ai Wan Animate Request]*\n\n*Chat ID:* ${chatId}\n*Model:* ${activeModelConfig.MODEL}\n\n*Input Body:*\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\n*Callback URL:* \`${callbackUrl}\``;
+        const debugMessage = `🛠️ *[KIE.ai Video2Video Request]*\n\n*Chat ID:* ${chatId}\n*Model:* ${activeModelConfig.MODEL}\n\n*Input Body:*\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\n*Callback URL:* \`${callbackUrl}\``;
         await sendMessageMarkdown(envData.DEBUG_CHAT_ID, debugMessage, envData.TELEGRAM_BOT_TOKEN);
     }
 
