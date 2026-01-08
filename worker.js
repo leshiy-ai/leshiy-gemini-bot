@@ -377,7 +377,6 @@ const AI_MODELS = {
         MODEL: 'kling-2.6/motion-control', 
         API_KEY: 'KIEAI_API_KEY', 
         BASE_URL: 'https://api.kie.ai/api/v1',
-        pricing: 9
         // ✅ ДИНАМИЧЕСКАЯ ЦЕНА Wan (Посекундная)
         pricing: {
             //'480p': 6.0,  // Тариф за сек, 480p
