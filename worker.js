@@ -6834,8 +6834,9 @@ async function startKieAiKlingVideo2Video(activeModelConfig, imageUrl, videoUrl,
     const input = {
         input_urls: imageUrl,
         video_urls: videoUrl, 
-        mode: "720p", // Используем 720p по умолчанию
-        character_orientation: "video"
+        prompt: "Change character from photo on video",
+        character_orientation: "video",
+        mode: "480p" // Используем 720p по умолчанию
     };
 
     // --- 1. ЛОГИРОВАНИЕ ---
