@@ -13105,10 +13105,7 @@ async function startVideoGenerationLogic(chatId, lastPrompt, workingMessageId, e
 
     // 2. Окончательная стоимость: округляем вверх, так как списание всегда идет целыми кредитами
     const finalVideoCost = Math.ceil(rawVideoCost); 
-    
-    // 🛑 ИСПОЛЬЗУЕМ finalVideoCost ВМЕСТО videoCost
-    // 🛑 СТАРАЯ СТРОКА: const videoCost = COST_VIDEO_CREDIT;
-    
+
     // 🛑 ВЫЗОВ УНИВЕРСАЛЬНОЙ ФУНКЦИИ
     const balanceCheckResult = await checkAndDeductBalance(
         chatId, 
