@@ -27,6 +27,7 @@ WORKER_DOMAIN = "https://leshiy-gemini-bot.leshiyalex.workers.dev"
 # API-ключи из секретных переменных
 TELEGRAM_BOT_TOKEN = ""
 GEMINI_API_KEY = ""
+GEMINI_PROXY_KEY = ""
 GROK_API_KEY = ""
 DEEPSEEK_API_KEY = ""
 BOTHUB_API_KEY = ""
