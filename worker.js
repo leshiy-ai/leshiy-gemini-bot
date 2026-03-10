@@ -277,7 +277,7 @@ const AI_MODELS = {
         API_KEY: 'GEMINI_API_KEY', 
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta'
     },
-    // ❌ ПЛАТНО: You exceeded your current quota
+    /*// ❌ ПЛАТНО: You exceeded your current quota
     TEXT_TO_IMAGE_GEMINI: { 
         SERVICE: 'GEMINI', 
         FUNCTION: callGeminiText2Image, 
@@ -285,8 +285,6 @@ const AI_MODELS = {
         MODEL: 'gemini-2.5-flash',
         API_KEY: 'GEMINI_API_KEY', 
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
-        //BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta',
-        PROXY_KEY: 'GEMINI_PROXY_KEY',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
     },
     // ❌ ПЛАТНО: Image generation is not available in your country
@@ -296,12 +294,10 @@ const AI_MODELS = {
         //MODEL: 'gemini-2.5-flash',
         MODEL: 'gemini-2.5-flash-image',
         API_KEY: 'GEMINI_API_KEY', 
-        //BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
-        BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta',
-        PROXY_KEY: 'GEMINI_PROXY_KEY',
+        BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
     },
-    /*// ❌ ПЛАТНО: Video generation is not available in your country
+    // ❌ ПЛАТНО: Video generation is not available in your country
     IMAGE_TO_VIDEO_VEO: { 
         SERVICE: 'GEMINI', 
         FUNCTION: startGeminiVeoImageToVideo, 
@@ -4213,10 +4209,11 @@ ${TARIFF_MESSAGE_TEXT}
         contents: contents
     };
 
-    const response = await envData.GEMINI_PROXY.fetch(url, { // <--- вызываем через биндинг
+    const response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
+            'X-Target-URL': url,
             'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
         },
         body: JSON.stringify(body),
@@ -4249,7 +4246,6 @@ async function callGeminiText2Image(config, prompt, envData) {
     // 1. Извлечение необходимых данных
     const apiKey = envData[config.API_KEY]; 
     const model = config.MODEL; 
-    const PROXY_KEY = envData[config.PROXY_KEY]; 
 
     if (!apiKey) { throw new Error(`API Key для Gemini Image Generator (${config.API_KEY}) не настроен.`); }
     if (!prompt || prompt.length < 5) { throw new Error("Промпт для генерации слишком короткий."); }
@@ -4273,10 +4269,8 @@ async function callGeminiText2Image(config, prompt, envData) {
         };
 
     try {
-        const response = await envData.LESHIY_AI_PROXY.fetch(url, { method: 'POST', headers: {
-             'Content-Type': 'application/json',
-             'X-Target-URL': url, // <--- ДОБАВЛЯЕМ X-Target-URL для AI-Proxy
-             'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
+        const response = await fetch(url, { method: 'POST', headers: {
+             'Content-Type': 'application/json'
         }, body: JSON.stringify(body) });
 
         if (!response.ok) {
@@ -4329,7 +4323,6 @@ async function callGeminiImage2Image(config, prompt, imageBase64, envData, final
     // 1. Извлечение необходимых данных
     const apiKey = envData[config.API_KEY]; // Ключ из envData через имя ключа из config
     const model = config.MODEL; 
-    const PROXY_KEY = envData[config.PROXY_KEY]; 
 
     if (!apiKey) { throw new Error(`API Key для Gemini Image Generator (${config.API_KEY}) не настроен.`); }
     if (!imageBase64 || imageBase64.length < 100) { throw new Error("Исходное изображение в Base64 отсутствует или слишком короткое для Gemini Image Generator."); }
@@ -4353,9 +4346,8 @@ async function callGeminiImage2Image(config, prompt, imageBase64, envData, final
     };
 
     try {
-        const response = await envData.GEMINI_PROXY.fetch(url, { method: 'POST', headers: {
-            'Content-Type': 'application/json',
-            'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY 
+        const response = await fetch(url, { method: 'POST', headers: {
+            'Content-Type': 'application/json'
         }, body: JSON.stringify(body) });
 
         if (!response.ok) {
