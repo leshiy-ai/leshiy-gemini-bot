@@ -233,8 +233,8 @@ const AI_MODELS = {
         FUNCTION: callGeminiChat, 
         MODEL: 'gemini-2.5-flash', 
         API_KEY: 'GEMINI_API_KEY', 
-        // BASE_URL: 'https://generativelanguage.googleapis.com/v1beta'
-        BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta'
+        BASE_URL: 'https://generativelanguage.googleapis.com/v1beta'
+        //BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta'
     },
     // ✅ Работает распознавание голоса
     AUDIO_TO_TEXT_GEMINI: { 
@@ -4210,7 +4210,7 @@ ${TARIFF_MESSAGE_TEXT}
     const response = await fetch(url, {
         method: 'POST',
         headers: { 
-            'X-Proxy-Secret': `${envData.GEMINI_PROXY_KEY}`, // переменная для прокси
+            //'X-Proxy-Secret': `${envData.GEMINI_PROXY_KEY}`, // переменная для прокси
             'Content-Type': 'application/json' 
         },
         body: JSON.stringify(body),
