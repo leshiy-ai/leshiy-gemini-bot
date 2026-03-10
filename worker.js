@@ -4208,13 +4208,15 @@ ${TARIFF_MESSAGE_TEXT}
         },
         contents: contents
     };
-let response;
+
+    let response;
     let firstAttemptError = null;
 
     // --- ПОПЫТКА 1: Прямой прокси (GEMINI_PROXY) ---
     try {
-        console.log("Попытка 1: Через GEMINI_PROXY...");
-        
+        // 🛑 ДЕБАГ: ЛОГИРОВАНИЕ ТЕЛА ЗАПРОСА
+        envData.ctx.waitUntil(logDebug("Gemini_Proxy_REQUEST", `Отправка запроса. Попытка 1: Через GEMINI_PROXY: ${JSON.stringify(body).substring(0, 500)}`, envData));
+
         response = await envData.GEMINI_PROXY.fetch(url, {
             method: 'POST',
             headers: { 
@@ -4230,8 +4232,8 @@ let response;
             throw new Error(firstAttemptError);
         }
     } catch (err) {
-        console.warn(`⚠️ GEMINI_PROXY не справился (${err.message}). Включаю резервный AI_PROXY...`);
-
+        // ДЕБАГ - Переход к AI-Proxy
+        envData.ctx.waitUntil(logDebug("Gemini_Proxy_REQUEST", `GEMINI_PROXY не справился (${err.message}). Попытка 2: Через AI_PROXY: ${JSON.stringify(body).substring(0, 500)}`, envData));
         // --- ПОПЫТКА 2: Универсальный прокси (LESHIY_AI_PROXY) ---
         try {
             // Здесь мы используем оригинальный URL Google как цель
