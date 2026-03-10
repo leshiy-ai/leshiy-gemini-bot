@@ -4161,6 +4161,7 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     // --- ДИНАМИЧЕСКИЕ ПАРАМЕТРЫ ИЗ КОНФИГУРАЦИИ ---
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const GEMINI_PROXY_KEY = envData[GEMINI_PROXY_KEY]; 
     const BASE_URL = config.BASE_URL; 
     const MODEL = config.MODEL; 
     
@@ -4209,7 +4210,10 @@ ${TARIFF_MESSAGE_TEXT}
 
     const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Proxy-Secret': GEMINI_PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMENY-PROXY
+        },
         body: JSON.stringify(body),
     });
 
@@ -16161,6 +16165,7 @@ export default {
             TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN, // Токен для телеги
             // API-ключи из секретных переменных
             GEMINI_API_KEY: env.GEMINI_API_KEY,
+            GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY,
             DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,
             BOTHUB_API_KEY: env.BOTHUB_API_KEY,
             KIEAI_API_KEY: env.KIEAI_API_KEY,
