@@ -4246,6 +4246,12 @@ ${TARIFF_MESSAGE_TEXT}
                 },
                 body: JSON.stringify(body),
             });
+
+            // ДОБАВЛЯЕМ ВТОРУЮ ПРОВЕРКУ
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`AI_PROXY также вернул ошибку: ${response.status} - ${errText.substring(0, 50)}`);
+            }
         } catch (err2) {
             // ДЕБАГ - Итоговый вывод ошибки
             envData.ctx.waitUntil(logDebug("Gemini-Proxy", `Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${err2.message}`, envData));
