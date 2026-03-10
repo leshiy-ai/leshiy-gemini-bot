@@ -16167,6 +16167,7 @@ export default {
             TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN, // Токен для телеги
             // API-ключи из секретных переменных
             GEMINI_API_KEY: env.GEMINI_API_KEY,
+            LESHIY_AI_PROXY: env.LESHIY_AI_PROXY,
             GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY,
             GEMINI_PROXY: env.GEMINI_PROXY,
             DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,

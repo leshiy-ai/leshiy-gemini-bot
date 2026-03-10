@@ -54,6 +54,14 @@ binding = "CHAT_HISTORY_STORAGE"
 id = "b705c798e7c44e19aa880047fa154681"
 # ID вашего хранилища нужно скопировать из Cloudflare Dashboard.
 
+[[services]]
+binding = "LESHIY_AI_PROXY"    # Имя переменной в коде бота (env.LESHIY_AI_PROXY)
+service = "leshiy-ai-proxy"    # Имя второго воркера в панели Cloudflare
+
+[[services]]
+binding = "GEMINI_PROXY" # Имя переменной, которая будет доступна в env
+service = "gemini-proxy" # Точное имя (ID) твоего прокси-воркера в Cloudflare
+
 # [ai] - для Workers AI
 [ai]
 binding = "AI"
