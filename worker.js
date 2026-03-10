@@ -4201,24 +4201,56 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
 
 ${TARIFF_MESSAGE_TEXT}
 `;
-    // 3. ТЕЛО ЗАПРОСА (ВОССТАНОВЛЕННАЯ РАБОЧАЯ ЛОГИКА)
+    // ТЕЛО ЗАПРОСА
     const body = {
         systemInstruction: {
             parts: [{ text: systemInstructionText }]
         },
         contents: contents
     };
+let response;
+    let firstAttemptError = null;
 
-    const response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'X-Target-URL': url,
-            'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
-        },
-        body: JSON.stringify(body),
-    });
+    // --- ПОПЫТКА 1: Прямой прокси (GEMINI_PROXY) ---
+    try {
+        console.log("Попытка 1: Через GEMINI_PROXY...");
+        
+        response = await envData.GEMINI_PROXY.fetch(url, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Proxy-Secret': PROXY_KEY 
+            },
+            body: JSON.stringify(body),
+        });
 
+        // Если получили 429 или любую ошибку 4xx/5xx — идем в catch
+        if (!response.ok) {
+            firstAttemptError = `Status ${response.status}`;
+            throw new Error(firstAttemptError);
+        }
+    } catch (err) {
+        console.warn(`⚠️ GEMINI_PROXY не справился (${err.message}). Включаю резервный AI_PROXY...`);
+
+        // --- ПОПЫТКА 2: Универсальный прокси (LESHIY_AI_PROXY) ---
+        try {
+            // Здесь мы используем оригинальный URL Google как цель
+            const response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Target-URL': url,
+                    'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
+                },
+                body: JSON.stringify(body),
+            });
+        } catch (err2) {
+            // Если и тут беда — выбрасываем критическую ошибку
+            throw new Error(`Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${err2.message}`);
+        }
+    }
+
+    // --- ФИНАЛЬНАЯ ПРОВЕРКА ---
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Gemini Chat API Error: ${response.status} - ${errorText.substring(0, 150)}...`);
