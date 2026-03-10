@@ -4161,7 +4161,6 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     // --- ДИНАМИЧЕСКИЕ ПАРАМЕТРЫ ИЗ КОНФИГУРАЦИИ ---
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
-    const GEMINI_PROXY_KEY = envData[GEMINI_PROXY_KEY]; 
     const BASE_URL = config.BASE_URL; 
     const MODEL = config.MODEL; 
     
@@ -4212,7 +4211,7 @@ ${TARIFF_MESSAGE_TEXT}
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'X-Proxy-Secret': GEMINI_PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMENY-PROXY
+          'X-Proxy-Secret': env.GEMINI_PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMENY-PROXY
         },
         body: JSON.stringify(body),
     });
