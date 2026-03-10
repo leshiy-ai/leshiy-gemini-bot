@@ -4237,7 +4237,7 @@ ${TARIFF_MESSAGE_TEXT}
         // --- ПОПЫТКА 2: Универсальный прокси (LESHIY_AI_PROXY) ---
         try {
             // Здесь мы используем оригинальный URL Google как цель
-            const response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
+            response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
