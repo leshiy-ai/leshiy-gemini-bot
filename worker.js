@@ -4215,7 +4215,7 @@ ${TARIFF_MESSAGE_TEXT}
     // --- ПОПЫТКА 1: Прямой прокси (GEMINI_PROXY) ---
     try {
         // 🛑 ДЕБАГ: ЛОГИРОВАНИЕ ТЕЛА ЗАПРОСА
-        envData.ctx.waitUntil(logDebug("Gemini_Proxy_REQUEST", `Отправка запроса. Попытка 1: Через GEMINI_PROXY: ${JSON.stringify(body).substring(0, 500)}`, envData));
+        envData.ctx.waitUntil(logDebug("Gemini_Proxy_REQUEST", `Отправка запроса. Попытка 1: Через GEMINI_PROXY`, envData));
 
         response = await envData.GEMINI_PROXY.fetch(url, {
             method: 'POST',
@@ -4233,7 +4233,7 @@ ${TARIFF_MESSAGE_TEXT}
         }
     } catch (err) {
         // ДЕБАГ - Переход к AI-Proxy
-        envData.ctx.waitUntil(logDebug("Gemini_Proxy_REQUEST", `GEMINI_PROXY не справился (${err.message}). Попытка 2: Через AI_PROXY: ${JSON.stringify(body).substring(0, 500)}`, envData));
+        envData.ctx.waitUntil(logDebug("Gemini_Proxy_REQUEST", `GEMINI_PROXY не справился (${err.message}). Попытка 2: Через AI_PROXY`, envData));
         // --- ПОПЫТКА 2: Универсальный прокси (LESHIY_AI_PROXY) ---
         try {
             // Здесь мы используем оригинальный URL Google как цель
