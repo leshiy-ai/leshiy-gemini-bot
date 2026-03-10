@@ -233,8 +233,7 @@ const AI_MODELS = {
         FUNCTION: callGeminiChat, 
         MODEL: 'gemini-2.5-flash', 
         API_KEY: 'GEMINI_API_KEY', 
-        //BASE_URL: 'https://generativelanguage.googleapis.com/v1beta'
-        BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta',
+        BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
         PROXY_KEY: 'GEMINI_PROXY_KEY'
     },
     // ✅ Работает распознавание голоса
@@ -285,7 +284,9 @@ const AI_MODELS = {
         //MODEL: 'gemini-2.5-flash-image',
         MODEL: 'gemini-2.5-flash',
         API_KEY: 'GEMINI_API_KEY', 
-        BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
+        //BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
+        BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta',
+        PROXY_KEY: 'GEMINI_PROXY_KEY',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
     },
     // ❌ ПЛАТНО: Image generation is not available in your country
@@ -295,7 +296,9 @@ const AI_MODELS = {
         //MODEL: 'gemini-2.5-flash',
         MODEL: 'gemini-2.5-flash-image',
         API_KEY: 'GEMINI_API_KEY', 
-        BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
+        //BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
+        BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta',
+        PROXY_KEY: 'GEMINI_PROXY_KEY',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
     },
     /*// ❌ ПЛАТНО: Video generation is not available in your country
@@ -4246,7 +4249,8 @@ async function callGeminiText2Image(config, prompt, envData) {
     // 1. Извлечение необходимых данных
     const apiKey = envData[config.API_KEY]; 
     const model = config.MODEL; 
-    
+    const PROXY_KEY = envData[config.PROXY_KEY]; 
+
     if (!apiKey) { throw new Error(`API Key для Gemini Image Generator (${config.API_KEY}) не настроен.`); }
     if (!prompt || prompt.length < 5) { throw new Error("Промпт для генерации слишком короткий."); }
 
@@ -4269,7 +4273,10 @@ async function callGeminiText2Image(config, prompt, envData) {
         };
 
     try {
-        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const response = await envData.GEMINI_PROXY.fetch(url, { method: 'POST', headers: {
+             'Content-Type': 'application/json',
+             'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
+        }, body: JSON.stringify(body) });
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -4321,7 +4328,8 @@ async function callGeminiImage2Image(config, prompt, imageBase64, envData, final
     // 1. Извлечение необходимых данных
     const apiKey = envData[config.API_KEY]; // Ключ из envData через имя ключа из config
     const model = config.MODEL; 
-    
+    const PROXY_KEY = envData[config.PROXY_KEY]; 
+
     if (!apiKey) { throw new Error(`API Key для Gemini Image Generator (${config.API_KEY}) не настроен.`); }
     if (!imageBase64 || imageBase64.length < 100) { throw new Error("Исходное изображение в Base64 отсутствует или слишком короткое для Gemini Image Generator."); }
 
@@ -4344,7 +4352,10 @@ async function callGeminiImage2Image(config, prompt, imageBase64, envData, final
     };
 
     try {
-        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const response = await envData.GEMINI_PROXY.fetch(url, { method: 'POST', headers: {
+            'Content-Type': 'application/json',
+            'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY 
+        }, body: JSON.stringify(body) });
 
         if (!response.ok) {
             const errorText = await response.text();
