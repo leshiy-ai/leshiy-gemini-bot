@@ -4210,7 +4210,7 @@ ${TARIFF_MESSAGE_TEXT}
     const response = await fetch(url, {
         method: 'POST',
         headers: { 
-            'X-Proxy-Secret': `${envData.GEMINI_PROXY_KEY}`,
+            'X-Proxy-Secret': `${envData.GEMINI_PROXY_KEY}`, // переменная для прокси
             'Content-Type': 'application/json' 
         },
         body: JSON.stringify(body),
