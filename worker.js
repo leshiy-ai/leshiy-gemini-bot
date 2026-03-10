@@ -4210,7 +4210,7 @@ ${TARIFF_MESSAGE_TEXT}
         contents: contents
     };
 
-    const response = await fetch(url, {
+    const response = await envData.GEMINI_PROXY.fetch(url, { // <--- вызываем через биндинг
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
@@ -16168,6 +16168,7 @@ export default {
             // API-ключи из секретных переменных
             GEMINI_API_KEY: env.GEMINI_API_KEY,
             GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY,
+            GEMINI_PROXY: env.GEMINI_PROXY,
             DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,
             BOTHUB_API_KEY: env.BOTHUB_API_KEY,
             KIEAI_API_KEY: env.KIEAI_API_KEY,
