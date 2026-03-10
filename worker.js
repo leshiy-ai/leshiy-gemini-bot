@@ -4162,8 +4162,8 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
     const BASE_URL = config.BASE_URL; 
-    const MODEL = config.MODEL; 
-    
+    const MODEL = config.MODEL;
+
     // --- УНИФИЦИРОВАННАЯ СБОРКА URL ---
     // Формат: BASE_URL/models/МОДЕЛЬ:generateContent?key=КЛЮЧ
     const url = `${BASE_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
@@ -4172,7 +4172,7 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
 
     if (!API_KEY) {
-        throw new Error(`GemINI API key is missing. Expected env var: ${API_KEY_ENV_NAME}`);
+        throw new Error(`Gemini API key is missing. Expected env var: ${API_KEY_ENV_NAME}`);
     }
 
     // 1. Преобразуем историю в формат Gemini Content
@@ -4210,7 +4210,7 @@ ${TARIFF_MESSAGE_TEXT}
     const response = await fetch(url, {
         method: 'POST',
         headers: { 
-            'X-Proxy-Secret': 'j3qq4h7h2v2hch4',
+            'X-Proxy-Secret': `${envData.GEMINI_PROXY_KEY}`,
             'Content-Type': 'application/json' 
         },
         body: JSON.stringify(body),
