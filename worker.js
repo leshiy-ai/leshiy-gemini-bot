@@ -233,8 +233,9 @@ const AI_MODELS = {
         FUNCTION: callGeminiChat, 
         MODEL: 'gemini-2.5-flash', 
         API_KEY: 'GEMINI_API_KEY', 
-        BASE_URL: 'https://generativelanguage.googleapis.com/v1beta'
-        //BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta'
+        //BASE_URL: 'https://generativelanguage.googleapis.com/v1beta'
+        BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta',
+        PROXY_KEY: 'GEMINI_PROXY_KEY'
     },
     // ✅ Работает распознавание голоса
     AUDIO_TO_TEXT_GEMINI: { 
@@ -4163,6 +4164,8 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     const API_KEY = envData[API_KEY_ENV_NAME]; 
     const BASE_URL = config.BASE_URL; 
     const MODEL = config.MODEL;
+    const PROXY_KEY_ENV_NAME = config.PROXY_KEY; 
+    const PROXY_KEY = envData[PROXY_KEY_ENV_NAME]; 
 
     // --- УНИФИЦИРОВАННАЯ СБОРКА URL ---
     // Формат: BASE_URL/models/МОДЕЛЬ:generateContent?key=КЛЮЧ
@@ -4210,8 +4213,8 @@ ${TARIFF_MESSAGE_TEXT}
     const response = await fetch(url, {
         method: 'POST',
         headers: { 
-            //'X-Proxy-Secret': `${envData.GEMINI_PROXY_KEY}`, // переменная для прокси
-            'Content-Type': 'application/json' 
+            'Content-Type': 'application/json',
+            'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
         },
         body: JSON.stringify(body),
     });
