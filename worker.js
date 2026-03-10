@@ -276,7 +276,7 @@ const AI_MODELS = {
         API_KEY: 'GEMINI_API_KEY', 
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta'
     },
-    /*// ❌ ПЛАТНО: You exceeded your current quota
+    // ❌ ПЛАТНО: You exceeded your current quota
     TEXT_TO_IMAGE_GEMINI: { 
         SERVICE: 'GEMINI', 
         FUNCTION: callGeminiText2Image, 
@@ -296,7 +296,7 @@ const AI_MODELS = {
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
     },
-    // ❌ ПЛАТНО: Video generation is not available in your country
+    /*// ❌ ПЛАТНО: Video generation is not available in your country
     IMAGE_TO_VIDEO_VEO: { 
         SERVICE: 'GEMINI', 
         FUNCTION: startGeminiVeoImageToVideo, 
