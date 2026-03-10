@@ -284,8 +284,8 @@ const AI_MODELS = {
         //MODEL: 'gemini-2.5-flash-image',
         MODEL: 'gemini-2.5-flash',
         API_KEY: 'GEMINI_API_KEY', 
-        //BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
-        BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta',
+        BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
+        //BASE_URL: 'https://gemini-proxy.leshiyalex.workers.dev/v1beta',
         PROXY_KEY: 'GEMINI_PROXY_KEY',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
     },
@@ -4275,6 +4275,7 @@ async function callGeminiText2Image(config, prompt, envData) {
     try {
         const response = await envData.LESHIY_AI_PROXY.fetch(url, { method: 'POST', headers: {
              'Content-Type': 'application/json',
+             'X-Target-URL': url, // <--- ДОБАВЛЯЕМ X-Target-URL для AI-Proxy
              'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
         }, body: JSON.stringify(body) });
 
