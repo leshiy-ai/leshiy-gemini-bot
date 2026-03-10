@@ -4273,7 +4273,7 @@ async function callGeminiText2Image(config, prompt, envData) {
         };
 
     try {
-        const response = await envData.GEMINI_PROXY.fetch(url, { method: 'POST', headers: {
+        const response = await envData.LESHIY_AI_PROXY.fetch(url, { method: 'POST', headers: {
              'Content-Type': 'application/json',
              'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
         }, body: JSON.stringify(body) });
