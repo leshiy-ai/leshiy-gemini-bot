@@ -4211,6 +4211,7 @@ ${TARIFF_MESSAGE_TEXT}
 
     let response;
     let firstAttemptError = null;
+    let secondAttemptError = null;
 
     // --- ПОПЫТКА 1: Прямой прокси (GEMINI_PROXY) ---
     try {
@@ -4249,21 +4250,21 @@ ${TARIFF_MESSAGE_TEXT}
 
             // ДОБАВЛЯЕМ ВТОРУЮ ПРОВЕРКУ
             if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(`AI_PROXY также вернул ошибку: ${response.status} - ${errText.substring(0, 50)}`);
+                secondAttemptError = `Status ${response.status}`;
+                throw new Error(secondAttemptError);
             }
         } catch (err2) {
             // ДЕБАГ - Итоговый вывод ошибки
-            envData.ctx.waitUntil(logDebug("Gemini-Proxy", `Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${err2.message}`, envData));
+            envData.ctx.waitUntil(logDebug("Gemini-Proxy", `Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${secondAttemptError}`, envData));
             // Если и тут беда — выбрасываем критическую ошибку
-            throw new Error(`Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${err2.message}`);
+            throw new Error(`Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${secondAttemptError}`);
         }
     }
 
     // --- ФИНАЛЬНАЯ ПРОВЕРКА ---
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Gemini Chat API Error: ${response.status} - ${errorText.substring(0, 150)}...`);
+        throw new Error(`Gemini Chat API Error: ${response.status} - ${errorText.substring(0, 300)}...`);
     }
 
     const data = await response.json();
