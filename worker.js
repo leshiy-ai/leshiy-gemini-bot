@@ -4210,8 +4210,8 @@ ${TARIFF_MESSAGE_TEXT}
     const response = await fetch(url, {
         method: 'POST',
         headers: { 
+          'X-Proxy-Secret': "j3qq4h7h2v2hch4", // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
           'Content-Type': 'application/json',
-          'X-Proxy-Secret': "j3qq4h7h2v2hch4" // <--- ДОБАВЛЯЕМ для GEMENY-PROXY
         },
         body: JSON.stringify(body),
     });
