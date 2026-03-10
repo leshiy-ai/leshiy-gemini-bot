@@ -4211,7 +4211,7 @@ ${TARIFF_MESSAGE_TEXT}
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'X-Proxy-Secret': env.GEMINI_PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMENY-PROXY
+          'X-Proxy-Secret': envData.GEMINI_PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMENY-PROXY
         },
         body: JSON.stringify(body),
     });
