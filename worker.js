@@ -16108,15 +16108,15 @@ export default {
         //const messageText = message ? (message.text || message.caption || '') : ''; 
         let messageText = message ? (message.text || message.caption || '') : ''; 
         let isEmoji = message ? (message.text || message.caption || '') : ''; 
-        let isPhoto = isMessage && message.photo && message.photo.length > 0;
-        let isVoice = isMessage && !!message.voice;
-        let isVideo = isMessage && (!!message.video || !!message.video_note);
-        let isAnimation = isMessage && !!message.animation; // Это GIF
-        const video = isVideo ? (message.video || message.video_note) : undefined;
-        const voice = isVoice ? message.voice : undefined; // Voice object
-        const audio = message.audio; // Аудиофайл (вероятно MP3)
-        const animation = isAnimation ? message.animation : undefined; // Объект GIF
-        const document = message.document; // <--- Документ
+        let isPhoto = isMessage && message?.photo && message.photo.length > 0;
+        let isVoice = isMessage && !!message?.voice;
+        let isVideo = isMessage && (!!message?.video || !!message?.video_note);
+        let isAnimation = isMessage && !!message?.animation; // Это GIF
+        const video = isVideo ? (message?.video || message?.video_note) : undefined;
+        const voice = isVoice ? message?.voice : undefined; // Voice object
+        const audio = message?.audio; // Аудиофайл (вероятно MP3)
+        const animation = isAnimation ? message?.animation : undefined; // Объект GIF
+        const document = message?.document; // <--- Документ
 
         // ✅ ПРОВЕРКА НА GIF ВНУТРИ ДОКУМЕНТОВ (иногда Telegram шлет гифки как файлы)
         if (document && document.mime_type === 'image/gif') {isAnimation = true;}
