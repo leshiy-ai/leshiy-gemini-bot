@@ -1,7 +1,7 @@
 // Worker для Cloudflare: Мультимодальный Telegram-бот "Gemini AI" by Leshiy
 // Автор: Огорельцев Александр Валерьевич @Leshiyalex
 
-const VERSION = 'v4.5 от 18.12.2025'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
+const VERSION = 'v4.6 от 11.03.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
 
 // --- ГЛОБАЛЬНЫЕ КОНСТАНТЫ ---
 const GLOBAL_DEBUG_KEY = 'global_debug_setting'; // Отладка / Debug
