@@ -18,13 +18,13 @@ jobs:
           node-version: '20'
 
       # 2. Устанавливаем Wrangler (фиксируем на стабильной v4)
-      - name: Install Wrangler
-        run: npm install -g wrangler@4
+      #- name: Install Wrangler
+      #  run: npm install -g wrangler@4
 
       # 3. Запускаем развертывание напрямую (через команду run)
       #    Это гарантирует, что переменные окружения будут переданы
-      - name: Deploy Worker
-        run: npx wrangler deploy
+      #- name: Deploy Worker
+      #  run: npx wrangler deploy
         # Здесь Wrangler ищет CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
