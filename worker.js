@@ -16105,7 +16105,6 @@ export default {
         // -----------------------------------------------------------------------------------
 
         // Дополнительные переменные для удобства (Используем message, а не update.message)
-        //const messageText = message ? (message.text || message.caption || '') : ''; 
         let messageText = message ? (message.text || message.caption || '') : ''; 
         let isEmoji = message ? (message.text || message.caption || '') : ''; 
         let isPhoto = isMessage && message?.photo && message.photo.length > 0;
