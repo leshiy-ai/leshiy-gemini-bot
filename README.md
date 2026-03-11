@@ -146,4 +146,4 @@
 После успешного развертывания Worker'а, установите вебхук, чтобы Telegram знал, куда отправлять обновления:
 
 ```bash
-curl "[https://api.telegram.org/bot](https://api.telegram.org/bot)<TELEGRAM_BOT_TOKEN*/setWebhook?url=https://gemini-photo-bot.<ваш-аккаунт*.workers.dev"
+curl "[https://api.telegram.org/bot](https://api.telegram.org/bot)<TELEGRAM_BOT_TOKEN*/setWebhook?url=https://leshiy-gemini-bot.<ваш-аккаунт*.workers.dev"
