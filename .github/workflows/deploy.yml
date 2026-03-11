@@ -24,7 +24,7 @@ jobs:
       # 3. Запускаем развертывание напрямую (через команду run)
       #    Это гарантирует, что переменные окружения будут переданы
       - name: Deploy Worker
-        run: wrangler deploy --name gemini-photo-bot worker.js --compatibility-date 2025-12-15
+        run: npx wrangler deploy
         # Здесь Wrangler ищет CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
