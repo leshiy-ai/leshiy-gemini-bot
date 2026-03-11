@@ -231,7 +231,7 @@ const AI_MODELS = {
     TEXT_TO_TEXT_GEMINI: { 
         SERVICE: 'GEMINI', 
         FUNCTION: callGeminiChat, 
-        MODEL: 'gemini-2.0-flash', 
+        MODEL: 'gemini-2.5-flash', 
         API_KEY: 'GEMINI_API_KEY', 
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
         PROXY_KEY: 'GEMINI_PROXY_KEY'
