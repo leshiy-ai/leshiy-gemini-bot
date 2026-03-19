@@ -10257,7 +10257,7 @@ async function getCurrentCreditBalance(userId, LAST_PHOTO_STORAGE) {
 
 /**
  * 🎬 getUserVideoParams - Получает пользовательские настройки видео из KV (в формате JSON)
- * и маппит их под требования KIE.AI (duration: 5/8, quality: 720p/1080p, aspect_ratio: 3:2/2:3/1:1).
+ * и маппит их под требования KIE.AI (duration: 6/10, quality: 720p/1080p, aspect_ratio: 3:2/2:3/1:1).
  * 🛑 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Реализован полный маппинг.
  * @param {object} envData - Объект окружения.
  * @returns {Promise<{duration: string, quality: string, aspectRatioKieAi: string}>} Объект с маппингом.
@@ -10265,7 +10265,7 @@ async function getCurrentCreditBalance(userId, LAST_PHOTO_STORAGE) {
 async function getUserVideoParams(envData) {
     // Дефолтные значения для API KIE.AI (в случае отсутствия пользовательских)
     const defaultApiParams = { 
-        duration: '5', 
+        duration: '6', 
         quality: '480p', 
         aspectRatioKieAi: '3:2' // 16:9 map
     };
@@ -10290,7 +10290,7 @@ async function getUserVideoParams(envData) {
             // 1. Маппинг длительности (seconds -> duration: 5 или 8)
             const userSeconds = parseInt(userParams.seconds);
             // Если выбрано 8 сек. или больше, используем 8. Иначе — 5.
-            const duration = (userSeconds >= 8) ? "8" : "5"; 
+            const duration = (userSeconds >= 8) ? "8" : "6"; 
 
             // 2. Маппинг разрешения (resolution -> quality: 720p или 1080p)
             const resolutionMap = { 
@@ -12823,7 +12823,7 @@ async function getVideoMenuContent(chatId, LAST_PHOTO_STORAGE, currentPrompt, is
         [
             // Галочки для Длительности
             //{ text: (seconds === '4' ? '✅ ' : '') + '4 сек.', callback_data: `set_video_sec|4` },
-            { text: (seconds === '5' ? '✅ ' : '') + '5 сек.', callback_data: `set_video_sec|5` },
+            //{ text: (seconds === '5' ? '✅ ' : '') + '5 сек.', callback_data: `set_video_sec|5` },
             { text: (seconds === '6' ? '✅ ' : '') + '6 сек.', callback_data: `set_video_sec|6` },
             //{ text: (seconds === '7' ? '✅ ' : '') + '7 сек.', callback_data: `set_video_sec|7` },
             //{ text: (seconds === '8' ? '✅ ' : '') + '8 сек.', callback_data: `set_video_sec|8` },
