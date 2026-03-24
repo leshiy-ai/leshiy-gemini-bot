@@ -4675,13 +4675,14 @@ async function startGeminiVeoImageToVideo(config, prompt, imageBase64, imageMime
 
 // ✅ *** 2.10. Workers AI Chat API (для текстового общения с историей) ***
 async function callWorkersAIChat(config, chatHistory, userMessageText, envData) {
-    const { AI } = envData;
-    if (!AI) {
-        throw new Error("Workers AI binding 'AI' не настроен. Проверьте Cloudflare Dashboard.");
-    }
-
-    const MODEL_NAME = config.MODEL;
-    // --- УДАЛЯЕМ ЛИШНИЕ ПЕРЕМЕННЫЕ ИЗ-ЗА НОВОЙ ЛОГИКИ ПЕРЕХВАТА ---
+    // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
+    const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
+    const MODEL_NAME = config.MODEL;
+    const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${MODEL_NAME}`;
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+          throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
+    }
 
     // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА
     // УДАЛЯЕМ ЛОГИКУ, КОТОРАЯ СТИМУЛИРУЕТ ТЕГИ <think>
@@ -4724,151 +4725,42 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
     // Добавляем текущее сообщение пользователя
     messages.push({ role: 'user', content: userMessageText });
 
+    // *** ДОБАВЛЯЕМ ЛИМИТ ТОКЕНОВ И ТЕМПЕРАТУРУ ***
+    const payload = {
+        messages: messages,
+        stream: false, // Отключаем стриминг, чтобы избежать обрезки
+        max_tokens: 1024, // Увеличиваем лимит токенов для безопасности
+        temperature: 0.7 // Умеренная температура
+    };
     try {
-        // *** ДОБАВЛЯЕМ ЛИМИТ ТОКЕНОВ И ТЕМПЕРАТУРУ ***
-        const response = await AI.run(MODEL_NAME, { 
-            messages: messages,
-            stream: false, // Отключаем стриминг, чтобы избежать обрезки
-            max_tokens: 1024, // Увеличиваем лимит токенов для безопасности
-            temperature: 0.7 // Умеренная температура
-        });
+            const httpResponse = await fetch(URL, { // Переименовал для ясности, что это поток
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
 
-        if (!response || !response.response) {
-            throw new Error(`Workers AI не вернул ожидаемый ответ. Response: ${JSON.stringify(response)}`);
-        }
+            if (!httpResponse.ok) {
+                const errorData = await httpResponse.text();
+                throw new Error(`CF API Error: ${httpResponse.status} - ${errorData}`);
+            }
+
+            const result = await httpResponse.json();
+            // Сохраняем твою переменную aiResponse (в твоем коде ниже ты используешь response)
+            const response = result.result; 
+
+            // Твоя проверка (теперь она сработает, т.к. в response лежит содержимое result)
+            if (!response || !response.response) {
+                throw new Error(`Workers AI не вернул ожидаемый ответ. Response: ${JSON.stringify(result)}`);
+            }
 
         return response.response.trim(); // Возвращаем сырой, но полный ответ
     } catch (e) {
         console.error("Workers AI call failed:", e);
         throw new Error(`Ошибка Workers AI: ${e.message}`);
     }
-}
-
-// ✅ *** 2.10. Workers AI Chat API (для текстового общения с историей) ***
-/**
- * Вызывает модель Gemma-2b через Workers AI для генерации ответа в чате.
- * @param {Object} config - Объект активной конфигурации (AI_MODELS.TEXT_TO_TEXT_WORKERS_AI).
- * @param {Array<Object>} chatHistory - История чата в формате { role: 'user' | 'model', text: string }.
- * @param {string} userMessageText - Текущее сообщение пользователя.
- * @param {Object} envData - Объект окружения Cloudflare Worker, содержащий привязку AI.
- * @returns {Promise<string>} Сгенерированный текстовый ответ.
- */
-async function callWorkersAIChatOldVersion(config, chatHistory, userMessageText, envData) {
-    // ВАЖНО: Мы не используем config.MODEL в этой версии, но функция должна принимать config
-    // для совместимости с универсальным вызовом из processTextMessage.
-    const { AI } = envData;
-    if (!AI) {
-        throw new Error("Workers AI binding 'AI' не настроен. Проверьте Cloudflare Dashboard.");
-    }
-
-    // --- ВАШИ ПЕРЕМЕННЫЕ ДЛЯ ССЫЛОК И ТАРИФОВ ---
-    const MODEL_NAME = config.MODEL; // Используем модель из конфигурации
-    // --- КОНЕЦ ПЕРЕМЕННЫХ ---
-
-
-    // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА
-    const systemPromptText = `
-    ТЫ ДОЛЖЕН СТРОГО СЛЕДОВАТЬ ВСЕМ ИНСТРУКЦИЯМ.
-    ТЫ НЕ ЯВЛЯЕШЬСЯ LLaMA, AI ОТ Meta, или большой языковой моделью.
-    Ты — многофункциональный AI-ассистент "Gemini AI" от Leshiy, отвечающий на русском языке.
-Твои ключевые функции:
-1. Платные функции: Улучшение фото и создание видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
-2. Генерация контента: Ты создаешь новые изображения по текстовым промптам (команда /create) бесплатно и без ограничений.
-3. Распознавание речи: Ты транскрибируешь голосовые сообщения пользователя в текст, который затем обрабатываешь.
-4. Чат: Ты ведешь диалог, отвечаешь на вопросы и сохраняешь контекст беседы.
-
-Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo и /create.
-Ответы должны быть информативными и доброжелательными.
-
-    ${TARIFF_MESSAGE_TEXT}
-`.trim();
-
-    // 2. ФОРМИРОВАНИЕ ИСТОРИИ (messages)
-
-    // Инициализация массива с ИСКУССТВЕННОЙ ПРЕДЫСТОРИЕЙ, чтобы закрепить личность.
-    const messages = [
-        {
-            // Роль 'user' всегда имеет больший вес. Мы используем её для передачи контекста.
-            role: 'user',
-            content: `Мои инструкции: ${systemPromptText}`
-        },
-        {
-            // Роль 'assistant' (модель) подтверждает, что инструкция принята и закреплена.
-            role: 'assistant',
-            content: 'Инструкции приняты. С этого момента я являюсь многофункциональным AI-ассистентом "Gemini AI" от Leshiy и буду следовать всем указаниям. Чем могу помочь?'
-        }
-    ];
-
-    // Добавляем реальную историю чата
-    chatHistory.forEach(msg => {
-        messages.push({
-            role: msg.role === 'user' ? 'user' : 'assistant',
-            content: msg.text
-        });
-    });
-
-    // Добавляем текущее сообщение пользователя
-    messages.push({ role: 'user', content: userMessageText });
-
-    try {
-        const response = await AI.run(MODEL_NAME, { messages });
-
-        if (!response || !response.response) {
-            throw new Error(`Workers AI не вернул ожидаемый ответ. Response: ${JSON.stringify(response)}`);
-        }
-
-        let modelResponse = response.response.trim();
-
-        // --- 3. ФИНАЛЬНАЯ ЛОГИКА ПЕРЕХВАТА И ПОСТ-ОБРАБОТКИ ---
-
-        const userMsg = userMessageText.toLowerCase().trim();
-        const keywordsToFix = ['LLaMA', 'Meta AI', 'MetaAI', 'austin', 'языковая модель', 'language model'];
-        const isSelfCorrectionNeeded = keywordsToFix.some(keyword =>
-            modelResponse.toLowerCase().includes(keyword.toLowerCase())
-        );
-
-        // 1. ПЕРЕХВАТ ЛИЧНОСТИ
-        if (userMsg.includes('кто ты') || userMsg.includes('что за бот')) {
-            modelResponse = 'Я — многофункциональный AI-ассистент "Gemini AI" от Leshiy. Я создан для помощи в чате как текстом так и голосом, генерации промптов для фото, создания картинок (/create) и улучшения фотографий (/photo)';
-        }
-
-        // 2. ПЕРЕХВАТ ТАРИФОВ/ОПЛАТЫ
-        else if (userMsg.includes('платить') || userMsg.includes('пополнить') || userMsg.includes('оплата') || userMsg.includes('тарифы') || userMsg.includes('платно')) {
-            modelResponse = TARIFF_MESSAGE_TEXT;
-        }
-
-        // 3. ПЕРЕХВАТ ФУНКЦИЙ/ЧТО УМЕЕШЬ
-        else if (userMsg.includes('что умеешь') || userMsg.includes('функции')) {
-            modelResponse = `
-Я умею:
-🎨 Генерация контента (команда /create): Создаю изображения по вашему текстовому описанию (бесплатно).
-✨ Обработка изображений (команда /photo): Генерирую детальные промпты из ваших фото.
-🎬 Работа с видео (команда /video) от генерации ролика по тексту, создание аватара по голосу, до замены персонажа в видео.
-🎙️ Распознавание речи: Превращаю голосовые сообщения в текст и обратно в голос.
-🎧 Распознавание аудио и видеофайлов - я его транскрибирую в текст на русском языке.
-💬 Чат: Веду диалог и отвечаю на вопросы.
-            `.trim();
-        }
-
-        // 4. КОМПЕНСАЦИЯ ЛЮБЫХ ОСТАТОЧНЫХ СЛЕДОВ LLaMA И СМЕШАННЫХ СЛОВ
-        else if (isSelfCorrectionNeeded) {
-            modelResponse = modelResponse
-                .replace(/LLaMA/gi, 'Gemini AI')
-                .replace(/Meta AI/gi, 'Leshiy')
-                .replace(/austin/gi, 'Gemini AI')
-                .replace(/с помощью моей способности understand and generate text/gi, '')
-                .replace(/completely бесплатными/gi, 'полностью бесплатными'); // Исправление смешанного языка
-        }
-
-        // --- КОНЕЦ ПОСТ-ОБРАБОТКИ ---
-
-        return modelResponse;
-    } catch (e) {
-        console.error("Workers AI call failed:", e);
-        // Если это ошибка, связанная с отсутствием биндинга, она все равно дойдет досюда,
-        // но выше она будет обработана, если биндинг не найден.
-        throw new Error(`Ошибка Workers AI: ${e.message}`);
-    }
 }
 
 // ✅ *** 2.11. Workers AI Speech-to-Text (Whisper - голосовые сообщения) ***
@@ -4880,26 +4772,37 @@ async function callWorkersAIChatOldVersion(config, chatHistory, userMessageText,
  * @returns {Promise<string>} Транскрибированный текст.
  */
 async function callWorkersAISpeechToText(config, audioBuffer, envData) {
-    const { AI } = envData;
+    // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
+    const CLOUDFLARE_ACCOUNT_ID = env.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const CLOUDFLARE_API_TOKEN = env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
     // --- УНИФИКАЦИЯ: Используем модель из конфигурации ---
     const WHISPER_MODEL = config.MODEL; 
     // ---------------------------------------------------
-
-    if (!AI) {
-        throw new Error("Workers AI binding 'AI' не настроен.");
-    }
+    const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${WHISPER_MODEL}`;
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+            throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
+        }
 
     // Workers AI ожидает массив байтов (Array of numbers)
     // Функция теперь принимает audioBuffer вторым аргументом, согласно новой подписи.
     const audioData = [...new Uint8Array(audioBuffer)]; 
 
     try {
-        const aiResponse = await AI.run(
-            WHISPER_MODEL,
-            {
-                audio: audioData
-            }
-        );
+        console.log(`[ASR] Отправка бинарного потока к Cloudflare AI...`);
+
+        const response = await fetch(URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                'Content-Type': 'application/octet-stream' 
+            },
+            // Передаем твой audioData (массив байтов) как Buffer, чтобы fetch его съел
+            body: Buffer.from(audioData) 
+        });
+
+        // Получаем результат в переменную aiResponse
+        const result = await response.json();
+        const aiResponse = result.result;
 
         if (!aiResponse || !aiResponse.text) {
             throw new Error(`Whisper API не вернул ожидаемый текст. Response: ${JSON.stringify(aiResponse)}`);
@@ -4923,13 +4826,15 @@ async function callWorkersAISpeechToText(config, audioBuffer, envData) {
  * @returns {Promise<string>} Сгенерированный текстовый промпт.
  */
 async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМЕНЕНА ПОДПИСЬ
-    const { AI } = envData;
+    const CLOUDFLARE_ACCOUNT_ID = env.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const CLOUDFLARE_API_TOKEN = env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
     // --- УНИФИКАЦИЯ: Используем модель из конфигурации ---
     const VISION_MODEL = config.MODEL; 
     // ---------------------------------------------------
+    const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${VISION_MODEL}`;
 
-    if (!AI) {
-        throw new Error("Workers AI binding 'AI' не настроен.");
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+        throw new Error("VISION_FAIL: Не настроены CLOUDFLARE_ACCOUNT_ID или CLOUDFLARE_API_TOKEN.");
     }
 
     // Здесь audioBuffer стал вторым аргументом, а promptText - третьим.
@@ -4939,13 +4844,22 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
     const simplifiedPrompt = `Describe the attached image in full detail as a high-quality, atmospheric, long prompt (max 750 characters) for an image generation AI like Stable Diffusion or Midjourney. Focus on subject, style, lighting, and composition. The response must be ONLY in RUSSIAN, without any added commentary.`;
 
     try {
-        const aiResponse = await AI.run(
-            VISION_MODEL,
-            {
+        const response = await fetch(URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
                 prompt: simplifiedPrompt,
-                image: imageBytes
-            }
-        );
+                image: imageBytes // Твой массив байтов [...new Uint8Array]
+            })
+        });
+
+        const result = await response.json();
+        
+        // Для совместимости: Cloudflare API через HTTP возвращает { result: { description: "..." } }
+        const aiResponse = result.result;
 
         if (!aiResponse || !aiResponse.description) { // <-- Uform возвращает 'description'
             throw new Error(`Vision API не вернул ожидаемый ответ. Response: ${JSON.stringify(aiResponse)}`);
@@ -4971,7 +4885,7 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
 async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
 
     // 1. ПРОВЕРКА: Если языки совпадают, или текст слишком короткий, или нет AI, возвращаем оригинал
-    if (sourceLang === targetLang || text.trim().length < 5 || !envData.AI) {
+    if (sourceLang === targetLang || text.trim().length < 5) {
         return text;
     }
 
@@ -4989,21 +4903,41 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
         return text;
     }
 
-    const { AI } = envData;
+    // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
+    const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
+    
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+          throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
+    }
 
     // Список бесплатных моделей в порядке предпочтения
     const FREE_MODELS = [
         "@cf/meta/llama-2-7b-chat-int8",
         "@cf/google/gemma-2b-it"
     ];
+    
 
     // 3. ПЕРЕБОР МОДЕЛЕЙ
     for (const model of FREE_MODELS) {
         try {
-            const aiResponse = await AI.run(
-                model,
-                { prompt: translatePrompt, max_tokens: 300 }
-            );
+            const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${model}`;
+            const response = await fetch(URL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    prompt: translatePrompt, 
+                    max_tokens: 300 
+                })
+            });
+
+            const result = await response.json();
+            
+            // Сохраняем твою переменную aiResponse, вытаскивая результат
+            const aiResponse = result.result;
 
             if (aiResponse && aiResponse.response && aiResponse.response.trim().length > 10) {
                 return aiResponse.response.trim();
