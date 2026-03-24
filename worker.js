@@ -4165,12 +4165,12 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     const MODEL = config.MODEL;
     const PROXY_KEY_ENV_NAME = config.PROXY_KEY; 
     const PROXY_KEY = envData[PROXY_KEY_ENV_NAME]; 
-    const GEMINI_PROXY = envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev/v1beta';
+    const PROXY_URL = envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev/v1beta';
 
     // --- УНИФИЦИРОВАННАЯ СБОРКА URL ---
     // Формат: BASE_URL/models/МОДЕЛЬ:generateContent?key=КЛЮЧ
     const url = `${BASE_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
-    const proxyUrl = `${GEMINI_PROXY}/models/${MODEL}:generateContent?key=${API_KEY}`;
+    const proxyUrl = `${PROXY_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
     // ------------------------------------
 
     const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
