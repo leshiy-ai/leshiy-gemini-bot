@@ -15867,6 +15867,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // ✅ ВНЕШНЯЯ СТРАНИЦА WEBHOOKA
     // -----------------------------
     if (request.method !== 'POST') {
+        const cdn = "https://storage.yandexcloud.net/leshiy-storage-images";
         const htmlContent = `
             <!DOCTYPE html>
             <html lang="ru">
@@ -15885,7 +15886,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                 <div class="container">
                     <h1>Telegram-бот "Gemini AI" by Leshiy.</h1>
                     <p>Этот Worker предназначен для обработки вебхуков Telegram.</p>
-                    <img src="public/qr-code_geminiai_tg_bot.jpg" alt="QR Code" style="max-width: 300px;">
+                    <img src="${cdn}/qr-code_geminiai_tg_bot.jpg" alt="QR Code" style="max-width: 300px;">
                     <p>Найди меня в Telegram: <a href="https://t.me/gemini_aitg_bot" target="_blank">@gemini_aitg_bot</a></p>
                 </div>
             </body>
