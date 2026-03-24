@@ -50,7 +50,10 @@ module.exports.handler = async (event, context) => {
         runQuery,
         filesDriver,
         nodeCrypto,
-        GEMINI_PROXY: (url, opts) => fetch(process.env.GEMINI_PROXY || url, opts),
+        // Теперь оба прокси — объекты с методом fetch, как и хочет воркер
+        GEMINI_PROXY: {
+            fetch: (url, opts) => fetch(process.env.GEMINI_PROXY || url, opts)
+        },
         LESHIY_AI_PROXY: {
             fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
         }
