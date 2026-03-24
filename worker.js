@@ -4161,15 +4161,16 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     // --- ДИНАМИЧЕСКИЕ ПАРАМЕТРЫ ИЗ КОНФИГУРАЦИИ ---
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
-    const BASE_URL = config.BASE_URL; 
+    const BASE_URL = config.BASE_URL;
     const MODEL = config.MODEL;
     const PROXY_KEY_ENV_NAME = config.PROXY_KEY; 
     const PROXY_KEY = envData[PROXY_KEY_ENV_NAME]; 
-    const GEMINI_PROXY = envData.GEMINI_PROXY;
+    const GEMINI_PROXY = envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev/v1beta';
 
     // --- УНИФИЦИРОВАННАЯ СБОРКА URL ---
     // Формат: BASE_URL/models/МОДЕЛЬ:generateContent?key=КЛЮЧ
     const url = `${BASE_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
+    const proxyUrl = `${GEMINI_PROXY}/models/${MODEL}:generateContent?key=${API_KEY}`;
     // ------------------------------------
 
     const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
@@ -4219,7 +4220,7 @@ ${TARIFF_MESSAGE_TEXT}
         // 🛑 ДЕБАГ: ЛОГИРОВАНИЕ ТЕЛА ЗАПРОСА
         envData.ctx.waitUntil(logDebug("Gemini-Proxy", `Отправка запроса. Попытка 1: Через GEMINI_PROXY`, envData));
 
-        response = await envData.GEMINI_PROXY.fetch(url, {
+        response = await fetch(proxyUrl, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
