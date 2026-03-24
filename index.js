@@ -56,6 +56,8 @@ module.exports.handler = async (event, context) => {
             fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
         }
     };
+    
+    const ctx = { waitUntil: (promise) => promise };
 
     try {
         // Пробуем вызвать воркер
