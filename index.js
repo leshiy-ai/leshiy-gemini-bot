@@ -50,9 +50,12 @@ module.exports.handler = async (event, context) => {
         runQuery,
         filesDriver,
         nodeCrypto,
+        ctx: { waitUntil: (p) => p.catch(console.error) },
+        GEMINI_PROXY: (url, opts) => fetch(process.env.GEMINI_PROXY || url, opts),
+        LESHIY_AI_PROXY: {
+            fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
+        }
     };
-
-    const ctx = { waitUntil: (promise) => promise };
 
     try {
         // Пробуем вызвать воркер

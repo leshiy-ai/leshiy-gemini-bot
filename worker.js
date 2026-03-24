@@ -47,7 +47,7 @@ const FREE_LIMIT = 80; // 80 бесплатных кредитов (4 видео
 const VIP_THRESHOLD_RUB = 1000; // Порог VIP в рублях
 const SUBSCRIPTION_DAYS = 30; // Длительность подписки по умолчанию (для setCreditSubscription)
 const SUBSCRIPTION_END_KEY_SUFFIX = '_sub_end_credit'; // Ключ для хранения метки времени окончания безлимита
-const LESHIY_CONVERTER = 'https://leshiy-media-converter.onrender.com';
+const LESHIY_CONVERTER = envData.LESHIY_CONVERTER;
 const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
 // 🛑 ЕДИНАЯ КОНСТАНТА, СОДЕРЖАЩАЯ ВСЕ ТАРИФЫ И КРЕДИТЫ (для System Prompts и Перехватов)
 const TARIFF_MESSAGE_TEXT = `Валюта бота: 💰 Кредиты (1 Кредит = ${CREDIT_COST_RUB} руб.)
@@ -4166,6 +4166,7 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     const MODEL = config.MODEL;
     const PROXY_KEY_ENV_NAME = config.PROXY_KEY; 
     const PROXY_KEY = envData[PROXY_KEY_ENV_NAME]; 
+    const GEMINI_PROXY = envData.GEMINI_PROXY;
 
     // --- УНИФИЦИРОВАННАЯ СБОРКА URL ---
     // Формат: BASE_URL/models/МОДЕЛЬ:generateContent?key=КЛЮЧ
@@ -7436,7 +7437,7 @@ const ADMIN_COMMANDS = [
  */
 async function convertOggToMp3(fileId, envData) {
     // 🛑 АДРЕС ВАШЕГО КОНВЕРТЕРА:
-    const CONVERTER_URL = 'https://leshiy-media-converter.onrender.com/ogg2mp3'; 
+    const CONVERTER_URL = `${envData.LESHIY_CONVERTER}/ogg2mp3`; 
     const token = envData.TELEGRAM_BOT_TOKEN;
 
     // 1. Получаем file_path из Telegram
@@ -14880,7 +14881,7 @@ async function setBotCommands(TELEGRAM_BOT_TOKEN, commands, scopeType, chatId = 
  * @throws {Error} - Выбрасывает ошибку в случае сбоя Render-сервиса или таймаута.
  */
 async function callLeshiyMp3Converter(endpoint, fetchOptions, queryParams, envData) {
-    const RENDER_HOST_URL = LESHIY_CONVERTER || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = envData.LESHIY_CONVERTER;
     const FULL_URL = RENDER_HOST_URL + endpoint;
     const timeoutSeconds = 120; // Максимальный таймаут по умолчанию 2 минуты
 
@@ -15068,7 +15069,7 @@ async function runGrabAudioInBackground(chatId, mediaFileId, messageId, envData,
  * @param {Object} ctx - Контекст выполнения.
  */
 async function runPhotoRotationInBackground(chatId, fileId, originalMessageId, loadingMessageId, originalReplyMarkup, angle, env, token, ctx) {
-    const RENDER_HOST_URL = 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = env.LESHIY_CONVERTER;
     const ROTATE_ENDPOINT = RENDER_HOST_URL + '/rotate-image';
   
     try {
@@ -15162,7 +15163,7 @@ async function runPhotoRotationInBackground(chatId, fileId, originalMessageId, l
  * ✅ runVideoRotationInBackground - Асинхронно скачивает видео, отправляет на Render для поворота и обновляет сообщение.
  */
 async function runVideoRotationInBackground(chatId, fileId, originalMessageId, loadingMessageId, originalReplyMarkup, angle, env, token, ctx) {
-    const RENDER_HOST_URL = 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = env.LESHIY_CONVERTER;
     const ROTATE_VIDEO_ENDPOINT = RENDER_HOST_URL + '/rotate-video';
 
     try {
@@ -15285,7 +15286,7 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
 }
 
 async function sendGifToConverterInBackground(chatId, fileId, messageId, envData, token) {
-    const RENDER_HOST_URL = LESHIY_CONVERTER || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = envData.LESHIY_CONVERTER;
     try {
         // --- 1. ПОЛУЧАЕМ ИСХОДНЫЕ ДАННЫЕ ИЗ KV ---
         const gifDataRaw = await envData.LAST_PHOTO_STORAGE.get(`${chatId}_last_gif_data`);
@@ -15365,7 +15366,7 @@ async function sendGifToConverterInBackground(chatId, fileId, messageId, envData
 }
 
 async function sendVideoToGifInBackground(chatId, videoData, messageId, format, envData, token) {
-    const RENDER_HOST_URL = LESHIY_CONVERTER || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = envData.LESHIY_CONVERTER;
     try {
         // Прогрев сервера через твой Health Check
         const isAlive = await checkConverterHealth(envData);
@@ -15480,7 +15481,7 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
  * ✅ sendMediaToConverterInBackground - Асинхронно скачивает медиа, отправляет на Render для обработки (Resize/Rotate) и обновляет сообщение.
  */
 async function sendMediaToConverterInBackground(chatId, fileId, originalMessageId, mode, param, envData, token, ctx, originalReplyMarkup = null) {
-    const RENDER_HOST_URL = LESHIY_CONVERTER || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = envData.LESHIY_CONVERTER;
     const chatKey = chatId.toString();
     // 1. ПРОВЕРЯЕМ РЕАЛЬНЫЙ ТИП МЕДИА (самый надежный способ)
     const lastMediaType = await envData.LAST_PHOTO_STORAGE.get(`${chatKey}_last_media_type`);
@@ -17705,7 +17706,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                     await sendMediaDataControlMenu(chatId, token, envData, messageId);
                     return new Response('OK', { status: 200 });
                     case 'grab_frame': {
-                        const RENDER_HOST_URL = 'https://leshiy-media-converter.onrender.com';
+                        const RENDER_HOST_URL = envData.LESHIY_CONVERTER;
                         const VIDEO_TO_IMAGE_ENDPOINT = RENDER_HOST_URL + '/video2image';
                         const DEFAULT_TIMESTAMP = '00:00:01.000'; // Используем формат Render
                     
