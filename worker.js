@@ -1203,7 +1203,7 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     // Получаем необходимые ресурсы из envData
     const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
     // Используем ваш публичный домен:
-    const PUBLIC_DOMAIN = 'https://leshiy-gemini-bot.leshiyalex.workers.dev';
+    const PUBLIC_DOMAIN = envData.WORKER_DOMAIN;
     
     if (!IMAGE_STORAGE) {
          throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing for I2V upload.");
@@ -2731,7 +2731,7 @@ function getCalculatedPhotoSteps(currentWidth, currentHeight, aspectType = 'port
  */
 function getRotatedPublicUrl(fileId, rotationDegree, chatId) {
     // **ВАЖНО:** Ваш публичный URL /kv-images/ может найти файл только по fileId:
-    const baseUrl = `https://leshiy-gemini-bot.leshiyalex.workers.dev/kv-images/i2v/${chatId}/${fileId}`; 
+    const baseUrl = `/kv-images/i2v/${chatId}/${fileId}`; 
 
     let url = `${baseUrl}.png`; // Предполагаем формат PNG
 
@@ -3812,7 +3812,8 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
  */
 async function sendStarsInvoice(chatId, starsAmount, title, description, payload, token) {
     const url = `https://api.telegram.org/bot${token}/sendInvoice`;
-    const INVOICE_PHOTO_URL = "https://images.leshiyalex.workers.dev/qr-code_geminiai_tg_bot.jpg";
+    const cdn = "https://storage.yandexcloud.net/leshiy-storage-images";
+    const INVOICE_PHOTO_URL = `${cdn}/qr-code_geminiai_tg_bot.jpg`;
 
     const body = {
         chat_id: chatId,
@@ -6971,7 +6972,7 @@ async function startKieAiAudio2Video(config, prompt, envData, videoParams, chatI
 
     // --- 3. Вызов универсальной функции Task Create ---
     
-    // https://leshiy-gemini-bot.leshiyalex.workers.dev/api/kieai-callback?chatId=502248112
+    // /api/kieai-callback?chatId=502248112
     const callBackUrl = `${envData.WORKER_DOMAIN}/api/kieai-callback?chatId=${chatKey}`;
     envData.chatKey = chatKey; 
     
@@ -15737,8 +15738,8 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // 1. Извлекаем URL и Path
     const url = new URL(request.url);
     const path = url.pathname;
-    // 2. Определяем домен Worker'а (например, "https://leshiy-gemini-bot.leshiyalex.workers.dev")
-    const workerDomain = url.origin;
+    // 2. Определяем домен
+    const workerDomain = url.origin || env.WORKER_DOMAIN;
     if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
         return handleKieAiCallback(request, env, ctx);
     }
@@ -15835,37 +15836,6 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
 
     // --- 0. ПЕРЕД ИЗВЛЕЧЕНИЕМ JSON ---
     const update = await request.json().catch(() => ({})); // <--- В ЭТОЙ СТРОКЕ request.body БЫЛ ИСЧЕРПАН
-    //const originalRequestClone = request.clone(); 
-    //const originalRequestBody = JSON.stringify(update); // <-- Мы используем сериализованный JSON-объект 'update'
-    //console.log("RECEIVED UPDATE:", JSON.stringify(update));
-
-    /*/ --- КРИТИЧЕСКАЯ АНТИ-FLOOD ПРОВЕРКА (САМОЕ НАЧАЛО) ---
-    if (update.update_id) {
-        // Используем env, так как envData еще не создан!
-        const isDuplicate = await isDuplicateUpdate(update.update_id, env); 
-        if (isDuplicate) {
-            // --- КРИТИЧЕСКОЕ ДОБАВЛЕНИЕ: Логирование в Cloudflare и в Админ-Чат ---
-            
-            // 2. Логирование в Cloudflare (то, чего не хватало в логах!)
-            console.log(`[Anti-Flood] Ignored duplicate update ID: ${update.update_id}`); 
-        
-            // 3. Гарантированная отправка лога в Админ-Чат (по вашему запросу)
-            const logMessage = `❌ **[Anti-Flood] Блокировка дубликата:** update ID \`${update.update_id}\``;
-            
-            // Используем sendMessageMarkdown, который есть в вашем коде
-            if (env.ADMIN_CHAT_ID && env.TELEGRAM_BOT_TOKEN) {
-                ctx.waitUntil(sendMessageMarkdown(
-                    env.ADMIN_CHAT_ID, 
-                    logMessage, 
-                    env.TELEGRAM_BOT_TOKEN
-                ));
-            }
-            
-            // 4. Возврат OK, чтобы Telegram не повторял
-            return new Response('OK', { status: 200 }); 
-        }
-    }*/
-    // --- КОНЕЦ АНТИ-FLOOD ПРОВЕРКИ ---
 
     // -----------------------------------------------------------------------------------
     // ✅ ЕДИНЫЙ БЛОК: УНИВЕРСАЛЬНОЕ ИЗВЛЕЧЕНИЕ ПЕРЕМЕННЫХ
