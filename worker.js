@@ -15799,1380 +15799,1379 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
 // ----------------------------------------------------
 // IV. ГЛАВНЫЙ ОБРАБОТЧИК (WEBHOOK) Fetch
 // ----------------------------------------------------
-export default {
-    async fetch(request, env, ctx) {
-        // 1. Извлекаем URL и Path
-        const url = new URL(request.url);
-        const path = url.pathname;
-        // 2. Определяем домен Worker'а (например, "https://leshiy-gemini-bot.leshiyalex.workers.dev")
-        const workerDomain = url.origin;
-        if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
-            return handleKieAiCallback(request, env, ctx);
+    async function worker_code_fetch(request, env, ctx) {
+    // 1. Извлекаем URL и Path
+    const url = new URL(request.url);
+    const path = url.pathname;
+    // 2. Определяем домен Worker'а (например, "https://leshiy-gemini-bot.leshiyalex.workers.dev")
+    const workerDomain = url.origin;
+    if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
+        return handleKieAiCallback(request, env, ctx);
+    }
+    // -----------------
+    // --- KV-ПРОКСИ ---
+    // -----------------
+    // Проверяем, что путь НАЧИНАЕТСЯ с '/kv-images/'
+    if (path.startsWith('/kv-images/')) {
+        // Извлекаем ключ, отрезая префикс '/kv-images/'
+        const key = path.substring('/kv-images/'.length); 
+
+        // Если ключ пустой (например, запрос был просто /kv-images/), возвращаем 404
+        if (!key) {
+            return new Response('Image key is missing.', { status: 404 });
         }
-        // -----------------
-        // --- KV-ПРОКСИ ---
-        // -----------------
-        // Проверяем, что путь НАЧИНАЕТСЯ с '/kv-images/'
-        if (path.startsWith('/kv-images/')) {
-            // Извлекаем ключ, отрезая префикс '/kv-images/'
-            const key = path.substring('/kv-images/'.length); 
 
-            // Если ключ пустой (например, запрос был просто /kv-images/), возвращаем 404
-            if (!key) {
-                return new Response('Image key is missing.', { status: 404 });
-            }
+        const imageStorage = env.LAST_PHOTO_STORAGE; 
 
-            const imageStorage = env.LAST_PHOTO_STORAGE; 
-
-            if (!imageStorage) {
-                return new Response('Image storage not configured.', { status: 500 });
-            }
-            const data = await imageStorage.getWithMetadata(key, { type: 'arrayBuffer' });
-
-            if (data.value === null) {
-                return new Response('Image not found.', { status: 404 });
-            }
-
-            // Пытаемся получить Content-Type из httpMetadata (который мы установили при сохранении)
-            const contentType = data.metadata?.httpMetadata?.contentType || 'image/png';
-
-            return new Response(data.value, {
-                headers: {
-                    'Content-Type': contentType,
-                    'Cache-Control': 'public, max-age=3600' // Кэшируем на час
-                }
-            });
+        if (!imageStorage) {
+            return new Response('Image storage not configured.', { status: 500 });
         }
-        // Проверяем, что путь РАВЕН '/audio_proxy'
-        if (path === '/audio_proxy') {
-            const key = url.searchParams.get('key');
-            if (key && env.LAST_PHOTO_STORAGE) { 
-                const audioBase64 = await env.LAST_PHOTO_STORAGE.get(key);
+        const data = await imageStorage.getWithMetadata(key, { type: 'arrayBuffer' });
 
-                if (audioBase64) {
-                    env.LAST_PHOTO_STORAGE.delete(key); 
-                    const binaryData = base64ToArrayBuffer(audioBase64); 
-
-                    return new Response(binaryData, {
-                        headers: {
-                            'Content-Type': 'audio/mpeg', 
-                            'Content-Length': binaryData.byteLength.toString(),
-                            'Cache-Control': 'public, max-age=30' 
-                        },
-                    });
-                }
-            }
-            return new Response('Audio not found or invalid request.', { status: 404 });
+        if (data.value === null) {
+            return new Response('Image not found.', { status: 404 });
         }
-        // -----------------------------
-        // ✅ ВНЕШНЯЯ СТРАНИЦА WEBHOOKA
-        // -----------------------------
-        if (request.method !== 'POST') {
-            const htmlContent = `
-                <!DOCTYPE html>
-                <html lang="ru">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Gemini AI Telegram Bot Worker</title>
-                    <style>
-                        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f0f0; }
-                        .container { text-align: center; padding: 20px; border-radius: 8px; background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-                        h1 { color: #333; }
-                        p { color: #555; font-size: 1.2em; }
-                        a { color: #007bff; text-decoration: none; font-weight: bold; }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h1>Telegram-бот "Gemini AI" by Leshiy.</h1>
-                        <p>Этот Worker предназначен для обработки вебхуков Telegram.</p>
-                        <img src="public/qr-code_geminiai_tg_bot.jpg" alt="QR Code" style="max-width: 300px;">
-                        <p>Найди меня в Telegram: <a href="https://t.me/gemini_aitg_bot" target="_blank">@gemini_aitg_bot</a></p>
-                    </div>
-                </body>
-                </html>
-            `;
 
-            return new Response(htmlContent, {
-                headers: { 'Content-Type': 'text/html' },
-                status: 200
-            });
-        } // КОНЕЦ БЛОКА ВНЕШНЕЙ СТРАНИЦЫ WEBHOOKA
+        // Пытаемся получить Content-Type из httpMetadata (который мы установили при сохранении)
+        const contentType = data.metadata?.httpMetadata?.contentType || 'image/png';
 
-        // --- 0. ПЕРЕД ИЗВЛЕЧЕНИЕМ JSON ---
-        const update = await request.json().catch(() => ({})); // <--- В ЭТОЙ СТРОКЕ request.body БЫЛ ИСЧЕРПАН
-        //const originalRequestClone = request.clone(); 
-        //const originalRequestBody = JSON.stringify(update); // <-- Мы используем сериализованный JSON-объект 'update'
-        //console.log("RECEIVED UPDATE:", JSON.stringify(update));
+        return new Response(data.value, {
+            headers: {
+                'Content-Type': contentType,
+                'Cache-Control': 'public, max-age=3600' // Кэшируем на час
+            }
+        });
+    }
+    // Проверяем, что путь РАВЕН '/audio_proxy'
+    if (path === '/audio_proxy') {
+        const key = url.searchParams.get('key');
+        if (key && env.LAST_PHOTO_STORAGE) { 
+            const audioBase64 = await env.LAST_PHOTO_STORAGE.get(key);
 
-        /*/ --- КРИТИЧЕСКАЯ АНТИ-FLOOD ПРОВЕРКА (САМОЕ НАЧАЛО) ---
-        if (update.update_id) {
-            // Используем env, так как envData еще не создан!
-            const isDuplicate = await isDuplicateUpdate(update.update_id, env); 
-            if (isDuplicate) {
-                // --- КРИТИЧЕСКОЕ ДОБАВЛЕНИЕ: Логирование в Cloudflare и в Админ-Чат ---
-                
-                // 2. Логирование в Cloudflare (то, чего не хватало в логах!)
-                console.log(`[Anti-Flood] Ignored duplicate update ID: ${update.update_id}`); 
+            if (audioBase64) {
+                env.LAST_PHOTO_STORAGE.delete(key); 
+                const binaryData = base64ToArrayBuffer(audioBase64); 
+
+                return new Response(binaryData, {
+                    headers: {
+                        'Content-Type': 'audio/mpeg', 
+                        'Content-Length': binaryData.byteLength.toString(),
+                        'Cache-Control': 'public, max-age=30' 
+                    },
+                });
+            }
+        }
+        return new Response('Audio not found or invalid request.', { status: 404 });
+    }
+    // -----------------------------
+    // ✅ ВНЕШНЯЯ СТРАНИЦА WEBHOOKA
+    // -----------------------------
+    if (request.method !== 'POST') {
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+                <meta charset="UTF-8">
+                <title>Gemini AI Telegram Bot Worker</title>
+                <style>
+                    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f0f0; }
+                    .container { text-align: center; padding: 20px; border-radius: 8px; background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+                    h1 { color: #333; }
+                    p { color: #555; font-size: 1.2em; }
+                    a { color: #007bff; text-decoration: none; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Telegram-бот "Gemini AI" by Leshiy.</h1>
+                    <p>Этот Worker предназначен для обработки вебхуков Telegram.</p>
+                    <img src="public/qr-code_geminiai_tg_bot.jpg" alt="QR Code" style="max-width: 300px;">
+                    <p>Найди меня в Telegram: <a href="https://t.me/gemini_aitg_bot" target="_blank">@gemini_aitg_bot</a></p>
+                </div>
+            </body>
+            </html>
+        `;
+
+        return new Response(htmlContent, {
+            headers: { 'Content-Type': 'text/html' },
+            status: 200
+        });
+    } // КОНЕЦ БЛОКА ВНЕШНЕЙ СТРАНИЦЫ WEBHOOKA
+
+    // --- 0. ПЕРЕД ИЗВЛЕЧЕНИЕМ JSON ---
+    const update = await request.json().catch(() => ({})); // <--- В ЭТОЙ СТРОКЕ request.body БЫЛ ИСЧЕРПАН
+    //const originalRequestClone = request.clone(); 
+    //const originalRequestBody = JSON.stringify(update); // <-- Мы используем сериализованный JSON-объект 'update'
+    //console.log("RECEIVED UPDATE:", JSON.stringify(update));
+
+    /*/ --- КРИТИЧЕСКАЯ АНТИ-FLOOD ПРОВЕРКА (САМОЕ НАЧАЛО) ---
+    if (update.update_id) {
+        // Используем env, так как envData еще не создан!
+        const isDuplicate = await isDuplicateUpdate(update.update_id, env); 
+        if (isDuplicate) {
+            // --- КРИТИЧЕСКОЕ ДОБАВЛЕНИЕ: Логирование в Cloudflare и в Админ-Чат ---
             
-                // 3. Гарантированная отправка лога в Админ-Чат (по вашему запросу)
-                const logMessage = `❌ **[Anti-Flood] Блокировка дубликата:** update ID \`${update.update_id}\``;
-                
-                // Используем sendMessageMarkdown, который есть в вашем коде
-                if (env.ADMIN_CHAT_ID && env.TELEGRAM_BOT_TOKEN) {
-                    ctx.waitUntil(sendMessageMarkdown(
-                        env.ADMIN_CHAT_ID, 
-                        logMessage, 
-                        env.TELEGRAM_BOT_TOKEN
-                    ));
-                }
-                
-                // 4. Возврат OK, чтобы Telegram не повторял
-                return new Response('OK', { status: 200 }); 
-            }
-        }*/
-        // --- КОНЕЦ АНТИ-FLOOD ПРОВЕРКИ ---
-
-        // -----------------------------------------------------------------------------------
-        // ✅ ЕДИНЫЙ БЛОК: УНИВЕРСАЛЬНОЕ ИЗВЛЕЧЕНИЕ ПЕРЕМЕННЫХ
-        // -----------------------------------------------------------------------------------
-        const isMessage = !!update.message;
-        const isCallback = !!update.callback_query;
-        const isInlineQuery = !!update.inline_query;
-        const isMyChatMember = !!update.my_chat_member;
-
-        // Message object (для текста, фото, видео)
-        const message = isMessage ? update.message : isCallback ? update.callback_query.message : null;
-        const preCheckoutQuery = update.pre_checkout_query; // <-- НОВОЕ
-        const messagePayment = message?.successful_payment; // <-- НОВОЕ
-
-        // ====================================================
-        // ⭐️ 0. ОБРАБОТКА ПЛАТЕЖЕЙ (TELEGRAM STARS)
-        // ====================================================
+            // 2. Логирование в Cloudflare (то, чего не хватало в логах!)
+            console.log(`[Anti-Flood] Ignored duplicate update ID: ${update.update_id}`); 
         
-        // 1. Pre-Checkout (Валидация перед оплатой)
-        if (preCheckoutQuery) {
-            // Эта строка покажет, что мы достигли блока
-            console.log(`Processing pre_checkout_query ID: ${preCheckoutQuery.id} on Worker A.`);
+            // 3. Гарантированная отправка лога в Админ-Чат (по вашему запросу)
+            const logMessage = `❌ **[Anti-Flood] Блокировка дубликата:** update ID \`${update.update_id}\``;
             
-            // Выполняем критически важный запрос в фоне
-            // Используем вашу функцию answerPreCheckoutQuery с логами
-            ctx.waitUntil(answerPreCheckoutQuery(preCheckoutQuery.id, env.TELEGRAM_BOT_TOKEN));
+            // Используем sendMessageMarkdown, который есть в вашем коде
+            if (env.ADMIN_CHAT_ID && env.TELEGRAM_BOT_TOKEN) {
+                ctx.waitUntil(sendMessageMarkdown(
+                    env.ADMIN_CHAT_ID, 
+                    logMessage, 
+                    env.TELEGRAM_BOT_TOKEN
+                ));
+            }
             
-            // Мгновенно отвечаем Telegram-у (ОБЯЗАТЕЛЬНО!)
+            // 4. Возврат OK, чтобы Telegram не повторял
+            return new Response('OK', { status: 200 }); 
+        }
+    }*/
+    // --- КОНЕЦ АНТИ-FLOOD ПРОВЕРКИ ---
+
+    // -----------------------------------------------------------------------------------
+    // ✅ ЕДИНЫЙ БЛОК: УНИВЕРСАЛЬНОЕ ИЗВЛЕЧЕНИЕ ПЕРЕМЕННЫХ
+    // -----------------------------------------------------------------------------------
+    const isMessage = !!update.message;
+    const isCallback = !!update.callback_query;
+    const isInlineQuery = !!update.inline_query;
+    const isMyChatMember = !!update.my_chat_member;
+
+    // Message object (для текста, фото, видео)
+    const message = isMessage ? update.message : isCallback ? update.callback_query.message : null;
+    const preCheckoutQuery = update.pre_checkout_query; // <-- НОВОЕ
+    const messagePayment = message?.successful_payment; // <-- НОВОЕ
+
+    // ====================================================
+    // ⭐️ 0. ОБРАБОТКА ПЛАТЕЖЕЙ (TELEGRAM STARS)
+    // ====================================================
+    
+    // 1. Pre-Checkout (Валидация перед оплатой)
+    if (preCheckoutQuery) {
+        // Эта строка покажет, что мы достигли блока
+        console.log(`Processing pre_checkout_query ID: ${preCheckoutQuery.id} on Worker A.`);
+        
+        // Выполняем критически важный запрос в фоне
+        // Используем вашу функцию answerPreCheckoutQuery с логами
+        ctx.waitUntil(answerPreCheckoutQuery(preCheckoutQuery.id, env.TELEGRAM_BOT_TOKEN));
+        
+        // Мгновенно отвечаем Telegram-у (ОБЯЗАТЕЛЬНО!)
+        return new Response('OK', { status: 200 });
+    }
+
+    // 2. Successful Payment (Успешная оплата - Начисление)
+    if (messagePayment) {
+        try { // 🛑 ДОБАВЛЕНО ДЛЯ ОТЛОВА ОШИБКИ И ЗАВЕРШЕНИЯ ТРАНЗАКЦИИ
+            console.log("SUCCESSFUL_PAYMENT RECEIVED. Starting credit top-up.");
+            
+            const payChatId = message.chat.id;
+            const totalAmount = messagePayment.total_amount; 
+            const payload = messagePayment.invoice_payload;  
+            
+            // Парсим payload, чтобы узнать, сколько кредитов начислить
+            let creditsToAdd = 0;
+            if (payload.startsWith('credits_')) {
+                // 🔥 ЭТОТ ПАРСИНГ РАБОТАЕТ, если `payload` был правильно сформирован в Шаге 1
+                creditsToAdd = parseInt(payload.split('_')[1]);
+            }
+
+            if (creditsToAdd > 0) {
+                // Используем env.LAST_PHOTO_STORAGE (как в вашем коде)
+                const storage = env.LAST_PHOTO_STORAGE; 
+                const BALANCE_KEY = payChatId.toString() + '_credit_balance';
+                
+                // Получаем текущий баланс
+                let currentBalance = parseInt(await storage.get(BALANCE_KEY));
+                if (isNaN(currentBalance)) currentBalance = 0; // Или FREE_LIMIT, если юзер новый
+                
+                // Обновляем баланс
+                const newBalance = currentBalance + creditsToAdd;
+                await storage.put(BALANCE_KEY, newBalance.toString(), { expirationTtl: 3600 * 24 * 365 });
+
+                // 🔥 ДОБАВЛЕНО: Логируем операцию пополнения
+                ctx.waitUntil(logTransaction(
+                    payChatId, 
+                    'TOPUP', 
+                    creditsToAdd, 
+                    `Покупка за ${totalAmount} XTR (звёзд)`, // totalAmount - это количество Stars
+                    env // Передаем объект окружения
+                ));
+                
+                // Уведомляем пользователя
+                await sendMessageMarkdown(
+                    payChatId, 
+                    `✅ **Оплата прошла успешно!**\n\n` +
+                    `⭐️ Списано: **${totalAmount}** XTR (звёзд)\n` +
+                    `💰 Начислено: **${creditsToAdd}** Кредитов\n` +
+                    `💳 Ваш баланс: **${newBalance}** Кредитов`,
+                    env.TELEGRAM_BOT_TOKEN // Используем env.TELEGRAM_BOT_TOKEN
+                );
+            
+                // Лог админу
+                const adminLog = `💰 [PAYMENT] User ${payChatId} paid ${totalAmount} Stars for ${creditsToAdd} Credits.`;
+                ctx.waitUntil(logDebug("PAYMENT_SUCCESS", adminLog, env, ctx));
+            }
             return new Response('OK', { status: 200 });
-        }
-
-        // 2. Successful Payment (Успешная оплата - Начисление)
-        if (messagePayment) {
-            try { // 🛑 ДОБАВЛЕНО ДЛЯ ОТЛОВА ОШИБКИ И ЗАВЕРШЕНИЯ ТРАНЗАКЦИИ
-                console.log("SUCCESSFUL_PAYMENT RECEIVED. Starting credit top-up.");
-                
-                const payChatId = message.chat.id;
-                const totalAmount = messagePayment.total_amount; 
-                const payload = messagePayment.invoice_payload;  
-                
-                // Парсим payload, чтобы узнать, сколько кредитов начислить
-                let creditsToAdd = 0;
-                if (payload.startsWith('credits_')) {
-                    // 🔥 ЭТОТ ПАРСИНГ РАБОТАЕТ, если `payload` был правильно сформирован в Шаге 1
-                    creditsToAdd = parseInt(payload.split('_')[1]);
-                }
-
-                if (creditsToAdd > 0) {
-                    // Используем env.LAST_PHOTO_STORAGE (как в вашем коде)
-                    const storage = env.LAST_PHOTO_STORAGE; 
-                    const BALANCE_KEY = payChatId.toString() + '_credit_balance';
-                    
-                    // Получаем текущий баланс
-                    let currentBalance = parseInt(await storage.get(BALANCE_KEY));
-                    if (isNaN(currentBalance)) currentBalance = 0; // Или FREE_LIMIT, если юзер новый
-                    
-                    // Обновляем баланс
-                    const newBalance = currentBalance + creditsToAdd;
-                    await storage.put(BALANCE_KEY, newBalance.toString(), { expirationTtl: 3600 * 24 * 365 });
-
-                    // 🔥 ДОБАВЛЕНО: Логируем операцию пополнения
-                    ctx.waitUntil(logTransaction(
-                        payChatId, 
-                        'TOPUP', 
-                        creditsToAdd, 
-                        `Покупка за ${totalAmount} XTR (звёзд)`, // totalAmount - это количество Stars
-                        env // Передаем объект окружения
-                    ));
-                    
-                    // Уведомляем пользователя
-                    await sendMessageMarkdown(
-                        payChatId, 
-                        `✅ **Оплата прошла успешно!**\n\n` +
-                        `⭐️ Списано: **${totalAmount}** XTR (звёзд)\n` +
-                        `💰 Начислено: **${creditsToAdd}** Кредитов\n` +
-                        `💳 Ваш баланс: **${newBalance}** Кредитов`,
-                        env.TELEGRAM_BOT_TOKEN // Используем env.TELEGRAM_BOT_TOKEN
-                    );
-                
-                    // Лог админу
-                    const adminLog = `💰 [PAYMENT] User ${payChatId} paid ${totalAmount} Stars for ${creditsToAdd} Credits.`;
-                    ctx.waitUntil(logDebug("PAYMENT_SUCCESS", adminLog, env, ctx));
-                }
-                return new Response('OK', { status: 200 });
-                } catch (e) {
-                    // 🛑 МЫ ОТЛОВИЛИ КРАХ!
-                    console.error(`FATAL ERROR during successful_payment: ${e.message} Stack: ${e.stack}`);
-                    // Уведомим пользователя о сбое начисления, чтобы не потерять его
-                    ctx.waitUntil(sendMessage(message.chat.id, "? Произошла ошибка при начислении баланса. Ваши Звезды списаны, но баланс не пополнен. Пожалуйста, обратитесь к администратору.", env.TELEGRAM_BOT_TOKEN));
-                    return new Response('OK', { status: 200 }); // Важно: всегда возвращать 200
-                }
+            } catch (e) {
+                // 🛑 МЫ ОТЛОВИЛИ КРАХ!
+                console.error(`FATAL ERROR during successful_payment: ${e.message} Stack: ${e.stack}`);
+                // Уведомим пользователя о сбое начисления, чтобы не потерять его
+                ctx.waitUntil(sendMessage(message.chat.id, "? Произошла ошибка при начислении баланса. Ваши Звезды списаны, но баланс не пополнен. Пожалуйста, обратитесь к администратору.", env.TELEGRAM_BOT_TOKEN));
+                return new Response('OK', { status: 200 }); // Важно: всегда возвращать 200
             }
-
-        // Callback object
-        const callback = update.callback_query;
-        const callbackId = isCallback ? callback.id : null;
-        // Извлекаем объект пользователя 'from'
-        const request_user = isMessage ? update.message.from : 
-                             isCallback ? update.callback_query.from : 
-                             isMyChatMember ? update.my_chat_member.from :
-                             isInlineQuery ? update.inline_query.from :
-                             null;
-
-        // Извлекаем ID чата
-        const chatId = message ? message.chat.id : (request_user ? request_user.id : null);
-        
-        // Проверка на отсутствие ID (критично)
-        if (chatId === null) { return new Response('OK', { status: 200 }); }
-
-        // -----------------------------------------------------------------------------------
-        // ✅ НОВЫЙ БЛОК: ФОРМИРОВАНИЕ ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ ДЛЯ АДМИНКИ
-        // -----------------------------------------------------------------------------------
-        let adminLog = '';
-        if (request_user) {
-            const userId = request_user.id.toString();
-            const storage = env.LAST_PHOTO_STORAGE; 
-            
-            // Новые данные
-            const newFirstName = request_user.first_name || ''; 
-            const newLastName = request_user.last_name || ''; 
-            const newUsername = request_user.username || ''; 
-            
-            // Формируем новые строки для сравнения
-            const newFullName = `${newFirstName} ${newLastName}`.trim(); 
-            const displayUsername = newUsername ? `@${newUsername}` : 'нет';
-        
-            // 1. Асинхронная проверка и запись (только если данные изменились)
-            ctx.waitUntil(
-                (async () => { // <-- Открываем IIFE
-                try {
-                    // Читаем старые данные
-                    const oldFullName = await storage.get(`${userId}_USER_FULLNAME`);
-                    const oldUsername = await storage.get(`${userId}_USER_USERNAME`);
-        
-                    let shouldUpdateFullName = oldFullName !== newFullName;
-                    let shouldUpdateUsername = oldUsername !== newUsername;
-        
-                    if (shouldUpdateFullName) {
-                        // Если имя изменилось (или это первая запись)
-                        // Срок жизни - 30 дней
-                        await storage.put(`${userId}_USER_FULLNAME`, newFullName, { expirationTtl: 3600 * 24 * 30 });
-                    }
-        
-                    if (shouldUpdateUsername) {
-                        // Если ник изменился (или это первая запись)
-                        // Срок жизни - 30 дней
-                        await storage.put(`${userId}_USER_USERNAME`, newUsername, { expirationTtl: 3600 * 24 * 30 });
-                    }
-        
-                    // Опциональное логирование обновления в админ-чат
-                    if (shouldUpdateFullName || shouldUpdateUsername) {
-                        const updateLog = `🔄 [USER-UPDATE] Обновлены данные юзера ${userId}.\n` +
-                                          `ФИО: ${oldFullName || '---'} -> ${newFullName || '---'}\n` +
-                                          `Ник: ${oldUsername || '---'} -> ${newUsername || '---'}`;
-                        await logDebug("USER-UPDATE", updateLog, env, ctx); 
-                    }
-        
-                } catch (e) {
-                    // Ошибка чтения/записи в KV. Логируем, но не блокируем ответ.
-                    console.error(`KV Check/Put failed for user meta ${userId}:`, e);
-                    }
-                })() // <-- Закрываем IIFE и немедленно его вызываем
-            ); // <-- Закрываем аргумент ctx.waitUntil
-        
-            // Форматируем строку для logDebug, который идет следом (для текущего лога активности)
-            adminLog = `👤 Пользователь: *${newFullName || '---'}*\n` +
-                       `🔖 Username: \`${displayUsername}\`\n` +
-                       `🆔 ID: \`${userId}\`\n` +
-                       `💬 Чат ID: \`${chatId}\`\n`;
         }
-        // -----------------------------------------------------------------------------------
 
-        // Дополнительные переменные для удобства (Используем message, а не update.message)
-        let messageText = message ? (message.text || message.caption || '') : ''; 
-        let isEmoji = message ? (message.text || message.caption || '') : ''; 
-        let isPhoto = isMessage && message?.photo && message.photo.length > 0;
-        let isVoice = isMessage && !!message?.voice;
-        let isVideo = isMessage && (!!message?.video || !!message?.video_note);
-        let isAnimation = isMessage && !!message?.animation; // Это GIF
-        const video = isVideo ? (message?.video || message?.video_note) : undefined;
-        const voice = isVoice ? message?.voice : undefined; // Voice object
-        const audio = message?.audio; // Аудиофайл (вероятно MP3)
-        const animation = isAnimation ? message?.animation : undefined; // Объект GIF
-        const document = message?.document; // <--- Документ
+    // Callback object
+    const callback = update.callback_query;
+    const callbackId = isCallback ? callback.id : null;
+    // Извлекаем объект пользователя 'from'
+    const request_user = isMessage ? update.message.from : 
+                            isCallback ? update.callback_query.from : 
+                            isMyChatMember ? update.my_chat_member.from :
+                            isInlineQuery ? update.inline_query.from :
+                            null;
 
-        // ✅ ПРОВЕРКА НА GIF ВНУТРИ ДОКУМЕНТОВ (иногда Telegram шлет гифки как файлы)
-        if (document && document.mime_type === 'image/gif') {isAnimation = true;}
+    // Извлекаем ID чата
+    const chatId = message ? message.chat.id : (request_user ? request_user.id : null);
+    
+    // Проверка на отсутствие ID (критично)
+    if (chatId === null) { return new Response('OK', { status: 200 }); }
 
-        // ✅ НОВЫЙ БЛОК ДЛЯ ЭМОДЗИ (Вставить после определения messageText):
-        if (isEmoji.length > 0) {
-            // Проверяем, является ли сообщение одним из наших эмодзи
-            if (EMOJI_TO_COMMAND_MAP[isEmoji]) {messageText = EMOJI_TO_COMMAND_MAP[messageText]};
-            // Переназначаем messageText, чтобы далее он выглядел как /команда
-        } // 🛑 КОНЕЦ НОВОГО БЛОКА ДЛЯ ЭМОДЗИ
-
+    // -----------------------------------------------------------------------------------
+    // ✅ НОВЫЙ БЛОК: ФОРМИРОВАНИЕ ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ ДЛЯ АДМИНКИ
+    // -----------------------------------------------------------------------------------
+    let adminLog = '';
+    if (request_user) {
+        const userId = request_user.id.toString();
+        const storage = env.LAST_PHOTO_STORAGE; 
         
-        // -----------------------------------------------------------------------------------
-        // ✅ ИСПРАВЛЕННЫЙ БЛОК: ОБРАБОТКА user_shared (РЕЗУЛЬТАТ КНОПКИ request_user)
-        // -----------------------------------------------------------------------------------
-        const isUserShared = isMessage && !!update.message.user_shared; 
-        if (isUserShared && chatId.toString() === env.ADMIN_CHAT_ID) { 
-            const sharedUserId = update.message.user_shared.user_id;
-            const messageToDeleteId = update.message.message_id; // ID сообщения с кнопкой request_user
-            const token = env.TELEGRAM_BOT_TOKEN;
-            const storage = env.LAST_PHOTO_STORAGE;
-
-            const ADMIN_TARGET_ID_KEY = env.ADMIN_CHAT_ID + '_admin_target_id';
-            
-            // 1. Сохраняем ID
-            await storage.put(ADMIN_TARGET_ID_KEY, sharedUserId.toString(), { expirationTtl: 600 });
-            
-            // 2. ОТПРАВЛЯЕМ НОВОЕ МЕНЮ СИНХРОННО (message_id: 0)
-            // Разметка в handleAdminCallback должна примениться правильно, так как это новое сообщение.
-            const fakeCallback = { 
-                data: 'admin_user_menu', 
-                message: { message_id: 0 } 
-            }; 
-            
-            // ✅ ИСПОЛЬЗУЕМ 'await', чтобы гарантировать, что меню с правильной разметкой 
-            // будет отправлено ПЕРВЫМ и отображено.
-            await handleAdminCallback(chatId, fakeCallback, env, ctx);
-            
-            // 3. АСИНХРОННО СКРЫВАЕМ REPLY KEYBOARD
-            // Мы отправляем этот запрос с ctx.waitUntil, чтобы он выполнился в фоне, 
-            // не задерживая основной ответ, и не вступал в гонку с отправкой меню.
-            
-            // ⚠️ ВАЖНО: Мы отправляем это как команду скрытия, а не как полезное сообщение.
-            ctx.waitUntil(sendMessage(
-                chatId, 
-                `✅ ID пользователя установлен: ${sharedUserId}`, // Минимальный текст
-                token,
-                null, // Не редактируем
-                { reply_markup: { hide_keyboard: true } } // Только команда скрытия
-            ));
-            
-            // 4. Опционально: Удаляем исходное сообщение, которое вернуло user_shared (для чистоты)
-            // Если у вас есть функция deleteMessage, это будет еще чище.
-            // ctx.waitUntil(deleteMessage(chatId, messageToDeleteId, token));
-
-            return new Response('OK', { status: 200 });
-        }
-        // ---------------------
-        // 🛑 БЛОК ДЕДУПЛИКАЦИИ
-        // ---------------------
-        // 1. Асинхронное чтение глобального статуса
-        let isDebugEnabled = false; 
-        let isPhotoEnabled = false; 
-        let isVideoEnabled = false;        
-        let isTTSEnabled = false; 
-        try {
-            const debugStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_DEBUG_KEY);
-            isDebugEnabled = debugStatus === 'true';
-            const photoStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_PHOTO_KEY); 
-            isPhotoEnabled = photoStatus === 'true'; 
-            const videoStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_VIDEO_KEY); 
-            isVideoEnabled = videoStatus === 'true'; 
-            const ttsStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_TTS_KEY); 
-            isTTSEnabled = ttsStatus === 'true'; 
-        } catch (e) {
-            console.error("Failed to read debug status from KV:", e);
-        }
+        // Новые данные
+        const newFirstName = request_user.first_name || ''; 
+        const newLastName = request_user.last_name || ''; 
+        const newUsername = request_user.username || ''; 
         
-        // -----------------------------------------------------------------------------------
-        // ✅ ВЫЗОВ LOGDEBUG ДЛЯ ОТПРАВКИ ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ
-        // -----------------------------------------------------------------------------------
-        // Логируем информацию о пользователе только если это сообщение/команда
-        // и только если мы не обрабатываем callback_query, где юзер известен.
-        // Если вам нужен лог на КАЖДЫЙ чих, оставьте его здесь.
-        // if (request_user && !isCallback) {
-        //    // Отправляем лог в админский чат асинхронно
-        //    ctx.waitUntil(logDebug("USER_INFO", adminLog, env, ctx));
-        //}
+        // Формируем новые строки для сравнения
+        const newFullName = `${newFirstName} ${newLastName}`.trim(); 
+        const displayUsername = newUsername ? `@${newUsername}` : 'нет';
+    
+        // 1. Асинхронная проверка и запись (только если данные изменились)
+        ctx.waitUntil(
+            (async () => { // <-- Открываем IIFE
+            try {
+                // Читаем старые данные
+                const oldFullName = await storage.get(`${userId}_USER_FULLNAME`);
+                const oldUsername = await storage.get(`${userId}_USER_USERNAME`);
+    
+                let shouldUpdateFullName = oldFullName !== newFullName;
+                let shouldUpdateUsername = oldUsername !== newUsername;
+    
+                if (shouldUpdateFullName) {
+                    // Если имя изменилось (или это первая запись)
+                    // Срок жизни - 30 дней
+                    await storage.put(`${userId}_USER_FULLNAME`, newFullName, { expirationTtl: 3600 * 24 * 30 });
+                }
+    
+                if (shouldUpdateUsername) {
+                    // Если ник изменился (или это первая запись)
+                    // Срок жизни - 30 дней
+                    await storage.put(`${userId}_USER_USERNAME`, newUsername, { expirationTtl: 3600 * 24 * 30 });
+                }
+    
+                // Опциональное логирование обновления в админ-чат
+                if (shouldUpdateFullName || shouldUpdateUsername) {
+                    const updateLog = `🔄 [USER-UPDATE] Обновлены данные юзера ${userId}.\n` +
+                                        `ФИО: ${oldFullName || '---'} -> ${newFullName || '---'}\n` +
+                                        `Ник: ${oldUsername || '---'} -> ${newUsername || '---'}`;
+                    await logDebug("USER-UPDATE", updateLog, env, ctx); 
+                }
+    
+            } catch (e) {
+                // Ошибка чтения/записи в KV. Логируем, но не блокируем ответ.
+                console.error(`KV Check/Put failed for user meta ${userId}:`, e);
+                }
+            })() // <-- Закрываем IIFE и немедленно его вызываем
+        ); // <-- Закрываем аргумент ctx.waitUntil
+    
+        // Форматируем строку для logDebug, который идет следом (для текущего лога активности)
+        adminLog = `👤 Пользователь: *${newFullName || '---'}*\n` +
+                    `🔖 Username: \`${displayUsername}\`\n` +
+                    `🆔 ID: \`${userId}\`\n` +
+                    `💬 Чат ID: \`${chatId}\`\n`;
+    }
+    // -----------------------------------------------------------------------------------
 
-        // -----------------------------------------------------------------------------------
-        // ✅ ИНИЦИАЛИЗАЦИЯ ENV DATA (Используем новые переменные)
-        // -----------------------------------------------------------------------------------
-        const envData = {
-            VERSION: VERSION, // <--- КОНСТАНТА ВЕРСИИ в envData
-            TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN, // Токен для телеги
-            // API-ключи из секретных переменных
-            GEMINI_API_KEY: env.GEMINI_API_KEY,
-            LESHIY_AI_PROXY: env.LESHIY_AI_PROXY,
-            GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY,
-            GEMINI_PROXY: env.GEMINI_PROXY,
-            DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,
-            BOTHUB_API_KEY: env.BOTHUB_API_KEY,
-            KIEAI_API_KEY: env.KIEAI_API_KEY,
-            LAST_PHOTO_STORAGE: env.LAST_PHOTO_STORAGE,
-            CHAT_HISTORY_STORAGE: env.CHAT_HISTORY_STORAGE,
-            DEBUG_CHAT_ID: env.DEBUG_CHAT_ID,
-            ADMIN_CHAT_ID: env.ADMIN_CHAT_ID,
-            BOT_LOGS_STORAGE: env.BOT_LOGS_STORAGE, 
-            AI_MODELS: AI_MODELS,
-            AI: env.AI,
-            ctx: ctx, 
-            CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, 
-            CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN, 
-            FUSIONBRAIN_API_KEY: env.FUSIONBRAIN_API_KEY, 
-            FUSIONBRAIN_SECRET_KEY: env.FUSIONBRAIN_SECRET_KEY, 
-            VOICERSS_API_KEY: env.VOICERSS_API_KEY,
-            STABILITY_API_KEY: env.STABILITY_API_KEY,
-            LAST_PROMPT_KEY_SUFFIX: LAST_PROMPT_KEY_SUFFIX,
-            LAST_IMAGE_DATA_KEY_SUFFIX: LAST_IMAGE_DATA_KEY_SUFFIX,
-            LAST_VIDEO_DATA_KEY_SUFFIX: LAST_VIDEO_DATA_KEY_SUFFIX,
-            LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX: LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX,
-            LAST_ACTION_KEY_SUFFIX: LAST_ACTION_KEY_SUFFIX,
-            USER_STATE_KEY_SUFFIX: USER_STATE_KEY_SUFFIX,
-            LAST_PROMPT_LANG_KEY_SUFFIX: LAST_PROMPT_LANG_KEY_SUFFIX, 
-            CREATIVE_MODE_KEY_SUFFIX: CREATIVE_MODE_KEY_SUFFIX,
-            DEBUG_ENABLED: isDebugEnabled, 
-            TTS_ENABLED: isTTSEnabled, 
-            PHOTO_ENABLED: isPhotoEnabled, 
-            VIDEO_ENABLED: isVideoEnabled, 
-            PAYMENT_LINK: PAYMENT_LINK,
-            WORKER_DOMAIN: `https://${new URL(request.url).host}`,
-            LESHIY_CONVERTER: LESHIY_CONVERTER,
-            PUBLIC_COMMANDS: PUBLIC_COMMANDS,
-            ADMIN_COMMANDS: ADMIN_COMMANDS,
-            // !!! КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ИСПОЛЬЗУЕМ НОВЫЕ ПЕРЕМЕННЫЕ !!!
-            USER_ID: request_user.id, 
-            CHAT_ID: chatId,
-            USER_API_KEY_SUFFIX: USER_API_KEY_SUFFIX, 
-            USER_LIMIT_KEY_SUFFIX: USER_LIMIT_KEY_SUFFIX,
-            SET_BASE_CALLBACK: SET_BASE_CALLBACK, 
-        };
+    // Дополнительные переменные для удобства (Используем message, а не update.message)
+    let messageText = message ? (message.text || message.caption || '') : ''; 
+    let isEmoji = message ? (message.text || message.caption || '') : ''; 
+    let isPhoto = isMessage && message?.photo && message.photo.length > 0;
+    let isVoice = isMessage && !!message?.voice;
+    let isVideo = isMessage && (!!message?.video || !!message?.video_note);
+    let isAnimation = isMessage && !!message?.animation; // Это GIF
+    const video = isVideo ? (message?.video || message?.video_note) : undefined;
+    const voice = isVoice ? message?.voice : undefined; // Voice object
+    const audio = message?.audio; // Аудиофайл (вероятно MP3)
+    const animation = isAnimation ? message?.animation : undefined; // Объект GIF
+    const document = message?.document; // <--- Документ
 
-        const storage = envData.LAST_PHOTO_STORAGE;
-        const chatKey = chatId.toString();
-        // 🛑 ИСПРАВЛЕНИЕ: ПЕРЕНОС ОПРЕДЕЛЕНИЯ ПЕРЕМЕННЫХ КЛЮЧЕЙ KV В ОБЩУЮ ЗОНУ
-        const USER_API_KEY_KV = chatKey + envData.USER_API_KEY_SUFFIX; 
-        const USER_LIMIT_KEY = chatKey + envData.USER_LIMIT_KEY_SUFFIX;
-        const userApiKey = await envData.LAST_PHOTO_STORAGE.get(USER_API_KEY_KV);
-        // --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ ТЕКСТА И КОМАНДЫ (Используя уже определенный messageText) ---
-        const text = messageText; // Используем переменную messageText, которая уже гарантированно строка ('')
-        const isCommand = text.startsWith('/');
-        const [command] = isCommand ? text.split(' ') : ['']; 
-        // Если text пустая строка, isCommand = false, command = ''. Сбоя не будет.
+    // ✅ ПРОВЕРКА НА GIF ВНУТРИ ДОКУМЕНТОВ (иногда Telegram шлет гифки как файлы)
+    if (document && document.mime_type === 'image/gif') {isAnimation = true;}
 
-        // ----------------------
-        // --- ЛОГИКА СТЭЙТОВ ---
-        // ----------------------
-        
-        // ПЕРЕХВАТ ДЛЯ РЕЖИМА /say ---
-        const token = envData.TELEGRAM_BOT_TOKEN;
-        const LAST_ACTION_KEY = chatKey + envData.LAST_ACTION_KEY_SUFFIX; 
-        const currentAction = await storage.get(LAST_ACTION_KEY); // Чтение текущего состояния экшена
+    // ✅ НОВЫЙ БЛОК ДЛЯ ЭМОДЗИ (Вставить после определения messageText):
+    if (isEmoji.length > 0) {
+        // Проверяем, является ли сообщение одним из наших эмодзи
+        if (EMOJI_TO_COMMAND_MAP[isEmoji]) {messageText = EMOJI_TO_COMMAND_MAP[messageText]};
+        // Переназначаем messageText, чтобы далее он выглядел как /команда
+    } // 🛑 КОНЕЦ НОВОГО БЛОКА ДЛЯ ЭМОДЗИ
 
-        if (currentAction === 'awaiting_say_text') {
-            let fullText = '';
-            
-        // 🛑 1. ПЕРЕХВАТ ГОЛОСОВОГО СООБЩЕНИЯ (OGG)
-        if (update.message.voice) {
-            const voiceFileId = update.message.voice.file_id; // <-- Извлекаем ID OGG
+    
+    // -----------------------------------------------------------------------------------
+    // ✅ ИСПРАВЛЕННЫЙ БЛОК: ОБРАБОТКА user_shared (РЕЗУЛЬТАТ КНОПКИ request_user)
+    // -----------------------------------------------------------------------------------
+    const isUserShared = isMessage && !!update.message.user_shared; 
+    if (isUserShared && chatId.toString() === env.ADMIN_CHAT_ID) { 
+        const sharedUserId = update.message.user_shared.user_id;
+        const messageToDeleteId = update.message.message_id; // ID сообщения с кнопкой request_user
+        const token = env.TELEGRAM_BOT_TOKEN;
+        const storage = env.LAST_PHOTO_STORAGE;
 
-        // ВОТ ЗДЕСЬ PUT ДЛЯ СОХРАНЕНИЯ ID ИСХОДНОГО OGG
-        // Этот ID будет использоваться при нажатии кнопки 'Запустить озвучку'
-        ctx.waitUntil(storage.put(chatKey + SAY_VOICE_SOURCE_ID_SUFFIX, voiceFileId));
+        const ADMIN_TARGET_ID_KEY = env.ADMIN_CHAT_ID + '_admin_target_id';
         
-        // --- Логика STT: Распознавание OGG для заполнения поля "Текст:" ---
+        // 1. Сохраняем ID
+        await storage.put(ADMIN_TARGET_ID_KEY, sharedUserId.toString(), { expirationTtl: 600 });
         
-        const loadingMessage = await sendMessageMarkdown(chatId, "🎙️ **Распознавание голосового сообщения...**", token);
-        const loadingMessageId = loadingMessage.result.message_id;
-
-        try {
-            // Загружаем активную STT-конфигурацию
-                        
-            const sttResult = await loadActiveConfig('AUDIO_TO_TEXT', envData, chatId); 
-            const a2tConfig = sttResult.config; 
-
-            // Скачиваем исходный OGG (используем его для STT, чтобы избежать ошибок BotHub)
-            const filePath = await getTelegramFilePath(voiceFileId, token); 
-            const audioBuffer = await downloadTelegramFile(filePath, token); 
-
-            // Вызываем STT (3 аргумента: config, audioBuffer, envData)
-            fullText = await a2tConfig.FUNCTION(a2tConfig, audioBuffer, envData);
-            
-            // Удаляем сообщение "Распознавание..."
-            ctx.waitUntil(deleteMessage(chatId, loadingMessageId, token)); 
-
-        } catch (e) {
-            fullText = "❌ Ошибка STT. Используйте текст или повторите.";
-            console.error("STT для меню /say провалился:", e);
-            // Редактируем сообщение с ошибкой
-            await editMessage(chatId, loadingMessageId, `❌ **Ошибка распознавания:**\n\`${e.message.substring(0, 100)}\``, token);
-            // Важно: продолжаем, чтобы сохранить хотя бы статус ошибки.
-        }
+        // 2. ОТПРАВЛЯЕМ НОВОЕ МЕНЮ СИНХРОННО (message_id: 0)
+        // Разметка в handleAdminCallback должна примениться правильно, так как это новое сообщение.
+        const fakeCallback = { 
+            data: 'admin_user_menu', 
+            message: { message_id: 0 } 
+        }; 
         
-        } else {
-            // 2. ОБРАБОТКА ОБЫЧНОГО ТЕКСТА
-            fullText = update.message.text || update.message.caption || '';
-        }
+        // ✅ ИСПОЛЬЗУЕМ 'await', чтобы гарантировать, что меню с правильной разметкой 
+        // будет отправлено ПЕРВЫМ и отображено.
+        await handleAdminCallback(chatId, fakeCallback, env, ctx);
         
-        // 3. Сохраняем введенный/распознанный текст в SAY_TEXT_KEY
-        ctx.waitUntil(storage.put(chatKey + SAY_TEXT_KEY_SUFFIX, fullText)); 
+        // 3. АСИНХРОННО СКРЫВАЕМ REPLY KEYBOARD
+        // Мы отправляем этот запрос с ctx.waitUntil, чтобы он выполнился в фоне, 
+        // не задерживая основной ответ, и не вступал в гонку с отправкой меню.
         
-        // 4. Очищаем режим ожидания (критично!)
-        ctx.waitUntil(storage.delete(chatKey + envData.LAST_ACTION_KEY_SUFFIX));
+        // ⚠️ ВАЖНО: Мы отправляем это как команду скрытия, а не как полезное сообщение.
+        ctx.waitUntil(sendMessage(
+            chatId, 
+            `✅ ID пользователя установлен: ${sharedUserId}`, // Минимальный текст
+            token,
+            null, // Не редактируем
+            { reply_markup: { hide_keyboard: true } } // Только команда скрытия
+        ));
         
-        // 5. Отправляем НОВОЕ СООБЩЕНИЕ-ПОДТВЕРЖДЕНИЕ и НОВОЕ МЕНЮ
-        const currentVoice = await storage.get(chatKey + SAY_VOICE_KEY_SUFFIX) || DEFAULT_VOICE;
-        
-        // Если STT был успешным, подтверждаем
-        if (!fullText.includes("Ошибка STT")) {
-            await sendMessageMarkdown(chatId, "✅ **Текст сохранен.** Нажмите 'Запустить озвучку' в меню.", token);
-        }
-        
-        // Отправляем новое меню с обновленным текстом
-        await sendSayControlMenu(chatId, token, currentVoice, fullText, null); 
+        // 4. Опционально: Удаляем исходное сообщение, которое вернуло user_shared (для чистоты)
+        // Если у вас есть функция deleteMessage, это будет еще чище.
+        // ctx.waitUntil(deleteMessage(chatId, messageToDeleteId, token));
 
         return new Response('OK', { status: 200 });
-        } // КОНЕЦ ЛОГИКИ ПЕРЕХВАТА ДЛЯ РЕЖИМА /say
+    }
+    // ---------------------
+    // 🛑 БЛОК ДЕДУПЛИКАЦИИ
+    // ---------------------
+    // 1. Асинхронное чтение глобального статуса
+    let isDebugEnabled = false; 
+    let isPhotoEnabled = false; 
+    let isVideoEnabled = false;        
+    let isTTSEnabled = false; 
+    try {
+        const debugStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_DEBUG_KEY);
+        isDebugEnabled = debugStatus === 'true';
+        const photoStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_PHOTO_KEY); 
+        isPhotoEnabled = photoStatus === 'true'; 
+        const videoStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_VIDEO_KEY); 
+        isVideoEnabled = videoStatus === 'true'; 
+        const ttsStatus = await env.LAST_PHOTO_STORAGE.get(GLOBAL_TTS_KEY); 
+        isTTSEnabled = ttsStatus === 'true'; 
+    } catch (e) {
+        console.error("Failed to read debug status from KV:", e);
+    }
+    
+    // -----------------------------------------------------------------------------------
+    // ✅ ВЫЗОВ LOGDEBUG ДЛЯ ОТПРАВКИ ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ
+    // -----------------------------------------------------------------------------------
+    // Логируем информацию о пользователе только если это сообщение/команда
+    // и только если мы не обрабатываем callback_query, где юзер известен.
+    // Если вам нужен лог на КАЖДЫЙ чих, оставьте его здесь.
+    // if (request_user && !isCallback) {
+    //    // Отправляем лог в админский чат асинхронно
+    //    ctx.waitUntil(logDebug("USER_INFO", adminLog, env, ctx));
+    //}
 
-        // ПРОВЕРКА СОСТОЯНИЯ ЧАТА (ОЖИДАНИЕ ВВОДА КЛЮЧА?)
-        const USER_STATE_KEY = chatKey + envData.USER_STATE_KEY_SUFFIX; 
-        const userState = await storage.get(USER_STATE_KEY); // Чтение текущего состояния стэйта
-        if (userState === 'awaiting_apikey') {
-            const potentialKey = messageText.trim();
-            const token = envData.TELEGRAM_BOT_TOKEN;
-            // --- 1. Обработка отмены (только планируем) ---
-            if (potentialKey === '❌ Отменить ввод') {
-                const cancelPromise = (async () => {
-                    await storage.delete(USER_STATE_KEY);
-                    const removeKeyboard = { reply_markup: { remove_keyboard: true } };
-                    // Используем await для отправки сообщения
-                    await sendMessage(chatId, "✅ Ввод ключа отменен.", token, removeKeyboard);
-                })();
-                ctx.waitUntil(cancelPromise);
-                return new Response('OK', { status: 200 }); // Немедленно отвечаем OK
-            }
-            // --- 2. СИНХРОННАЯ ПРОВЕРКА АРГУМЕНТОВ ---
-            if (!potentialKey || potentialKey.length < 32) {
-                const errorPromise = (async () => {
-                    await sendMessageMarkdown(chatId, "❌ **Ошибка:** Неверный формат ключа. Проверьте длину и пробелы.", token);
-                    await storage.delete(USER_STATE_KEY); // Сбрасываем состояние после ошибки
-                })();
-                ctx.waitUntil(errorPromise);
-                return new Response('OK', { status: 200 }); // Немедленно отвечаем OK
-            }
-            // --- 3. АСИНХРОННАЯ ЛОГИКА (Проверка и сохранение ключа) ---
-            const setKeyPromise = (async () => {
-                let userKieAiBalance = 0;
-                let balanceResult;
-                try {
-                    // 🛑 ИСПРАВЛЕНИЕ: Используем await для получения результата fetch!
-                    balanceResult = await updateKieAiUserCredits(potentialKey, envData, ctx); 
-                } catch (e) {
-                    // Обработка критической ошибки сети
-                    const errorMessage = e.message || "Неизвестная ошибка сети.";
-                    await sendMessageMarkdown(chatId, 
-                        `❌ **КРИТИЧЕСКАЯ ОШИБКА FETCH!**\n\nПроблема при проверке баланса: \`${errorMessage}\``, 
-                        token);
-                    balanceResult = 0;
-                }
-                // Логика обработки недействительного ключа (401)
-                if (typeof balanceResult === 'string' && balanceResult === 'InvalidKey') {
-                    await storage.delete(USER_STATE_KEY); 
-                    const removeKeyboard = { reply_markup: { remove_keyboard: true } };
-                    return sendMessageMarkdown(chatId, "❌ **Ошибка:** Введенный API-ключ KIE.ai недействителен (401 Unauthorized). Проверьте ключ и попробуйте снова.", token, removeKeyboard);
-                }
-                userKieAiBalance = (typeof balanceResult === 'number') ? balanceResult : 0;
-                const creditWord = pluralize(userKieAiBalance, CREDIT_FORMS);
-                // --- 4. СОХРАНЕНИЕ КЛЮЧА, БАЛАНСА И СБРОС СОСТОЯНИЯ ---
-                await storage.put(USER_API_KEY_KV, potentialKey); 
-                await storage.put(USER_LIMIT_KEY, userKieAiBalance.toString());
-                await storage.delete(USER_STATE_KEY); // Удаляем состояние
-                // 5. Отправка финального сообщения
-                let responseMessage = `✅ **API-ключ KIE.ai успешно установлен!**\n` + 
-                                    `🔑 Ключ: \`${potentialKey.substring(0, 10)}...\`\n` +
-                                    `💰 **Текущий баланс:** **${userKieAiBalance}** ${creditWord}.\n\n` +
-                                    `Вы будете использовать лимиты, связанные с этим ключом.`;
-                
+    // -----------------------------------------------------------------------------------
+    // ✅ ИНИЦИАЛИЗАЦИЯ ENV DATA (Используем новые переменные)
+    // -----------------------------------------------------------------------------------
+    const envData = {
+        VERSION: VERSION, // <--- КОНСТАНТА ВЕРСИИ в envData
+        TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN, // Токен для телеги
+        // API-ключи из секретных переменных
+        GEMINI_API_KEY: env.GEMINI_API_KEY,
+        LESHIY_AI_PROXY: env.LESHIY_AI_PROXY,
+        GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY,
+        GEMINI_PROXY: env.GEMINI_PROXY,
+        DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,
+        BOTHUB_API_KEY: env.BOTHUB_API_KEY,
+        KIEAI_API_KEY: env.KIEAI_API_KEY,
+        LAST_PHOTO_STORAGE: env.LAST_PHOTO_STORAGE,
+        CHAT_HISTORY_STORAGE: env.CHAT_HISTORY_STORAGE,
+        DEBUG_CHAT_ID: env.DEBUG_CHAT_ID,
+        ADMIN_CHAT_ID: env.ADMIN_CHAT_ID,
+        BOT_LOGS_STORAGE: env.BOT_LOGS_STORAGE, 
+        AI_MODELS: AI_MODELS,
+        AI: env.AI,
+        ctx: ctx, 
+        CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, 
+        CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN, 
+        FUSIONBRAIN_API_KEY: env.FUSIONBRAIN_API_KEY, 
+        FUSIONBRAIN_SECRET_KEY: env.FUSIONBRAIN_SECRET_KEY, 
+        VOICERSS_API_KEY: env.VOICERSS_API_KEY,
+        STABILITY_API_KEY: env.STABILITY_API_KEY,
+        LAST_PROMPT_KEY_SUFFIX: LAST_PROMPT_KEY_SUFFIX,
+        LAST_IMAGE_DATA_KEY_SUFFIX: LAST_IMAGE_DATA_KEY_SUFFIX,
+        LAST_VIDEO_DATA_KEY_SUFFIX: LAST_VIDEO_DATA_KEY_SUFFIX,
+        LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX: LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX,
+        LAST_ACTION_KEY_SUFFIX: LAST_ACTION_KEY_SUFFIX,
+        USER_STATE_KEY_SUFFIX: USER_STATE_KEY_SUFFIX,
+        LAST_PROMPT_LANG_KEY_SUFFIX: LAST_PROMPT_LANG_KEY_SUFFIX, 
+        CREATIVE_MODE_KEY_SUFFIX: CREATIVE_MODE_KEY_SUFFIX,
+        DEBUG_ENABLED: isDebugEnabled, 
+        TTS_ENABLED: isTTSEnabled, 
+        PHOTO_ENABLED: isPhotoEnabled, 
+        VIDEO_ENABLED: isVideoEnabled, 
+        PAYMENT_LINK: PAYMENT_LINK,
+        WORKER_DOMAIN: `https://${new URL(request.url).host}`,
+        LESHIY_CONVERTER: LESHIY_CONVERTER,
+        PUBLIC_COMMANDS: PUBLIC_COMMANDS,
+        ADMIN_COMMANDS: ADMIN_COMMANDS,
+        // !!! КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ИСПОЛЬЗУЕМ НОВЫЕ ПЕРЕМЕННЫЕ !!!
+        USER_ID: request_user.id, 
+        CHAT_ID: chatId,
+        USER_API_KEY_SUFFIX: USER_API_KEY_SUFFIX, 
+        USER_LIMIT_KEY_SUFFIX: USER_LIMIT_KEY_SUFFIX,
+        SET_BASE_CALLBACK: SET_BASE_CALLBACK, 
+    };
+
+    const storage = envData.LAST_PHOTO_STORAGE;
+    const chatKey = chatId.toString();
+    // 🛑 ИСПРАВЛЕНИЕ: ПЕРЕНОС ОПРЕДЕЛЕНИЯ ПЕРЕМЕННЫХ КЛЮЧЕЙ KV В ОБЩУЮ ЗОНУ
+    const USER_API_KEY_KV = chatKey + envData.USER_API_KEY_SUFFIX; 
+    const USER_LIMIT_KEY = chatKey + envData.USER_LIMIT_KEY_SUFFIX;
+    const userApiKey = await envData.LAST_PHOTO_STORAGE.get(USER_API_KEY_KV);
+    // --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ ТЕКСТА И КОМАНДЫ (Используя уже определенный messageText) ---
+    const text = messageText; // Используем переменную messageText, которая уже гарантированно строка ('')
+    const isCommand = text.startsWith('/');
+    const [command] = isCommand ? text.split(' ') : ['']; 
+    // Если text пустая строка, isCommand = false, command = ''. Сбоя не будет.
+
+    // ----------------------
+    // --- ЛОГИКА СТЭЙТОВ ---
+    // ----------------------
+    
+    // ПЕРЕХВАТ ДЛЯ РЕЖИМА /say ---
+    const token = envData.TELEGRAM_BOT_TOKEN;
+    const LAST_ACTION_KEY = chatKey + envData.LAST_ACTION_KEY_SUFFIX; 
+    const currentAction = await storage.get(LAST_ACTION_KEY); // Чтение текущего состояния экшена
+
+    if (currentAction === 'awaiting_say_text') {
+        let fullText = '';
+        
+    // 🛑 1. ПЕРЕХВАТ ГОЛОСОВОГО СООБЩЕНИЯ (OGG)
+    if (update.message.voice) {
+        const voiceFileId = update.message.voice.file_id; // <-- Извлекаем ID OGG
+
+    // ВОТ ЗДЕСЬ PUT ДЛЯ СОХРАНЕНИЯ ID ИСХОДНОГО OGG
+    // Этот ID будет использоваться при нажатии кнопки 'Запустить озвучку'
+    ctx.waitUntil(storage.put(chatKey + SAY_VOICE_SOURCE_ID_SUFFIX, voiceFileId));
+    
+    // --- Логика STT: Распознавание OGG для заполнения поля "Текст:" ---
+    
+    const loadingMessage = await sendMessageMarkdown(chatId, "🎙️ **Распознавание голосового сообщения...**", token);
+    const loadingMessageId = loadingMessage.result.message_id;
+
+    try {
+        // Загружаем активную STT-конфигурацию
+                    
+        const sttResult = await loadActiveConfig('AUDIO_TO_TEXT', envData, chatId); 
+        const a2tConfig = sttResult.config; 
+
+        // Скачиваем исходный OGG (используем его для STT, чтобы избежать ошибок BotHub)
+        const filePath = await getTelegramFilePath(voiceFileId, token); 
+        const audioBuffer = await downloadTelegramFile(filePath, token); 
+
+        // Вызываем STT (3 аргумента: config, audioBuffer, envData)
+        fullText = await a2tConfig.FUNCTION(a2tConfig, audioBuffer, envData);
+        
+        // Удаляем сообщение "Распознавание..."
+        ctx.waitUntil(deleteMessage(chatId, loadingMessageId, token)); 
+
+    } catch (e) {
+        fullText = "❌ Ошибка STT. Используйте текст или повторите.";
+        console.error("STT для меню /say провалился:", e);
+        // Редактируем сообщение с ошибкой
+        await editMessage(chatId, loadingMessageId, `❌ **Ошибка распознавания:**\n\`${e.message.substring(0, 100)}\``, token);
+        // Важно: продолжаем, чтобы сохранить хотя бы статус ошибки.
+    }
+    
+    } else {
+        // 2. ОБРАБОТКА ОБЫЧНОГО ТЕКСТА
+        fullText = update.message.text || update.message.caption || '';
+    }
+    
+    // 3. Сохраняем введенный/распознанный текст в SAY_TEXT_KEY
+    ctx.waitUntil(storage.put(chatKey + SAY_TEXT_KEY_SUFFIX, fullText)); 
+    
+    // 4. Очищаем режим ожидания (критично!)
+    ctx.waitUntil(storage.delete(chatKey + envData.LAST_ACTION_KEY_SUFFIX));
+    
+    // 5. Отправляем НОВОЕ СООБЩЕНИЕ-ПОДТВЕРЖДЕНИЕ и НОВОЕ МЕНЮ
+    const currentVoice = await storage.get(chatKey + SAY_VOICE_KEY_SUFFIX) || DEFAULT_VOICE;
+    
+    // Если STT был успешным, подтверждаем
+    if (!fullText.includes("Ошибка STT")) {
+        await sendMessageMarkdown(chatId, "✅ **Текст сохранен.** Нажмите 'Запустить озвучку' в меню.", token);
+    }
+    
+    // Отправляем новое меню с обновленным текстом
+    await sendSayControlMenu(chatId, token, currentVoice, fullText, null); 
+
+    return new Response('OK', { status: 200 });
+    } // КОНЕЦ ЛОГИКИ ПЕРЕХВАТА ДЛЯ РЕЖИМА /say
+
+    // ПРОВЕРКА СОСТОЯНИЯ ЧАТА (ОЖИДАНИЕ ВВОДА КЛЮЧА?)
+    const USER_STATE_KEY = chatKey + envData.USER_STATE_KEY_SUFFIX; 
+    const userState = await storage.get(USER_STATE_KEY); // Чтение текущего состояния стэйта
+    if (userState === 'awaiting_apikey') {
+        const potentialKey = messageText.trim();
+        const token = envData.TELEGRAM_BOT_TOKEN;
+        // --- 1. Обработка отмены (только планируем) ---
+        if (potentialKey === '❌ Отменить ввод') {
+            const cancelPromise = (async () => {
+                await storage.delete(USER_STATE_KEY);
                 const removeKeyboard = { reply_markup: { remove_keyboard: true } };
-                await sendMessageMarkdown(chatId, responseMessage, token, removeKeyboard);
-            })(); // Конец setKeyPromise
-            // 6. Планируем выполнение и немедленно отвечаем OK
-            ctx.waitUntil(setKeyPromise);
-            return new Response('OK', { status: 200 }); 
-        } // КОНЕЦ БЛОКА ПРОВЕРКИ СОСТОЯНИЯ ЧАТА
-        // Если состояние не "awaiting_apikey", код продолжает выполнение
+                // Используем await для отправки сообщения
+                await sendMessage(chatId, "✅ Ввод ключа отменен.", token, removeKeyboard);
+            })();
+            ctx.waitUntil(cancelPromise);
+            return new Response('OK', { status: 200 }); // Немедленно отвечаем OK
+        }
+        // --- 2. СИНХРОННАЯ ПРОВЕРКА АРГУМЕНТОВ ---
+        if (!potentialKey || potentialKey.length < 32) {
+            const errorPromise = (async () => {
+                await sendMessageMarkdown(chatId, "❌ **Ошибка:** Неверный формат ключа. Проверьте длину и пробелы.", token);
+                await storage.delete(USER_STATE_KEY); // Сбрасываем состояние после ошибки
+            })();
+            ctx.waitUntil(errorPromise);
+            return new Response('OK', { status: 200 }); // Немедленно отвечаем OK
+        }
+        // --- 3. АСИНХРОННАЯ ЛОГИКА (Проверка и сохранение ключа) ---
+        const setKeyPromise = (async () => {
+            let userKieAiBalance = 0;
+            let balanceResult;
+            try {
+                // 🛑 ИСПРАВЛЕНИЕ: Используем await для получения результата fetch!
+                balanceResult = await updateKieAiUserCredits(potentialKey, envData, ctx); 
+            } catch (e) {
+                // Обработка критической ошибки сети
+                const errorMessage = e.message || "Неизвестная ошибка сети.";
+                await sendMessageMarkdown(chatId, 
+                    `❌ **КРИТИЧЕСКАЯ ОШИБКА FETCH!**\n\nПроблема при проверке баланса: \`${errorMessage}\``, 
+                    token);
+                balanceResult = 0;
+            }
+            // Логика обработки недействительного ключа (401)
+            if (typeof balanceResult === 'string' && balanceResult === 'InvalidKey') {
+                await storage.delete(USER_STATE_KEY); 
+                const removeKeyboard = { reply_markup: { remove_keyboard: true } };
+                return sendMessageMarkdown(chatId, "❌ **Ошибка:** Введенный API-ключ KIE.ai недействителен (401 Unauthorized). Проверьте ключ и попробуйте снова.", token, removeKeyboard);
+            }
+            userKieAiBalance = (typeof balanceResult === 'number') ? balanceResult : 0;
+            const creditWord = pluralize(userKieAiBalance, CREDIT_FORMS);
+            // --- 4. СОХРАНЕНИЕ КЛЮЧА, БАЛАНСА И СБРОС СОСТОЯНИЯ ---
+            await storage.put(USER_API_KEY_KV, potentialKey); 
+            await storage.put(USER_LIMIT_KEY, userKieAiBalance.toString());
+            await storage.delete(USER_STATE_KEY); // Удаляем состояние
+            // 5. Отправка финального сообщения
+            let responseMessage = `✅ **API-ключ KIE.ai успешно установлен!**\n` + 
+                                `🔑 Ключ: \`${potentialKey.substring(0, 10)}...\`\n` +
+                                `💰 **Текущий баланс:** **${userKieAiBalance}** ${creditWord}.\n\n` +
+                                `Вы будете использовать лимиты, связанные с этим ключом.`;
+            
+            const removeKeyboard = { reply_markup: { remove_keyboard: true } };
+            await sendMessageMarkdown(chatId, responseMessage, token, removeKeyboard);
+        })(); // Конец setKeyPromise
+        // 6. Планируем выполнение и немедленно отвечаем OK
+        ctx.waitUntil(setKeyPromise);
+        return new Response('OK', { status: 200 }); 
+    } // КОНЕЦ БЛОКА ПРОВЕРКИ СОСТОЯНИЯ ЧАТА
+    // Если состояние не "awaiting_apikey", код продолжает выполнение
 
-        // --------------------------------------------------------------------------------------
-        // --- ГЛАВНЫЙ БЛОК ОБРАБОТКИ С TRY...CATCH ДЛЯ ГЛОБАЛЬНЫХ ОШИБОК ---
-        // --------------------------------------------------------------------------------------
-        try {
-            // 1. ОБРАБОТКА КОМАНД (ТОЛЬКО TEXT-COMMANDS)
-            if (messageText.startsWith('/')) {
-                // --- СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ /activate_ [код] ---
-                // Используем startsWith, чтобы избежать попадания в 'default' switch
-                if (messageText.startsWith('/activate_')) {
-                    ctx.waitUntil(processUserActivationCommand(chatId, messageText, envData));
-                    return new Response('OK', { status: 200 });
-                }
-                // --- НОВАЯ КОМАНДА: ВВОД API КЛЮЧА ПОЛЬЗОВАТЕЛЯ ---
-                if (messageText.startsWith('/setkey ') || messageText.startsWith('/apikey ')) {
-                    const parts = messageText.split(' ');
-                    const newApiKey = parts[1];
-                    
-                    // Переменные, которые должны быть доступны
-                    const chatKey = chatId.toString();
-                    const storage = envData.LAST_PHOTO_STORAGE;
-                    const token = env.TELEGRAM_BOT_TOKEN;
+    // --------------------------------------------------------------------------------------
+    // --- ГЛАВНЫЙ БЛОК ОБРАБОТКИ С TRY...CATCH ДЛЯ ГЛОБАЛЬНЫХ ОШИБОК ---
+    // --------------------------------------------------------------------------------------
+    try {
+        // 1. ОБРАБОТКА КОМАНД (ТОЛЬКО TEXT-COMMANDS)
+        if (messageText.startsWith('/')) {
+            // --- СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ /activate_ [код] ---
+            // Используем startsWith, чтобы избежать попадания в 'default' switch
+            if (messageText.startsWith('/activate_')) {
+                ctx.waitUntil(processUserActivationCommand(chatId, messageText, envData));
+                return new Response('OK', { status: 200 });
+            }
+            // --- НОВАЯ КОМАНДА: ВВОД API КЛЮЧА ПОЛЬЗОВАТЕЛЯ ---
+            if (messageText.startsWith('/setkey ') || messageText.startsWith('/apikey ')) {
+                const parts = messageText.split(' ');
+                const newApiKey = parts[1];
                 
-                    const USER_API_KEY_KV = chatKey + envData.USER_API_KEY_SUFFIX; 
-                    const USER_LIMIT_KEY = chatKey + envData.USER_LIMIT_KEY_SUFFIX; 
-                
-                    // 1. СИНХРОННАЯ ПРОВЕРКА АРГУМЕНТОВ
-                    if (!newApiKey || newApiKey.length < 32) {
-                        ctx.waitUntil(sendMessageMarkdown(chatId, "❌ **Ошибка:** Неверный формат ключа. Используйте `/setkey <ВАШ_КЛЮЧ>`.", token, { parse_mode: 'Markdown' }));
-                        // 🛑 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Немедленно отвечаем OK и прерываем ВСЁ выполнение.
-                        return new Response('OK', { status: 200 }); 
-                    }
-                    
-                    // 2. АСИНХРОННАЯ ЛОГИКА (Оборачиваем в Promise для ctx.waitUntil)
-                    const setKeyPromise = (async () => {
-                        let balance = 0;
-                        let balanceResult;
-                
-                        try {
-                            balanceResult = await updateKieAiUserCredits(newApiKey, envData, ctx); 
-                        } catch (e) {
-                            const errorMessage = e.message || "Неизвестная ошибка сети (catch).";
-                            
-                            await sendMessageMarkdown(chatId, 
-                                `❌ **КРИТИЧЕСКАЯ ОШИБКА FETCH!**\n\n` + 
-                                `Проблема при проверке баланса. **Детали ошибки:** \`${errorMessage}\`\n\n` + 
-                                `**ПРОВЕРЬТЕ ПЕРЕМЕННУЮ KIEAI_BASE_URL** в настройках Worker'а.\n` + 
-                                `Ключ сохранен, баланс установлен в 0.`, 
-                                token, 
-                                { parse_mode: 'Markdown' }
-                            );
-                            
-                            balanceResult = 0;
-                        }
-                
-                        if (typeof balanceResult === 'string' && balanceResult === 'InvalidKey') {
-                            return sendMessageMarkdown(chatId, "❌ **Ошибка:** Введенный API-ключ KIE.ai недействителен (401 Unauthorized). Проверьте ключ и попробуйте снова.", token, { parse_mode: 'Markdown' });
-                        }
-                        
-                        if (typeof balanceResult === 'number') {
-                            balance = balanceResult;
-                        } else {
-                            balance = 0; 
-                        }
-                        
-                        // --- ШАГ 2: СОХРАНЕНИЕ КЛЮЧА И БАЛАНСА В KV ---
-                        await storage.put(USER_API_KEY_KV, newApiKey);
-                        await storage.put(USER_LIMIT_KEY, balance.toString());
-                        const creditWord = pluralize(balance, CREDIT_FORMS);
-                        let responseMessage = `✅ **API-ключ KIE.ai успешно установлен!**\n` + 
-                                                `🔑 Ключ: \`${newApiKey.substring(0, 10)}...\`\n` +
-                                                `💰 **Текущий баланс:** **${balance}** ${creditWord}.\n\n` +
-                                                `Вы будете использовать лимиты, связанные с этим ключом.`;
-                
-                        return sendMessageMarkdown(chatId, responseMessage, token, { parse_mode: 'Markdown' });
-                    })();
-                
-                    // 3. Планируем выполнение и немедленно отвечаем OK
-                    ctx.waitUntil(setKeyPromise);
+                // Переменные, которые должны быть доступны
+                const chatKey = chatId.toString();
+                const storage = envData.LAST_PHOTO_STORAGE;
+                const token = env.TELEGRAM_BOT_TOKEN;
+            
+                const USER_API_KEY_KV = chatKey + envData.USER_API_KEY_SUFFIX; 
+                const USER_LIMIT_KEY = chatKey + envData.USER_LIMIT_KEY_SUFFIX; 
+            
+                // 1. СИНХРОННАЯ ПРОВЕРКА АРГУМЕНТОВ
+                if (!newApiKey || newApiKey.length < 32) {
+                    ctx.waitUntil(sendMessageMarkdown(chatId, "❌ **Ошибка:** Неверный формат ключа. Используйте `/setkey <ВАШ_КЛЮЧ>`.", token, { parse_mode: 'Markdown' }));
                     // 🛑 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Немедленно отвечаем OK и прерываем ВСЁ выполнение.
                     return new Response('OK', { status: 200 }); 
                 }
-                // --- СТАНДАРТНЫЕ КОМАНДЫ ---
-                // Удаляем пробелы и регистронезависимо сравниваем (только имя команды)
-                const command = messageText.split(' ')[0].toLowerCase();
-                const text = update.message.text.trim(); // Получаем текст сообщения
-                // ОБЯЗАТЕЛЬНОЕ ИСПРАВЛЕНИЕ: Объявление fullText
-                const fullText = text; // Сохраняем весь исходный текст команды
+                
+                // 2. АСИНХРОННАЯ ЛОГИКА (Оборачиваем в Promise для ctx.waitUntil)
+                const setKeyPromise = (async () => {
+                    let balance = 0;
+                    let balanceResult;
+            
+                    try {
+                        balanceResult = await updateKieAiUserCredits(newApiKey, envData, ctx); 
+                    } catch (e) {
+                        const errorMessage = e.message || "Неизвестная ошибка сети (catch).";
+                        
+                        await sendMessageMarkdown(chatId, 
+                            `❌ **КРИТИЧЕСКАЯ ОШИБКА FETCH!**\n\n` + 
+                            `Проблема при проверке баланса. **Детали ошибки:** \`${errorMessage}\`\n\n` + 
+                            `**ПРОВЕРЬТЕ ПЕРЕМЕННУЮ KIEAI_BASE_URL** в настройках Worker'а.\n` + 
+                            `Ключ сохранен, баланс установлен в 0.`, 
+                            token, 
+                            { parse_mode: 'Markdown' }
+                        );
+                        
+                        balanceResult = 0;
+                    }
+            
+                    if (typeof balanceResult === 'string' && balanceResult === 'InvalidKey') {
+                        return sendMessageMarkdown(chatId, "❌ **Ошибка:** Введенный API-ключ KIE.ai недействителен (401 Unauthorized). Проверьте ключ и попробуйте снова.", token, { parse_mode: 'Markdown' });
+                    }
+                    
+                    if (typeof balanceResult === 'number') {
+                        balance = balanceResult;
+                    } else {
+                        balance = 0; 
+                    }
+                    
+                    // --- ШАГ 2: СОХРАНЕНИЕ КЛЮЧА И БАЛАНСА В KV ---
+                    await storage.put(USER_API_KEY_KV, newApiKey);
+                    await storage.put(USER_LIMIT_KEY, balance.toString());
+                    const creditWord = pluralize(balance, CREDIT_FORMS);
+                    let responseMessage = `✅ **API-ключ KIE.ai успешно установлен!**\n` + 
+                                            `🔑 Ключ: \`${newApiKey.substring(0, 10)}...\`\n` +
+                                            `💰 **Текущий баланс:** **${balance}** ${creditWord}.\n\n` +
+                                            `Вы будете использовать лимиты, связанные с этим ключом.`;
+            
+                    return sendMessageMarkdown(chatId, responseMessage, token, { parse_mode: 'Markdown' });
+                })();
+            
+                // 3. Планируем выполнение и немедленно отвечаем OK
+                ctx.waitUntil(setKeyPromise);
+                // 🛑 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Немедленно отвечаем OK и прерываем ВСЁ выполнение.
+                return new Response('OK', { status: 200 }); 
+            }
+            // --- СТАНДАРТНЫЕ КОМАНДЫ ---
+            // Удаляем пробелы и регистронезависимо сравниваем (только имя команды)
+            const command = messageText.split(' ')[0].toLowerCase();
+            const text = update.message.text.trim(); // Получаем текст сообщения
+            // ОБЯЗАТЕЛЬНОЕ ИСПРАВЛЕНИЕ: Объявление fullText
+            const fullText = text; // Сохраняем весь исходный текст команды
 
-                switch (command) {
-                    case '/start':
-                        ctx.waitUntil(processStartCommand(chatId, envData, envData.TELEGRAM_BOT_TOKEN));
-                        break;
-                    case '/buy':
-                    case '/stars':
-                        ctx.waitUntil(sendBuyMenu(chatId, envData.TELEGRAM_BOT_TOKEN));
-                        break;
-                    case '/balance':
-                        // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
-                        const balanceStatus = await getCurrentCreditBalance(chatId, envData.LAST_PHOTO_STORAGE);
-                        // ---------------------------------------------
-                        const statusLine = `💰 **Баланс:** ${balanceStatus}`;
+            switch (command) {
+                case '/start':
+                    ctx.waitUntil(processStartCommand(chatId, envData, envData.TELEGRAM_BOT_TOKEN));
+                    break;
+                case '/buy':
+                case '/stars':
+                    ctx.waitUntil(sendBuyMenu(chatId, envData.TELEGRAM_BOT_TOKEN));
+                    break;
+                case '/balance':
+                    // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
+                    const balanceStatus = await getCurrentCreditBalance(chatId, envData.LAST_PHOTO_STORAGE);
+                    // ---------------------------------------------
+                    const statusLine = `💰 **Баланс:** ${balanceStatus}`;
 
-                        // 3. Формируем текст сообщения (messageText должен быть объявлен через let выше)
-                        messageText = `
+                    // 3. Формируем текст сообщения (messageText должен быть объявлен через let выше)
+                    messageText = `
 💰 Меню управления балансом:
 
 Ваш текущий баланс: 💰 ${balanceStatus}.
 
 Для покупки новых кредитов нажмите 💰 Пополнить баланс.`;
 
-                        // 4. Создаем объект клавиатуры
-                        const balanceKeyboard = getBalanceKeyboard();
+                    // 4. Создаем объект клавиатуры
+                    const balanceKeyboard = getBalanceKeyboard();
 
-                        // 5. Отправляем сообщение с клавиатурой, используя проверенный 5-аргументный вызов
-                        // ПЕРЕДАЕМ ТОЛЬКО МАССИВ КНОПОК
+                    // 5. Отправляем сообщение с клавиатурой, используя проверенный 5-аргументный вызов
+                    // ПЕРЕДАЕМ ТОЛЬКО МАССИВ КНОПОК
+                    ctx.waitUntil(sendMessageWithKeyboard(
+                        chatId, 
+                        messageText, 
+                        envData.TELEGRAM_BOT_TOKEN, 
+                        balanceKeyboard.inline_keyboard
+                    ));
+                    break;
+                case '/upscale': {
+                    /*/ 1. Получаем текст и объект клавиатуры
+                    const { messageText, keyboardObject } = await getUpscaleImageMenuKeyboard(
+                        chatId, 
+                        envData.LAST_PHOTO_STORAGE,
+                        null,
+                        null
+                    );
+                    // 2. ОТПРАВКА: Используем ВАШУ функцию, передавая ТОЛЬКО МАССИВ КНОПОК
+                    await sendMessageWithKeyboard(
+                        chatId, 
+                        messageText, 
+                        envData.TELEGRAM_BOT_TOKEN,
+                        keyboardObject.inline_keyboard // 💡 КОРРЕКЦИЯ: Передаем только внутренний массив
+                    );*/
+                    await sendUpscaleMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData, ctx);
+                    return new Response('OK', { status: 200 });
+                }
+                case '/resize':
+                    await sendResizeMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData, ctx);
+                    return new Response('OK', { status: 200 });
+                case '/test':
+                    // === ТЕСТ: КОНТРОЛИРУЕМЫЙ СБОЙ (ФИНАЛЬНАЯ ПРОВЕРКА) ===
+                    if (chatId.toString() === envData.ADMIN_CHAT_ID) {
+                        
+                        console.log('[DEBUG] ANTI_FLOOD_TEST_TRIGGER: Запуск контролируемого сбоя (500).');
+                        
+                        // 1. Делаем небольшую паузу, чтобы гарантировать запись ключа Anti-Flood
+                        await new Promise(r => setTimeout(r, 100)); 
+                        
+                        // 2. Принудительно вызываем ошибку, которая попадет в глобальный обработчик (catch) Worker'а.
+                        // Глобальный обработчик отправит 500/Timeout и заставит Telegram повторить.
+                        throw new Error('ANTI_FLOOD_TEST_TRIGGER_ERROR'); 
+                    }
+                    break;
+                case '/render':
+                    await sendMessage(chatId, "⏳ Запускаю проверку системы...", envData.TELEGRAM_BOT_TOKEN);
+
+                    // 1. Проверка Render-сервиса
+                    const renderAvailable = await checkConverterHealth(envData); // Передаем envData, т.к. функция его требует
+
+                    const renderStatus = renderAvailable 
+                        ? "🟢 **Render-сервис:** Активен и готов к работе."
+                        : "🔴 **Render-сервис:** Недоступен/Спит. Требуется ~30 сек на запуск.";
+                    
+                    await sendMessageMarkdown(chatId, renderStatus, envData.TELEGRAM_BOT_TOKEN);
+                    break;
+                case '/media':
+                    // Вызываем основную функцию для отображения меню
+                    await sendMediaDataControlMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData, null);
+                    break;
+                case '/apikey': {
+                    // Весь блок, содержащий await, должен быть обернут в Promise для ctx.waitUntil()
+                    const apikeyPromise = (async () => {
+                        // !!! await OK, так как находится ВНУТРИ асинхронной функции
+                        let currentCredits = parseInt(await envData.LAST_PHOTO_STORAGE.get(USER_LIMIT_KEY)) || 0;
+                        const creditWord = pluralize(currentCredits, CREDIT_FORMS);
+                        let statusMessage = '🔑 **Меню управления API-ключом KIE.ai**\n\n';
+                    
+                        if (userApiKey) {
+                            statusMessage += `✅ **Статус ключа:** установлен\n` +
+                                            `🔐 Ваш личный ключ: \`${userApiKey.substring(0, 10)}...\`\n` +
+                                            `💰 **Баланс:** **${currentCredits}** ${creditWord}.\n\n` +
+                                            `Вы используете лимиты и баланс, связанные с этим ключом. Отслеживайте его в личном кабинете https://kie.ai/ru/usage`;
+                        } else {
+                            statusMessage += `❌ **Статус ключа:** отсутствует\n` +
+                                            `🔒 Личный ключ не установлен.\n` +
+                                            `Вы используете общий (административный) ключ.`;
+                        }
+                    
+                        const keyboard = {
+                            inline_keyboard: [
+                                [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
+                                [{ text: "📊 Проверить баланс", callback_data: "cmd:/checkkey" }],
+                                [{ text: "🔑 Установить/Заменить ключ", callback_data: "cmd:/setkey" }],
+                                [{ text: "🗑️ Удалить ключ", callback_data: "cmd:/delkey" }]
+                            ]
+                        };
+                        
+                        // !!! Возвращаем промис отправки сообщения
+                        return sendMessageMarkdown(chatId, statusMessage, envData.TELEGRAM_BOT_TOKEN, null, keyboard);
+                    })();
+        
+                    ctx.waitUntil(apikeyPromise); // Планируем выполнение
+                    break;
+                }
+        
+                case '/setkey':
+                    // Это заглушка, если нажали кнопку без аргументов. Она не требует await.
+                    ctx.waitUntil(sendMessageMarkdown(chatId, 
+                        "🔑 **Ввод API-ключа KIE.ai**\n\n" +
+                        "Введите команду в следующем формате:\n" +
+                        "`/setkey <ВАШ_КЛЮЧ>`\n\n" +
+                        "Ключ можно получить на сайте: https://kie.ai/ru/api-key (выдается 80 бесплатных кредитов).", 
+                        envData.TELEGRAM_BOT_TOKEN 
+                    ));
+                    break;
+                    
+                case '/checkkey': {
+                    // Весь блок, содержащий await, должен быть обернут в Promise для ctx.waitUntil()
+                    const checkKeyPromise = (async () => {
+                        // !!! await OK, так как находится ВНУТРИ асинхронной функции
+                        let currentCredits = parseInt(await envData.LAST_PHOTO_STORAGE.get(USER_LIMIT_KEY)) || 0;
+                        let statusMessage = '';
+                        
+                        if (userApiKey) {
+                            statusMessage = `✅ **Статус ключа KIE.ai:**\n` +
+                                            `🔐 Ваш личный ключ установлен: \`${userApiKey.substring(0, 10)}...\`\n` +
+                                            `💰 **Баланс кредитов:** **${currentCredits}**.\n\n` +
+                                            `Вы будете использовать лимиты, связанные с этим ключом.`;
+                        } else {
+                            statusMessage = `❌ **Статус ключа KIE.ai:**\n` +
+                                            `🔒 Ваш личный ключ не найден.\n` +
+                                            `Вы используете общий (административный) ключ с общим лимитом. Используйте /setkey <КЛЮЧ> для установки личного ключа.`;
+                        }
+                        // !!! Возвращаем промис отправки сообщения
+                        return sendMessageMarkdown(chatId, statusMessage, envData.TELEGRAM_BOT_TOKEN);
+                    })();
+        
+                    ctx.waitUntil(checkKeyPromise); // Планируем выполнение
+                    break;
+                }
+        
+                case '/delkey': {
+                    // Весь блок, содержащий await, должен быть обернут в Promise для ctx.waitUntil()
+                    const delKeyPromise = (async () => {
+                        if (!userApiKey) {
+                            return sendMessageMarkdown(chatId, "❌ **Ошибка:** API-ключ KIE.ai не установлен.", envData.TELEGRAM_BOT_TOKEN);
+                        }
+                        // !!! await OK
+                        await envData.LAST_PHOTO_STORAGE.delete(USER_API_KEY_KV);
+                        await envData.LAST_PHOTO_STORAGE.delete(USER_LIMIT_KEY);
+                        return sendMessageMarkdown(chatId, "✅ **API-ключ KIE.ai успешно удален.**\nБаланс обнулен...", envData.TELEGRAM_BOT_TOKEN);
+                    })();
+        
+                    ctx.waitUntil(delKeyPromise); // Планируем выполнение
+                    break;
+                }
+                case '/stop':
+                    ctx.waitUntil(processStopCommand(chatId, envData.LAST_PHOTO_STORAGE, envData.TELEGRAM_BOT_TOKEN, envData));
+                    break;
+                case '/say': // Добавляем новый case для команды /say
+                    // Используем await, так как нам нужно дождаться отправки аудио
+                    await processSayCommand(chatId, fullText, envData, ctx);
+                    break;
+                case '/avatar':
+                    // 1. Установим режим на AUDIO_TO_VIDEO (A2V)
+                    //const modeKey = 'ACTIVE_MODEL_AUDIO_TO_VIDEO'; // Ваш KV ключ для режима A2V
+                    //await envData.LAST_PHOTO_STORAGE.put(chatId, modeKey);
+                    
+                    // 2. Получаем текущий промпт пользователя (или дефолтный)
+                    const currentPrompt = await envData.LAST_PHOTO_STORAGE.get(chatId + envData.LAST_PROMPT_KEY_SUFFIX) || DEFAULT_AUDIO_PROMPT;
+
+                    // 3. Получаем активную конфигурацию модели (AUDIO_TO_VIDEO_KIEAI)
+                    const activeModelConfig = envData.AI_MODELS['AUDIO_TO_VIDEO_KIEAI'];
+                    
+                    if (!activeModelConfig) {
+                        await sendMessage(chatId, "❌ Ошибка конфигурации: Модель AUDIO_TO_VIDEO_KIEAI не найдена.", envData.TELEGRAM_BOT_TOKEN);
+                        return new Response('OK');
+                    }
+
+                    // 4. Запускаем генерацию A2V
+                    await sendMessageMarkdown(chatId, `⏳ Запускаем Audio-to-Video (A2V) с промптом: \n\`${currentPrompt.substring(0, 100)}...\``, envData.TELEGRAM_BOT_TOKEN);
+
+                    // Параметры видео (пока используем дефолтные или пустые)
+                    const videoParams = {
+                        resolution: activeModelConfig.DEFAULT_RESOLUTION || '480p'
+                    };
+
+                    try {
+                        // Вызываем нашу функцию
+                        const result = await startKieAiAudio2Video(
+                            activeModelConfig, 
+                            currentPrompt, 
+                            envData, 
+                            videoParams,
+                            chatId
+                        );
+
+                        if (result && result.taskId) {
+                            await sendMessage(chatId, `✅ **Задача A2V запущена!** Task ID: \`${result.taskId}\`. Ожидайте уведомления с готовым видео.`, envData.TELEGRAM_BOT_TOKEN);
+                        } else {
+                            // Если startKieAiAudio2Video вернула null (ошибка уже отправлена пользователю внутри функции)
+                            await sendMessage(chatId, "❌ Не удалось создать задачу A2V. Проверьте наличие фото/аудио.", envData.TELEGRAM_BOT_TOKEN);
+                        }
+                        
+                    } catch (error) {
+                        // Критическая ошибка на уровне вызова
+                        envData.ctx.waitUntil(logDebug('A2V_CRITICAL_FAIL', error.message, envData));
+                        await sendMessage(chatId, `❌ Критическая ошибка при запуске A2V: ${error.message.substring(0, 150)}`, envData.TELEGRAM_BOT_TOKEN);
+                    }
+                    break;
+                case '/prompt':
+                    ctx.waitUntil(processPromptCommand(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData));
+                    break;
+                case '/create':
+                    // --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
+                    const storage = env.LAST_PHOTO_STORAGE;
+                    const chatKey = chatId.toString();
+                    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+                    const CREATIVE_MODE_KEY = chatKey + envData.CREATIVE_MODE_KEY_SUFFIX
+                    const token = envData.TELEGRAM_BOT_TOKEN; 
+                    
+                    const inlinePrompt = messageText.replace(/^\/create\s*/i, '').trim();
+        
+                    if (inlinePrompt.length > 0) {
+                        // Сценарий 2: /create [текст] -> СРАЗУ ГЕНЕРАЦИЯ
+                        await processCreateCommand(chatId, inlinePrompt, token, storage, envData);
+                        
+                    } else {
+                        // Сценарий 1: /create (пусто) -> ОТКРЫТЬ МЕНЮ
+                        
+                        // Читаем сохраненный промпт для отображения в меню
+                        const currentPrompt = await storage.get(LAST_PROMPT_KEY);
+                        // 🛑 ИСПРАВЛЕНИЕ 1: ЧИТАЕМ РЕЖИМ
+                        const currentMode = await storage.get(CREATIVE_MODE_KEY) || 'T2I'; 
+                        
+                        // 2. Генерируем данные для меню (Используя AWAIT и передавая KV)
+                        // 🛑 ИСПРАВЛЕНИЕ 2: messageText: createMessage
+                        const { messageText: createMessage, keyboardObject } = await getCreateMenuKeyboard(
+                            currentPrompt, 
+                            currentMode, // ✅ ПЕРЕДАЕМ ПРАВИЛЬНЫЙ РЕЖИМ
+                            chatId, 
+                            envData.LAST_PHOTO_STORAGE 
+                        );
+
+                        // 3. ОТПРАВКА: Используем sendMessageWithKeyboard
                         ctx.waitUntil(sendMessageWithKeyboard(
                             chatId, 
-                            messageText, 
-                            envData.TELEGRAM_BOT_TOKEN, 
-                            balanceKeyboard.inline_keyboard
-                        ));
-                        break;
-                    case '/upscale': {
-                        /*/ 1. Получаем текст и объект клавиатуры
-                        const { messageText, keyboardObject } = await getUpscaleImageMenuKeyboard(
-                            chatId, 
-                            envData.LAST_PHOTO_STORAGE,
-                            null,
-                            null
-                        );
-                        // 2. ОТПРАВКА: Используем ВАШУ функцию, передавая ТОЛЬКО МАССИВ КНОПОК
-                        await sendMessageWithKeyboard(
-                            chatId, 
-                            messageText, 
-                            envData.TELEGRAM_BOT_TOKEN,
-                            keyboardObject.inline_keyboard // 💡 КОРРЕКЦИЯ: Передаем только внутренний массив
-                        );*/
-                        await sendUpscaleMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData, ctx);
-                        return new Response('OK', { status: 200 });
-                    }
-                    case '/resize':
-                        await sendResizeMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData, ctx);
-                        return new Response('OK', { status: 200 });
-                    case '/test':
-                        // === ТЕСТ: КОНТРОЛИРУЕМЫЙ СБОЙ (ФИНАЛЬНАЯ ПРОВЕРКА) ===
-                        if (chatId.toString() === envData.ADMIN_CHAT_ID) {
-                            
-                            console.log('[DEBUG] ANTI_FLOOD_TEST_TRIGGER: Запуск контролируемого сбоя (500).');
-                            
-                            // 1. Делаем небольшую паузу, чтобы гарантировать запись ключа Anti-Flood
-                            await new Promise(r => setTimeout(r, 100)); 
-                            
-                            // 2. Принудительно вызываем ошибку, которая попадет в глобальный обработчик (catch) Worker'а.
-                            // Глобальный обработчик отправит 500/Timeout и заставит Telegram повторить.
-                            throw new Error('ANTI_FLOOD_TEST_TRIGGER_ERROR'); 
-                        }
-                        break;
-                    case '/render':
-                        await sendMessage(chatId, "⏳ Запускаю проверку системы...", envData.TELEGRAM_BOT_TOKEN);
-
-                        // 1. Проверка Render-сервиса
-                        const renderAvailable = await checkConverterHealth(envData); // Передаем envData, т.к. функция его требует
-
-                        const renderStatus = renderAvailable 
-                            ? "🟢 **Render-сервис:** Активен и готов к работе."
-                            : "🔴 **Render-сервис:** Недоступен/Спит. Требуется ~30 сек на запуск.";
-                        
-                        await sendMessageMarkdown(chatId, renderStatus, envData.TELEGRAM_BOT_TOKEN);
-                        break;
-                    case '/media':
-                        // Вызываем основную функцию для отображения меню
-                        await sendMediaDataControlMenu(chatId, envData.TELEGRAM_BOT_TOKEN, envData, null);
-                        break;
-                    case '/apikey': {
-                        // Весь блок, содержащий await, должен быть обернут в Promise для ctx.waitUntil()
-                        const apikeyPromise = (async () => {
-                            // !!! await OK, так как находится ВНУТРИ асинхронной функции
-                            let currentCredits = parseInt(await envData.LAST_PHOTO_STORAGE.get(USER_LIMIT_KEY)) || 0;
-                            const creditWord = pluralize(currentCredits, CREDIT_FORMS);
-                            let statusMessage = '🔑 **Меню управления API-ключом KIE.ai**\n\n';
-                        
-                            if (userApiKey) {
-                                statusMessage += `✅ **Статус ключа:** установлен\n` +
-                                                `🔐 Ваш личный ключ: \`${userApiKey.substring(0, 10)}...\`\n` +
-                                                `💰 **Баланс:** **${currentCredits}** ${creditWord}.\n\n` +
-                                                `Вы используете лимиты и баланс, связанные с этим ключом. Отслеживайте его в личном кабинете https://kie.ai/ru/usage`;
-                            } else {
-                                statusMessage += `❌ **Статус ключа:** отсутствует\n` +
-                                                `🔒 Личный ключ не установлен.\n` +
-                                                `Вы используете общий (административный) ключ.`;
-                            }
-                        
-                            const keyboard = {
-                                inline_keyboard: [
-                                    [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
-                                    [{ text: "📊 Проверить баланс", callback_data: "cmd:/checkkey" }],
-                                    [{ text: "🔑 Установить/Заменить ключ", callback_data: "cmd:/setkey" }],
-                                    [{ text: "🗑️ Удалить ключ", callback_data: "cmd:/delkey" }]
-                                ]
-                            };
-                            
-                            // !!! Возвращаем промис отправки сообщения
-                            return sendMessageMarkdown(chatId, statusMessage, envData.TELEGRAM_BOT_TOKEN, null, keyboard);
-                        })();
-            
-                        ctx.waitUntil(apikeyPromise); // Планируем выполнение
-                        break;
-                    }
-            
-                    case '/setkey':
-                        // Это заглушка, если нажали кнопку без аргументов. Она не требует await.
-                        ctx.waitUntil(sendMessageMarkdown(chatId, 
-                            "🔑 **Ввод API-ключа KIE.ai**\n\n" +
-                            "Введите команду в следующем формате:\n" +
-                            "`/setkey <ВАШ_КЛЮЧ>`\n\n" +
-                            "Ключ можно получить на сайте: https://kie.ai/ru/api-key (выдается 80 бесплатных кредитов).", 
-                            envData.TELEGRAM_BOT_TOKEN 
-                        ));
-                        break;
-                        
-                    case '/checkkey': {
-                        // Весь блок, содержащий await, должен быть обернут в Promise для ctx.waitUntil()
-                        const checkKeyPromise = (async () => {
-                            // !!! await OK, так как находится ВНУТРИ асинхронной функции
-                            let currentCredits = parseInt(await envData.LAST_PHOTO_STORAGE.get(USER_LIMIT_KEY)) || 0;
-                            let statusMessage = '';
-                            
-                            if (userApiKey) {
-                                statusMessage = `✅ **Статус ключа KIE.ai:**\n` +
-                                                `🔐 Ваш личный ключ установлен: \`${userApiKey.substring(0, 10)}...\`\n` +
-                                                `💰 **Баланс кредитов:** **${currentCredits}**.\n\n` +
-                                                `Вы будете использовать лимиты, связанные с этим ключом.`;
-                            } else {
-                                statusMessage = `❌ **Статус ключа KIE.ai:**\n` +
-                                                `🔒 Ваш личный ключ не найден.\n` +
-                                                `Вы используете общий (административный) ключ с общим лимитом. Используйте /setkey <КЛЮЧ> для установки личного ключа.`;
-                            }
-                            // !!! Возвращаем промис отправки сообщения
-                            return sendMessageMarkdown(chatId, statusMessage, envData.TELEGRAM_BOT_TOKEN);
-                        })();
-            
-                        ctx.waitUntil(checkKeyPromise); // Планируем выполнение
-                        break;
-                    }
-            
-                    case '/delkey': {
-                        // Весь блок, содержащий await, должен быть обернут в Promise для ctx.waitUntil()
-                        const delKeyPromise = (async () => {
-                            if (!userApiKey) {
-                                return sendMessageMarkdown(chatId, "❌ **Ошибка:** API-ключ KIE.ai не установлен.", envData.TELEGRAM_BOT_TOKEN);
-                            }
-                            // !!! await OK
-                            await envData.LAST_PHOTO_STORAGE.delete(USER_API_KEY_KV);
-                            await envData.LAST_PHOTO_STORAGE.delete(USER_LIMIT_KEY);
-                            return sendMessageMarkdown(chatId, "✅ **API-ключ KIE.ai успешно удален.**\nБаланс обнулен...", envData.TELEGRAM_BOT_TOKEN);
-                        })();
-            
-                        ctx.waitUntil(delKeyPromise); // Планируем выполнение
-                        break;
-                    }
-                    case '/stop':
-                        ctx.waitUntil(processStopCommand(chatId, envData.LAST_PHOTO_STORAGE, envData.TELEGRAM_BOT_TOKEN, envData));
-                        break;
-                    case '/say': // Добавляем новый case для команды /say
-                        // Используем await, так как нам нужно дождаться отправки аудио
-                        await processSayCommand(chatId, fullText, envData, ctx);
-                        break;
-                    case '/avatar':
-                        // 1. Установим режим на AUDIO_TO_VIDEO (A2V)
-                        //const modeKey = 'ACTIVE_MODEL_AUDIO_TO_VIDEO'; // Ваш KV ключ для режима A2V
-                        //await envData.LAST_PHOTO_STORAGE.put(chatId, modeKey);
-                        
-                        // 2. Получаем текущий промпт пользователя (или дефолтный)
-                        const currentPrompt = await envData.LAST_PHOTO_STORAGE.get(chatId + envData.LAST_PROMPT_KEY_SUFFIX) || DEFAULT_AUDIO_PROMPT;
-
-                        // 3. Получаем активную конфигурацию модели (AUDIO_TO_VIDEO_KIEAI)
-                        const activeModelConfig = envData.AI_MODELS['AUDIO_TO_VIDEO_KIEAI'];
-                        
-                        if (!activeModelConfig) {
-                            await sendMessage(chatId, "❌ Ошибка конфигурации: Модель AUDIO_TO_VIDEO_KIEAI не найдена.", envData.TELEGRAM_BOT_TOKEN);
-                            return new Response('OK');
-                        }
-
-                        // 4. Запускаем генерацию A2V
-                        await sendMessageMarkdown(chatId, `⏳ Запускаем Audio-to-Video (A2V) с промптом: \n\`${currentPrompt.substring(0, 100)}...\``, envData.TELEGRAM_BOT_TOKEN);
-
-                        // Параметры видео (пока используем дефолтные или пустые)
-                        const videoParams = {
-                            resolution: activeModelConfig.DEFAULT_RESOLUTION || '480p'
-                        };
-
-                        try {
-                            // Вызываем нашу функцию
-                            const result = await startKieAiAudio2Video(
-                                activeModelConfig, 
-                                currentPrompt, 
-                                envData, 
-                                videoParams,
-                                chatId
-                            );
-
-                            if (result && result.taskId) {
-                                await sendMessage(chatId, `✅ **Задача A2V запущена!** Task ID: \`${result.taskId}\`. Ожидайте уведомления с готовым видео.`, envData.TELEGRAM_BOT_TOKEN);
-                            } else {
-                                // Если startKieAiAudio2Video вернула null (ошибка уже отправлена пользователю внутри функции)
-                                await sendMessage(chatId, "❌ Не удалось создать задачу A2V. Проверьте наличие фото/аудио.", envData.TELEGRAM_BOT_TOKEN);
-                            }
-                            
-                        } catch (error) {
-                            // Критическая ошибка на уровне вызова
-                            envData.ctx.waitUntil(logDebug('A2V_CRITICAL_FAIL', error.message, envData));
-                            await sendMessage(chatId, `❌ Критическая ошибка при запуске A2V: ${error.message.substring(0, 150)}`, envData.TELEGRAM_BOT_TOKEN);
-                        }
-                        break;
-                    case '/prompt':
-                        ctx.waitUntil(processPromptCommand(chatId, envData.TELEGRAM_BOT_TOKEN, envData.LAST_PHOTO_STORAGE, envData));
-                        break;
-                    case '/create':
-                        // --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
-                        const storage = env.LAST_PHOTO_STORAGE;
-                        const chatKey = chatId.toString();
-                        const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-                        const CREATIVE_MODE_KEY = chatKey + envData.CREATIVE_MODE_KEY_SUFFIX
-                        const token = envData.TELEGRAM_BOT_TOKEN; 
-                        
-                        const inlinePrompt = messageText.replace(/^\/create\s*/i, '').trim();
-            
-                        if (inlinePrompt.length > 0) {
-                            // Сценарий 2: /create [текст] -> СРАЗУ ГЕНЕРАЦИЯ
-                            await processCreateCommand(chatId, inlinePrompt, token, storage, envData);
-                            
-                        } else {
-                            // Сценарий 1: /create (пусто) -> ОТКРЫТЬ МЕНЮ
-                            
-                            // Читаем сохраненный промпт для отображения в меню
-                            const currentPrompt = await storage.get(LAST_PROMPT_KEY);
-                            // 🛑 ИСПРАВЛЕНИЕ 1: ЧИТАЕМ РЕЖИМ
-                            const currentMode = await storage.get(CREATIVE_MODE_KEY) || 'T2I'; 
-                            
-                            // 2. Генерируем данные для меню (Используя AWAIT и передавая KV)
-                            // 🛑 ИСПРАВЛЕНИЕ 2: messageText: createMessage
-                            const { messageText: createMessage, keyboardObject } = await getCreateMenuKeyboard(
-                                currentPrompt, 
-                                currentMode, // ✅ ПЕРЕДАЕМ ПРАВИЛЬНЫЙ РЕЖИМ
-                                chatId, 
-                                envData.LAST_PHOTO_STORAGE 
-                            );
-
-                            // 3. ОТПРАВКА: Используем sendMessageWithKeyboard
-                            ctx.waitUntil(sendMessageWithKeyboard(
-                                chatId, 
-                                createMessage, 
-                                token, 
-                                keyboardObject.inline_keyboard
-                            ));
-                        }
-                        
-                        // Возвращаем ответ в конце, чтобы обработать и генерацию, и меню
-                        return new Response('OK', { status: 200 });
-                    case '/text': {
-                        // --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
-                        // Объявляем переменные здесь, чтобы они были доступны в обоих сценариях (меню/генерация)
-                        const storage = env.LAST_PHOTO_STORAGE;
-                        const chatKey = chatId.toString();
-                        const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-                        const token = envData.TELEGRAM_BOT_TOKEN; 
-            
-                        // 1. Извлекаем промпт, переданный в команде
-                        const inlinePrompt = messageText.replace(/^\/text\s*/i, '').trim();
-            
-                        if (inlinePrompt.length > 0) {
-                            // Сценарий 2: /text [текст] -> СРАЗУ ГЕНЕРАЦИЯ
-                            await processText2ImageCommand(chatId, inlinePrompt, token, storage, envData);
-                            
-                        } else {
-                            // Сценарий 1: /text (пусто) -> ОТКРЫТЬ МЕНЮ
-                            
-                            // Читаем сохраненный промпт для отображения в меню
-                            const currentPrompt = await storage.get(LAST_PROMPT_KEY);
-                                            
-                            // 2. Получаем данные для нового меню
-                            const { messageText: createMessage, keyboardObject } = await getTextMenuKeyboard(chatId, storage, currentPrompt); // <-- Добавьте await здесь
-
-                            // 3. ОТПРАВКА: Используем sendMessageWithKeyboard, передавая только массив inline_keyboard
-                            ctx.waitUntil(sendMessageWithKeyboard(
-                                chatId, 
-                                createMessage, 
-                                token, 
-                                keyboardObject.inline_keyboard // <--- ИСПРАВЛЕНИЕ: Передаем только массив массивов!
-                            ));
-                        }
-                        // Возвращаем ответ в конце, чтобы обработать и генерацию, и меню
-                        return new Response('OK', { status: 200 });
-                    }
-                    case '/photo': 
-                        // ✅ Вызываем sendPhotoMenu, которое теперь знает, как получить контент меню
-                        ctx.waitUntil(sendPhotoMenu(
-                            chatId, 
-                            envData.TELEGRAM_BOT_TOKEN, 
-                            envData.LAST_PHOTO_STORAGE, 
-                            envData, 
-                            ctx
-                        ));
-                        break;
-                    case '/video': { // Оборачиваем кейс в блок {}, чтобы объявить переменные
-                        // --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
-                        const storage = envData.LAST_PHOTO_STORAGE;
-                        const chatKey = chatId.toString();
-                        const token = envData.TELEGRAM_BOT_TOKEN;
-                        // Определяем все ключи
-                        const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX; 
-                        const VIDEO_PARAMS_KEY = chatKey + VIDEO_PARAMS_KEY_SUFFIX;
-                        const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
-                        const LAST_VIDEO_KEY = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; // <-- ДОБАВЛЕН
-                        const LAST_AUDIO_KEY = chatKey + LAST_AUDIO_DATA_KEY_SUFFIX; // <-- ДОБАВЛЕН
-                        // ✅ ИЗМЕНЕНИЕ: Определяем дефолтные параметры с учетом resolution
-                        const DEFAULT_VIDEO_PARAMS = { seconds: '6', aspectRatio: '16:9', resolution: '480p', mode: 'T2V' };
-                        // 1. Чтение данных из KV
-                        const [lastPrompt, videoParams, rawImageKVData, rawVideoKVData, rawAudioKVData] = await Promise.all([ 
-                            storage.get(LAST_PROMPT_KEY),
-                            // ✅ ИЗМЕНЕНИЕ: Обрабатываем JSON и устанавливаем дефолты
-                            storage.get(VIDEO_PARAMS_KEY, { type: 'json' })
-                                .then(res => ({ ...DEFAULT_VIDEO_PARAMS, ...res })) 
-                                .catch(() => DEFAULT_VIDEO_PARAMS), 
-                            storage.get(LAST_IMAGE_KEY, { type: 'text' }),
-                            storage.get(LAST_VIDEO_KEY, { type: 'text' }),
-                            storage.get(LAST_AUDIO_KEY, { type: 'text' }) 
-                            ]);
-
-                        // 2. Определение наличия фото и видео
-                        let isPhotoSaved = false;
-                        if (rawImageKVData && rawImageKVData.length > 100) { 
-                            isPhotoSaved = true; 
-                        }
-                        // Определение наличия сохраненного видео. Добавлена проверка длины (>100 символов) для надежности.
-                        const isVideoSaved = !!rawVideoKVData && rawVideoKVData.length > 100;
-                        const isAudioSaved = !!rawAudioKVData && rawAudioKVData.length > 100;
-                        // 🛑 ШАГ 1: ВЫЗОВ НОВОЙ ФУНКЦИИ
-                        const { isTaskAvailable, previousTaskId } = await getTaskAvailabilityStatus(chatId, envData);
-                        // 2. ✅ НОВОЕ: Определяем currentMode из videoParams
-                        const currentMode = videoParams.mode; 
-                        // 3. Извлекаем параметры из videoParams
-                        const { seconds, aspectRatio, resolution } = videoParams; // ✅ ИЗМЕНЕНИЕ: Деструктурируем resolution
-                        // 3. Открытие меню (Используем sendVideoGenerationMenu, так как это новая команда)
-                        ctx.waitUntil(sendVideoGenerationMenu(
-                            chatId, 
-                            lastPrompt, 
-                            isPhotoSaved, 
-                            isVideoSaved, // <-- ПЕРЕДАЕМ ПЕРЕМЕННУЮ
-                            isAudioSaved,
+                            createMessage, 
                             token, 
-                            videoParams,
-                            isTaskAvailable, // <-- НОВЫЙ ПАРАМЕТР
-                            previousTaskId, // <-- НОВЫЙ ПАРАМЕТР
-                            envData
+                            keyboardObject.inline_keyboard
                         ));
+                    }
                     
-                        return new Response('OK', { status: 200 });
-                    }
-                    case '/checkvideo': { // Оборачиваем кейс в блок {}, чтобы объявить переменные
-                        // Вызов новой функции для обработки статуса видео
-                        // Вам также нужно передать envData, чтобы получить доступ к KV и токену
-                        await handleCheckVideoCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
-                        break;
-                    }
-                    case '/checkaudio': { // Оборачиваем кейс в блок {}, чтобы объявить переменные
-                        // Вызов новой функции для обработки статуса аудио
-                        // Вам также нужно передать envData, чтобы получить доступ к KV и токену
-                        await handleCheckAudioCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
-                        break;
-                    }
-                    case '/checkimage': { // Оборачиваем кейс в блок {}, чтобы объявить переменные
-                        // Вызов новой функции для обработки статуса картинок
-                        await handleCheckImageCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
-                        break;
-                    }
-                    case '/admin': // <-- ИСПРАВЛЕННЫЙ БЛОК: Убрана обработка текстовой команды /admin update_cmds
-                        // Сюда попадает ТОЛЬКО команда /admin (без параметров),
-                        // которая открывает админ-панель с кнопками.
-                        ctx.waitUntil(processAdminStartCommand(chatId, envData));
-                        break;
-
-                    default:
-                        // Неизвестная команда, отправляем в чат-обработчик
-                        ctx.waitUntil(processTextMessage(chatId, messageText, envData));
-                        break;
-                }
-                return new Response('OK', { status: 200 });
-            } // КОНЕЦ БЛОКА ОБРАБОТКИ ТЕКСТОВЫХ КОМАНД
-
-            // 2. ОБРАБОТКА ВХОДЯЩЕГО СООБЩЕНИЯ - ФОТО, ДОКУМЕНТА И ГОЛОСА
-            if (message) {
-                const chatId = message.chat.id;
-                const messageText = message.text || ''; // Убедитесь, что эта строка есть
+                    // Возвращаем ответ в конце, чтобы обработать и генерацию, и меню
+                    return new Response('OK', { status: 200 });
+                case '/text': {
+                    // --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
+                    // Объявляем переменные здесь, чтобы они были доступны в обоих сценариях (меню/генерация)
+                    const storage = env.LAST_PHOTO_STORAGE;
+                    const chatKey = chatId.toString();
+                    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+                    const token = envData.TELEGRAM_BOT_TOKEN; 
         
-                // --- ГЛОБАЛЬНЫЕ КЛЮЧИ (Убедитесь, что они определены) ---
-                // Вам нужно определить ADMIN_STATE_KEY и ADMIN_TARGET_ID_KEY в глобальной области
+                    // 1. Извлекаем промпт, переданный в команде
+                    const inlinePrompt = messageText.replace(/^\/text\s*/i, '').trim();
+        
+                    if (inlinePrompt.length > 0) {
+                        // Сценарий 2: /text [текст] -> СРАЗУ ГЕНЕРАЦИЯ
+                        await processText2ImageCommand(chatId, inlinePrompt, token, storage, envData);
+                        
+                    } else {
+                        // Сценарий 1: /text (пусто) -> ОТКРЫТЬ МЕНЮ
+                        
+                        // Читаем сохраненный промпт для отображения в меню
+                        const currentPrompt = await storage.get(LAST_PROMPT_KEY);
+                                        
+                        // 2. Получаем данные для нового меню
+                        const { messageText: createMessage, keyboardObject } = await getTextMenuKeyboard(chatId, storage, currentPrompt); // <-- Добавьте await здесь
+
+                        // 3. ОТПРАВКА: Используем sendMessageWithKeyboard, передавая только массив inline_keyboard
+                        ctx.waitUntil(sendMessageWithKeyboard(
+                            chatId, 
+                            createMessage, 
+                            token, 
+                            keyboardObject.inline_keyboard // <--- ИСПРАВЛЕНИЕ: Передаем только массив массивов!
+                        ));
+                    }
+                    // Возвращаем ответ в конце, чтобы обработать и генерацию, и меню
+                    return new Response('OK', { status: 200 });
+                }
+                case '/photo': 
+                    // ✅ Вызываем sendPhotoMenu, которое теперь знает, как получить контент меню
+                    ctx.waitUntil(sendPhotoMenu(
+                        chatId, 
+                        envData.TELEGRAM_BOT_TOKEN, 
+                        envData.LAST_PHOTO_STORAGE, 
+                        envData, 
+                        ctx
+                    ));
+                    break;
+                case '/video': { // Оборачиваем кейс в блок {}, чтобы объявить переменные
+                    // --- ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ ---
+                    const storage = envData.LAST_PHOTO_STORAGE;
+                    const chatKey = chatId.toString();
+                    const token = envData.TELEGRAM_BOT_TOKEN;
+                    // Определяем все ключи
+                    const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX; 
+                    const VIDEO_PARAMS_KEY = chatKey + VIDEO_PARAMS_KEY_SUFFIX;
+                    const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
+                    const LAST_VIDEO_KEY = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; // <-- ДОБАВЛЕН
+                    const LAST_AUDIO_KEY = chatKey + LAST_AUDIO_DATA_KEY_SUFFIX; // <-- ДОБАВЛЕН
+                    // ✅ ИЗМЕНЕНИЕ: Определяем дефолтные параметры с учетом resolution
+                    const DEFAULT_VIDEO_PARAMS = { seconds: '6', aspectRatio: '16:9', resolution: '480p', mode: 'T2V' };
+                    // 1. Чтение данных из KV
+                    const [lastPrompt, videoParams, rawImageKVData, rawVideoKVData, rawAudioKVData] = await Promise.all([ 
+                        storage.get(LAST_PROMPT_KEY),
+                        // ✅ ИЗМЕНЕНИЕ: Обрабатываем JSON и устанавливаем дефолты
+                        storage.get(VIDEO_PARAMS_KEY, { type: 'json' })
+                            .then(res => ({ ...DEFAULT_VIDEO_PARAMS, ...res })) 
+                            .catch(() => DEFAULT_VIDEO_PARAMS), 
+                        storage.get(LAST_IMAGE_KEY, { type: 'text' }),
+                        storage.get(LAST_VIDEO_KEY, { type: 'text' }),
+                        storage.get(LAST_AUDIO_KEY, { type: 'text' }) 
+                        ]);
+
+                    // 2. Определение наличия фото и видео
+                    let isPhotoSaved = false;
+                    if (rawImageKVData && rawImageKVData.length > 100) { 
+                        isPhotoSaved = true; 
+                    }
+                    // Определение наличия сохраненного видео. Добавлена проверка длины (>100 символов) для надежности.
+                    const isVideoSaved = !!rawVideoKVData && rawVideoKVData.length > 100;
+                    const isAudioSaved = !!rawAudioKVData && rawAudioKVData.length > 100;
+                    // 🛑 ШАГ 1: ВЫЗОВ НОВОЙ ФУНКЦИИ
+                    const { isTaskAvailable, previousTaskId } = await getTaskAvailabilityStatus(chatId, envData);
+                    // 2. ✅ НОВОЕ: Определяем currentMode из videoParams
+                    const currentMode = videoParams.mode; 
+                    // 3. Извлекаем параметры из videoParams
+                    const { seconds, aspectRatio, resolution } = videoParams; // ✅ ИЗМЕНЕНИЕ: Деструктурируем resolution
+                    // 3. Открытие меню (Используем sendVideoGenerationMenu, так как это новая команда)
+                    ctx.waitUntil(sendVideoGenerationMenu(
+                        chatId, 
+                        lastPrompt, 
+                        isPhotoSaved, 
+                        isVideoSaved, // <-- ПЕРЕДАЕМ ПЕРЕМЕННУЮ
+                        isAudioSaved,
+                        token, 
+                        videoParams,
+                        isTaskAvailable, // <-- НОВЫЙ ПАРАМЕТР
+                        previousTaskId, // <-- НОВЫЙ ПАРАМЕТР
+                        envData
+                    ));
+                
+                    return new Response('OK', { status: 200 });
+                }
+                case '/checkvideo': { // Оборачиваем кейс в блок {}, чтобы объявить переменные
+                    // Вызов новой функции для обработки статуса видео
+                    // Вам также нужно передать envData, чтобы получить доступ к KV и токену
+                    await handleCheckVideoCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
+                    break;
+                }
+                case '/checkaudio': { // Оборачиваем кейс в блок {}, чтобы объявить переменные
+                    // Вызов новой функции для обработки статуса аудио
+                    // Вам также нужно передать envData, чтобы получить доступ к KV и токену
+                    await handleCheckAudioCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
+                    break;
+                }
+                case '/checkimage': { // Оборачиваем кейс в блок {}, чтобы объявить переменные
+                    // Вызов новой функции для обработки статуса картинок
+                    await handleCheckImageCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
+                    break;
+                }
+                case '/admin': // <-- ИСПРАВЛЕННЫЙ БЛОК: Убрана обработка текстовой команды /admin update_cmds
+                    // Сюда попадает ТОЛЬКО команда /admin (без параметров),
+                    // которая открывает админ-панель с кнопками.
+                    ctx.waitUntil(processAdminStartCommand(chatId, envData));
+                    break;
+
+                default:
+                    // Неизвестная команда, отправляем в чат-обработчик
+                    ctx.waitUntil(processTextMessage(chatId, messageText, envData));
+                    break;
+            }
+            return new Response('OK', { status: 200 });
+        } // КОНЕЦ БЛОКА ОБРАБОТКИ ТЕКСТОВЫХ КОМАНД
+
+        // 2. ОБРАБОТКА ВХОДЯЩЕГО СООБЩЕНИЯ - ФОТО, ДОКУМЕНТА И ГОЛОСА
+        if (message) {
+            const chatId = message.chat.id;
+            const messageText = message.text || ''; // Убедитесь, что эта строка есть
+    
+            // --- ГЛОБАЛЬНЫЕ КЛЮЧИ (Убедитесь, что они определены) ---
+            // Вам нужно определить ADMIN_STATE_KEY и ADMIN_TARGET_ID_KEY в глобальной области
+            const ADMIN_STATE_KEY = chatId.toString() + '_admin_state'; 
+            const ADMIN_TARGET_ID_KEY = chatId.toString() + '_admin_target_id';
+
+            // ==============================================================
+            // === 1. ОБРАБОТКА ВЫБРАННОГО ПОЛЬЗОВАТЕЛЯ (message.user_shared)
+            // ==============================================================
+            if (update.message && update.message.user_shared && chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
+                
+                // 🔥 ДЕЙСТВИЯ, КОТОРЫЕ ГАРАНТИРУЮТ СБРОС СТЕЙТА ПРИ ВЫБОРЕ КОНТАКТА
+                const storage = envData.LAST_PHOTO_STORAGE; 
+                const ADMIN_STATE_KEY = chatId.toString() + '_admin_state'; 
+                const adminState = await storage.get(ADMIN_STATE_KEY); 
+
+                // 1. Немедленное удаление, если мы ждали ID для меню
+                if (adminState === 'awaiting_target_id_for_menu') {
+                    await storage.delete(ADMIN_STATE_KEY); 
+                }
+                // 🔥 КОНЕЦ БЛОКА ГАРАНТИИ
+                const message = update.message; 
+                const targetId = message.user_shared.user_id.toString();
+                const token = env.TELEGRAM_BOT_TOKEN;
+                const ADMIN_TARGET_ID_KEY = chatId.toString() + '_admin_target_id';
+
+                // 2. Сохраняем ID (остальной код)
+                await storage.put(ADMIN_TARGET_ID_KEY, targetId, { expirationTtl: 600 });
+                const removeKeyboard = { reply_markup: { remove_keyboard: true } };
+                
+                const actionMatch = adminState ? adminState.match(/^awaiting_target_id_for_action:(.+)$/) : null;
+
+                if (actionMatch) {
+                    // ЕСЛИ ЖДАЛИ ID ДЛЯ ДЕЙСТВИЯ (select_action)
+                    const action = actionMatch[1];
+                    
+                    // Сбрасываем состояние
+                    await storage.delete(ADMIN_STATE_KEY); 
+                    
+                    // Формируем callback_data для немедленного выполнения действия
+                    const callbackData = `admin_${action}:${targetId}`; 
+                    
+                    ctx.waitUntil(sendMessageMarkdown(chatId, 
+                        `✅ ID \`${targetId}\` выбран. Выполняю действие \`${action}\`...`, 
+                        token, null, removeKeyboard));
+                        
+                    // Вызываем handleAdminCallback с новой callback_data
+                    ctx.waitUntil(handleAdminCallback(chatId, { data: callbackData, message: message }, env, ctx));
+                    
+                } else {
+                    // ЕСЛИ ПРОСТО ВЫБРАЛИ ID ИЗ ГЛАВНОГО МЕНЮ (для admin_user_menu)
+                    
+                    // 🔥 СБРАСЫВАЕМ СТЕЙТ 'awaiting_target_id_for_menu'! (ИСПРАВЛЕНИЕ)
+                    if (adminState) {
+                        await storage.delete(ADMIN_STATE_KEY);
+                    }
+                    
+                    const managementKeyboardObject = getManagementActionKeyboard(targetId);
+                    const messageText = `✅ **Выбран пользователь:** \`${targetId}\`\n\nВыберите действие.`;
+
+                    // Сначала скрываем Reply Keyboard
+                    ctx.waitUntil(sendMessage(chatId, "Клавиатура скрыта.", token, null, removeKeyboard)); 
+                    
+                    // Затем показываем Inline Menu
+                    ctx.waitUntil(sendMessage(chatId, messageText, token, null, managementKeyboardObject.inline_keyboard));
+                }
+
+                return new Response('OK', { status: 200 });
+            }
+
+            // ==============================================================
+            // === 1.5. ОБРАБОТКА РУЧНОГО ВВОДА ID (ПРИ АКТИВНОМ СТЕЙТЕ)
+            // ==============================================================
+            if (chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
+                const storage = env.LAST_PHOTO_STORAGE; 
+                const token = env.TELEGRAM_BOT_TOKEN;
+                const adminState = await storage.get(ADMIN_STATE_KEY); 
+
+                // Проверяем, что мы находимся в стейте ожидания ID
+                if (adminState === 'awaiting_target_id_for_menu' || 
+                    (adminState && adminState.startsWith('awaiting_target_id_for_action:'))) {
+
+                    const potentialId = messageText.trim();
+                    const targetUserId = parseInt(potentialId);
+                    
+                    // 🚨 ПЕРВАЯ ПРОВЕРКА: Команда отмены?
+                    if (messageText === "❌ Отменить ввод") {
+                        // Если это отмена, управление перейдет в Блок 2.
+                        
+                    // 🚨 ВТОРАЯ ПРОВЕРКА: Валидный числовой ID?
+                    } else if (targetUserId && !isNaN(targetUserId)) {
+                        
+                        const actionMatch = adminState.match(/^awaiting_target_id_for_action:(.+)$/);
+                        const removeKeyboard = { reply_markup: { hide_keyboard: true } };
+
+                        // 1. Сохраняем новый ID
+                        await storage.put(ADMIN_TARGET_ID_KEY, targetUserId.toString(), { expirationTtl: 600 });
+                        
+                        // 2. Удаляем флаг ожидания
+                        await storage.delete(ADMIN_STATE_KEY);
+
+                        // 3. Скрываем Reply Keyboard и уведомляем
+                        await sendMessage(chatId, `✅ ID установлен вручную: \`${targetUserId}\``, token, null, removeKeyboard);
+                        
+                        if (actionMatch) {
+                            // Если ждали ID для выполнения действия (например, set_balance)
+                            const action = actionMatch[1];
+                            const callbackData = `admin_${action}:${targetUserId}`;
+                            
+                            // Вызываем handleAdminCallback, чтобы перейти к следующему шагу (вводу суммы/дней)
+                            ctx.waitUntil(handleAdminCallback(chatId, { data: callbackData, message: message }, env, ctx));
+                        } else {
+                            // Если ждали ID для обновления меню (admin_user_menu)
+                            // Отправляем новое меню
+                            const fakeCallback = { 
+                                data: 'admin_user_menu', 
+                                message: { message_id: 0 } 
+                            }; 
+                            ctx.waitUntil(handleAdminCallback(chatId, fakeCallback, env, ctx));
+                        }
+
+                        return new Response('OK', { status: 200 }); // <-- ГАРАНТИРОВАННЫЙ ВЫХОД
+                        
+                    // 🚨 ТРЕТЬЯ ПРОВЕРКА: Невалидный ввод?
+                    } else {
+                        // Если ввели текст, но это не ID и не команда отмены
+                        await sendMessageMarkdown(chatId, "❌ **Ошибка ввода:** Введите, пожалуйста, только **цифровой ID** пользователя. Повторите ввод.", token);
+                        return new Response('OK', { status: 200 }); // <-- ГАРАНТИРОВАННЫЙ ВЫХОД
+                    }
+                }
+            }
+
+            // ==============================================================
+            // === 2. ОБРАБОТКА КОМАНДЫ "ОТМЕНА ВВОДА" (КРИТИЧЕСКИЙ БЛОК)
+            // ==============================================================
+            if (messageText === "❌ Отменить ввод" && chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
+                
+                const storage = envData.LAST_PHOTO_STORAGE;
+                const token = envData.TELEGRAM_BOT_TOKEN;
                 const ADMIN_STATE_KEY = chatId.toString() + '_admin_state'; 
                 const ADMIN_TARGET_ID_KEY = chatId.toString() + '_admin_target_id';
 
-                // ==============================================================
-                // === 1. ОБРАБОТКА ВЫБРАННОГО ПОЛЬЗОВАТЕЛЯ (message.user_shared)
-                // ==============================================================
-                if (update.message && update.message.user_shared && chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
-                    
-                    // 🔥 ДЕЙСТВИЯ, КОТОРЫЕ ГАРАНТИРУЮТ СБРОС СТЕЙТА ПРИ ВЫБОРЕ КОНТАКТА
-                    const storage = envData.LAST_PHOTO_STORAGE; 
-                    const ADMIN_STATE_KEY = chatId.toString() + '_admin_state'; 
-                    const adminState = await storage.get(ADMIN_STATE_KEY); 
+                // 1. Удаляем состояние ожидания
+                await storage.delete(ADMIN_STATE_KEY); 
 
-                    // 1. Немедленное удаление, если мы ждали ID для меню
-                    if (adminState === 'awaiting_target_id_for_menu') {
-                        await storage.delete(ADMIN_STATE_KEY); 
-                    }
-                    // 🔥 КОНЕЦ БЛОКА ГАРАНТИИ
-                    const message = update.message; 
-                    const targetId = message.user_shared.user_id.toString();
-                    const token = env.TELEGRAM_BOT_TOKEN;
-                    const ADMIN_TARGET_ID_KEY = chatId.toString() + '_admin_target_id';
+                // 2. Удаляем Reply Keyboard - ЭТО ПЕРВОЕ СООБЩЕНИЕ
+                //const removeKeyboard = { reply_markup: { remove_keyboard: true } };
+                // Отправляем удаление клавиатуры первым, чтобы она исчезла
+                //ctx.waitUntil(sendMessage(chatId, "✅ **Отмена ввода.** Клавиатура скрыта.", token, null, removeKeyboard));
+                
+                // 3. Возвращаем в меню управления - ЭТО ВТОРОЕ СООБЩЕНИЕ
+                //const currentTargetId = await storage.get(ADMIN_TARGET_ID_KEY);
+                //const managementKeyboardObject = getManagementActionKeyboard(currentTargetId); 
+                //const menuText = "👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ.\n\n🆔 Текущий ID: 'Не выбран'\n\n💰 Баланс: 'Не выбран'\n👑 Безлимит: 'Не указан'\n\nВыберите пользователя и укажите действия.";
+                
+                // Отправляем Inline Menu вторым
+                //ctx.waitUntil(editMessageWithKeyboard(chatId, menuText, token, null, managementKeyboardObject.inline_keyboard));
 
-                    // 2. Сохраняем ID (остальной код)
-                    await storage.put(ADMIN_TARGET_ID_KEY, targetId, { expirationTtl: 600 });
-                    const removeKeyboard = { reply_markup: { remove_keyboard: true } };
-                    
-                    const actionMatch = adminState ? adminState.match(/^awaiting_target_id_for_action:(.+)$/) : null;
+                return new Response('OK', { status: 200 });
+            }
 
-                    if (actionMatch) {
-                        // ЕСЛИ ЖДАЛИ ID ДЛЯ ДЕЙСТВИЯ (select_action)
-                        const action = actionMatch[1];
-                        
-                        // Сбрасываем состояние
-                        await storage.delete(ADMIN_STATE_KEY); 
-                        
-                        // Формируем callback_data для немедленного выполнения действия
-                        const callbackData = `admin_${action}:${targetId}`; 
-                        
-                        ctx.waitUntil(sendMessageMarkdown(chatId, 
-                            `✅ ID \`${targetId}\` выбран. Выполняю действие \`${action}\`...`, 
-                            token, null, removeKeyboard));
-                            
-                        // Вызываем handleAdminCallback с новой callback_data
-                        ctx.waitUntil(handleAdminCallback(chatId, { data: callbackData, message: message }, env, ctx));
-                        
-                    } else {
-                        // ЕСЛИ ПРОСТО ВЫБРАЛИ ID ИЗ ГЛАВНОГО МЕНЮ (для admin_user_menu)
-                        
-                        // 🔥 СБРАСЫВАЕМ СТЕЙТ 'awaiting_target_id_for_menu'! (ИСПРАВЛЕНИЕ)
-                        if (adminState) {
-                            await storage.delete(ADMIN_STATE_KEY);
-                        }
-                        
-                        const managementKeyboardObject = getManagementActionKeyboard(targetId);
-                        const messageText = `✅ **Выбран пользователь:** \`${targetId}\`\n\nВыберите действие.`;
-
-                        // Сначала скрываем Reply Keyboard
-                        ctx.waitUntil(sendMessage(chatId, "Клавиатура скрыта.", token, null, removeKeyboard)); 
-                        
-                        // Затем показываем Inline Menu
-                        ctx.waitUntil(sendMessage(chatId, messageText, token, null, managementKeyboardObject.inline_keyboard));
-                    }
-
+            let mediaObject = null; // Будет содержать данные фото (сжатое или как документ)
+        
+            // БЛОК 3.1 - ОБРАБОТКА ВИДЕО
+            if (isVideo) {
+                // Определяем storage и token в начале (строки 8280-8290 в вашем коде)
+                const storage = envData.LAST_PHOTO_STORAGE; 
+                const token = envData.TELEGRAM_BOT_TOKEN; 
+                
+                // Если хранилище недоступно, сразу возвращаем ошибку
+                if (!storage) { 
+                    await sendMessage(chatId, "❌ Критическая ошибка: Хранилище недоступно.", token);
                     return new Response('OK', { status: 200 });
                 }
-
-                // ==============================================================
-                // === 1.5. ОБРАБОТКА РУЧНОГО ВВОДА ID (ПРИ АКТИВНОМ СТЕЙТЕ)
-                // ==============================================================
-                if (chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
-                    const storage = env.LAST_PHOTO_STORAGE; 
-                    const token = env.TELEGRAM_BOT_TOKEN;
-                    const adminState = await storage.get(ADMIN_STATE_KEY); 
-
-                    // Проверяем, что мы находимся в стейте ожидания ID
-                    if (adminState === 'awaiting_target_id_for_menu' || 
-                        (adminState && adminState.startsWith('awaiting_target_id_for_action:'))) {
-
-                        const potentialId = messageText.trim();
-                        const targetUserId = parseInt(potentialId);
-                        
-                        // 🚨 ПЕРВАЯ ПРОВЕРКА: Команда отмены?
-                        if (messageText === "❌ Отменить ввод") {
-                            // Если это отмена, управление перейдет в Блок 2.
-                            
-                        // 🚨 ВТОРАЯ ПРОВЕРКА: Валидный числовой ID?
-                        } else if (targetUserId && !isNaN(targetUserId)) {
-                            
-                            const actionMatch = adminState.match(/^awaiting_target_id_for_action:(.+)$/);
-                            const removeKeyboard = { reply_markup: { hide_keyboard: true } };
-
-                            // 1. Сохраняем новый ID
-                            await storage.put(ADMIN_TARGET_ID_KEY, targetUserId.toString(), { expirationTtl: 600 });
-                            
-                            // 2. Удаляем флаг ожидания
-                            await storage.delete(ADMIN_STATE_KEY);
-
-                            // 3. Скрываем Reply Keyboard и уведомляем
-                            await sendMessage(chatId, `✅ ID установлен вручную: \`${targetUserId}\``, token, null, removeKeyboard);
-                            
-                            if (actionMatch) {
-                                // Если ждали ID для выполнения действия (например, set_balance)
-                                const action = actionMatch[1];
-                                const callbackData = `admin_${action}:${targetUserId}`;
-                                
-                                // Вызываем handleAdminCallback, чтобы перейти к следующему шагу (вводу суммы/дней)
-                                ctx.waitUntil(handleAdminCallback(chatId, { data: callbackData, message: message }, env, ctx));
-                            } else {
-                                // Если ждали ID для обновления меню (admin_user_menu)
-                                // Отправляем новое меню
-                                const fakeCallback = { 
-                                    data: 'admin_user_menu', 
-                                    message: { message_id: 0 } 
-                                }; 
-                                ctx.waitUntil(handleAdminCallback(chatId, fakeCallback, env, ctx));
-                            }
-
-                            return new Response('OK', { status: 200 }); // <-- ГАРАНТИРОВАННЫЙ ВЫХОД
-                            
-                        // 🚨 ТРЕТЬЯ ПРОВЕРКА: Невалидный ввод?
-                        } else {
-                            // Если ввели текст, но это не ID и не команда отмены
-                            await sendMessageMarkdown(chatId, "❌ **Ошибка ввода:** Введите, пожалуйста, только **цифровой ID** пользователя. Повторите ввод.", token);
-                            return new Response('OK', { status: 200 }); // <-- ГАРАНТИРОВАННЫЙ ВЫХОД
+                const videoFile = message.video || message.video_note; // <-- ИСПОЛЬЗУЕМ ТО, ЧТО ПРИШЛО
+                // 💡 Теперь videoFile гарантированно содержит нужные поля (file_id, file_size и т.д.)
+                const file_id = videoFile.file_id;
+                const file_size = videoFile.file_size;
+                let workingMessageId = "";
+                // Сначала отправляем сообщение о начале работы и немедленно отвечаем Telegram
+                //const waitingMessageId = (await sendMessageMarkdown(chatId, "⏳ **Видео загружается. **Подождите пожалуйста ...", token)).message_id;
+                //const workingMessageId = (await editMessage(chatId, "✅ **Видео принято.**", token)).message_id;
+                // !!! ВАЖНО: Весь длительный процесс оборачиваем в waitUntil !!!
+                ctx.waitUntil(async function() {
+                    // Мы передали storage и token из внешней области видимости.
+                    try {
+                        // Читаем текущий режим видео
+                        // Определяем ключ (если не определен выше)
+                        const VIDEO_PARAMS_KEY = chatId + VIDEO_PARAMS_KEY_SUFFIX; 
+                        const DEFAULT_VIDEO_PARAMS = { seconds: '6', aspectRatio: '16:9', resolution: '480p', mode: 'T2V' }; // ✅ Должен быть определен!
+                        // Читаем все параметры ОДНИМ GET
+                        const videoParams = await storage.get(VIDEO_PARAMS_KEY, { type: 'json' })
+                            .then(res => ({...DEFAULT_VIDEO_PARAMS, ...res}))
+                            .catch(() => DEFAULT_VIDEO_PARAMS);
+                        const currentMode = videoParams.mode; // ✅ Режим извлекается из объекта
+                        // Проверяем размер файла
+                        if (file_size > 10 * 1024 * 1024) {
+                            await editMessage(chatId, workingMessageId, "❌ **Ошибка:** Видеофайл должен быть меньше 10 МБ для апскейла.", token);
+                            return; // Выходим из waitUntil
                         }
-                    }
-                }
 
-                // ==============================================================
-                // === 2. ОБРАБОТКА КОМАНДЫ "ОТМЕНА ВВОДА" (КРИТИЧЕСКИЙ БЛОК)
-                // ==============================================================
-                if (messageText === "❌ Отменить ввод" && chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
-                    
-                    const storage = envData.LAST_PHOTO_STORAGE;
-                    const token = envData.TELEGRAM_BOT_TOKEN;
-                    const ADMIN_STATE_KEY = chatId.toString() + '_admin_state'; 
-                    const ADMIN_TARGET_ID_KEY = chatId.toString() + '_admin_target_id';
+                        const telegramDownloadUrl = await getFileLink(file_id, token);
+                        const publicVideoUrl = telegramDownloadUrl; // <-- Используем временную ссылку Telegram
 
-                    // 1. Удаляем состояние ожидания
-                    await storage.delete(ADMIN_STATE_KEY); 
-
-                    // 2. Удаляем Reply Keyboard - ЭТО ПЕРВОЕ СООБЩЕНИЕ
-                    //const removeKeyboard = { reply_markup: { remove_keyboard: true } };
-                    // Отправляем удаление клавиатуры первым, чтобы она исчезла
-                    //ctx.waitUntil(sendMessage(chatId, "✅ **Отмена ввода.** Клавиатура скрыта.", token, null, removeKeyboard));
-                    
-                    // 3. Возвращаем в меню управления - ЭТО ВТОРОЕ СООБЩЕНИЕ
-                    //const currentTargetId = await storage.get(ADMIN_TARGET_ID_KEY);
-                    //const managementKeyboardObject = getManagementActionKeyboard(currentTargetId); 
-                    //const menuText = "👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ.\n\n🆔 Текущий ID: 'Не выбран'\n\n💰 Баланс: 'Не выбран'\n👑 Безлимит: 'Не указан'\n\nВыберите пользователя и укажите действия.";
-                    
-                    // Отправляем Inline Menu вторым
-                    //ctx.waitUntil(editMessageWithKeyboard(chatId, menuText, token, null, managementKeyboardObject.inline_keyboard));
-
-                    return new Response('OK', { status: 200 });
-                }
-
-                let mediaObject = null; // Будет содержать данные фото (сжатое или как документ)
-            
-                // БЛОК 3.1 - ОБРАБОТКА ВИДЕО
-                if (isVideo) {
-                    // Определяем storage и token в начале (строки 8280-8290 в вашем коде)
-                    const storage = envData.LAST_PHOTO_STORAGE; 
-                    const token = envData.TELEGRAM_BOT_TOKEN; 
-                    
-                    // Если хранилище недоступно, сразу возвращаем ошибку
-                    if (!storage) { 
-                        await sendMessage(chatId, "❌ Критическая ошибка: Хранилище недоступно.", token);
-                        return new Response('OK', { status: 200 });
-                    }
-                    const videoFile = message.video || message.video_note; // <-- ИСПОЛЬЗУЕМ ТО, ЧТО ПРИШЛО
-                    // 💡 Теперь videoFile гарантированно содержит нужные поля (file_id, file_size и т.д.)
-                    const file_id = videoFile.file_id;
-                    const file_size = videoFile.file_size;
-                    let workingMessageId = "";
-                    // Сначала отправляем сообщение о начале работы и немедленно отвечаем Telegram
-                    //const waitingMessageId = (await sendMessageMarkdown(chatId, "⏳ **Видео загружается. **Подождите пожалуйста ...", token)).message_id;
-                    //const workingMessageId = (await editMessage(chatId, "✅ **Видео принято.**", token)).message_id;
-                    // !!! ВАЖНО: Весь длительный процесс оборачиваем в waitUntil !!!
-                    ctx.waitUntil(async function() {
-                        // Мы передали storage и token из внешней области видимости.
-                        try {
-                            // Читаем текущий режим видео
-                            // Определяем ключ (если не определен выше)
-                            const VIDEO_PARAMS_KEY = chatId + VIDEO_PARAMS_KEY_SUFFIX; 
-                            const DEFAULT_VIDEO_PARAMS = { seconds: '6', aspectRatio: '16:9', resolution: '480p', mode: 'T2V' }; // ✅ Должен быть определен!
-                            // Читаем все параметры ОДНИМ GET
-                            const videoParams = await storage.get(VIDEO_PARAMS_KEY, { type: 'json' })
-                                .then(res => ({...DEFAULT_VIDEO_PARAMS, ...res}))
-                                .catch(() => DEFAULT_VIDEO_PARAMS);
-                            const currentMode = videoParams.mode; // ✅ Режим извлекается из объекта
-                            // Проверяем размер файла
-                            if (file_size > 10 * 1024 * 1024) {
-                                await editMessage(chatId, workingMessageId, "❌ **Ошибка:** Видеофайл должен быть меньше 10 МБ для апскейла.", token);
-                                return; // Выходим из waitUntil
-                            }
-
-                            const telegramDownloadUrl = await getFileLink(file_id, token);
-                            const publicVideoUrl = telegramDownloadUrl; // <-- Используем временную ссылку Telegram
-
-                            // ШАГ 2: Сохраняем URL и метаданные в KV
-                            const videoData = JSON.stringify({
+                        // ШАГ 2: Сохраняем URL и метаданные в KV
+                        const videoData = JSON.stringify({
                                 file_id: file_id,
                                 url: publicVideoUrl,
                                 mime_type: videoFile.mime_type,
                                 file_size: file_size,
-                                width: videoFile.width || null,     
-                                height: videoFile.height || null,   
-                                duration: videoFile.duration || null,
+                            width: videoFile.width || null,     
+                            height: videoFile.height || null,   
+                            duration: videoFile.duration || null,
                                 thumb: videoFile.thumb // Сохраняем thumb на случай, если он понадобится для превью
                             });
-                            const chatKey = chatId.toString(); // <--- ДОБАВЛЕНО
-                            const videoKey = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; // <--- ИСПОЛЬЗУЕМ СТРОКОВЫЙ КЛЮЧ
-                            const photoKey = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; // <--- ИСПОЛЬЗУЕМ СТРОКОВЫЙ КЛЮЧ
+                        const chatKey = chatId.toString(); // <--- ДОБАВЛЕНО
+                        const videoKey = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; // <--- ИСПОЛЬЗУЕМ СТРОКОВЫЙ КЛЮЧ
+                        const photoKey = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; // <--- ИСПОЛЬЗУЕМ СТРОКОВЫЙ КЛЮЧ
 
-                            // !!!!!!!!! ИЗМЕНЯЕМ ЭТУ СТРОКУ !!!!!!!!!
-                            await storage.put(videoKey, videoData, { expirationTtl: 3600 }); // Используем строковый videoKey
-                            // Сохраняем последний медиа-тип
-                            await storage.put(chatKey + LAST_MEDIA_TYPE_KEY_SUFFIX, 'video', { expirationTtl: 3600 });
-                            // 🛑 ОПТИМИЗАЦИЯ: Читаем ВСЕ актуальные параметры ОДНОВРЕМЕННО
-                            const [
-                                lastVideoMenuId, 
-                                lastPrompt, 
-                                rawImageKVData, 
-                                rawVideoKVData, 
-                                rawAudioKVData
-                            ] = await Promise.all([
-                                storage.get(chatId + LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX),
-                                storage.get(chatId + LAST_PROMPT_KEY_SUFFIX),
-                                storage.get(chatId + LAST_IMAGE_DATA_KEY_SUFFIX),
-                                storage.get(chatId + LAST_VIDEO_DATA_KEY_SUFFIX),
-                                storage.get(chatId + LAST_AUDIO_DATA_KEY_SUFFIX)
-                            ]);
+                        // !!!!!!!!! ИЗМЕНЯЕМ ЭТУ СТРОКУ !!!!!!!!!
+                        await storage.put(videoKey, videoData, { expirationTtl: 3600 }); // Используем строковый videoKey
+                        // Сохраняем последний медиа-тип
+                        await storage.put(chatKey + LAST_MEDIA_TYPE_KEY_SUFFIX, 'video', { expirationTtl: 3600 });
+                        // 🛑 ОПТИМИЗАЦИЯ: Читаем ВСЕ актуальные параметры ОДНОВРЕМЕННО
+                        const [
+                            lastVideoMenuId, 
+                            lastPrompt, 
+                            rawImageKVData, 
+                            rawVideoKVData, 
+                            rawAudioKVData
+                        ] = await Promise.all([
+                            storage.get(chatId + LAST_PROMPT_MESSAGE_ID_KEY_SUFFIX),
+                            storage.get(chatId + LAST_PROMPT_KEY_SUFFIX),
+                            storage.get(chatId + LAST_IMAGE_DATA_KEY_SUFFIX),
+                            storage.get(chatId + LAST_VIDEO_DATA_KEY_SUFFIX),
+                            storage.get(chatId + LAST_AUDIO_DATA_KEY_SUFFIX)
+                        ]);
 
-                            // Используем полученные данные
-                            const isPhotoSaved = !!rawImageKVData; 
-                            const isVideoSaved = !!rawVideoKVData; 
-                            const isAudioSaved = !!rawAudioKVData; 
-                            // lastPrompt и lastVideoMenuId уже определены
+                        // Используем полученные данные
+                        const isPhotoSaved = !!rawImageKVData; 
+                        const isVideoSaved = !!rawVideoKVData; 
+                        const isAudioSaved = !!rawAudioKVData; 
+                        // lastPrompt и lastVideoMenuId уже определены
 
-                            // 🛑 ШАГ 2: Определяем инлайн-клавиатуру (добавлена кнопка "Удалить")
-                            const inlineKeyboard = {
-                                inline_keyboard: [
-                                    [{text: "🎧 Транскрибировать видео в текст", callback_data: 'cmd:/video_transcribe'}],
-                                    [{ text: '👀 Проанализировать видеоконтент', callback_data: 'cmd:/video_analysis' }],
-                                    [{text: "💿 Сохранить аудиодорожку как голос", callback_data: 'cmd:/grab_audio'}],
-                                    [{ text: "🎞️ Сконвертировать видео в GIF-ку", callback_data: "video_to_gif:gif" }],
-                                    // 1. НОВАЯ КНОПКА: Захват кадра (Frame Grab)
-                                    [{text: "🖼️ Сохранить стоп-кадр как фото", callback_data: 'cmd:/grab_frame'}],
-                                    // 3. Режимы V2V и A2V
-                                    [
-                                        {text: "🗣 Создать Аватар", callback_data: 'set_video_mode|A2V'},
-                                        {text: "📽️ Изменить Видео", callback_data: 'set_video_mode|V2V'}
-                                    ],
-                                    [
-                                        {text: "📺 Повысить Видео", callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE'},
-                                        {text: "❔ помощь по выбору", callback_data: 'dummy_no_buttons'}
-                                    ],
-                                ]
-                            };
-                            // 🛑 ШАГ 3: Отправляем НОВОЕ сообщение с клавиатурой и удаляем старые
+                        // 🛑 ШАГ 2: Определяем инлайн-клавиатуру (добавлена кнопка "Удалить")
+                        const inlineKeyboard = {
+                            inline_keyboard: [
+                                [{text: "🎧 Транскрибировать видео в текст", callback_data: 'cmd:/video_transcribe'}],
+                                [{ text: '👀 Проанализировать видеоконтент', callback_data: 'cmd:/video_analysis' }],
+                                [{text: "💿 Сохранить аудиодорожку как голос", callback_data: 'cmd:/grab_audio'}],
+                                [{ text: "🎞️ Сконвертировать видео в GIF-ку", callback_data: "video_to_gif:gif" }],
+                                // 1. НОВАЯ КНОПКА: Захват кадра (Frame Grab)
+                                [{text: "🖼️ Сохранить стоп-кадр как фото", callback_data: 'cmd:/grab_frame'}],
+                                // 3. Режимы V2V и A2V
+                                [
+                                    {text: "🗣 Создать Аватар", callback_data: 'set_video_mode|A2V'},
+                                    {text: "📽️ Изменить Видео", callback_data: 'set_video_mode|V2V'}
+                                ],
+                                [
+                                    {text: "📺 Повысить Видео", callback_data: 'select_upscale_mode|VIDEO_TO_UPSCALE'},
+                                    {text: "❔ помощь по выбору", callback_data: 'dummy_no_buttons'}
+                                ],
+                            ]
+                        };
+                        // 🛑 ШАГ 3: Отправляем НОВОЕ сообщение с клавиатурой и удаляем старые
                             //const finalMessageText = `✅ **Видео успешно сохранено!**\n\nРазмер: ${Math.round(file_size / (1024 * 1024))} МБ\n\nВыберите, что вы хотите с ним сделать:`;
-                            const finalMessageText = `🎬 Видео принято. Что вы хотите с ним сделать?`;
+                        const finalMessageText = `🎬 Видео принято. Что вы хотите с ним сделать?`;
                             // Отправляем финальное сообщение с клавиатурой (используем sendMessageMarkdown для форматирования)
                             await sendMessageMarkdown(
                                 chatId, 
@@ -17209,191 +17208,191 @@ export default {
                                 //await sendMessage(chatId, "📽️ Теперь вы можете использовать это видео в меню /video.", token);
                             }
 
-                        } catch (e) {
-                            console.error("Video upload failed:", e);
-                            const errorText = e && e.message ? e.message.substring(0, 300) : 'Неизвестная ошибка загрузки.'; 
-                            try {
-                                // Используем token, определенный выше
-                                await editMessage(chatId, workingMessageId, `❌ **Критическая ошибка загрузки видео:** ${errorText}`, token);
-                            } catch (editError) {
-                                await sendMessage(chatId, `❌ **Критическая ошибка загрузки видео:** Произошел сбой. Пожалуйста, попробуйте позже.`, token);
-                            }
+                    } catch (e) {
+                        console.error("Video upload failed:", e);
+                        const errorText = e && e.message ? e.message.substring(0, 300) : 'Неизвестная ошибка загрузки.'; 
+                        try {
+                            // Используем token, определенный выше
+                            await editMessage(chatId, workingMessageId, `❌ **Критическая ошибка загрузки видео:** ${errorText}`, token);
+                        } catch (editError) {
+                            await sendMessage(chatId, `❌ **Критическая ошибка загрузки видео:** Произошел сбой. Пожалуйста, попробуйте позже.`, token);
                         }
-                    }()); // Немедленно вызываем асинхронную функцию
-                    
-                    return new Response('OK', { status: 200 }); 
-                } // 🛑 КОНЕЦ ОБРАБОТКИ ВИДЕО
-
-                // 2.1. ПРОВЕРКА НА СТАНДАРТНУЮ ФОТОГРАФИЮ (сжатое фото)
-                if (isPhoto) {
-                    // Берем самый большой объект фото
-                    mediaObject = message.photo.reduce((prev, current) => 
-                        (prev.width * prev.height > current.width * current.height) ? prev : current);
-                
-                // 2.2. ДОБАВЛЕНО: ПРОВЕРКА НА ДОКУМЕНТ (несжатое фото/перетаскивание)
-                } else if (message.document) {
-                    // Проверяем, что документ имеет MIME-тип изображения
-                    if (message.document.mime_type && message.document.mime_type.startsWith('image/')) {
-                        mediaObject = message.document;
                     }
+                }()); // Немедленно вызываем асинхронную функцию
+                
+                return new Response('OK', { status: 200 }); 
+            } // 🛑 КОНЕЦ ОБРАБОТКИ ВИДЕО
+
+            // 2.1. ПРОВЕРКА НА СТАНДАРТНУЮ ФОТОГРАФИЮ (сжатое фото)
+            if (isPhoto) {
+                // Берем самый большой объект фото
+                mediaObject = message.photo.reduce((prev, current) => 
+                    (prev.width * prev.height > current.width * current.height) ? prev : current);
+            
+            // 2.2. ДОБАВЛЕНО: ПРОВЕРКА НА ДОКУМЕНТ (несжатое фото/перетаскивание)
+            } else if (message.document) {
+                // Проверяем, что документ имеет MIME-тип изображения
+                if (message.document.mime_type && message.document.mime_type.startsWith('image/')) {
+                    mediaObject = message.document;
                 }
+            }
 
-                // 2.3. Обработка ФОТО (Photo или Document-Photo)
-                if (mediaObject) {
-                    // ШАГ 1: Отключаем автоматический Vision!
-                    // ctx.waitUntil(processPhotoMessageAsync(chatId, mediaObject, envData, ctx));
+            // 2.3. Обработка ФОТО (Photo или Document-Photo)
+            if (mediaObject) {
+                // ШАГ 1: Отключаем автоматический Vision!
+                // ctx.waitUntil(processPhotoMessageAsync(chatId, mediaObject, envData, ctx));
 
-                    const fileId = mediaObject.file_id;
-                    const token = envData.TELEGRAM_BOT_TOKEN;
+                const fileId = mediaObject.file_id;
+                const token = envData.TELEGRAM_BOT_TOKEN;
 
-                    // ?? ШАГ 2: Сохраняем fileId в KV, чтобы кнопки знали, с чем работать
-                    await envData.LAST_PHOTO_STORAGE.put(chatId + LAST_FILE_ID_KEY_SUFFIX, fileId);
-                    // НОВЫЙ ШАГ: ЗАПУСКАЕМ ФОНОВУЮ ЗАДАЧУ
-                    // Передаем mediaObject для сохранения метаданных (width/height).
-                    ctx.waitUntil(downloadAndSaveBase64(fileId, chatId, envData, mediaObject)); 
+                // ?? ШАГ 2: Сохраняем fileId в KV, чтобы кнопки знали, с чем работать
+                await envData.LAST_PHOTO_STORAGE.put(chatId + LAST_FILE_ID_KEY_SUFFIX, fileId);
+                // НОВЫЙ ШАГ: ЗАПУСКАЕМ ФОНОВУЮ ЗАДАЧУ
+                // Передаем mediaObject для сохранения метаданных (width/height).
+                ctx.waitUntil(downloadAndSaveBase64(fileId, chatId, envData, mediaObject)); 
 
-                    // 🛑 ШАГ 3: Отправляем сообщение с инлайн-кнопками
-                    const inlineKeyboard = {
-                        inline_keyboard: [
-                        [{ text: "🌄 Бесплатно улучшить изображение", callback_data: 'cmd:/vision_generate_free_i2i' }],
-                        [{ text: "🔄 Получить описание фотографии", callback_data: 'regenerate_prompt' }],
-                        [{ text: "✨ Улучшить Фото", callback_data: 'cmd:/photo_now' },
-                         { text: "🎬 Оживить Фото", callback_data: 'start_video_generation|I2V' }],
-                        [{ text: "🔍 Увеличить Фото", callback_data: 'generate_upscale_now|IMAGE_TO_UPSCALE' },
-                         { text: "❔ помощь по выбору", callback_data: 'dummy_no_buttons' }], 
-                    ]
-                    };
+                // 🛑 ШАГ 3: Отправляем сообщение с инлайн-кнопками
+                const inlineKeyboard = {
+                    inline_keyboard: [
+                    [{ text: "🌄 Бесплатно улучшить изображение", callback_data: 'cmd:/vision_generate_free_i2i' }],
+                    [{ text: "🔄 Получить описание фотографии", callback_data: 'regenerate_prompt' }],
+                    [{ text: "✨ Улучшить Фото", callback_data: 'cmd:/photo_now' },
+                        { text: "🎬 Оживить Фото", callback_data: 'start_video_generation|I2V' }],
+                    [{ text: "🔍 Увеличить Фото", callback_data: 'generate_upscale_now|IMAGE_TO_UPSCALE' },
+                        { text: "❔ помощь по выбору", callback_data: 'dummy_no_buttons' }], 
+                ]
+                };
 
-                    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: chatId,
-                            text: "📸 Фотография принята. Что вы хотите с ней сделать?",
-                            reply_markup: inlineKeyboard
-                        })
-                    });
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: "📸 Фотография принята. Что вы хотите с ней сделать?",
+                        reply_markup: inlineKeyboard
+                    })
+                });
                     return new Response('OK', { status: 200 });
                 }
 
-                // ОБРАБОТКА GIF Анимации
-                if (isAnimation) {
-                    // Вызываем твою новую функцию, которую мы обсуждали шагом ранее
-                    const currentFileId = animation.file_id;
-                    const mediaType = 'gif';
-                    const currentWidth = (animation).width;
-                    const currentHeight = (animation).height;
-                    
-                    // ✅ Сохраняем в KV (используем правильные переменные)
-                    const GIF_DATA_KEY = `${chatId}_last_gif_data`;
-                    await envData.LAST_PHOTO_STORAGE.put(GIF_DATA_KEY, JSON.stringify({
-                        file_id: currentFileId,
-                        type: mediaType,
-                        width: currentWidth,
-                        height: currentHeight
-                    }), { expirationTtl: 3600 });
-                    // И не забываем обновить основной тип медиа
-                    await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "animation"); 
+            // ОБРАБОТКА GIF Анимации
+            if (isAnimation) {
+                // Вызываем твою новую функцию, которую мы обсуждали шагом ранее
+                const currentFileId = animation.file_id;
+                const mediaType = 'gif';
+                const currentWidth = (animation).width;
+                const currentHeight = (animation).height;
+                
+                // ✅ Сохраняем в KV (используем правильные переменные)
+                const GIF_DATA_KEY = `${chatId}_last_gif_data`;
+                await envData.LAST_PHOTO_STORAGE.put(GIF_DATA_KEY, JSON.stringify({
+                    file_id: currentFileId,
+                    type: mediaType,
+                    width: currentWidth,
+                    height: currentHeight
+                }), { expirationTtl: 3600 });
+                // И не забываем обновить основной тип медиа
+                await envData.LAST_PHOTO_STORAGE.put(`${chatId}_last_media_type`, "animation"); 
 
-                    const text = "🎞️ **Обнаружена GIF-анимация!**\nЕё можно конвертировать в видео (MP4) для экономии трафика или ресайза.";
+                const text = "🎞️ **Обнаружена GIF-анимация!**\nЕё можно конвертировать в видео (MP4) для экономии трафика или ресайза.";
 
-                    // Заменяем текущий sendMessage в блоке GIF на этот:
-                    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: chatId,
-                            text: text,
-                            parse_mode: 'Markdown', // Убедись, что мод совпадает с текстом
-                            reply_markup: {
-                                inline_keyboard: [
-                                    [{ text: "📽️ Конвертировать в MP4", callback_data: `gif_to_video` }],
-                                    [{ text: "🗑️ Игнорировать", callback_data: `delete_message` }]
-                                ]
-                            }
-                        })
-                    });
-                    
-                    // Прерываем дальнейшую обработку, чтобы бот не пытался отвечать на это как на текст
-                    return new Response('OK', { status: 200 });
-                } // КОНЕЦ БЛОКА ОБРАБОТКИ GIF и Стикеров - Анимации
+                // Заменяем текущий sendMessage в блоке GIF на этот:
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: text,
+                        parse_mode: 'Markdown', // Убедись, что мод совпадает с текстом
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: "📽️ Конвертировать в MP4", callback_data: `gif_to_video` }],
+                                [{ text: "🗑️ Игнорировать", callback_data: `delete_message` }]
+                            ]
+                        }
+                    })
+                });
+                
+                // Прерываем дальнейшую обработку, чтобы бот не пытался отвечать на это как на текст
+                return new Response('OK', { status: 200 });
+            } // КОНЕЦ БЛОКА ОБРАБОТКИ GIF и Стикеров - Анимации
 
-                // 2.4. Обработка ГОЛОСОВОГО СООБЩЕНИЯ (voice безопасно извлечен в начале fetch)
-                if (voice) { 
-                    const voiceFileId = voice.file_id;
+            // 2.4. Обработка ГОЛОСОВОГО СООБЩЕНИЯ (voice безопасно извлечен в начале fetch)
+            if (voice) { 
+                const voiceFileId = voice.file_id;
 
-                    // 🚀 РЕЖИМ 2: СТАНДАРТНАЯ ОБРАБОТКА ГОЛОСА (ВНЕ МЕНЮ)
+                // 🚀 РЕЖИМ 2: СТАНДАРТНАЯ ОБРАБОТКА ГОЛОСА (ВНЕ МЕНЮ)
+                
+                // Ваша существующая логика для стандартного голосового сообщения (если она есть)
+                ctx.waitUntil(processVoiceMessageAsync(chatId, voiceFileId, envData, ctx));
+                
+                // Если вы тестируете OGG-конвертер отдельно:
+                // ctx.waitUntil(processVoiceOGGAsync(chatId, voiceFileId, envData, ctx)); 
+                
+                // Возвращаем OK немедленно
+                return new Response('OK', { status: 200 });
+            }
+            if (audio) { 
+                const audioFileId = audio.file_id; 
+                ctx.waitUntil(processAudioMessageAsync(chatId, audioFileId, envData, audio));
+                return new Response('OK', { status: 200 });
+            }
+            if (document) {
+                // Проверяем MIME-тип документа, чтобы убедиться, что это аудио
+                const mimeType = document.mime_type;
+                if (mimeType && mimeType.startsWith('audio/')) {
+                    const audioFileId = document.file_id; 
                     
-                    // Ваша существующая логика для стандартного голосового сообщения (если она есть)
-                    ctx.waitUntil(processVoiceMessageAsync(chatId, voiceFileId, envData, ctx));
-                    
-                    // Если вы тестируете OGG-конвертер отдельно:
-                    // ctx.waitUntil(processVoiceOGGAsync(chatId, voiceFileId, envData, ctx)); 
-                    
-                    // Возвращаем OK немедленно
+                    // Используем вашу функцию processAudioMessageAsync
+                    // (передаем document, так как в нем есть все нужные file_id и mime_type)
+                    ctx.waitUntil(processAudioMessageAsync(chatId, audioFileId, envData, document)); 
                     return new Response('OK', { status: 200 });
                 }
-                if (audio) { 
-                    const audioFileId = audio.file_id; 
-                    ctx.waitUntil(processAudioMessageAsync(chatId, audioFileId, envData, audio));
-                    return new Response('OK', { status: 200 });
-                }
-                if (document) {
-                    // Проверяем MIME-тип документа, чтобы убедиться, что это аудио
-                    const mimeType = document.mime_type;
-                    if (mimeType && mimeType.startsWith('audio/')) {
-                        const audioFileId = document.file_id; 
-                        
-                        // Используем вашу функцию processAudioMessageAsync
-                        // (передаем document, так как в нем есть все нужные file_id и mime_type)
-                        ctx.waitUntil(processAudioMessageAsync(chatId, audioFileId, envData, document)); 
-                        return new Response('OK', { status: 200 });
-                    }
-                }
-            }  // КОНЕЦ БЛОКА ОБРАБОТКИ ВХОДЯЩЕГО СООБЩЕНИЯ
-            // Закрываем if (message). Если это не message, а callback, выполнение переходит к if (callback) ниже.
+            }
+        }  // КОНЕЦ БЛОКА ОБРАБОТКИ ВХОДЯЩЕГО СООБЩЕНИЯ
+        // Закрываем if (message). Если это не message, а callback, выполнение переходит к if (callback) ниже.
 
-            // 3. ОБРАБОТКА НАЖАТИЯ INLINE-КНОПОК (callback_query)
-            if (callback) {
-                const data = callback.data || '';
-                const fromId = callback.from.id;
-                const messageId = callback.message.message_id;
-                const currentMessageText = callback.message.text;
-                const chatKey = chatId.toString();
-                const storage = env.LAST_PHOTO_STORAGE; // Используем правильный KV-биндинг
-                const token = envData.TELEGRAM_BOT_TOKEN;
+        // 3. ОБРАБОТКА НАЖАТИЯ INLINE-КНОПОК (callback_query)
+        if (callback) {
+            const data = callback.data || '';
+            const fromId = callback.from.id;
+            const messageId = callback.message.message_id;
+            const currentMessageText = callback.message.text;
+            const chatKey = chatId.toString();
+            const storage = env.LAST_PHOTO_STORAGE; // Используем правильный KV-биндинг
+            const token = envData.TELEGRAM_BOT_TOKEN;
 
-                // --- KV KEYS (УНИФИКАЦИЯ: ИСПОЛЬЗУЕМ СУФФИКСЫ ИЗ envData) ---
-                const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-                const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
-                const LAST_ACTION_KEY = chatKey + envData.LAST_ACTION_KEY_SUFFIX;
-                const LAST_PROMPT_LANG_KEY = chatKey + envData.LAST_PROMPT_LANG_KEY_SUFFIX;
+            // --- KV KEYS (УНИФИКАЦИЯ: ИСПОЛЬЗУЕМ СУФФИКСЫ ИЗ envData) ---
+            const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+            const LAST_IMAGE_DATA_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
+            const LAST_ACTION_KEY = chatKey + envData.LAST_ACTION_KEY_SUFFIX;
+            const LAST_PROMPT_LANG_KEY = chatKey + envData.LAST_PROMPT_LANG_KEY_SUFFIX;
 
-                // --- Стейты из вашего кода (Добавляем USER_STATE_KEY_SUFFIX в envData, если не было) ---
-                // ✅ ИСПРАВЛЕНИЕ: Используем суффикс из envData для USER_STATE_KEY, если он там есть
-                const USER_STATE_KEY = chatKey + (envData.USER_STATE_KEY_SUFFIX || '_user_state');
-                const STATE_AWAITING_PROMPT_EDIT = 'awaiting_prompt_edit';
-                const STATE_AWAITING_NEW_PROMPT = 'awaiting_new_prompt';
-                // ОБЯЗАТЕЛЬНО: Отвечаем на колбэк, чтобы убрать часы на кнопке!
-                ctx.waitUntil(answerCallbackQuery(callback.id, "Обработка команды...", token));
-                // ВАШИ КОНСТАНТЫ:
-                const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; // Используем то же хранилище, где лежит Base64
-                const SET_BASE_CALLBACK = 'setbase_'; 
-                const CALLBACK_EXPIRATION_TTL = 3600; // 1 час на нажатие
+            // --- Стейты из вашего кода (Добавляем USER_STATE_KEY_SUFFIX в envData, если не было) ---
+            // ✅ ИСПРАВЛЕНИЕ: Используем суффикс из envData для USER_STATE_KEY, если он там есть
+            const USER_STATE_KEY = chatKey + (envData.USER_STATE_KEY_SUFFIX || '_user_state');
+            const STATE_AWAITING_PROMPT_EDIT = 'awaiting_prompt_edit';
+            const STATE_AWAITING_NEW_PROMPT = 'awaiting_new_prompt';
+            // ОБЯЗАТЕЛЬНО: Отвечаем на колбэк, чтобы убрать часы на кнопке!
+            ctx.waitUntil(answerCallbackQuery(callback.id, "Обработка команды...", token));
+            // ВАШИ КОНСТАНТЫ:
+            const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; // Используем то же хранилище, где лежит Base64
+            const SET_BASE_CALLBACK = 'setbase_'; 
+            const CALLBACK_EXPIRATION_TTL = 3600; // 1 час на нажатие
 
-                // 2. ЛОГИКА ДЛЯ ПОЛЬЗОВАТЕЛЬСКИХ КОМАНД (Начинаются с 'cmd:/')
-                if (data.startsWith('cmd:/')) {
-                    const command = data.substring(5).trim();
-                    // 1. Создаем клавиатуру "Назад в Главное меню"
-                    const backKeyboard = [[{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }]];
+            // 2. ЛОГИКА ДЛЯ ПОЛЬЗОВАТЕЛЬСКИХ КОМАНД (Начинаются с 'cmd:/')
+            if (data.startsWith('cmd:/')) {
+                const command = data.substring(5).trim();
+                // 1. Создаем клавиатуру "Назад в Главное меню"
+                const backKeyboard = [[{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }]];
 
-                    switch (command) {
-                        case 'prompt':
-                            // ✅ ИСПРАВЛЕНИЕ: Передаем messageId, чтобы processPromptCommand мог редактировать сообщение
-                            ctx.waitUntil(processPromptCommand(chatId, token, storage, envData, messageId)); // <-- messageId добавлено
-                            break;
-                        case 'upload_photo': 
-                            const uploadText = `
+                switch (command) {
+                    case 'prompt':
+                        // ✅ ИСПРАВЛЕНИЕ: Передаем messageId, чтобы processPromptCommand мог редактировать сообщение
+                        ctx.waitUntil(processPromptCommand(chatId, token, storage, envData, messageId)); // <-- messageId добавлено
+                        break;
+                    case 'upload_photo': 
+                        const uploadText = `
 ❔ **Как загрузить фото:**
 
 1. Нажмите на 📎 **скрепку** рядом с полем ввода.
@@ -17406,23 +17405,23 @@ export default {
 /create для **создания картинки** по промпту
 /photo для **улучшения фото**
 /media для управления **сохраненными данными**.
-                        `;
-                            // 2. ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
-                            // (Ваша функция editMessageWithKeyboard использует messageId)
-                            ctx.waitUntil(editMessageWithKeyboard(
-                                chatId, 
-                                messageId, 
-                                uploadText, 
-                                token,
-                                backKeyboard
-                            ));
-                    
-                            // 3. Возвращаем Response, чтобы завершить обработку callback-запроса
-                            return new Response('OK', { status: 200 });
-                        case 'upload_video':
-                            // Отправляем уведомление вверху экрана
-                            ctx.waitUntil(answerCallbackQuery(callback, "Видео до 10 МБ можно отправить прямо сейчас.", token));
-                            const uploadVideo = `
+                    `;
+                        // 2. ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
+                        // (Ваша функция editMessageWithKeyboard использует messageId)
+                        ctx.waitUntil(editMessageWithKeyboard(
+                            chatId, 
+                            messageId, 
+                            uploadText, 
+                            token,
+                            backKeyboard
+                        ));
+                
+                        // 3. Возвращаем Response, чтобы завершить обработку callback-запроса
+                        return new Response('OK', { status: 200 });
+                    case 'upload_video':
+                        // Отправляем уведомление вверху экрана
+                        ctx.waitUntil(answerCallbackQuery(callback, "Видео до 10 МБ можно отправить прямо сейчас.", token));
+                        const uploadVideo = `
 ❔ **Как загрузить видео:**
 
 1. Нажмите на 📎 **скрепку** рядом с полем ввода.
@@ -17435,22 +17434,22 @@ export default {
 /avatar для создания **аватара**.
 /media для управления **сохраненными данными**.
 `;
-                            // 2. ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
-                            // (Ваша функция editMessageWithKeyboard использует messageId)
-                            ctx.waitUntil(editMessageWithKeyboard(
-                                chatId, 
-                                messageId, 
-                                uploadVideo, 
-                                token,
-                                backKeyboard
-                            ));
-                            // 3. Возвращаем Response, чтобы завершить обработку callback-запроса
-                            return new Response('OK', { status: 200 });
-                        case 'upload_audio':
-                            // Ответ на колбэк
-                            ctx.waitUntil(answerCallbackQuery(callbackId, "Аудиофайл в формате MP3 можно отправить прямо сейчас", token)); 
-                            // Отправляем пользователю сообщение
-                            const uploadAudio = `
+                        // 2. ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
+                        // (Ваша функция editMessageWithKeyboard использует messageId)
+                        ctx.waitUntil(editMessageWithKeyboard(
+                            chatId, 
+                            messageId, 
+                            uploadVideo, 
+                            token,
+                            backKeyboard
+                        ));
+                        // 3. Возвращаем Response, чтобы завершить обработку callback-запроса
+                        return new Response('OK', { status: 200 });
+                    case 'upload_audio':
+                        // Ответ на колбэк
+                        ctx.waitUntil(answerCallbackQuery(callbackId, "Аудиофайл в формате MP3 можно отправить прямо сейчас", token)); 
+                        // Отправляем пользователю сообщение
+                        const uploadAudio = `
 ❔ **Как загрузить аудиофайл:**
 
 1. Нажмите на 📎 **скрепку** рядом с полем ввода.
@@ -17462,1380 +17461,1380 @@ export default {
 /say для **озвучивания** текста голосом
 /media для управления **сохраненными данными**.
 `;
-                            // 2. ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
-                            // (Ваша функция editMessageWithKeyboard использует messageId)
-                            ctx.waitUntil(editMessageWithKeyboard(
-                                chatId, 
-                                messageId, 
-                                uploadAudio, 
-                                token,
-                                backKeyboard
-                            ));
-                            // 3. Возвращаем Response, чтобы завершить обработку callback-запроса
-                            return new Response('OK', { status: 200 });
-                        case 'photo': { // СТАРЫЙ КОЛБЭК теперь открывает меню
-                            const messageId = callback.message.message_id;
-                            
-                            ctx.waitUntil(sendPhotoMenu(
-                                chatId, 
-                                token, 
-                                storage, 
-                                envData, 
-                                ctx, 
-                                messageId // Передаем messageId для редактирования
-                            ));
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'photo_now': { // НОВЫЙ КОЛБЭК, запускает генерацию
-                            const messageId = callback.message.message_id;
-                        
-                            // 🛑 1. КРИТИЧЕСКАЯ ПРОВЕРКА: НАЛИЧИЕ ПРОМПТА И УСТАНОВКА ДЕФОЛТА
-                            const LAST_PROMPT_KEY = chatId + LAST_PROMPT_KEY_SUFFIX;
-                            
-                            // Читаем промпт
-                            const userPrompt = await storage.get(LAST_PROMPT_KEY);
-                            
-                            if (!userPrompt) {
-                                // 🚀 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: ЖДЕМ ЗАВЕРШЕНИЯ ЗАПИСИ (Используем 'await' без ctx.waitUntil)
-                                await storage.put(
-                                    LAST_PROMPT_KEY, 
-                                    DEFAULT_IMAGE_PROMPT, // <-- Глобальная константа
-                                    { expirationTtl: 3600 }
-                                );
-                                // После этой строки мы гарантируем, что промпт записан в KV.
-                            }
-                            
-                            // 2. Запускаем фоновые задачи...
-                            ctx.waitUntil(Promise.allSettled([
-                                // Редактируем сообщение, чтобы показать прогресс (UI update)
-                                // 🛑 Здесь важно использовать escapeMarkdown (как мы обсуждали ранее)
-                                editMessage(chatId, messageId, "⏳ **Запускаю улучшение фото...**", token).catch(e => {
-                                    console.error("Не удалось отредактировать сообщение для photo_now:", e);
-                                }),
-                                
-                                // Запускаем основную логику улучшения фото
-                                processPhotoCommand(
-                                    chatId, 
-                                    token, 
-                                    envData, 
-                                    storage
-                                )
-                            ]));
-                            
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'view_saved_photo': {
-                            // 1. ЗАПУСКАЕМ ТЯЖЕЛЫЙ ПРОЦЕСС (отправку фото) в фоне
-                            ctx.waitUntil(sendSavedPhoto(
-                                chatId, 
-                                token, 
-                                storage, 
-                                envData, 
-                                ctx
-                            ));
-                
-                            // 2. Обязательный выход.
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'view_saved_video': {
-                            // 1. ЗАПУСКАЕМ ТЯЖЕЛЫЙ ПРОЦЕСС (отправку видео) в фоне
-                            ctx.waitUntil(sendSavedVideo(
-                                chatId, 
-                                token, 
-                                storage, 
-                                envData, 
-                                callback.id // 🛑 Передаем только ID!
-                            ));
-                        
-                            // 2. Обязательный и немедленный выход.
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'view_saved_audio': {
-                            // В KV вы сохраняете: 235663624_audio_file_id
-                            const AUDIO_FILE_ID_KEY = chatId + '_audio_file_id'; 
-                            const storage = envData.LAST_PHOTO_STORAGE;
-                            
-                            // 1. ✅ НЕМЕДЛЕННЫЙ ОТВЕТ НА КОЛБЭК! (Выполняется мгновенно)
-                            // Это гасит кнопку и предотвращает таймаут.
-                            if (callbackId) { 
-                                ctx.waitUntil(answerCallbackQuery(callbackId, "Отправляю сохраненное аудио...", token)); 
-                            }
-                        
-                            // 2. ЗАПУСКАЕМ ВСЮ ТЯЖЕЛУЮ ЛОГИКУ В ФОНЕ (ctx.waitUntil)
-                            // Все await-операции (чтение KV, отправка) не блокируют основной поток.
-                            ctx.waitUntil(async function() {
-                                // Читаем file_id из KV
-                                const audioFileId = await storage.get(AUDIO_FILE_ID_KEY); 
-                                
-                                if (audioFileId) {
-                                    // Отправка аудио по надежному file_id
-                                    await sendAudio(chatId, audioFileId, token) 
-                                        .catch(e => {
-                                            console.error("Не удалось отправить аудиофайл по file_id:", e);
-                                            // Отправляем текстовое сообщение об ошибке как запасной вариант
-                                            sendMessage(chatId, `❌ Не удалось отправить аудио. Произошла внутренняя ошибка.`, token).catch(() => {});
-                                        });
-                                } else {
-                                    // Аудио не найдено, редактируем сообщение меню
-                                    editMessage(chatId, messageId, "❌ **Ошибка:** Аудио не найдено в хранилище. Запустите /say.", token).catch(() => {});
-                                }
-                            }());
-                        
-                            // 3. Мгновенный выход, возвращая 200 OK
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'create_empty': {
-                            // Мы используем messageId, который должен быть определен в начале блока callbackQuery
-                            // (например, const messageId = callback.message.message_id; )
-                            const chatKey = chatId.toString();
-                            const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-                            const CREATIVE_MODE_KEY = chatKey + envData.CREATIVE_MODE_KEY_SUFFIX
-                            // 🛑 ДОБАВЬТЕ ЭТУ СТРОКУ в оба блока, где открывается меню (/create и create_empty)
-                            const currentMode = await storage.get(CREATIVE_MODE_KEY) || 'T2I';
-                            // 1. Читаем сохраненный промпт (этот await допустим)
-                            const currentPrompt = await storage.get(LAST_PROMPT_KEY);
-                    
-                            // 2. Получаем данные для нового меню /create
-                            const { messageText: createMessage, keyboardObject } = await getCreateMenuKeyboard(
-                                currentPrompt, 
-                                currentMode, 
-                                chatId, 
-                                envData.LAST_PHOTO_STORAGE // 🛑 ПЕРЕДАЧА БИНДИНГА KV
-                            );
-                                                        
-                            // 3. ОТПРАВКА: ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
-                            ctx.waitUntil(editMessageWithKeyboard( // <-- ИЗМЕНЕНО
-                                chatId, 
-                                messageId, // <-- ИСПОЛЬЗУЕМ messageId ТЕКУЩЕГО СООБЩЕНИЯ
-                                createMessage, 
-                                token, 
-                                keyboardObject.inline_keyboard // Передаем клавиатуру
-                            ));
-                            
-                            break; // break завершается через return new Response('OK', { status: 200 }); в конце блока if
-                        }
-                        case 'audio_transcribe': {
-                            // Ключ, который вы используете для сохранения file_id
-                            const AUDIO_FILE_ID_KEY_SUFFIX = '_audio_file_id'; 
-                            const AUDIO_FILE_KEY = chatId.toString() + AUDIO_FILE_ID_KEY_SUFFIX; 
-                            const fileId = await storage.get(AUDIO_FILE_KEY); 
-                    
-                            // 1. Отвечаем на колбэк, чтобы убрать часы
-                            ctx.waitUntil(answerCallbackQuery(callback.id, "Начинаю транскрибацию...", token));
-                            
-                            if (!fileId) {
-                                ctx.waitUntil(sendMessage(chatId, "❌ Не удалось найти аудиофайл для транскрибации. Пожалуйста, отправьте его снова.", token));
-                                return true;
-                            }
-                    
-                            // 2. Вызываем новую функцию для транскрибации
-                            ctx.waitUntil(transcribeAudioFileAsync(chatId, fileId, envData, ctx));
-                    
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'video_transcribe': {
-                            const VIDEO_DATA_KEY = chatId.toString() + '_last_video_data'; 
-                            const videoDataJson = await storage.get(VIDEO_DATA_KEY); 
-                    
-                            // 1. Отвечаем на колбэк, чтобы убрать часы
-                            ctx.waitUntil(answerCallbackQuery(callback.id, "Начинаю транскрибацию видео...", token));
-                            
-                            if (!videoDataJson) {
-                                ctx.waitUntil(sendMessage(chatId, "❌ Не удалось найти видеофайл. Пожалуйста, отправьте его снова.", token));
-                                return true;
-                            }
-                    
-                            const videoData = JSON.parse(videoDataJson);
-                            const videoFileId = videoData.file_id; // <-- Извлекаем нужный file_id
-                    
-                            if (!videoFileId) {
-                                 ctx.waitUntil(sendMessage(chatId, "❌ В сохраненных данных не найден file_id видео.", token));
-                                 return true;
-                            }
-                    
-                            // 2. Вызываем функцию транскрибации, которая прекрасно работает с video file_id
-                            // Telegram API позволяет скачать видеофайл, а STT-модель извлекает из него аудиодорожку.
-                            ctx.waitUntil(transcribeVideoFileAsync(chatId, videoFileId, envData, ctx));
-                    
-                            // 3. Завершаем HTTP-ответ, чтобы избежать зацикливания
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'video_analysis': {
-                            const VIDEO_DATA_KEY = chatId.toString() + '_last_video_data'; 
-                            const videoDataJson = await storage.get(VIDEO_DATA_KEY); 
-                            
-                    
-                            // 1. Отвечаем на колбэк, чтобы убрать часы
-                            ctx.waitUntil(answerCallbackQuery(callback.id, "Начинаю транскрибацию видео...", token));
-                            
-                            if (!videoDataJson) {
-                                ctx.waitUntil(sendMessage(chatId, "❌ Не удалось найти видеофайл. Пожалуйста, отправьте его снова.", token));
-                                return true;
-                            }
-                    
-                            const videoData = JSON.parse(videoDataJson);
-                            const videoFileId = videoData.file_id; // <-- Извлекаем нужный file_id
-                            const videoMimeType = videoData.mime_type; // <-- Получаем MIME-тип
-
-                            if (!videoFileId) {
-                                 ctx.waitUntil(sendMessage(chatId, "❌ В сохраненных данных не найден file_id видео.", token));
-                                 return true;
-                            }
-                    
-                            // Вызов новой функции
-                            ctx.waitUntil(analyzeVideoContentAsync(chatId, videoFileId, videoMimeType, envData, ctx));
-
-                            // 3. Завершаем HTTP-ответ, чтобы избежать зацикливания
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'vision_generate_free_t2i': {
-                            // Вызов новой функции с 4 аргументами
-                            ctx.waitUntil(processFreeCreativeCommand(
-                                chatId, 
-                                'T2I', 
-                                storage, 
-                                envData
-                            ));
-                            return new Response('OK', { status: 200 });
-                        }
-                        
-                        case 'vision_generate_free_i2i': {
-                            // Вызов новой функции с 4 аргументами
-                            ctx.waitUntil(processFreeCreativeCommand(
-                                chatId, 
-                                'I2I', 
-                                storage, 
-                                envData
-                            ));
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'text_empty': {
-                            // Мы используем messageId, который должен быть определен в начале блока callbackQuery
-                            // (например, const messageId = callback.message.message_id; )
-                            const chatKey = chatId.toString();
-                            const storage = env.LAST_PHOTO_STORAGE;
-                            const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-                            
-                            // 1. Читаем сохраненный промпт (этот await допустим)
-                            const currentPrompt = await storage.get(LAST_PROMPT_KEY);
-                    
-                            // 2. Получаем данные для нового меню /text
-                            const { messageText: createMessage, keyboardObject } = await getTextMenuKeyboard(chatId, storage, currentPrompt); // <-- Добавьте await здесь
-                                                        
-                            // 3. ОТПРАВКА: ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
-                            ctx.waitUntil(editMessageWithKeyboard( // <-- ИЗМЕНЕНО
-                                chatId, 
-                                messageId, // <-- ИСПОЛЬЗУЕМ messageId ТЕКУЩЕГО СООБЩЕНИЯ
-                                createMessage, 
-                                token, 
-                                keyboardObject.inline_keyboard // Передаем клавиатуру
-                            ));
-                            
-                            break; // break завершается через return new Response('OK', { status: 200 }); в конце блока if
-                        }
-                        case 'video': { 
-                            // Поскольку колбэк не содержит промпта, мы знаем, что userPrompt пуст.
-                            const videoPromptFromCommand = null; // или пустая строка
-                            const chatKey = chatId.toString();
-                            const storage = envData.LAST_PHOTO_STORAGE;
-                            const messageId = callback.message.message_id; // ID сообщения меню, которое нужно отредактировать
-                        
-                            // 1. Читаем промпт из хранилища (если он там есть)
-                            const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX; 
-                            let finalPrompt = null; 
-                            if (storage) {
-                                finalPrompt = await storage.get(LAST_PROMPT_KEY);
-                            }
-                        
-                            // 2. Вызываем основную команду обработки видео
-                            // NOTE: processVideoCommand теперь должна принимать messageId для редактирования!
-                            // (Если ваша processVideoCommand не принимает messageId, вам нужно будет её обновить)
-                            
-                            // ВАЖНО: Мы используем editVideoGenerationMenu, а не send, т.к. мы нажимаем кнопку в существующем сообщении
-                            
-                            // Получаем текущие параметры для корректного редактирования меню
-                            const VIDEO_PARAMS_KEY = chatKey + VIDEO_PARAMS_KEY_SUFFIX;
-                            const LAST_VIDEO_KEY = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; // <-- НОВЫЙ КЛЮЧ
-                            const LAST_AUDIO_KEY = chatKey + LAST_AUDIO_DATA_KEY_SUFFIX; // <-- НОВЫЙ КЛЮЧ
-                            const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
-                        
-                            const [videoParams, rawImageKVData, currentMode, rawVideoKVData, rawAudioKVData] = await Promise.all([ // <-- ИЗМЕНЕН
-                                storage.get(VIDEO_PARAMS_KEY, { type: 'json' })
-                                    .then(res => res || { seconds: '6', aspectRatio: '16:9', resolution: '480p', mode: 'T2V' })
-                                    .catch(() => ({ seconds: '6', aspectRatio: '16:9', resolution: '480p', mode: 'T2V' })), 
-                                storage.get(LAST_IMAGE_KEY, { type: 'text' }),
-                                storage.get(LAST_VIDEO_KEY, { type: 'text' }), // <-- ДОБАВЛЕН ЗАПРОС НА ВИДЕО
-                                storage.get(LAST_AUDIO_KEY, { type: 'text' }) // <-- ДОБАВЛЕН ЗАПРОС НА АУДИО
-                            ]);
-                            
-                            // Проверка наличия фото
-                            let isPhotoSaved = false;
-                            if (rawImageKVData && rawImageKVData.length > 100) { 
-                                isPhotoSaved = true; 
-                            }
-                            // Определение наличия сохраненного видео. Добавлена проверка длины (>100 символов) для надежности.
-                            const isVideoSaved = !!rawVideoKVData && rawVideoKVData.length > 100;
-                            const isAudioSaved = !!rawAudioKVData && rawAudioKVData.length > 100;
-                            // Редактируем сообщение, чтобы показать меню
-                            ctx.waitUntil(editVideoGenerationMenu(
-                                chatId, 
-                                messageId, 
-                                finalPrompt, // Используем промпт из хранилища
-                                isPhotoSaved, 
-                                isVideoSaved,
-                                isAudioSaved,
-                                envData.TELEGRAM_BOT_TOKEN, 
-                                videoParams,
-                                null,
-                                null,
-                                envData
-                            ));
-                        
-                            // КРИТИЧНО: Возвращаем ответ Telegram
-                            return new Response('OK', { status: 200 });
-                        }
-                    case 'mediadata':
-                        // Ответ на колбэк (гасим кнопку)
-                        ctx.waitUntil(answerCallbackQuery(callbackId, "Меню медиа-данных...", token)); 
-                        // Вызываем основную функцию для отображения меню
-                        await sendMediaDataControlMenu(chatId, token, envData, messageId);
+                        // 2. ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
+                        // (Ваша функция editMessageWithKeyboard использует messageId)
+                        ctx.waitUntil(editMessageWithKeyboard(
+                            chatId, 
+                            messageId, 
+                            uploadAudio, 
+                            token,
+                            backKeyboard
+                        ));
+                        // 3. Возвращаем Response, чтобы завершить обработку callback-запроса
                         return new Response('OK', { status: 200 });
-                        case 'grab_frame': {
-                            const RENDER_HOST_URL = 'https://leshiy-media-converter.onrender.com';
-                            const VIDEO_TO_IMAGE_ENDPOINT = RENDER_HOST_URL + '/video2image';
-                            const DEFAULT_TIMESTAMP = '00:00:01.000'; // Используем формат Render
+                    case 'photo': { // СТАРЫЙ КОЛБЭК теперь открывает меню
+                        const messageId = callback.message.message_id;
                         
-                            const videoKey = chatId + LAST_VIDEO_DATA_KEY_SUFFIX;
-                            const imageKey = chatId + LAST_IMAGE_DATA_KEY_SUFFIX; 
-                            let responseText;
-                        
-                            const rawVideoData = await storage.get(videoKey);
-                        
-                            if (!rawVideoData) {
-                                responseText = "❌ **Ошибка:** Сначала загрузите видео (или оно устарело и было удалено).";
-                                await editMessageWithKeyboard(chatId, messageId, responseText, token, null); 
-                                return new Response('OK', { status: 200 });
-                            }
-                        
-                            const videoData = JSON.parse(rawVideoData);
-                            const videoFileId = videoData.file_id;
-                            
-                            if (!videoFileId) {
-                                responseText = "❌ **Ошибка:** У загруженного видео нет file_id.";
-                                await editMessageWithKeyboard(chatId, messageId, responseText, token, null); 
-                                return new Response('OK', { status: 200 });
-                            }
-                        
-                            try {
-                                await answerCallbackQuery(callback.id, `🔄 Захват кадра...`, token);
-                                await editMessageWithKeyboard(chatId, messageId, `⏳ **Конвертация: Скачиваю видео...**`, token, null);
-                        
-                                // 1. Скачиваем полное видео
-                                const videoBuffer = await downloadFileBuffer(videoFileId, token, env);
-                        
-                                // 2. Отправляем видео на Render
-                                await editMessageWithKeyboard(chatId, messageId, `⏳ **Конвертация: Видео -> Фото...** (Timestamp: ${DEFAULT_TIMESTAMP})`, token, null);
-                        
-                                const renderFormData = new FormData();
-                                // Используем File, если Worker поддерживает его. Если нет, используйте Blob.
-                                const videoFile = new File([videoBuffer], 'input.mp4', { type: 'video/mp4' });
-                                renderFormData.append('video', videoFile, 'video.mp4');
-                        
-                                const finalRenderUrl = `${VIDEO_TO_IMAGE_ENDPOINT}?timestamp=${DEFAULT_TIMESTAMP}&format=jpg`;
-                        
-                                // 🛑 ИСПРАВЛЕНИЕ: Корректно парсим тело как JSON
-                                const renderResponse = await fetch(finalRenderUrl, {
-                                    method: 'POST',
-                                    body: renderFormData,
-                                    signal: AbortSignal.timeout(120000)
-                                });
-                        
-                                if (!renderResponse.ok) {
-                                    const errorDetails = await renderResponse.text().catch(() => 'No details');
-                                    throw new Error(`Render Server Error: ${renderResponse.status} - ${errorDetails.substring(0, 150)}`);
-                                }
-                                
-                                // 1. Парсим тело как JSON
-                                const renderResult = await renderResponse.json();
-                                
-                                // 2. Детальная проверка JSON
-                                if (!renderResult.success || !renderResult.image || !renderResult.width || !renderResult.height) {
-                                     
-                                     let errorMsg = `JSON response incomplete or failed.`;
-                                     if (renderResult.error) {
-                                         errorMsg = `Render reported error: ${renderResult.error.substring(0, 150)}`;
-                                     } else {
-                                         // Если полей нет, сообщаем о них
-                                         const missingFields = [];
-                                         if (renderResult.success === undefined) missingFields.push('success');
-                                         if (!renderResult.image) missingFields.push('image');
-                                         if (!renderResult.width) missingFields.push('width');
-                                         if (!renderResult.height) missingFields.push('height');
-                                         
-                                         if (missingFields.length > 0) {
-                                             errorMsg = `Missing fields: ${missingFields.join(', ')}. Status: ${renderResult.success}`;
-                                         }
-                                     }
-                        
-                                     throw new Error(`Render failed: ${errorMsg}`);
-                                }
-                        
-                                // 3. Сохраняем данные (Base64 и размеры)
-                                const fullBase64Image = renderResult.image; 
-                                const mime = renderResult.mimeType || `image/${renderResult.format || 'jpeg'}`;
-                                
-                                const imageData = JSON.stringify({
-                                    base64: fullBase64Image,
-                                    width: renderResult.width,
-                                    height: renderResult.height,
-                                    mime_type: mime,
-                                });
-                        
-                                // 4. Сохраняем как основное фото
-                                await storage.put(imageKey, imageData, { expirationTtl: 3600 }); 
-                                
-                                responseText = `🖼️ **Стоп-кадр (${DEFAULT_TIMESTAMP}) успешно захвачен и сохранен как фото!**\n\nРазмеры: **${renderResult.width}x${renderResult.height}**. Теперь вы можете использовать его в меню /photo для улучшения или оживления.`;
-                        
-                            } catch (e) {
-                                console.error("Frame grab failed:", e);
-                                // 5. Выводим более информативную ошибку
-                                responseText = `❌ **Критическая ошибка захвата кадра:** Не удалось получить изображение.\n\nДетали: *${e.message.substring(0, 200)}*`;
-                            }
-                        
-                            // 6. Обновляем сообщение
-                            await editMessageWithKeyboard(chatId, messageId, responseText, token, null);
-                        
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'grab_audio': {
-                            // 🛑 КОНСТАНТЫ И ПЕРЕМЕННЫЕ
-                            const STORAGE = envData.LAST_PHOTO_STORAGE;
-                            const token = envData.TELEGRAM_BOT_TOKEN;
-                            const originalMessageId = messageId; 
-                            
-                            // Ключи KV для текущего чата
-                            // ОСТАВЛЯЕМ ТОЛЬКО КЛЮЧИ С АКТУАЛЬНЫМИ ДАННЫМИ
-                            const LAST_VIDEO_DATA_KEY = chatId.toString() + LAST_VIDEO_DATA_KEY_SUFFIX;
-                            const LAST_MEDIA_TYPE_KEY = chatId.toString() + LAST_MEDIA_TYPE_KEY_SUFFIX;
-                            
-                            let mediaFileId = null;
-                            let fileUrl = null; // Будет определен позже в runGrabAudioInBackground
-                            
-                            // 1. 🔍 Определяем, что последний файл был видео
-                            const lastMediaType = await STORAGE.get(LAST_MEDIA_TYPE_KEY);
-                            
-                            if (lastMediaType !== 'video') {
-                                await editMessage(chatId, originalMessageId, "❌ Ошибка: Последний загруженный файл не является видео.", token);
-                                return new Response('OK', { status: 200 });
-                            }
-                            
-                            // 2. 📝 ПРИНУДИТЕЛЬНО ИЗВЛЕКАЕМ file_id ИЗ АКТУАЛЬНЫХ МЕТАДАННЫХ
-                            const videoDataRaw = await STORAGE.get(LAST_VIDEO_DATA_KEY);
-                            
-                            if (videoDataRaw) {
-                                try {
-                                    const videoData = JSON.parse(videoDataRaw);
-                                    mediaFileId = videoData.file_id; // <-- АКТУАЛЬНЫЙ file_id
-                                } catch(e) { 
-                                    envData.ctx.waitUntil(logDebug("GRAB_AUDIO", `Ошибка парсинга LAST_VIDEO_DATA_KEY: ${e.message}`, envData));
-                                }
-                            }
-                            
-                            // 3. ❌ Обработка: file_id не найден
-                            if (!mediaFileId) {
-                                await editMessage(chatId, originalMessageId, "❌ Ошибка: Не найден активный file_id видео для обработки. Загрузите видео снова.", token);
-                                return new Response('OK', { status: 200 });
-                            }
-                        
-                            // 4. 🚀 Запуск задачи ИЗВЛЕЧЕНИЯ АУДИО
-                            try {
-                                // 1. 💿 НЕМЕДЛЕННАЯ ОТПРАВКА НОВОГО СООБЩЕНИЯ-ЗАГЛУШКИ
-                                const loadingMessage = await sendMessageMarkdown(chatId, "💿 **Приступаю к извлечению аудиодорожки...**", token);
-                                let loadingMessageId = null;
-                                
-                                // Проверка здоровья конвертера
-                                const isHealthy = await checkConverterHealth(envData);
-                                if (!isHealthy) {
-                                    await editMessage(chatId, loadingMessageId, '❌ **Ошибка:** Ваш конвертер на Render недоступен для работы.', token);
-                                    return new Response('OK', { status: 200 });
-                                }
-                        
-                                if (loadingMessage.ok && loadingMessage.result) {
-                                     loadingMessageId = loadingMessage.result.message_id;
-                                } else {
-                                    // Если не удалось отправить заглушку, используем оригинальный ID для вывода ошибки позже
-                                    loadingMessageId = originalMessageId; 
-                                }
-                        
-                                // 2. 🗑️ РЕДАКТИРУЕМ ИСХОДНОЕ СООБЩЕНИЕ
-                                envData.ctx.waitUntil(logDebug("AUDIO_GRAB_SOURCE", `Source: video. file_id: ${mediaFileId}`, envData)); 
-                                
-                                // 3. 🎯 Запуск фоновой задачи: ПЕРЕДАЕМ ТОЛЬКО file_id И messageId
-                                envData.ctx.waitUntil(
-                                    // 🛑 ВАЖНО: runGrabAudioInBackground теперь должна сама получить fileUrl
-                                    runGrabAudioInBackground(chatId, mediaFileId, loadingMessageId, envData, token)
-                                );
-                                
-                                // 4. ✅ Немедленный выход
-                                return new Response('OK', { status: 200 }); 
-                                
-                            } catch (error) {
-                                // 9. ❌ Обработка сбоя запуска задачи
-                                const errorMessage = error.message || "Неизвестная ошибка Audio Isolation";
-                                
-                                await editMessage(chatId, messageId, `❌ **Ошибка запуска Kie.ai:**\n\`${errorMessage.substring(0, 150)}\``, token);
-                                envData.ctx.waitUntil(logDebug("AUDIO_GRAB_FAIL", errorMessage, envData));
-                                
-                                // 🛑 Выход после сбоя запуска
-                                return new Response('OK', { status: 200 });
-                            }
-                        }
-                        case 'isolate_audio': {
-                            // 🛑 КОНСТАНТЫ И ПЕРЕМЕННЫЕ
-                            const MIN_DURATION = 4.6; 
-                            const STORAGE = envData.LAST_PHOTO_STORAGE;
-                            const token = envData.TELEGRAM_BOT_TOKEN;
-                            const originalMessageId = messageId; 
-                            
-                            // Ключи KV для текущего чата
-                            const AUDIO_URL_KEY = chatId.toString() + AUDIO_URL_KEY_SUFFIX;
-                            const AUDIO_FILE_ID_KEY = chatId.toString() + AUDIO_FILE_ID_KEY_SUFFIX;
-                            const AUDIO_DURATION_KEY = chatId.toString() + AUDIO_DURATION_KEY_SUFFIX; 
-                            const LAST_MEDIA_TYPE_KEY = chatId.toString() + LAST_MEDIA_TYPE_KEY_SUFFIX;
-                            
-                            let fileUrl = null;
-                            let mediaFileId = null;
-                            
-                            // 1. 🔍 Определяем, что последний файл был АУДИО
-                            const lastMediaType = await STORAGE.get(LAST_MEDIA_TYPE_KEY); 
-                            
-                            if (lastMediaType !== 'audio') {
-                                await editMessage(chatId, originalMessageId, "❌ Ошибка: Очистка шумов применима только к **аудиодорожке**. Загрузите голосовое сообщение или MP3 файл.", token);
-                                return new Response('OK', { status: 200 });
-                            }
-                            
-                            // 2. 📝 Пытаемся получить URL или file_id
-                            fileUrl = await STORAGE.get(AUDIO_URL_KEY);
-                            mediaFileId = await STORAGE.get(AUDIO_FILE_ID_KEY); 
-                            
-                            // 3. ❌ Обработка: Файл не найден
-                            if (!fileUrl && !mediaFileId) {
-                                await editMessage(chatId, originalMessageId, "❌ Ошибка: Не найден активный аудиофайл для изоляции. Загрузите аудио снова.", token);
-                                return new Response('OK', { status: 200 }); 
-                            }
-                        
-                            // 4. 🔗 Восстановление/Получение URL (если fileUrl истек или отсутствует)
-                            if (!fileUrl && mediaFileId) {
-                                const getFileUrlApi = `https://api.telegram.org/bot${token}/getFile?file_id=${mediaFileId}`;
-                                const fileResponse = await fetch(getFileUrlApi);
-                                const fileData = await fileResponse.json();
-                                
-                                if (!fileData.ok) {
-                                    await editMessage(chatId, originalMessageId, `❌ Ошибка Telegram getFile: ${fileData.description}`, token);
-                                    return new Response('OK', { status: 200 }); 
-                                }
-                                
-                                const filePath = fileData.result.file_path;
-                                fileUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
-                                
-                                // Сохраняем сгенерированный URL
-                                envData.ctx.waitUntil(STORAGE.put(AUDIO_URL_KEY, fileUrl, { expirationTtl: 3600 }));
-                            }
-                            
-                            // 5. ⏱️ ПРОВЕРКА ДЛИТЕЛЬНОСТИ
-                            let duration = 0;
-                            try {
-                                const durationRaw = await STORAGE.get(AUDIO_DURATION_KEY); 
-                                if (durationRaw) {
-                                    duration = parseFloat(durationRaw); 
-                                }
-                            } catch (e) {
-                                envData.ctx.waitUntil(logDebug("WARNING", `Не удалось получить длительность: ${e.message}`, envData));
-                            }
-                            
-                            if (duration > 0 && duration < MIN_DURATION) {
-                                await editMessage(
-                                    chatId, 
-                                    originalMessageId, 
-                                    `❌ **Ошибка длительности:** Аудио (${duration.toFixed(3)} сек.) слишком мало. Требуется минимум ${MIN_DURATION} секунд для изоляции.`, 
-                                    token
-                                );
-                                return new Response('OK', { status: 200 });
-                            }
-                            
-                            // 6. 🚀 ПОДГОТОВКА И ЗАПУСК KIE.AI
-                            try {
-                                // 🛑 ИСПОЛЬЗУЕМ loadActiveConfig
-                                const SERVICE_TYPE = 'AUDIO_TO_AUDIO';
-                                const { config: activeModelConfig, friendlyName } = await loadActiveConfig(SERVICE_TYPE, envData, chatId);
-                                
-                                if (!activeModelConfig || typeof activeModelConfig.FUNCTION !== 'function') {
-                                    throw new Error(`Конфигурация модели Kie.ai (${friendlyName || 'неизвестно'}) не найдена или настроена неверно.`);
-                                }
-                                
-                                const sourceText = `URL: ${fileUrl.substring(0, 50)}`;
-                                
-                                // 1. УДАЛЯЕМ КНОПКИ И ОТПРАВЛЯЕМ ЗАГЛУШКУ
-                                // Мы используем originalMessageId для редактирования, т.к. Kie.ai вернет результат колбэком.
-                                await editMessage(chatId, originalMessageId, `💿 **Начинаю изоляцию аудио** (Источник: аудио, ${sourceText}).`, token);
-                        
-                                envData.ctx.waitUntil(logDebug("AUDIO_ISOLATE_START", `Source URL: ${fileUrl.substring(0, 50)}`, envData)); 
-                        
-                                // 2. 🎯 ЗАПУСК ФУНКЦИИ KIE.AI В ФОНЕ
-                                // Эта функция инициирует асинхронный процесс и должна сохранить `originalMessageId` для обратной связи через колбэк.
-                                envData.ctx.waitUntil(
-                                    activeModelConfig.FUNCTION(
-                                        activeModelConfig, 
-                                        fileUrl, 
-                                        envData, 
-                                        chatId,
-                                        originalMessageId // Передаем ID сообщения, которое нужно будет обновить при получении результата
-                                    )
-                                );
-                                
-                                // 7. ✅ Успешный выход после запуска (ждем вебхук)
-                                return new Response('OK', { status: 200 }); 
-                                
-                            } catch (error) {
-                                // 8. ❌ Обработка сбоя запуска задачи Kie.ai
-                                const errorMessage = error.message || "Неизвестная ошибка Audio Isolation";
-                                
-                                await editMessage(chatId, originalMessageId, `❌ **Ошибка запуска Kie.ai:**\n\`${errorMessage.substring(0, 150)}\``, token);
-                                envData.ctx.waitUntil(logDebug("AUDIO_ISOLATE_FAIL", errorMessage, envData));
-                                
-                                return new Response('OK', { status: 200 });
-                            }
-                        }
-                        case 'clear_image': {
-                            let clearImageText = "❌ Фото не найдено в памяти.";
-                            const imageKey = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; // <--- ИСПОЛЬЗУЕМ СТРОКОВЫЙ КЛЮЧ
-                            // 1. Пытаемся удалить видео из KV
-                            await storage.delete(imageKey); 
-
-                            // 2. Успешное сообщение
-                            clearImageText = "🗑️ **Сохраненное фото удалено.**\n\nТеперь вы можете загрузить новое фото для обработки.";
-
-                            // 3. Обновляем сообщение (где была кнопка) - удаляем кнопки
-                            await editMessageWithKeyboard(chatId, messageId, clearImageText, token, null);
-
-                            // Подтверждаем, что обработка callback завершена
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'clear_video': {
-                            let clearVideoText = "❌ Видео не найдено в памяти.";
-                            const videoKey = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; // <--- ИСПОЛЬЗУЕМ СТРОКОВЫЙ КЛЮЧ
-                            // 1. Пытаемся удалить видео из KV
-                            await storage.delete(videoKey); 
-
-                            // 2. Успешное сообщение
-                            clearVideoText = "🗑️ **Сохраненное видео удалено.**\n\nТеперь вы можете загрузить новое видео для обработки.";
-
-                            // 3. Обновляем сообщение (где была кнопка) - удаляем кнопки
-                            await editMessageWithKeyboard(chatId, messageId, clearVideoText, token, null);
-
-                            // Подтверждаем, что обработка callback завершена
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'clear_audio': {
-                            let clearAudioText;
-                            const audioKey = chatKey + LAST_AUDIO_DATA_KEY_SUFFIX; // Используем ключ для URL/ID аудио
-                            // Ключи для удаления
-                            const keysToDelete = [
-                                chatId + AUDIO_URL_KEY_SUFFIX,          // URL входящего аудио (для A2V)
-                                chatId + LAST_AUDIO_DATA_KEY_SUFFIX,    // Base64 аудио (из /say)
-                                chatId + '_audio_file_id'               // ✅ file_id (для view_saved_audio)
-                            ];
-
-                            // 1. Удаляем все возможные ключи в фоне
-                            await Promise.all(keysToDelete.map(key => storage.delete(key)));
-                            
-                            // 2. Успешное сообщение
-                            clearAudioText = "🗑️ **Сохраненное аудио удалено.**\n\nТеперь вы можете загрузить новый файл или создать озвучку через /say.";
-
-                            // 3. Обновляем сообщение (где была кнопка) - удаляем кнопки
-                            await editMessageWithKeyboard(chatId, messageId, clearAudioText, token, null);
-                            
-                            // Подтверждаем, что обработка callback завершена
-                            return new Response('OK', { status: 200 });
-                        }
-                        case 'say_empty': // Добавляем новый case для команды /say
-                            // Используем await, так как нам нужно дождаться отправки аудио
-                            await processSayCommand(chatId, '/say', envData, ctx);
-                            break;
-                        case 'checkvideo':
-                            // Вызов новой функции для обработки статуса видео
-                            // Вам также нужно передать envData, чтобы получить доступ к KV и токену
-                            await handleCheckVideoCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
-                            break;
-                        case 'stop':
-                            // ✅ ИСПРАВЛЕНИЕ: Добавлен пятый аргумент envData в processStopCommand
-                            ctx.waitUntil(processStopCommand(chatId, storage, token, envData));
-                            break;
-                        case 'reset':
-                            await envData.CHAT_HISTORY_STORAGE.delete(chatKey);
-                            await sendMessageMarkdown(chatId, "✅ **История чата сброшена.** Можете начать новую беседу.", token);
-                            return true;
-                        case 'setkey':
-                            // --- ЛОГИКА /setkey (Запрос ключа + Reply Keyboard) ---
-                            const setKeyPromise = (async () => {
-                                // Переменные из окружающего контекста (предполагаем, что они доступны)
-                                const chatKey = chatId.toString();
-                                const storage = envData.LAST_PHOTO_STORAGE;
-                                const token = envData.TELEGRAM_BOT_TOKEN; // или просто env.TELEGRAM_BOT_TOKEN
-                                
-                                // 1. ОПРЕДЕЛЕНИЕ КЛЮЧА СОСТОЯНИЯ
-                                const USER_STATE_KEY = chatKey + USER_STATE_KEY_SUFFIX; 
-                        
-                                // 2. УСТАНОВКА СОСТОЯНИЯ ЧАТА В 'awaiting_apikey'
-                                await storage.put(USER_STATE_KEY, 'awaiting_apikey', { expirationTtl: 300 }); // Ждем ввода 5 минут
-                        
-                                // Используем ВАШУ функцию для Reply Keyboard
-                                const replyKeyboard = getCancelReplyKeyboard();
-                        
-                                let statusMessage = "🔑 **Ввод API-ключа KIE.ai**\n\n" +
-                                                    "Введите ключ **отдельным сообщением** или скопируйте и вставьте команду `/setkey <ВАШ_КЛЮЧ>`.\n" +
-                                                    "Ключ можно получить на сайте: https://kie.ai/ru/api-key (выдается 80 БЕСПЛАТНЫХ кредитов).";
-                        
-                                // ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ С REPLY KEYBOARD
-                                await sendMessageMarkdown(chatId, statusMessage, token, null, replyKeyboard);
-                            })();
-                            ctx.waitUntil(setKeyPromise);
-                            break;
-                        case 'checkkey':
-                            // --- ЛОГИКА /checkkey (Обновить текущий баланс и редактировать) ---
-                            const checkKeyPromise = (async () => {
-                                const userApiKey = await storage.get(USER_API_KEY_KV);
-                                let userKieAiBalance = await storage.get(USER_LIMIT_KEY) || 0;
-
-                                // --- ЗАПРОС БАЛАНСА KIE.AI ---
-                                if (userApiKey) {
-                                    try {
-                                        // Вызываем существующую функцию для получения баланса по главному ключу
-                                        const balanceKieAiResult = await updateKieAiUserCredits(userApiKey, envData, ctx); 
-                                        
-                                        if (typeof balanceKieAiResult === 'number') {
-                                            userKieAiBalance = `${balanceKieAiResult}`;
-                                            await storage.put(USER_LIMIT_KEY, userKieAiBalance.toString());
-                                        } else if (balanceKieAiResult === 'InvalidKey') {
-                                            userKieAiBalance = 'Недействительный ключ (401)';
-                                        } else {
-                                            userKieAiBalance = 'Ошибка (см. логи)';
-                                        }
-                                    } catch (e) {
-                                        // Ошибка сети или другая
-                                        ctx.waitUntil(logDebug('ADMIN_BALANCE_FETCH_ERROR', `Ошибка запроса баланса KIE.AI: ${e.message}`, envData));
-                                        userKieAiBalance = 'Ошибка сети';
-                                    }
-                                } else {
-                                    userKieAiBalance = 'Ключ userApiKey не установлен!';
-                                }
-                                
-                                // 🛑 ФОРМИРУЕМ STATUS MESSAGE
-                                const creditWord = pluralize(userKieAiBalance, CREDIT_FORMS);
-                                let statusMessage = '🔑 **Меню управления API-ключом KIE.ai**\n\n';
-                                if (userApiKey) {
-                                    statusMessage += `✅ **Статус ключа:** установлен\n` +
-                                                    `🔐 Ваш личный ключ: \`${userApiKey.substring(0, 10)}...\`\n` +
-                                                    `💰 **Баланс:** **${userKieAiBalance}** ${creditWord}.\n\n` +
-                                                    `Вы используете лимиты и баланс, связанные с этим ключом. Отслеживайте его в личном кабинете https://kie.ai/ru/usage`;
-                                } else {
-                                    statusMessage += `❌ **Статус ключа:** отсутствует\n` +
-                                                    `🔒 Личный ключ не найден.\n` +
-                                                    `Вы используете общий (административный) ключ.`;
-                                }
-                                
-                                // Клавиатура должна быть объектом { inline_keyboard: [...] }
-                                const keyboard = {
-                                    inline_keyboard: [
-                                        [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
-                                        [{ text: "📊 Проверить баланс", callback_data: "cmd:/checkkey" }],
-                                        [{ text: "🔑 Установить/Заменить ключ", callback_data: "cmd:/setkey" }],
-                                        [{ text: "🗑️ Удалить ключ", callback_data: "cmd:/delkey" }]
-                                    ]
-                                };
-                                
-                                // !!! ИСПОЛЬЗУЕМ ВАШУ ФУНКЦИЮ editMessageWithKeyboard
-                                await editMessageWithKeyboard(chatId, messageId, statusMessage, token, keyboard);
-                            })();
-                            
-                            ctx.waitUntil(checkKeyPromise);
-                            break;
-                        case 'delkey':
-                            // --- ЛОГИКА /delkey (Удалить ключ и обновить окно) ---
-                            const delKeyPromise = (async () => {
-                                const userApiKey = await storage.get(USER_API_KEY_KV);
-
-                                if (userApiKey) {
-                                    // Удаляем ключ и обнуляем лимит
-                                    await storage.delete(USER_API_KEY_KV);
-                                    await storage.delete(USER_LIMIT_KEY);
-                                    await sendMessageMarkdown(chatId, "🗑️ **API-ключ KIE.ai успешно удален.**", token);
-                                } else {
-                                    await sendMessageMarkdown(chatId, "🗑️ **API-ключ KIE.ai отсутствует.**", token);
-                                };
-                                
-                                // Обновляем главное меню /apikey (теперь ключ не найден)
-                                let statusMessage = '🔑 **Меню управления API-ключом KIE.ai**\n\n' + 
-                                                    '❌ **Статус ключа:** отсутствует\n' +
-                                                    '🔒 Личный ключ не найден.\n' +
-                                                    'Вы используете общий (административный) ключ.';
-                                                    
-                                // Клавиатура должна быть объектом { inline_keyboard: [...] }
-                                const keyboard = {
-                                    inline_keyboard: [
-                                        [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
-                                        [{ text: "📊 Проверить баланс", callback_data: "cmd:/checkkey" }],
-                                        [{ text: "🔑 Установить/Заменить ключ", callback_data: "cmd:/setkey" }],
-                                        [{ text: "🗑️ Удалить ключ", callback_data: "cmd:/delkey" }]
-                                    ]
-                                };
-                                
-                                // !!! ИСПОЛЬЗУЕМ ВАШУ ФУНКЦИЮ editMessageWithKeyboard
-                                await editMessageWithKeyboard(chatId, messageId, statusMessage, token, keyboard);
-                            })();
-                            
-                            ctx.waitUntil(delKeyPromise);
-                            break;
-                        default:
-                            ctx.waitUntil(sendMessage(chatId, `Команда по кнопке не найдена. Получено: ${command}`, token));
-                            break;
+                        ctx.waitUntil(sendPhotoMenu(
+                            chatId, 
+                            token, 
+                            storage, 
+                            envData, 
+                            ctx, 
+                            messageId // Передаем messageId для редактирования
+                        ));
+                        return new Response('OK', { status: 200 });
                     }
-                    // Этот return обрабатывает все команды, которые завершились через break (prompt, stop, create_empty)
-                    return new Response('OK', { status: 200 });
-                // 1. Показать опции оплаты
-                } else if (data === 'show_payment_options') {
-                    const paymentOptionsKeyboard = getPaymentOptionsKeyboard(); // Вызываем новую функцию
-                    ctx.waitUntil(editMessageWithKeyboard(
-                        chatId,
-                        messageId,
-                        "💰 Выберите пакет кредитов для покупки:",
-                        envData.TELEGRAM_BOT_TOKEN,
-                        paymentOptionsKeyboard.inline_keyboard // Передаем только массив
-                    ));
-        
-                    return new Response('OK', { status: 200 });
-                // 2. Кнопка "Назад" (Возврат к балансу)
-                } else if (data === 'show_balance') {
-                    // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
-                    const balanceStatus = await getCurrentCreditBalance(chatId, envData.LAST_PHOTO_STORAGE);
-                    // ---------------------------------------------            
+                    case 'photo_now': { // НОВЫЙ КОЛБЭК, запускает генерацию
+                        const messageId = callback.message.message_id;
                     
-                    // 3. Формируем текст сообщения
-                    const balanceText = 
+                        // 🛑 1. КРИТИЧЕСКАЯ ПРОВЕРКА: НАЛИЧИЕ ПРОМПТА И УСТАНОВКА ДЕФОЛТА
+                        const LAST_PROMPT_KEY = chatId + LAST_PROMPT_KEY_SUFFIX;
+                        
+                        // Читаем промпт
+                        const userPrompt = await storage.get(LAST_PROMPT_KEY);
+                        
+                        if (!userPrompt) {
+                            // 🚀 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: ЖДЕМ ЗАВЕРШЕНИЯ ЗАПИСИ (Используем 'await' без ctx.waitUntil)
+                            await storage.put(
+                                LAST_PROMPT_KEY, 
+                                DEFAULT_IMAGE_PROMPT, // <-- Глобальная константа
+                                { expirationTtl: 3600 }
+                            );
+                            // После этой строки мы гарантируем, что промпт записан в KV.
+                        }
+                        
+                        // 2. Запускаем фоновые задачи...
+                        ctx.waitUntil(Promise.allSettled([
+                            // Редактируем сообщение, чтобы показать прогресс (UI update)
+                            // 🛑 Здесь важно использовать escapeMarkdown (как мы обсуждали ранее)
+                            editMessage(chatId, messageId, "⏳ **Запускаю улучшение фото...**", token).catch(e => {
+                                console.error("Не удалось отредактировать сообщение для photo_now:", e);
+                            }),
+                            
+                            // Запускаем основную логику улучшения фото
+                            processPhotoCommand(
+                                chatId, 
+                                token, 
+                                envData, 
+                                storage
+                            )
+                        ]));
+                        
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'view_saved_photo': {
+                        // 1. ЗАПУСКАЕМ ТЯЖЕЛЫЙ ПРОЦЕСС (отправку фото) в фоне
+                        ctx.waitUntil(sendSavedPhoto(
+                            chatId, 
+                            token, 
+                            storage, 
+                            envData, 
+                            ctx
+                        ));
+            
+                        // 2. Обязательный выход.
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'view_saved_video': {
+                        // 1. ЗАПУСКАЕМ ТЯЖЕЛЫЙ ПРОЦЕСС (отправку видео) в фоне
+                        ctx.waitUntil(sendSavedVideo(
+                            chatId, 
+                            token, 
+                            storage, 
+                            envData, 
+                            callback.id // 🛑 Передаем только ID!
+                        ));
+                    
+                        // 2. Обязательный и немедленный выход.
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'view_saved_audio': {
+                        // В KV вы сохраняете: 235663624_audio_file_id
+                        const AUDIO_FILE_ID_KEY = chatId + '_audio_file_id'; 
+                        const storage = envData.LAST_PHOTO_STORAGE;
+                        
+                        // 1. ✅ НЕМЕДЛЕННЫЙ ОТВЕТ НА КОЛБЭК! (Выполняется мгновенно)
+                        // Это гасит кнопку и предотвращает таймаут.
+                        if (callbackId) { 
+                            ctx.waitUntil(answerCallbackQuery(callbackId, "Отправляю сохраненное аудио...", token)); 
+                        }
+                    
+                        // 2. ЗАПУСКАЕМ ВСЮ ТЯЖЕЛУЮ ЛОГИКУ В ФОНЕ (ctx.waitUntil)
+                        // Все await-операции (чтение KV, отправка) не блокируют основной поток.
+                        ctx.waitUntil(async function() {
+                            // Читаем file_id из KV
+                            const audioFileId = await storage.get(AUDIO_FILE_ID_KEY); 
+                            
+                            if (audioFileId) {
+                                // Отправка аудио по надежному file_id
+                                await sendAudio(chatId, audioFileId, token) 
+                                    .catch(e => {
+                                        console.error("Не удалось отправить аудиофайл по file_id:", e);
+                                        // Отправляем текстовое сообщение об ошибке как запасной вариант
+                                        sendMessage(chatId, `❌ Не удалось отправить аудио. Произошла внутренняя ошибка.`, token).catch(() => {});
+                                    });
+                            } else {
+                                // Аудио не найдено, редактируем сообщение меню
+                                editMessage(chatId, messageId, "❌ **Ошибка:** Аудио не найдено в хранилище. Запустите /say.", token).catch(() => {});
+                            }
+                        }());
+                    
+                        // 3. Мгновенный выход, возвращая 200 OK
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'create_empty': {
+                        // Мы используем messageId, который должен быть определен в начале блока callbackQuery
+                        // (например, const messageId = callback.message.message_id; )
+                        const chatKey = chatId.toString();
+                        const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+                        const CREATIVE_MODE_KEY = chatKey + envData.CREATIVE_MODE_KEY_SUFFIX
+                        // 🛑 ДОБАВЬТЕ ЭТУ СТРОКУ в оба блока, где открывается меню (/create и create_empty)
+                        const currentMode = await storage.get(CREATIVE_MODE_KEY) || 'T2I';
+                        // 1. Читаем сохраненный промпт (этот await допустим)
+                        const currentPrompt = await storage.get(LAST_PROMPT_KEY);
+                
+                        // 2. Получаем данные для нового меню /create
+                        const { messageText: createMessage, keyboardObject } = await getCreateMenuKeyboard(
+                            currentPrompt, 
+                            currentMode, 
+                            chatId, 
+                            envData.LAST_PHOTO_STORAGE // 🛑 ПЕРЕДАЧА БИНДИНГА KV
+                        );
+                                                    
+                        // 3. ОТПРАВКА: ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
+                        ctx.waitUntil(editMessageWithKeyboard( // <-- ИЗМЕНЕНО
+                            chatId, 
+                            messageId, // <-- ИСПОЛЬЗУЕМ messageId ТЕКУЩЕГО СООБЩЕНИЯ
+                            createMessage, 
+                            token, 
+                            keyboardObject.inline_keyboard // Передаем клавиатуру
+                        ));
+                        
+                        break; // break завершается через return new Response('OK', { status: 200 }); в конце блока if
+                    }
+                    case 'audio_transcribe': {
+                        // Ключ, который вы используете для сохранения file_id
+                        const AUDIO_FILE_ID_KEY_SUFFIX = '_audio_file_id'; 
+                        const AUDIO_FILE_KEY = chatId.toString() + AUDIO_FILE_ID_KEY_SUFFIX; 
+                        const fileId = await storage.get(AUDIO_FILE_KEY); 
+                
+                        // 1. Отвечаем на колбэк, чтобы убрать часы
+                        ctx.waitUntil(answerCallbackQuery(callback.id, "Начинаю транскрибацию...", token));
+                        
+                        if (!fileId) {
+                            ctx.waitUntil(sendMessage(chatId, "❌ Не удалось найти аудиофайл для транскрибации. Пожалуйста, отправьте его снова.", token));
+                            return true;
+                        }
+                
+                        // 2. Вызываем новую функцию для транскрибации
+                        ctx.waitUntil(transcribeAudioFileAsync(chatId, fileId, envData, ctx));
+                
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'video_transcribe': {
+                        const VIDEO_DATA_KEY = chatId.toString() + '_last_video_data'; 
+                        const videoDataJson = await storage.get(VIDEO_DATA_KEY); 
+                
+                        // 1. Отвечаем на колбэк, чтобы убрать часы
+                        ctx.waitUntil(answerCallbackQuery(callback.id, "Начинаю транскрибацию видео...", token));
+                        
+                        if (!videoDataJson) {
+                            ctx.waitUntil(sendMessage(chatId, "❌ Не удалось найти видеофайл. Пожалуйста, отправьте его снова.", token));
+                            return true;
+                        }
+                
+                        const videoData = JSON.parse(videoDataJson);
+                        const videoFileId = videoData.file_id; // <-- Извлекаем нужный file_id
+                
+                        if (!videoFileId) {
+                                ctx.waitUntil(sendMessage(chatId, "❌ В сохраненных данных не найден file_id видео.", token));
+                                return true;
+                        }
+                
+                        // 2. Вызываем функцию транскрибации, которая прекрасно работает с video file_id
+                        // Telegram API позволяет скачать видеофайл, а STT-модель извлекает из него аудиодорожку.
+                        ctx.waitUntil(transcribeVideoFileAsync(chatId, videoFileId, envData, ctx));
+                
+                        // 3. Завершаем HTTP-ответ, чтобы избежать зацикливания
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'video_analysis': {
+                        const VIDEO_DATA_KEY = chatId.toString() + '_last_video_data'; 
+                        const videoDataJson = await storage.get(VIDEO_DATA_KEY); 
+                        
+                
+                        // 1. Отвечаем на колбэк, чтобы убрать часы
+                        ctx.waitUntil(answerCallbackQuery(callback.id, "Начинаю транскрибацию видео...", token));
+                        
+                        if (!videoDataJson) {
+                            ctx.waitUntil(sendMessage(chatId, "❌ Не удалось найти видеофайл. Пожалуйста, отправьте его снова.", token));
+                            return true;
+                        }
+                
+                        const videoData = JSON.parse(videoDataJson);
+                        const videoFileId = videoData.file_id; // <-- Извлекаем нужный file_id
+                        const videoMimeType = videoData.mime_type; // <-- Получаем MIME-тип
+
+                        if (!videoFileId) {
+                                ctx.waitUntil(sendMessage(chatId, "❌ В сохраненных данных не найден file_id видео.", token));
+                                return true;
+                        }
+                
+                        // Вызов новой функции
+                        ctx.waitUntil(analyzeVideoContentAsync(chatId, videoFileId, videoMimeType, envData, ctx));
+
+                        // 3. Завершаем HTTP-ответ, чтобы избежать зацикливания
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'vision_generate_free_t2i': {
+                        // Вызов новой функции с 4 аргументами
+                        ctx.waitUntil(processFreeCreativeCommand(
+                            chatId, 
+                            'T2I', 
+                            storage, 
+                            envData
+                        ));
+                        return new Response('OK', { status: 200 });
+                    }
+                    
+                    case 'vision_generate_free_i2i': {
+                        // Вызов новой функции с 4 аргументами
+                        ctx.waitUntil(processFreeCreativeCommand(
+                            chatId, 
+                            'I2I', 
+                            storage, 
+                            envData
+                        ));
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'text_empty': {
+                        // Мы используем messageId, который должен быть определен в начале блока callbackQuery
+                        // (например, const messageId = callback.message.message_id; )
+                        const chatKey = chatId.toString();
+                        const storage = env.LAST_PHOTO_STORAGE;
+                        const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+                        
+                        // 1. Читаем сохраненный промпт (этот await допустим)
+                        const currentPrompt = await storage.get(LAST_PROMPT_KEY);
+                
+                        // 2. Получаем данные для нового меню /text
+                        const { messageText: createMessage, keyboardObject } = await getTextMenuKeyboard(chatId, storage, currentPrompt); // <-- Добавьте await здесь
+                                                    
+                        // 3. ОТПРАВКА: ✅ ИСПОЛЬЗУЕМ editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
+                        ctx.waitUntil(editMessageWithKeyboard( // <-- ИЗМЕНЕНО
+                            chatId, 
+                            messageId, // <-- ИСПОЛЬЗУЕМ messageId ТЕКУЩЕГО СООБЩЕНИЯ
+                            createMessage, 
+                            token, 
+                            keyboardObject.inline_keyboard // Передаем клавиатуру
+                        ));
+                        
+                        break; // break завершается через return new Response('OK', { status: 200 }); в конце блока if
+                    }
+                    case 'video': { 
+                        // Поскольку колбэк не содержит промпта, мы знаем, что userPrompt пуст.
+                        const videoPromptFromCommand = null; // или пустая строка
+                        const chatKey = chatId.toString();
+                        const storage = envData.LAST_PHOTO_STORAGE;
+                        const messageId = callback.message.message_id; // ID сообщения меню, которое нужно отредактировать
+                    
+                        // 1. Читаем промпт из хранилища (если он там есть)
+                        const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX; 
+                        let finalPrompt = null; 
+                        if (storage) {
+                            finalPrompt = await storage.get(LAST_PROMPT_KEY);
+                        }
+                    
+                        // 2. Вызываем основную команду обработки видео
+                        // NOTE: processVideoCommand теперь должна принимать messageId для редактирования!
+                        // (Если ваша processVideoCommand не принимает messageId, вам нужно будет её обновить)
+                        
+                        // ВАЖНО: Мы используем editVideoGenerationMenu, а не send, т.к. мы нажимаем кнопку в существующем сообщении
+                        
+                        // Получаем текущие параметры для корректного редактирования меню
+                        const VIDEO_PARAMS_KEY = chatKey + VIDEO_PARAMS_KEY_SUFFIX;
+                        const LAST_VIDEO_KEY = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; // <-- НОВЫЙ КЛЮЧ
+                        const LAST_AUDIO_KEY = chatKey + LAST_AUDIO_DATA_KEY_SUFFIX; // <-- НОВЫЙ КЛЮЧ
+                        const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX;
+                    
+                        const [videoParams, rawImageKVData, currentMode, rawVideoKVData, rawAudioKVData] = await Promise.all([ // <-- ИЗМЕНЕН
+                            storage.get(VIDEO_PARAMS_KEY, { type: 'json' })
+                                .then(res => res || { seconds: '6', aspectRatio: '16:9', resolution: '480p', mode: 'T2V' })
+                                .catch(() => ({ seconds: '6', aspectRatio: '16:9', resolution: '480p', mode: 'T2V' })), 
+                            storage.get(LAST_IMAGE_KEY, { type: 'text' }),
+                            storage.get(LAST_VIDEO_KEY, { type: 'text' }), // <-- ДОБАВЛЕН ЗАПРОС НА ВИДЕО
+                            storage.get(LAST_AUDIO_KEY, { type: 'text' }) // <-- ДОБАВЛЕН ЗАПРОС НА АУДИО
+                        ]);
+                        
+                        // Проверка наличия фото
+                        let isPhotoSaved = false;
+                        if (rawImageKVData && rawImageKVData.length > 100) { 
+                            isPhotoSaved = true; 
+                        }
+                        // Определение наличия сохраненного видео. Добавлена проверка длины (>100 символов) для надежности.
+                        const isVideoSaved = !!rawVideoKVData && rawVideoKVData.length > 100;
+                        const isAudioSaved = !!rawAudioKVData && rawAudioKVData.length > 100;
+                        // Редактируем сообщение, чтобы показать меню
+                        ctx.waitUntil(editVideoGenerationMenu(
+                            chatId, 
+                            messageId, 
+                            finalPrompt, // Используем промпт из хранилища
+                            isPhotoSaved, 
+                            isVideoSaved,
+                            isAudioSaved,
+                            envData.TELEGRAM_BOT_TOKEN, 
+                            videoParams,
+                            null,
+                            null,
+                            envData
+                        ));
+                    
+                        // КРИТИЧНО: Возвращаем ответ Telegram
+                        return new Response('OK', { status: 200 });
+                    }
+                case 'mediadata':
+                    // Ответ на колбэк (гасим кнопку)
+                    ctx.waitUntil(answerCallbackQuery(callbackId, "Меню медиа-данных...", token)); 
+                    // Вызываем основную функцию для отображения меню
+                    await sendMediaDataControlMenu(chatId, token, envData, messageId);
+                    return new Response('OK', { status: 200 });
+                    case 'grab_frame': {
+                        const RENDER_HOST_URL = 'https://leshiy-media-converter.onrender.com';
+                        const VIDEO_TO_IMAGE_ENDPOINT = RENDER_HOST_URL + '/video2image';
+                        const DEFAULT_TIMESTAMP = '00:00:01.000'; // Используем формат Render
+                    
+                        const videoKey = chatId + LAST_VIDEO_DATA_KEY_SUFFIX;
+                        const imageKey = chatId + LAST_IMAGE_DATA_KEY_SUFFIX; 
+                        let responseText;
+                    
+                        const rawVideoData = await storage.get(videoKey);
+                    
+                        if (!rawVideoData) {
+                            responseText = "❌ **Ошибка:** Сначала загрузите видео (или оно устарело и было удалено).";
+                            await editMessageWithKeyboard(chatId, messageId, responseText, token, null); 
+                            return new Response('OK', { status: 200 });
+                        }
+                    
+                        const videoData = JSON.parse(rawVideoData);
+                        const videoFileId = videoData.file_id;
+                        
+                        if (!videoFileId) {
+                            responseText = "❌ **Ошибка:** У загруженного видео нет file_id.";
+                            await editMessageWithKeyboard(chatId, messageId, responseText, token, null); 
+                            return new Response('OK', { status: 200 });
+                        }
+                    
+                        try {
+                            await answerCallbackQuery(callback.id, `🔄 Захват кадра...`, token);
+                            await editMessageWithKeyboard(chatId, messageId, `⏳ **Конвертация: Скачиваю видео...**`, token, null);
+                    
+                            // 1. Скачиваем полное видео
+                            const videoBuffer = await downloadFileBuffer(videoFileId, token, env);
+                    
+                            // 2. Отправляем видео на Render
+                            await editMessageWithKeyboard(chatId, messageId, `⏳ **Конвертация: Видео -> Фото...** (Timestamp: ${DEFAULT_TIMESTAMP})`, token, null);
+                    
+                            const renderFormData = new FormData();
+                            // Используем File, если Worker поддерживает его. Если нет, используйте Blob.
+                            const videoFile = new File([videoBuffer], 'input.mp4', { type: 'video/mp4' });
+                            renderFormData.append('video', videoFile, 'video.mp4');
+                    
+                            const finalRenderUrl = `${VIDEO_TO_IMAGE_ENDPOINT}?timestamp=${DEFAULT_TIMESTAMP}&format=jpg`;
+                    
+                            // 🛑 ИСПРАВЛЕНИЕ: Корректно парсим тело как JSON
+                            const renderResponse = await fetch(finalRenderUrl, {
+                                method: 'POST',
+                                body: renderFormData,
+                                signal: AbortSignal.timeout(120000)
+                            });
+                    
+                            if (!renderResponse.ok) {
+                                const errorDetails = await renderResponse.text().catch(() => 'No details');
+                                throw new Error(`Render Server Error: ${renderResponse.status} - ${errorDetails.substring(0, 150)}`);
+                            }
+                            
+                            // 1. Парсим тело как JSON
+                            const renderResult = await renderResponse.json();
+                            
+                            // 2. Детальная проверка JSON
+                            if (!renderResult.success || !renderResult.image || !renderResult.width || !renderResult.height) {
+                                    
+                                    let errorMsg = `JSON response incomplete or failed.`;
+                                    if (renderResult.error) {
+                                        errorMsg = `Render reported error: ${renderResult.error.substring(0, 150)}`;
+                                    } else {
+                                        // Если полей нет, сообщаем о них
+                                        const missingFields = [];
+                                        if (renderResult.success === undefined) missingFields.push('success');
+                                        if (!renderResult.image) missingFields.push('image');
+                                        if (!renderResult.width) missingFields.push('width');
+                                        if (!renderResult.height) missingFields.push('height');
+                                        
+                                        if (missingFields.length > 0) {
+                                            errorMsg = `Missing fields: ${missingFields.join(', ')}. Status: ${renderResult.success}`;
+                                        }
+                                    }
+                    
+                                    throw new Error(`Render failed: ${errorMsg}`);
+                            }
+                    
+                            // 3. Сохраняем данные (Base64 и размеры)
+                            const fullBase64Image = renderResult.image; 
+                            const mime = renderResult.mimeType || `image/${renderResult.format || 'jpeg'}`;
+                            
+                            const imageData = JSON.stringify({
+                                base64: fullBase64Image,
+                                width: renderResult.width,
+                                height: renderResult.height,
+                                mime_type: mime,
+                            });
+                    
+                            // 4. Сохраняем как основное фото
+                            await storage.put(imageKey, imageData, { expirationTtl: 3600 }); 
+                            
+                            responseText = `🖼️ **Стоп-кадр (${DEFAULT_TIMESTAMP}) успешно захвачен и сохранен как фото!**\n\nРазмеры: **${renderResult.width}x${renderResult.height}**. Теперь вы можете использовать его в меню /photo для улучшения или оживления.`;
+                    
+                        } catch (e) {
+                            console.error("Frame grab failed:", e);
+                            // 5. Выводим более информативную ошибку
+                            responseText = `❌ **Критическая ошибка захвата кадра:** Не удалось получить изображение.\n\nДетали: *${e.message.substring(0, 200)}*`;
+                        }
+                    
+                        // 6. Обновляем сообщение
+                        await editMessageWithKeyboard(chatId, messageId, responseText, token, null);
+                    
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'grab_audio': {
+                        // 🛑 КОНСТАНТЫ И ПЕРЕМЕННЫЕ
+                        const STORAGE = envData.LAST_PHOTO_STORAGE;
+                        const token = envData.TELEGRAM_BOT_TOKEN;
+                        const originalMessageId = messageId; 
+                        
+                        // Ключи KV для текущего чата
+                        // ОСТАВЛЯЕМ ТОЛЬКО КЛЮЧИ С АКТУАЛЬНЫМИ ДАННЫМИ
+                        const LAST_VIDEO_DATA_KEY = chatId.toString() + LAST_VIDEO_DATA_KEY_SUFFIX;
+                        const LAST_MEDIA_TYPE_KEY = chatId.toString() + LAST_MEDIA_TYPE_KEY_SUFFIX;
+                        
+                        let mediaFileId = null;
+                        let fileUrl = null; // Будет определен позже в runGrabAudioInBackground
+                        
+                        // 1. 🔍 Определяем, что последний файл был видео
+                        const lastMediaType = await STORAGE.get(LAST_MEDIA_TYPE_KEY);
+                        
+                        if (lastMediaType !== 'video') {
+                            await editMessage(chatId, originalMessageId, "❌ Ошибка: Последний загруженный файл не является видео.", token);
+                            return new Response('OK', { status: 200 });
+                        }
+                        
+                        // 2. 📝 ПРИНУДИТЕЛЬНО ИЗВЛЕКАЕМ file_id ИЗ АКТУАЛЬНЫХ МЕТАДАННЫХ
+                        const videoDataRaw = await STORAGE.get(LAST_VIDEO_DATA_KEY);
+                        
+                        if (videoDataRaw) {
+                            try {
+                                const videoData = JSON.parse(videoDataRaw);
+                                mediaFileId = videoData.file_id; // <-- АКТУАЛЬНЫЙ file_id
+                            } catch(e) { 
+                                envData.ctx.waitUntil(logDebug("GRAB_AUDIO", `Ошибка парсинга LAST_VIDEO_DATA_KEY: ${e.message}`, envData));
+                            }
+                        }
+                        
+                        // 3. ❌ Обработка: file_id не найден
+                        if (!mediaFileId) {
+                            await editMessage(chatId, originalMessageId, "❌ Ошибка: Не найден активный file_id видео для обработки. Загрузите видео снова.", token);
+                            return new Response('OK', { status: 200 });
+                        }
+                    
+                        // 4. 🚀 Запуск задачи ИЗВЛЕЧЕНИЯ АУДИО
+                        try {
+                            // 1. 💿 НЕМЕДЛЕННАЯ ОТПРАВКА НОВОГО СООБЩЕНИЯ-ЗАГЛУШКИ
+                            const loadingMessage = await sendMessageMarkdown(chatId, "💿 **Приступаю к извлечению аудиодорожки...**", token);
+                            let loadingMessageId = null;
+                            
+                            // Проверка здоровья конвертера
+                            const isHealthy = await checkConverterHealth(envData);
+                            if (!isHealthy) {
+                                await editMessage(chatId, loadingMessageId, '❌ **Ошибка:** Ваш конвертер на Render недоступен для работы.', token);
+                                return new Response('OK', { status: 200 });
+                            }
+                    
+                            if (loadingMessage.ok && loadingMessage.result) {
+                                    loadingMessageId = loadingMessage.result.message_id;
+                            } else {
+                                // Если не удалось отправить заглушку, используем оригинальный ID для вывода ошибки позже
+                                loadingMessageId = originalMessageId; 
+                            }
+                    
+                            // 2. 🗑️ РЕДАКТИРУЕМ ИСХОДНОЕ СООБЩЕНИЕ
+                            envData.ctx.waitUntil(logDebug("AUDIO_GRAB_SOURCE", `Source: video. file_id: ${mediaFileId}`, envData)); 
+                            
+                            // 3. 🎯 Запуск фоновой задачи: ПЕРЕДАЕМ ТОЛЬКО file_id И messageId
+                            envData.ctx.waitUntil(
+                                // 🛑 ВАЖНО: runGrabAudioInBackground теперь должна сама получить fileUrl
+                                runGrabAudioInBackground(chatId, mediaFileId, loadingMessageId, envData, token)
+                            );
+                            
+                            // 4. ✅ Немедленный выход
+                            return new Response('OK', { status: 200 }); 
+                            
+                        } catch (error) {
+                            // 9. ❌ Обработка сбоя запуска задачи
+                            const errorMessage = error.message || "Неизвестная ошибка Audio Isolation";
+                            
+                            await editMessage(chatId, messageId, `❌ **Ошибка запуска Kie.ai:**\n\`${errorMessage.substring(0, 150)}\``, token);
+                            envData.ctx.waitUntil(logDebug("AUDIO_GRAB_FAIL", errorMessage, envData));
+                            
+                            // 🛑 Выход после сбоя запуска
+                            return new Response('OK', { status: 200 });
+                        }
+                    }
+                    case 'isolate_audio': {
+                        // 🛑 КОНСТАНТЫ И ПЕРЕМЕННЫЕ
+                        const MIN_DURATION = 4.6; 
+                        const STORAGE = envData.LAST_PHOTO_STORAGE;
+                        const token = envData.TELEGRAM_BOT_TOKEN;
+                        const originalMessageId = messageId; 
+                        
+                        // Ключи KV для текущего чата
+                        const AUDIO_URL_KEY = chatId.toString() + AUDIO_URL_KEY_SUFFIX;
+                        const AUDIO_FILE_ID_KEY = chatId.toString() + AUDIO_FILE_ID_KEY_SUFFIX;
+                        const AUDIO_DURATION_KEY = chatId.toString() + AUDIO_DURATION_KEY_SUFFIX; 
+                        const LAST_MEDIA_TYPE_KEY = chatId.toString() + LAST_MEDIA_TYPE_KEY_SUFFIX;
+                        
+                        let fileUrl = null;
+                        let mediaFileId = null;
+                        
+                        // 1. 🔍 Определяем, что последний файл был АУДИО
+                        const lastMediaType = await STORAGE.get(LAST_MEDIA_TYPE_KEY); 
+                        
+                        if (lastMediaType !== 'audio') {
+                            await editMessage(chatId, originalMessageId, "❌ Ошибка: Очистка шумов применима только к **аудиодорожке**. Загрузите голосовое сообщение или MP3 файл.", token);
+                            return new Response('OK', { status: 200 });
+                        }
+                        
+                        // 2. 📝 Пытаемся получить URL или file_id
+                        fileUrl = await STORAGE.get(AUDIO_URL_KEY);
+                        mediaFileId = await STORAGE.get(AUDIO_FILE_ID_KEY); 
+                        
+                        // 3. ❌ Обработка: Файл не найден
+                        if (!fileUrl && !mediaFileId) {
+                            await editMessage(chatId, originalMessageId, "❌ Ошибка: Не найден активный аудиофайл для изоляции. Загрузите аудио снова.", token);
+                            return new Response('OK', { status: 200 }); 
+                        }
+                    
+                        // 4. 🔗 Восстановление/Получение URL (если fileUrl истек или отсутствует)
+                        if (!fileUrl && mediaFileId) {
+                            const getFileUrlApi = `https://api.telegram.org/bot${token}/getFile?file_id=${mediaFileId}`;
+                            const fileResponse = await fetch(getFileUrlApi);
+                            const fileData = await fileResponse.json();
+                            
+                            if (!fileData.ok) {
+                                await editMessage(chatId, originalMessageId, `❌ Ошибка Telegram getFile: ${fileData.description}`, token);
+                                return new Response('OK', { status: 200 }); 
+                            }
+                            
+                            const filePath = fileData.result.file_path;
+                            fileUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+                            
+                            // Сохраняем сгенерированный URL
+                            envData.ctx.waitUntil(STORAGE.put(AUDIO_URL_KEY, fileUrl, { expirationTtl: 3600 }));
+                        }
+                        
+                        // 5. ⏱️ ПРОВЕРКА ДЛИТЕЛЬНОСТИ
+                        let duration = 0;
+                        try {
+                            const durationRaw = await STORAGE.get(AUDIO_DURATION_KEY); 
+                            if (durationRaw) {
+                                duration = parseFloat(durationRaw); 
+                            }
+                        } catch (e) {
+                            envData.ctx.waitUntil(logDebug("WARNING", `Не удалось получить длительность: ${e.message}`, envData));
+                        }
+                        
+                        if (duration > 0 && duration < MIN_DURATION) {
+                            await editMessage(
+                                chatId, 
+                                originalMessageId, 
+                                `❌ **Ошибка длительности:** Аудио (${duration.toFixed(3)} сек.) слишком мало. Требуется минимум ${MIN_DURATION} секунд для изоляции.`, 
+                                token
+                            );
+                            return new Response('OK', { status: 200 });
+                        }
+                        
+                        // 6. 🚀 ПОДГОТОВКА И ЗАПУСК KIE.AI
+                        try {
+                            // 🛑 ИСПОЛЬЗУЕМ loadActiveConfig
+                            const SERVICE_TYPE = 'AUDIO_TO_AUDIO';
+                            const { config: activeModelConfig, friendlyName } = await loadActiveConfig(SERVICE_TYPE, envData, chatId);
+                            
+                            if (!activeModelConfig || typeof activeModelConfig.FUNCTION !== 'function') {
+                                throw new Error(`Конфигурация модели Kie.ai (${friendlyName || 'неизвестно'}) не найдена или настроена неверно.`);
+                            }
+                            
+                            const sourceText = `URL: ${fileUrl.substring(0, 50)}`;
+                            
+                            // 1. УДАЛЯЕМ КНОПКИ И ОТПРАВЛЯЕМ ЗАГЛУШКУ
+                            // Мы используем originalMessageId для редактирования, т.к. Kie.ai вернет результат колбэком.
+                            await editMessage(chatId, originalMessageId, `💿 **Начинаю изоляцию аудио** (Источник: аудио, ${sourceText}).`, token);
+                    
+                            envData.ctx.waitUntil(logDebug("AUDIO_ISOLATE_START", `Source URL: ${fileUrl.substring(0, 50)}`, envData)); 
+                    
+                            // 2. 🎯 ЗАПУСК ФУНКЦИИ KIE.AI В ФОНЕ
+                            // Эта функция инициирует асинхронный процесс и должна сохранить `originalMessageId` для обратной связи через колбэк.
+                            envData.ctx.waitUntil(
+                                activeModelConfig.FUNCTION(
+                                    activeModelConfig, 
+                                    fileUrl, 
+                                    envData, 
+                                    chatId,
+                                    originalMessageId // Передаем ID сообщения, которое нужно будет обновить при получении результата
+                                )
+                            );
+                            
+                            // 7. ✅ Успешный выход после запуска (ждем вебхук)
+                            return new Response('OK', { status: 200 }); 
+                            
+                        } catch (error) {
+                            // 8. ❌ Обработка сбоя запуска задачи Kie.ai
+                            const errorMessage = error.message || "Неизвестная ошибка Audio Isolation";
+                            
+                            await editMessage(chatId, originalMessageId, `❌ **Ошибка запуска Kie.ai:**\n\`${errorMessage.substring(0, 150)}\``, token);
+                            envData.ctx.waitUntil(logDebug("AUDIO_ISOLATE_FAIL", errorMessage, envData));
+                            
+                            return new Response('OK', { status: 200 });
+                        }
+                    }
+                    case 'clear_image': {
+                        let clearImageText = "❌ Фото не найдено в памяти.";
+                        const imageKey = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; // <--- ИСПОЛЬЗУЕМ СТРОКОВЫЙ КЛЮЧ
+                        // 1. Пытаемся удалить видео из KV
+                        await storage.delete(imageKey); 
+
+                        // 2. Успешное сообщение
+                        clearImageText = "🗑️ **Сохраненное фото удалено.**\n\nТеперь вы можете загрузить новое фото для обработки.";
+
+                        // 3. Обновляем сообщение (где была кнопка) - удаляем кнопки
+                        await editMessageWithKeyboard(chatId, messageId, clearImageText, token, null);
+
+                        // Подтверждаем, что обработка callback завершена
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'clear_video': {
+                        let clearVideoText = "❌ Видео не найдено в памяти.";
+                        const videoKey = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX; // <--- ИСПОЛЬЗУЕМ СТРОКОВЫЙ КЛЮЧ
+                        // 1. Пытаемся удалить видео из KV
+                        await storage.delete(videoKey); 
+
+                        // 2. Успешное сообщение
+                        clearVideoText = "🗑️ **Сохраненное видео удалено.**\n\nТеперь вы можете загрузить новое видео для обработки.";
+
+                        // 3. Обновляем сообщение (где была кнопка) - удаляем кнопки
+                        await editMessageWithKeyboard(chatId, messageId, clearVideoText, token, null);
+
+                        // Подтверждаем, что обработка callback завершена
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'clear_audio': {
+                        let clearAudioText;
+                        const audioKey = chatKey + LAST_AUDIO_DATA_KEY_SUFFIX; // Используем ключ для URL/ID аудио
+                        // Ключи для удаления
+                        const keysToDelete = [
+                            chatId + AUDIO_URL_KEY_SUFFIX,          // URL входящего аудио (для A2V)
+                            chatId + LAST_AUDIO_DATA_KEY_SUFFIX,    // Base64 аудио (из /say)
+                            chatId + '_audio_file_id'               // ✅ file_id (для view_saved_audio)
+                        ];
+
+                        // 1. Удаляем все возможные ключи в фоне
+                        await Promise.all(keysToDelete.map(key => storage.delete(key)));
+                        
+                        // 2. Успешное сообщение
+                        clearAudioText = "🗑️ **Сохраненное аудио удалено.**\n\nТеперь вы можете загрузить новый файл или создать озвучку через /say.";
+
+                        // 3. Обновляем сообщение (где была кнопка) - удаляем кнопки
+                        await editMessageWithKeyboard(chatId, messageId, clearAudioText, token, null);
+                        
+                        // Подтверждаем, что обработка callback завершена
+                        return new Response('OK', { status: 200 });
+                    }
+                    case 'say_empty': // Добавляем новый case для команды /say
+                        // Используем await, так как нам нужно дождаться отправки аудио
+                        await processSayCommand(chatId, '/say', envData, ctx);
+                        break;
+                    case 'checkvideo':
+                        // Вызов новой функции для обработки статуса видео
+                        // Вам также нужно передать envData, чтобы получить доступ к KV и токену
+                        await handleCheckVideoCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
+                        break;
+                    case 'stop':
+                        // ✅ ИСПРАВЛЕНИЕ: Добавлен пятый аргумент envData в processStopCommand
+                        ctx.waitUntil(processStopCommand(chatId, storage, token, envData));
+                        break;
+                    case 'reset':
+                        await envData.CHAT_HISTORY_STORAGE.delete(chatKey);
+                        await sendMessageMarkdown(chatId, "✅ **История чата сброшена.** Можете начать новую беседу.", token);
+                        return true;
+                    case 'setkey':
+                        // --- ЛОГИКА /setkey (Запрос ключа + Reply Keyboard) ---
+                        const setKeyPromise = (async () => {
+                            // Переменные из окружающего контекста (предполагаем, что они доступны)
+                            const chatKey = chatId.toString();
+                            const storage = envData.LAST_PHOTO_STORAGE;
+                            const token = envData.TELEGRAM_BOT_TOKEN; // или просто env.TELEGRAM_BOT_TOKEN
+                            
+                            // 1. ОПРЕДЕЛЕНИЕ КЛЮЧА СОСТОЯНИЯ
+                            const USER_STATE_KEY = chatKey + USER_STATE_KEY_SUFFIX; 
+                    
+                            // 2. УСТАНОВКА СОСТОЯНИЯ ЧАТА В 'awaiting_apikey'
+                            await storage.put(USER_STATE_KEY, 'awaiting_apikey', { expirationTtl: 300 }); // Ждем ввода 5 минут
+                    
+                            // Используем ВАШУ функцию для Reply Keyboard
+                            const replyKeyboard = getCancelReplyKeyboard();
+                    
+                            let statusMessage = "🔑 **Ввод API-ключа KIE.ai**\n\n" +
+                                                "Введите ключ **отдельным сообщением** или скопируйте и вставьте команду `/setkey <ВАШ_КЛЮЧ>`.\n" +
+                                                "Ключ можно получить на сайте: https://kie.ai/ru/api-key (выдается 80 БЕСПЛАТНЫХ кредитов).";
+                    
+                            // ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ С REPLY KEYBOARD
+                            await sendMessageMarkdown(chatId, statusMessage, token, null, replyKeyboard);
+                        })();
+                        ctx.waitUntil(setKeyPromise);
+                        break;
+                    case 'checkkey':
+                        // --- ЛОГИКА /checkkey (Обновить текущий баланс и редактировать) ---
+                        const checkKeyPromise = (async () => {
+                            const userApiKey = await storage.get(USER_API_KEY_KV);
+                            let userKieAiBalance = await storage.get(USER_LIMIT_KEY) || 0;
+
+                            // --- ЗАПРОС БАЛАНСА KIE.AI ---
+                            if (userApiKey) {
+                                try {
+                                    // Вызываем существующую функцию для получения баланса по главному ключу
+                                    const balanceKieAiResult = await updateKieAiUserCredits(userApiKey, envData, ctx); 
+                                    
+                                    if (typeof balanceKieAiResult === 'number') {
+                                        userKieAiBalance = `${balanceKieAiResult}`;
+                                        await storage.put(USER_LIMIT_KEY, userKieAiBalance.toString());
+                                    } else if (balanceKieAiResult === 'InvalidKey') {
+                                        userKieAiBalance = 'Недействительный ключ (401)';
+                                    } else {
+                                        userKieAiBalance = 'Ошибка (см. логи)';
+                                    }
+                                } catch (e) {
+                                    // Ошибка сети или другая
+                                    ctx.waitUntil(logDebug('ADMIN_BALANCE_FETCH_ERROR', `Ошибка запроса баланса KIE.AI: ${e.message}`, envData));
+                                    userKieAiBalance = 'Ошибка сети';
+                                }
+                            } else {
+                                userKieAiBalance = 'Ключ userApiKey не установлен!';
+                            }
+                            
+                            // 🛑 ФОРМИРУЕМ STATUS MESSAGE
+                            const creditWord = pluralize(userKieAiBalance, CREDIT_FORMS);
+                            let statusMessage = '🔑 **Меню управления API-ключом KIE.ai**\n\n';
+                            if (userApiKey) {
+                                statusMessage += `✅ **Статус ключа:** установлен\n` +
+                                                `🔐 Ваш личный ключ: \`${userApiKey.substring(0, 10)}...\`\n` +
+                                                `💰 **Баланс:** **${userKieAiBalance}** ${creditWord}.\n\n` +
+                                                `Вы используете лимиты и баланс, связанные с этим ключом. Отслеживайте его в личном кабинете https://kie.ai/ru/usage`;
+                            } else {
+                                statusMessage += `❌ **Статус ключа:** отсутствует\n` +
+                                                `🔒 Личный ключ не найден.\n` +
+                                                `Вы используете общий (административный) ключ.`;
+                            }
+                            
+                            // Клавиатура должна быть объектом { inline_keyboard: [...] }
+                            const keyboard = {
+                                inline_keyboard: [
+                                    [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
+                                    [{ text: "📊 Проверить баланс", callback_data: "cmd:/checkkey" }],
+                                    [{ text: "🔑 Установить/Заменить ключ", callback_data: "cmd:/setkey" }],
+                                    [{ text: "🗑️ Удалить ключ", callback_data: "cmd:/delkey" }]
+                                ]
+                            };
+                            
+                            // !!! ИСПОЛЬЗУЕМ ВАШУ ФУНКЦИЮ editMessageWithKeyboard
+                            await editMessageWithKeyboard(chatId, messageId, statusMessage, token, keyboard);
+                        })();
+                        
+                        ctx.waitUntil(checkKeyPromise);
+                        break;
+                    case 'delkey':
+                        // --- ЛОГИКА /delkey (Удалить ключ и обновить окно) ---
+                        const delKeyPromise = (async () => {
+                            const userApiKey = await storage.get(USER_API_KEY_KV);
+
+                            if (userApiKey) {
+                                // Удаляем ключ и обнуляем лимит
+                                await storage.delete(USER_API_KEY_KV);
+                                await storage.delete(USER_LIMIT_KEY);
+                                await sendMessageMarkdown(chatId, "🗑️ **API-ключ KIE.ai успешно удален.**", token);
+                            } else {
+                                await sendMessageMarkdown(chatId, "🗑️ **API-ключ KIE.ai отсутствует.**", token);
+                            };
+                            
+                            // Обновляем главное меню /apikey (теперь ключ не найден)
+                            let statusMessage = '🔑 **Меню управления API-ключом KIE.ai**\n\n' + 
+                                                '❌ **Статус ключа:** отсутствует\n' +
+                                                '🔒 Личный ключ не найден.\n' +
+                                                'Вы используете общий (административный) ключ.';
+                                                
+                            // Клавиатура должна быть объектом { inline_keyboard: [...] }
+                            const keyboard = {
+                                inline_keyboard: [
+                                    [{ text: "🏠 Открыть главное меню /start", callback_data: "start_command" }],
+                                    [{ text: "📊 Проверить баланс", callback_data: "cmd:/checkkey" }],
+                                    [{ text: "🔑 Установить/Заменить ключ", callback_data: "cmd:/setkey" }],
+                                    [{ text: "🗑️ Удалить ключ", callback_data: "cmd:/delkey" }]
+                                ]
+                            };
+                            
+                            // !!! ИСПОЛЬЗУЕМ ВАШУ ФУНКЦИЮ editMessageWithKeyboard
+                            await editMessageWithKeyboard(chatId, messageId, statusMessage, token, keyboard);
+                        })();
+                        
+                        ctx.waitUntil(delKeyPromise);
+                        break;
+                    default:
+                        ctx.waitUntil(sendMessage(chatId, `Команда по кнопке не найдена. Получено: ${command}`, token));
+                        break;
+                }
+                // Этот return обрабатывает все команды, которые завершились через break (prompt, stop, create_empty)
+                return new Response('OK', { status: 200 });
+            // 1. Показать опции оплаты
+            } else if (data === 'show_payment_options') {
+                const paymentOptionsKeyboard = getPaymentOptionsKeyboard(); // Вызываем новую функцию
+                ctx.waitUntil(editMessageWithKeyboard(
+                    chatId,
+                    messageId,
+                    "💰 Выберите пакет кредитов для покупки:",
+                    envData.TELEGRAM_BOT_TOKEN,
+                    paymentOptionsKeyboard.inline_keyboard // Передаем только массив
+                ));
+    
+                return new Response('OK', { status: 200 });
+            // 2. Кнопка "Назад" (Возврат к балансу)
+            } else if (data === 'show_balance') {
+                // --- АСИНХРОННЫЙ ВЫЗОВ: ПОЛУЧАЕМ СТАТУС БАЛАНСА ---
+                const balanceStatus = await getCurrentCreditBalance(chatId, envData.LAST_PHOTO_STORAGE);
+                // ---------------------------------------------            
+                
+                // 3. Формируем текст сообщения
+                const balanceText = 
 `💰 Меню управления балансом:
 
 Ваш текущий баланс: 💰 ${balanceStatus}.
 
 Для покупки новых кредитов нажмите 💰 Пополнить баланс..`;
-            
-                    const balanceKeyboard = getBalanceKeyboard();
-                    
-                    // 4. Редактируем сообщение, возвращая главное меню баланса
-                    ctx.waitUntil(editMessageWithKeyboard(
-                        chatId,
-                        messageId,
-                        balanceText,
-                        envData.TELEGRAM_BOT_TOKEN,
-                        balanceKeyboard.inline_keyboard // Передаем только массив
-                    ));
+        
+                const balanceKeyboard = getBalanceKeyboard();
+                
+                // 4. Редактируем сообщение, возвращая главное меню баланса
+                ctx.waitUntil(editMessageWithKeyboard(
+                    chatId,
+                    messageId,
+                    balanceText,
+                    envData.TELEGRAM_BOT_TOKEN,
+                    balanceKeyboard.inline_keyboard // Передаем только массив
+                ));
 
-                    return new Response('OK', { status: 200 });
-                      
-                // 3. Заглушки для истории/настроек
-                } else if (data === 'show_history') {
-                    // 1. Получаем отформатированную историю
-                    const historyText = await getFormattedHistory(chatId, env);
+                return new Response('OK', { status: 200 });
                     
-                    const messageText = `
+            // 3. Заглушки для истории/настроек
+            } else if (data === 'show_history') {
+                // 1. Получаем отформатированную историю
+                const historyText = await getFormattedHistory(chatId, env);
+                
+                const messageText = `
 📜 **История операций:**
 
 ${historyText}`;
 
-                    // 2. Отправляем сообщение с клавиатурой "Назад"
-                    ctx.waitUntil(editMessageWithKeyboard(
-                        chatId,
-                        messageId,
-                        messageText,
-                        envData.TELEGRAM_BOT_TOKEN,
-                        getTempBackKeyboard().inline_keyboard 
-                    ));
+                // 2. Отправляем сообщение с клавиатурой "Назад"
+                ctx.waitUntil(editMessageWithKeyboard(
+                    chatId,
+                    messageId,
+                    messageText,
+                    envData.TELEGRAM_BOT_TOKEN,
+                    getTempBackKeyboard().inline_keyboard 
+                ));
 
-                    return new Response('OK', { status: 200 });
-                } else if (data === 'show_settings') {
-                    const tempText = '⚙️ **Настройки бота:** Здесь будут настройки, например, промты по умолчанию.'
-        
-                    ctx.waitUntil(editMessageWithKeyboard(
-                        chatId,
-                        messageId,
-                        tempText,
-                        envData.TELEGRAM_BOT_TOKEN,
-                        getTempBackKeyboard().inline_keyboard // Клавиатура "Назад"
-                    ));
-        
-                    return new Response('OK', { status: 200 });
-                    // --- ЛОГИКА ПОКУПКИ ЗВЕЗД (buy_stars) ---
-                } else if (data.startsWith('buy_stars:')) {
-                    // data формата: buy_stars:STARS:CREDITS
-                    const parts = data.split(':');
-                    const stars = parseInt(parts[1]);
-                    const credits = parseInt(parts[2]); // <--- Теперь это 2, 15, 35 и т.д.
-                    
-                    const title = `${credits} Кредитов Gemini AI`;
-                    const description = `Пополнение внутреннего баланса бота на ${credits} кредитов.`;
-                    
-                    // 🔥 ИСПРАВЛЕНИЕ: МЕНЯЕМ статику на credits
-                    const uniquePayload = `credits_${credits}_${Date.now()}`; // Используем динамическое значение `credits`
-                    
-                    ctx.waitUntil(answerCallbackQuery(callback.id, "Создаю счет...", token));
-                    
-                    // Отправляем инвойс
-                    ctx.waitUntil(sendStarsInvoice(chatId, stars, title, description, uniquePayload, token));
-                    
-                    return new Response('OK', { status: 200 });
+                return new Response('OK', { status: 200 });
+            } else if (data === 'show_settings') {
+                const tempText = '⚙️ **Настройки бота:** Здесь будут настройки, например, промты по умолчанию.'
+    
+                ctx.waitUntil(editMessageWithKeyboard(
+                    chatId,
+                    messageId,
+                    tempText,
+                    envData.TELEGRAM_BOT_TOKEN,
+                    getTempBackKeyboard().inline_keyboard // Клавиатура "Назад"
+                ));
+    
+                return new Response('OK', { status: 200 });
+                // --- ЛОГИКА ПОКУПКИ ЗВЕЗД (buy_stars) ---
+            } else if (data.startsWith('buy_stars:')) {
+                // data формата: buy_stars:STARS:CREDITS
+                const parts = data.split(':');
+                const stars = parseInt(parts[1]);
+                const credits = parseInt(parts[2]); // <--- Теперь это 2, 15, 35 и т.д.
                 
-                } else if (data.startsWith('switch_creative_mode|')) {
-                    const creativeMode = data.split('|')[1]; // Получаем 'T2I' или 'I2I'
-                    const chatKey = chatId.toString();
-                    const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
-                    const CREATIVE_MODE_KEY = chatKey + envData.CREATIVE_MODE_KEY_SUFFIX
+                const title = `${credits} Кредитов Gemini AI`;
+                const description = `Пополнение внутреннего баланса бота на ${credits} кредитов.`;
                 
-                    // 🛑 1. КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ НОВЫЙ РЕЖИМ В KV
-                    await envData.LAST_PHOTO_STORAGE.put(CREATIVE_MODE_KEY, creativeMode); 
+                // 🔥 ИСПРАВЛЕНИЕ: МЕНЯЕМ статику на credits
+                const uniquePayload = `credits_${credits}_${Date.now()}`; // Используем динамическое значение `credits`
                 
-                    // 2. Читаем сохраненный промпт
-                    const currentPrompt = await storage.get(LAST_PROMPT_KEY);
+                ctx.waitUntil(answerCallbackQuery(callback.id, "Создаю счет...", token));
                 
-                    // 3. Получаем данные для нового меню /create
-                    // ✅ ИСПРАВЛЕНИЕ: messageText: createMessage
-                    const { messageText: createMessage, keyboardObject } = await getCreateMenuKeyboard(
-                        currentPrompt, 
-                        creativeMode, // Передаем только что сохраненный режим
-                        chatId, 
-                        envData.LAST_PHOTO_STORAGE // 🛑 ПЕРЕДАЧА БИНДИНГА KV
+                // Отправляем инвойс
+                ctx.waitUntil(sendStarsInvoice(chatId, stars, title, description, uniquePayload, token));
+                
+                return new Response('OK', { status: 200 });
+            
+            } else if (data.startsWith('switch_creative_mode|')) {
+                const creativeMode = data.split('|')[1]; // Получаем 'T2I' или 'I2I'
+                const chatKey = chatId.toString();
+                const LAST_PROMPT_KEY = chatKey + envData.LAST_PROMPT_KEY_SUFFIX;
+                const CREATIVE_MODE_KEY = chatKey + envData.CREATIVE_MODE_KEY_SUFFIX
+            
+                // 🛑 1. КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ НОВЫЙ РЕЖИМ В KV
+                await envData.LAST_PHOTO_STORAGE.put(CREATIVE_MODE_KEY, creativeMode); 
+            
+                // 2. Читаем сохраненный промпт
+                const currentPrompt = await storage.get(LAST_PROMPT_KEY);
+            
+                // 3. Получаем данные для нового меню /create
+                // ✅ ИСПРАВЛЕНИЕ: messageText: createMessage
+                const { messageText: createMessage, keyboardObject } = await getCreateMenuKeyboard(
+                    currentPrompt, 
+                    creativeMode, // Передаем только что сохраненный режим
+                    chatId, 
+                    envData.LAST_PHOTO_STORAGE // 🛑 ПЕРЕДАЧА БИНДИНГА KV
+                );
+            
+                // 4. ОТПРАВКА: Используем editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
+                ctx.waitUntil(editMessageWithKeyboard(
+                    chatId, 
+                    messageId, // Используем messageId ТЕКУЩЕГО СООБЩЕНИЯ
+                    createMessage, 
+                    token, 
+                    keyboardObject.inline_keyboard // Передаем клавиатуру
+                ));
+                return new Response('OK', { status: 200 });
+            
+            } else if (data.startsWith(SET_BASE_CALLBACK)) { 
+                const chatId = callback.message.chat.id;
+                const messageId = callback.message.message_id;
+                
+                // --- ОСНОВНОЙ КЛЮЧ: содержит актуальные Base64 и file_id после всех операций ---
+                const FINAL_PHOTO_KV_KEY = chatId + '_last_image_data'; 
+                const CALLBACK_TEMP_STORAGE = env.LAST_PHOTO_STORAGE; 
+                
+                try {
+                    // 1. Уведомление пользователя
+                    await answerCallbackQuery(callback.id, "✅ Фотография устанавливается как исходная", envData.TELEGRAM_BOT_TOKEN);
+                    await editMessageCaption(chatId, messageId, "⏳ Установка изображения как нового исходного", envData.TELEGRAM_BOT_TOKEN); 
+                    
+                    // 2. ЧТЕНИЕ АКТУАЛЬНОГО СОСТОЯНИЯ ИЗ ОСНОВНОГО ХРАНИЛИЩА
+                    const finalPhotoDataRaw = await CALLBACK_TEMP_STORAGE.get(FINAL_PHOTO_KV_KEY);
+                    
+                    if (!finalPhotoDataRaw) {
+                            throw new Error("Не найдены актуальные данные фото. Срок действия истек.");
+                    }
+            
+                    const finalPhotoData = JSON.parse(finalPhotoDataRaw);
+                    
+                    // 3. ПРОВЕРКА: Убеждаемся, что есть Base64 от повернутого фото
+                    if (!finalPhotoData.base64) {
+                            throw new Error("Отсутствует Base64 для сохранения. Сначала поверните или загрузите фото.");
+                    }
+            
+                    // 4. СБРОС И СОХРАНЕНИЕ: Устанавливаем текущее Base64 как новую "базу"
+                    // Фактически мы просто обновляем основной ключ, сбрасывая счетчик поворота.
+                    finalPhotoData.rotation = 0; // Сбрасываем поворот в ноль
+                    
+                    await CALLBACK_TEMP_STORAGE.put(
+                        FINAL_PHOTO_KV_KEY, 
+                        JSON.stringify(finalPhotoData), 
+                        { expirationTtl: 3600 }
                     );
+                    
+                    // 5. Успешное завершение
+                    await editMessageCaption(chatId, messageId, "✅ Изображение успешно установлено как исходное", envData.TELEGRAM_BOT_TOKEN);
+
+                    // Дополнительное сообщение (если нужно, используйте вашу функцию sendMessage)
+                    await sendMessage(chatId, "✅ Исходное фото обновлено! Можете продолжить работу", envData.TELEGRAM_BOT_TOKEN); 
+                    
+                } catch (e) {
+                    // Логирование и обработка ошибок
+                    logDebug('[SET_BASE] CRITICAL ERROR', e.message, envData);
+                    await editMessageCaption(chatId, messageId, `❌ Критическая ошибка:\n${escapeMarkdownV2(e.message.substring(0, 200))}`, envData.TELEGRAM_BOT_TOKEN);
+                    return new Response('OK', { status: 200 }); 
+                }
                 
-                    // 4. ОТПРАВКА: Используем editMessageWithKeyboard для ЗАМЕНЫ СООБЩЕНИЯ
-                    ctx.waitUntil(editMessageWithKeyboard(
-                        chatId, 
-                        messageId, // Используем messageId ТЕКУЩЕГО СООБЩЕНИЯ
-                        createMessage, 
-                        token, 
-                        keyboardObject.inline_keyboard // Передаем клавиатуру
-                    ));
+                // 6. Изолированная очистка временного ключа
+                try {
+                    const shortCallbackKey = data.replace(SET_BASE_CALLBACK, '');
+                    const KV_KEY = `callback_${chatId}_${shortCallbackKey}`; 
+                    await CALLBACK_TEMP_STORAGE.delete(KV_KEY);
+                    logDebug('[SET_BASE] Cleanup', `Temporary key ${KV_KEY} deleted.`, envData);
+                } catch (e) {
+                    logDebug('[SET_BASE] Cleanup Error', `Failed to delete temp key: ${e.message}`, envData);
+                    // Мы игнорируем эту ошибку, так как она не влияет на основное сохранение.
+                }
+                
+                return new Response('OK', { status: 200 }); 
+            } else if (data.startsWith(ROTATE_LEFT_CALLBACK) || data.startsWith(ROTATE_RIGHT_CALLBACK) || data.startsWith(ROTATE_180_CALLBACK)) {
+                const chatId = callback.message.chat.id;
+                const messageId = callback.message.message_id;
+
+                let angle = '0';
+                let shortCallbackKey = '';
+            
+                if (data.startsWith(ROTATE_LEFT_CALLBACK)) {
+                    angle = '-90'; // Угол для Render: -90 влево
+                    shortCallbackKey = data.replace(ROTATE_LEFT_CALLBACK, '');
+                } else if (data.startsWith(ROTATE_RIGHT_CALLBACK)) {
+                    angle = '90'; // Угол для Render: 90 вправо
+                    shortCallbackKey = data.replace(ROTATE_RIGHT_CALLBACK, '');
+                } else if (data.startsWith(ROTATE_180_CALLBACK)) {
+                    angle = '180'; // Угол для Render: 180
+                    shortCallbackKey = data.replace(ROTATE_180_CALLBACK, '');
+                }
+                angle = angle.toString().trim(); // Если угол не 0, он будет '90', '-90' или '180'.
+                const KV_KEY = `callback_${chatId}_${shortCallbackKey}`; 
+            
+                const token = env.TELEGRAM_BOT_TOKEN;
+                const originalMessageId = callback.message.message_id;
+                // 🛑 КРИТИЧНО: Сохраняем текущую клавиатуру
+                const originalReplyMarkup = callback.message.reply_markup; 
+            
+                try {
+                    // 1. 🛑 СРАЗУ ОТВЕЧАЕМ НА КОЛБЭК!
+                    await answerCallbackQuery(callback.id, `🔄 Запускаю поворот фото...`, token);
+                    
+                    // 2. Извлекаем fileId из KV
+                    const stateJSON = await env.LAST_PHOTO_STORAGE.get(KV_KEY);
+                    if (!stateJSON) {
+                        // Редактируем подпись оригинального сообщения
+                        await editMessageCaption(chatId, originalMessageId, "❌ Ошибка: Срок действия кнопки истек", token, originalReplyMarkup);
+                        return new Response('OK', { status: 200 }); 
+                    }
+                    const rotationState = JSON.parse(stateJSON);
+                    const fileId = rotationState.fileId; 
+                    
+                    // 3. 📢 ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ для статуса
+                    const loadingMessage = await sendMessageMarkdown(chatId, `⏳ **Начинаю преобразование...**`, token);
+                    const loadingMessageId = loadingMessage.result.message_id;
+            
+                    // 4. Запуск асинхронной задачи (здесь должно быть обеспечено, что ctx определен)
+                    ctx.waitUntil(
+                        runPhotoRotationInBackground(
+                            chatId, 
+                            fileId, 
+                            originalMessageId, 
+                            loadingMessageId, // НОВЫЙ АРГУМЕНТ
+                            originalReplyMarkup, 
+                            angle, 
+                            env, 
+                            token,
+                            ctx // Передаем ctx, как обсуждалось ранее
+                        )
+                    );
+            
+                } catch (e) {
+                    console.error("Critical Rotate Error (Launch):", e);
+                    await sendMessage(chatId, `❌ Критическая ошибка Worker'а: ${e.message.substring(0, 150)}`, token); 
+                }
+                // Очищаем временный ключ сразу после использования
+                return new Response('OK', { status: 200 }); 
+            } else if (data.startsWith(SET_VIDEO_BASE_CALLBACK)) {
+                const chatId = callback.message.chat.id;
+                const messageId = callback.message.message_id;
+                
+                // --- ОСНОВНОЙ КЛЮЧ ДЛЯ ВИДЕО: содержит актуальные Base64 и file_id после всех операций ---
+                const FINAL_VIDEO_KV_KEY = chatId + '_last_video_data'; 
+                const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; // Используем то же хранилище
+                
+                try {
+                    // 1. Уведомление пользователя
+                    await answerCallbackQuery(callback.id, "✅ Видео устанавливается как исходное", envData.TELEGRAM_BOT_TOKEN);
+                    await editMessageCaption(chatId, messageId, "⏳ Установка видео как нового исходного", envData.TELEGRAM_BOT_TOKEN); 
+
+                    // --- ИСПРАВЛЕНИЕ: Получаем данные из КНОПКИ (временный ключ), а не из пустого поля base64 ---
+                    const shortCallbackKey = data.replace(SET_VIDEO_BASE_CALLBACK, '');
+                    const KV_KEY_TEMP = `callback_${chatId}_${shortCallbackKey}`;
+                    const tempVideoDataRaw = await CALLBACK_TEMP_STORAGE.get(KV_KEY_TEMP);
+                    if (!tempVideoDataRaw) {
+                        throw new Error("Не найдены актуальные данные видео. Срок действия истек.");
+                    }
+                    const tempVideoData = JSON.parse(tempVideoDataRaw);
+                    
+                    // 2. ЧТЕНИЕ АКТУАЛЬНОГО СОСТОЯНИЯ ИЗ ОСНОВНОГО ХРАНИЛИЩА
+                    const finalVideoDataRaw = await CALLBACK_TEMP_STORAGE.get(FINAL_VIDEO_KV_KEY);
+                    // Если основного хранилища еще нет — создаем объект, если есть — парсим
+                    const finalVideoData = finalVideoDataRaw ? JSON.parse(finalVideoDataRaw) : {};
+                    
+                    // 3. ПРОВЕРКА: Для видео нам нужен fileId, а не base64
+                    if (!tempVideoData.fileId) {
+                        throw new Error("Отсутствует идентификатор видео (fileId) для сохранения.");
+                    }
+                    
+                    // 4. СБРОС И СОХРАНЕНИЕ: Переносим данные из кнопки в основную базу
+                    finalVideoData.file_id = tempVideoData.fileId;
+                    finalVideoData.width = tempVideoData.width || finalVideoData.width;
+                    finalVideoData.height = tempVideoData.height || finalVideoData.height;
+                    finalVideoData.rotation = 0; // Сбрасываем поворот в ноль
+
+                    await CALLBACK_TEMP_STORAGE.put(
+                        FINAL_VIDEO_KV_KEY, 
+                        JSON.stringify(finalVideoData), 
+                        { expirationTtl: 86400 } // Видео храним дольше (сутки)
+                    );
+                    
+                    // 5. Успешное завершение: Изолируем редактирование подписи
+                    try {
+                        await editMessageCaption(chatId, messageId, "✅ Видео успешно установлено как исходное", envData.TELEGRAM_BOT_TOKEN);
+                    } catch (captionError) {
+                        // Если не можем редактировать подпись (например, если сообщение слишком старое),
+                        // логируем это, но не прерываем выполнение.
+                        logDebug('[SET_BASE] Caption Error', `Failed to edit caption: ${captionError.message}`, envData);
+                        await sendMessage(chatId, "✅ Исходное видео обновлено! (Не удалось обновить подпись сообщения)", envData.TELEGRAM_BOT_TOKEN);
+                    }
+                } catch (e) {
+                    // Логирование и обработка ошибок
+                    logDebug('[SET_BASE] CRITICAL ERROR', e.message, envData);
+                    await editMessageCaption(chatId, messageId, `❌ Критическая ошибка:\n${escapeMarkdownV2(e.message.substring(0, 200))}`, envData.TELEGRAM_BOT_TOKEN);
+                    return new Response('OK', { status: 200 }); 
+                }
+                
+                // 6. Изолированная очистка временного ключа
+                try {
+                    const shortCallbackKey = data.replace(SET_VIDEO_BASE_CALLBACK, '');
+                    const KV_KEY_TEMP = `callback_${chatId}_${shortCallbackKey}`; 
+                    await CALLBACK_TEMP_STORAGE.delete(KV_KEY_TEMP);
+                    logDebug('[SET_BASE] Cleanup', `Temporary key ${KV_KEY_TEMP} deleted.`, envData);
+                } catch (e) {
+                    logDebug('[SET_BASE] Cleanup Error', `Failed to delete temp key: ${e.message}`, envData);
+                    // Мы игнорируем эту ошибку, так как она не влияет на основное сохранение.
+                }
+                
+                return new Response('OK', { status: 200 }); // ГАРАНТИРУЕМ ВОЗВРАТ УСПЕХА
+            } else if (data.startsWith(ROTATE_VIDEO_LEFT_CALLBACK) || data.startsWith(ROTATE_VIDEO_RIGHT_CALLBACK) || data.startsWith(ROTATE_VIDEO_180_CALLBACK)) {
+                const chatId = callback.message.chat.id;
+                const messageId = callback.message.message_id;
+
+                let angle = '0';
+                let shortCallbackKey = '';
+                const token = env.TELEGRAM_BOT_TOKEN;
+                const originalMessageId = callback.message.message_id;
+
+                // 1. 🟢 ИСПРАВЛЕНИЕ: Гарантируем, что ответ на колбэк не крашнет Worker.
+                try {
+                    // Это должно произойти мгновенно.
+                    await answerCallbackQuery(callbackId, `⏳ Запускаю поворот видео...`, env.TELEGRAM_BOT_TOKEN);
+                } catch (e) {
+                    // Логируем ошибку, но НЕ прерываем выполнение, чтобы не сработал fallthrough.
+                    ctx.waitUntil(logDebug("ROTATE_VIDEO_CALLBACK_FAIL", `Ошибка answerCallbackQuery: ${e.message}`, envData));
+                }
+
+                if (data.startsWith(ROTATE_VIDEO_LEFT_CALLBACK)) {
+                    angle = '-90';
+                    shortCallbackKey = data.replace(ROTATE_VIDEO_LEFT_CALLBACK, '');
+                } else if (data.startsWith(ROTATE_VIDEO_RIGHT_CALLBACK)) {
+                    angle = '90';
+                    shortCallbackKey = data.replace(ROTATE_VIDEO_RIGHT_CALLBACK, '');
+                } else if (data.startsWith(ROTATE_VIDEO_180_CALLBACK)) {
+                    angle = '180';
+                    shortCallbackKey = data.replace(ROTATE_VIDEO_180_CALLBACK, '');
+                }
+                angle = angle.toString().trim(); // Если угол не 0, он будет '90', '-90' или '180'.
+                const KV_KEY = `callback_${chatId}_${shortCallbackKey}`; 
+                
+                // 🛑 КРИТИЧНО: Сохраняем текущую клавиатуру
+                const originalReplyMarkup = callback.message.reply_markup; 
+                try {
+                    // 1. 🛑 СРАЗУ ОТВЕЧАЕМ НА КОЛБЭК! (ОК)
+                    await answerCallbackQuery(callback.id, `🔄 Запускаю поворот видео...`, env.TELEGRAM_BOT_TOKEN);
+                    
+                    // 2. Извлекаем fileId из KV
+                    const stateJSON = await env.LAST_PHOTO_STORAGE.get(KV_KEY);
+                    if (!stateJSON) {
+                        // Редактируем подпись оригинального сообщения
+                        await editMessageCaption(chatId, originalMessageId, "❌ Ошибка: Срок действия кнопки истек", env.TELEGRAM_BOT_TOKEN, originalReplyMarkup);
+                        return new Response('OK', { status: 200 }); 
+                    }
+                    const rotationState = JSON.parse(stateJSON);
+                    const fileId = rotationState.fileId; 
+                    
+                    // 3. 📢 ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ для статуса
+                    const loadingMessage = await sendMessageMarkdown(chatId, `⏳ **Начинаю преобразование...**`, env.TELEGRAM_BOT_TOKEN);
+                    const loadingMessageId = loadingMessage.result.message_id;
+            
+                    // 🛑 ВРЕМЕННЫЙ ОТЛАДОЧНЫЙ КОД (Используйте вашу функцию логирования)
+                    ctx.waitUntil(logDebug("DEBUG_ANGLE", `Angle: '${angle}', Data: '${data}'`, envData));
+                    // 🛑 КОНЕЦ ОТЛАДОЧНОГО КОДА
+
+                    // 3. 🛑 Запуск асинхронной задачи для ВИДЕО
+                    ctx.waitUntil(
+                        runVideoRotationInBackground( // <-- НОВАЯ ФУНКЦИЯ
+                            chatId, 
+                            fileId, 
+                            originalMessageId, 
+                            loadingMessageId, 
+                            originalReplyMarkup, 
+                            angle, 
+                            env, 
+                            env.TELEGRAM_BOT_TOKEN,
+                            ctx 
+                        )
+                    );
+                    
+                } catch (e) {
+                    console.error("Critical Rotate Error (Launch):", e);
+                    await sendMessage(chatId, `❌ Критическая ошибка Worker'а: ${e.message.substring(0, 150)}`, token); 
                     return new Response('OK', { status: 200 });
+                }
+                return new Response('OK', { status: 200 }); 
+                            
+                // УСТАНОВКА СТАНДАРТНОГО ПРОМПТА (set_default_prompt)
+            } else if (data.startsWith('set_default_prompt|')) {
+                const type = data.split('|')[1]; // Получаем 'photo' или 'video'
+                // Выбираем промпт на основе типа
+                const newPrompt = (type === 'video') 
+                    ? DEFAULT_VIDEO_PROMPT 
+                    : (type === 'audio') 
+                        ? DEFAULT_AUDIO_PROMPT // Используем константу
+                        : DEFAULT_IMAGE_PROMPT; // Если не video и не audio, то image
+                const LAST_PROMPT_KEY = chatId + LAST_PROMPT_KEY_SUFFIX;
+                ctx.waitUntil(storage.put(LAST_PROMPT_KEY, newPrompt)); 
+
+                // 2. Уведомление
+                ctx.waitUntil(answerCallbackQuery(callback, `✅ Установлен стандартный промпт для ${type === 'video' ? 'видео' : (type === 'audio' ? 'аватара' : 'фото')}.`, token));
+                // Определяем флаг
+                const flag = '🇷🇺 RU';
+
+                // Формируем сообщение с флагом
+                const messagePrompt = `**Язык:** ${flag}\n\n**Промпт:**\n\`${newPrompt}\`\n\nЧто вы хотите сделать с этим промптом?`;
+
+                // 4. Редактируем сообщение с новой клавиатурой
+                const keyboardObject = getPromptKeyboard(newPrompt);
+                await editMessageWithKeyboard(
+                    chatId, messageId,
+                    messagePrompt,
+                    token,
+                    keyboardObject.inline_keyboard // <-- ПЕРЕДАЕМ ТОЛЬКО МАССИВ КНОПОК
+                );
+                return new Response('OK', { status: 200 });
+            } else if (data.startsWith('checkvideo')) {
+                const parts = data.split('|');
+                const command = parts[0]; // 'checkvideo'
+                const args = parts.slice(1).join('|'); // Task ID
+                // Вызываем функцию-обработчик команды /checkvideo с переданным ID
+                await handleCheckVideoCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
+                return new Response('OK', { status: 200 });
+            // ЛОГИКА ДЛЯ КОЛБЭКОВ МЕНЮ ГЕНЕРАЦИИ ВИДЕО 
+            } else if (data.startsWith('set_video_') || data.startsWith('start_video_generation')) {
                 
-                } else if (data.startsWith(SET_BASE_CALLBACK)) { 
-                    const chatId = callback.message.chat.id;
-                    const messageId = callback.message.message_id;
-                    
-                    // --- ОСНОВНОЙ КЛЮЧ: содержит актуальные Base64 и file_id после всех операций ---
-                    const FINAL_PHOTO_KV_KEY = chatId + '_last_image_data'; 
-                    const CALLBACK_TEMP_STORAGE = env.LAST_PHOTO_STORAGE; 
-                    
+                // 1. Инициализация переменных
+                const callbackQueryId = callback.id; 
+                const chatKey = chatId.toString();
+                const storage = envData.LAST_PHOTO_STORAGE; 
+                const token = envData.TELEGRAM_BOT_TOKEN;
+                const messageId = callback.message.message_id; // Используем messageId
+
+                // Константы суффиксов (должны быть глобально доступны)
+                const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX;
+                const VIDEO_PARAMS_KEY = chatKey + VIDEO_PARAMS_KEY_SUFFIX;
+                const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
+                const LAST_VIDEO_KEY = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX;
+                const LAST_AUDIO_KEY = chatKey + LAST_AUDIO_DATA_KEY_SUFFIX;
+
+                // Инициализация дефолтов
+                const DEFAULT_VIDEO_PARAMS = { 
+                    seconds: '6', // Храним как строку
+                    aspectRatio: '16:9',
+                    resolution: '480p', 
+                    mode: 'T2V' // ✅ РЕЖИМ ТЕПЕРЬ ЗДЕСЬ
+                };
+                
+                // 2. Чтение данных (ОДИН GET ДЛЯ ПАРАМЕТРОВ)
+                const [lastPrompt, videoParams, rawImageKVData, rawVideoKVData, rawAudioKVData] = await Promise.all([ 
+                    storage.get(LAST_PROMPT_KEY),
+                    // Читаем все параметры ОДИН РАЗ, мержим с дефолтами
+                    storage.get(VIDEO_PARAMS_KEY, { type: 'json' })
+                        .then(res => ({...DEFAULT_VIDEO_PARAMS, ...res}))
+                        .catch(() => DEFAULT_VIDEO_PARAMS),
+                    storage.get(LAST_IMAGE_KEY, { type: 'text' }),
+                    storage.get(LAST_VIDEO_KEY, { type: 'text' }),
+                    storage.get(LAST_AUDIO_KEY, { type: 'text' })
+                ]);
+                
+                // Деструктуризация для удобства
+                const {seconds, aspectRatio, resolution, mode: currentMode } = videoParams;
+                
+                // 3. ПОЛНЫЙ ПАРСИНГ ФОТО ДАННЫХ
+                let isPhotoSaved = false;
+                let aspectType = 'portrait'; // Дефолтное значение
+
+                if (rawImageKVData) {
                     try {
-                        // 1. Уведомление пользователя
-                        await answerCallbackQuery(callback.id, "✅ Фотография устанавливается как исходная", envData.TELEGRAM_BOT_TOKEN);
-                        await editMessageCaption(chatId, messageId, "⏳ Установка изображения как нового исходного", envData.TELEGRAM_BOT_TOKEN); 
-                        
-                        // 2. ЧТЕНИЕ АКТУАЛЬНОГО СОСТОЯНИЯ ИЗ ОСНОВНОГО ХРАНИЛИЩА
-                        const finalPhotoDataRaw = await CALLBACK_TEMP_STORAGE.get(FINAL_PHOTO_KV_KEY);
-                        
-                        if (!finalPhotoDataRaw) {
-                             throw new Error("Не найдены актуальные данные фото. Срок действия истек.");
+                        const imageData = JSON.parse(rawImageKVData);
+                        if (imageData && imageData.base64 && imageData.base64.length > 100) { 
+                            isPhotoSaved = true; 
+                            aspectType = imageData.aspect_type || aspectType; 
                         }
-                
-                        const finalPhotoData = JSON.parse(finalPhotoDataRaw);
-                        
-                        // 3. ПРОВЕРКА: Убеждаемся, что есть Base64 от повернутого фото
-                        if (!finalPhotoData.base64) {
-                             throw new Error("Отсутствует Base64 для сохранения. Сначала поверните или загрузите фото.");
+                    } catch (e) {
+                        if (rawImageKVData.length > 100) {
+                            isPhotoSaved = true;
                         }
+                    }
+                }
+                // 🛑 ОПРЕДЕЛЕНИЕ СТАТУСА ВИДЕО/АУДИО
+                const isVideoSaved = !!rawVideoKVData && rawVideoKVData.length > 100;
+                const isAudioSaved = !!rawAudioKVData && rawAudioKVData.length > 100;
                 
-                        // 4. СБРОС И СОХРАНЕНИЕ: Устанавливаем текущее Base64 как новую "базу"
-                        // Фактически мы просто обновляем основной ключ, сбрасывая счетчик поворота.
-                        finalPhotoData.rotation = 0; // Сбрасываем поворот в ноль
+                // 🛑 ЧИТАЕМ СТАТУС ЗАДАЧИ ДЛЯ МЕНЮ (Нужно, чтобы передавать в editVideoGenerationMenu)
+                const { isTaskAvailable, previousTaskId } = await getTaskAvailabilityStatus(chatId, envData);
+
+                // --- 1. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (set_video_mode) ---
+                if (data.startsWith('set_video_mode|')) {
+                    const newMode = data.split('|')[1];
+                    let finalAspectRatio = videoParams.aspectRatio; 
+                    
+                    // 🛑 V2V (Нет видео) - Сохраняем и уведомляем
+                    if (newMode === 'V2V' && !isVideoSaved) { 
+                        videoParams.mode = newMode; // ✅ ОБНОВЛЯЕМ РЕЖИМ
                         
-                        await CALLBACK_TEMP_STORAGE.put(
-                            FINAL_PHOTO_KV_KEY, 
-                            JSON.stringify(finalPhotoData), 
-                            { expirationTtl: 3600 }
+                        ctx.waitUntil(Promise.allSettled([
+                            storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)), // ✅ СОХРАНЯЕМ
+                            answerCallbackQuery(callbackQueryId, "✅ Режим V2V активирован. Теперь загрузите видео!", token)
+                        ]));
+                        
+                        await editVideoGenerationMenu(
+                            chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token,
+                            videoParams, isTaskAvailable, previousTaskId, envData // Используем newMode
                         );
-                        
-                        // 5. Успешное завершение
-                        await editMessageCaption(chatId, messageId, "✅ Изображение успешно установлено как исходное", envData.TELEGRAM_BOT_TOKEN);
-
-                        // Дополнительное сообщение (если нужно, используйте вашу функцию sendMessage)
-                        await sendMessage(chatId, "✅ Исходное фото обновлено! Можете продолжить работу", envData.TELEGRAM_BOT_TOKEN); 
-                        
-                    } catch (e) {
-                        // Логирование и обработка ошибок
-                        logDebug('[SET_BASE] CRITICAL ERROR', e.message, envData);
-                        await editMessageCaption(chatId, messageId, `❌ Критическая ошибка:\n${escapeMarkdownV2(e.message.substring(0, 200))}`, envData.TELEGRAM_BOT_TOKEN);
-                        return new Response('OK', { status: 200 }); 
-                    }
-                    
-                    // 6. Изолированная очистка временного ключа
-                    try {
-                        const shortCallbackKey = data.replace(SET_BASE_CALLBACK, '');
-                        const KV_KEY = `callback_${chatId}_${shortCallbackKey}`; 
-                        await CALLBACK_TEMP_STORAGE.delete(KV_KEY);
-                        logDebug('[SET_BASE] Cleanup', `Temporary key ${KV_KEY} deleted.`, envData);
-                    } catch (e) {
-                        logDebug('[SET_BASE] Cleanup Error', `Failed to delete temp key: ${e.message}`, envData);
-                        // Мы игнорируем эту ошибку, так как она не влияет на основное сохранение.
-                    }
-                    
-                    return new Response('OK', { status: 200 }); 
-                } else if (data.startsWith(ROTATE_LEFT_CALLBACK) || data.startsWith(ROTATE_RIGHT_CALLBACK) || data.startsWith(ROTATE_180_CALLBACK)) {
-                    const chatId = callback.message.chat.id;
-                    const messageId = callback.message.message_id;
-
-                    let angle = '0';
-                    let shortCallbackKey = '';
-                
-                    if (data.startsWith(ROTATE_LEFT_CALLBACK)) {
-                        angle = '-90'; // Угол для Render: -90 влево
-                        shortCallbackKey = data.replace(ROTATE_LEFT_CALLBACK, '');
-                    } else if (data.startsWith(ROTATE_RIGHT_CALLBACK)) {
-                        angle = '90'; // Угол для Render: 90 вправо
-                        shortCallbackKey = data.replace(ROTATE_RIGHT_CALLBACK, '');
-                    } else if (data.startsWith(ROTATE_180_CALLBACK)) {
-                        angle = '180'; // Угол для Render: 180
-                        shortCallbackKey = data.replace(ROTATE_180_CALLBACK, '');
-                    }
-                    angle = angle.toString().trim(); // Если угол не 0, он будет '90', '-90' или '180'.
-                    const KV_KEY = `callback_${chatId}_${shortCallbackKey}`; 
-                
-                    const token = env.TELEGRAM_BOT_TOKEN;
-                    const originalMessageId = callback.message.message_id;
-                    // 🛑 КРИТИЧНО: Сохраняем текущую клавиатуру
-                    const originalReplyMarkup = callback.message.reply_markup; 
-                
-                    try {
-                        // 1. 🛑 СРАЗУ ОТВЕЧАЕМ НА КОЛБЭК!
-                        await answerCallbackQuery(callback.id, `🔄 Запускаю поворот фото...`, token);
-                        
-                        // 2. Извлекаем fileId из KV
-                        const stateJSON = await env.LAST_PHOTO_STORAGE.get(KV_KEY);
-                        if (!stateJSON) {
-                            // Редактируем подпись оригинального сообщения
-                            await editMessageCaption(chatId, originalMessageId, "❌ Ошибка: Срок действия кнопки истек", token, originalReplyMarkup);
-                            return new Response('OK', { status: 200 }); 
-                        }
-                        const rotationState = JSON.parse(stateJSON);
-                        const fileId = rotationState.fileId; 
-                        
-                        // 3. 📢 ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ для статуса
-                        const loadingMessage = await sendMessageMarkdown(chatId, `⏳ **Начинаю преобразование...**`, token);
-                        const loadingMessageId = loadingMessage.result.message_id;
-                
-                        // 4. Запуск асинхронной задачи (здесь должно быть обеспечено, что ctx определен)
-                        ctx.waitUntil(
-                            runPhotoRotationInBackground(
-                                chatId, 
-                                fileId, 
-                                originalMessageId, 
-                                loadingMessageId, // НОВЫЙ АРГУМЕНТ
-                                originalReplyMarkup, 
-                                angle, 
-                                env, 
-                                token,
-                                ctx // Передаем ctx, как обсуждалось ранее
-                            )
-                        );
-                
-                    } catch (e) {
-                        console.error("Critical Rotate Error (Launch):", e);
-                        await sendMessage(chatId, `❌ Критическая ошибка Worker'а: ${e.message.substring(0, 150)}`, token); 
-                    }
-                    // Очищаем временный ключ сразу после использования
-                    return new Response('OK', { status: 200 }); 
-                } else if (data.startsWith(SET_VIDEO_BASE_CALLBACK)) {
-                    const chatId = callback.message.chat.id;
-                    const messageId = callback.message.message_id;
-                    
-                    // --- ОСНОВНОЙ КЛЮЧ ДЛЯ ВИДЕО: содержит актуальные Base64 и file_id после всех операций ---
-                    const FINAL_VIDEO_KV_KEY = chatId + '_last_video_data'; 
-                    const CALLBACK_TEMP_STORAGE = envData.LAST_PHOTO_STORAGE; // Используем то же хранилище
-                    
-                    try {
-                        // 1. Уведомление пользователя
-                        await answerCallbackQuery(callback.id, "✅ Видео устанавливается как исходное", envData.TELEGRAM_BOT_TOKEN);
-                        await editMessageCaption(chatId, messageId, "⏳ Установка видео как нового исходного", envData.TELEGRAM_BOT_TOKEN); 
-
-                        // --- ИСПРАВЛЕНИЕ: Получаем данные из КНОПКИ (временный ключ), а не из пустого поля base64 ---
-                        const shortCallbackKey = data.replace(SET_VIDEO_BASE_CALLBACK, '');
-                        const KV_KEY_TEMP = `callback_${chatId}_${shortCallbackKey}`;
-                        const tempVideoDataRaw = await CALLBACK_TEMP_STORAGE.get(KV_KEY_TEMP);
-                        if (!tempVideoDataRaw) {
-                            throw new Error("Не найдены актуальные данные видео. Срок действия истек.");
-                        }
-                        const tempVideoData = JSON.parse(tempVideoDataRaw);
-                        
-                        // 2. ЧТЕНИЕ АКТУАЛЬНОГО СОСТОЯНИЯ ИЗ ОСНОВНОГО ХРАНИЛИЩА
-                        const finalVideoDataRaw = await CALLBACK_TEMP_STORAGE.get(FINAL_VIDEO_KV_KEY);
-                        // Если основного хранилища еще нет — создаем объект, если есть — парсим
-                        const finalVideoData = finalVideoDataRaw ? JSON.parse(finalVideoDataRaw) : {};
-                        
-                        // 3. ПРОВЕРКА: Для видео нам нужен fileId, а не base64
-                        if (!tempVideoData.fileId) {
-                            throw new Error("Отсутствует идентификатор видео (fileId) для сохранения.");
-                        }
-                        
-                        // 4. СБРОС И СОХРАНЕНИЕ: Переносим данные из кнопки в основную базу
-                        finalVideoData.file_id = tempVideoData.fileId;
-                        finalVideoData.width = tempVideoData.width || finalVideoData.width;
-                        finalVideoData.height = tempVideoData.height || finalVideoData.height;
-                        finalVideoData.rotation = 0; // Сбрасываем поворот в ноль
-
-                        await CALLBACK_TEMP_STORAGE.put(
-                            FINAL_VIDEO_KV_KEY, 
-                            JSON.stringify(finalVideoData), 
-                            { expirationTtl: 86400 } // Видео храним дольше (сутки)
-                        );
-                        
-                        // 5. Успешное завершение: Изолируем редактирование подписи
-                        try {
-                            await editMessageCaption(chatId, messageId, "✅ Видео успешно установлено как исходное", envData.TELEGRAM_BOT_TOKEN);
-                        } catch (captionError) {
-                            // Если не можем редактировать подпись (например, если сообщение слишком старое),
-                            // логируем это, но не прерываем выполнение.
-                            logDebug('[SET_BASE] Caption Error', `Failed to edit caption: ${captionError.message}`, envData);
-                            await sendMessage(chatId, "✅ Исходное видео обновлено! (Не удалось обновить подпись сообщения)", envData.TELEGRAM_BOT_TOKEN);
-                        }
-                    } catch (e) {
-                        // Логирование и обработка ошибок
-                        logDebug('[SET_BASE] CRITICAL ERROR', e.message, envData);
-                        await editMessageCaption(chatId, messageId, `❌ Критическая ошибка:\n${escapeMarkdownV2(e.message.substring(0, 200))}`, envData.TELEGRAM_BOT_TOKEN);
-                        return new Response('OK', { status: 200 }); 
-                    }
-                    
-                    // 6. Изолированная очистка временного ключа
-                    try {
-                        const shortCallbackKey = data.replace(SET_VIDEO_BASE_CALLBACK, '');
-                        const KV_KEY_TEMP = `callback_${chatId}_${shortCallbackKey}`; 
-                        await CALLBACK_TEMP_STORAGE.delete(KV_KEY_TEMP);
-                        logDebug('[SET_BASE] Cleanup', `Temporary key ${KV_KEY_TEMP} deleted.`, envData);
-                    } catch (e) {
-                        logDebug('[SET_BASE] Cleanup Error', `Failed to delete temp key: ${e.message}`, envData);
-                        // Мы игнорируем эту ошибку, так как она не влияет на основное сохранение.
-                    }
-                    
-                    return new Response('OK', { status: 200 }); // ГАРАНТИРУЕМ ВОЗВРАТ УСПЕХА
-                } else if (data.startsWith(ROTATE_VIDEO_LEFT_CALLBACK) || data.startsWith(ROTATE_VIDEO_RIGHT_CALLBACK) || data.startsWith(ROTATE_VIDEO_180_CALLBACK)) {
-                    const chatId = callback.message.chat.id;
-                    const messageId = callback.message.message_id;
-
-                    let angle = '0';
-                    let shortCallbackKey = '';
-                    const token = env.TELEGRAM_BOT_TOKEN;
-                    const originalMessageId = callback.message.message_id;
-
-                    // 1. 🟢 ИСПРАВЛЕНИЕ: Гарантируем, что ответ на колбэк не крашнет Worker.
-                    try {
-                        // Это должно произойти мгновенно.
-                        await answerCallbackQuery(callbackId, `⏳ Запускаю поворот видео...`, env.TELEGRAM_BOT_TOKEN);
-                    } catch (e) {
-                        // Логируем ошибку, но НЕ прерываем выполнение, чтобы не сработал fallthrough.
-                        ctx.waitUntil(logDebug("ROTATE_VIDEO_CALLBACK_FAIL", `Ошибка answerCallbackQuery: ${e.message}`, envData));
-                    }
-
-                    if (data.startsWith(ROTATE_VIDEO_LEFT_CALLBACK)) {
-                        angle = '-90';
-                        shortCallbackKey = data.replace(ROTATE_VIDEO_LEFT_CALLBACK, '');
-                    } else if (data.startsWith(ROTATE_VIDEO_RIGHT_CALLBACK)) {
-                        angle = '90';
-                        shortCallbackKey = data.replace(ROTATE_VIDEO_RIGHT_CALLBACK, '');
-                    } else if (data.startsWith(ROTATE_VIDEO_180_CALLBACK)) {
-                        angle = '180';
-                        shortCallbackKey = data.replace(ROTATE_VIDEO_180_CALLBACK, '');
-                    }
-                    angle = angle.toString().trim(); // Если угол не 0, он будет '90', '-90' или '180'.
-                    const KV_KEY = `callback_${chatId}_${shortCallbackKey}`; 
-                    
-                    // 🛑 КРИТИЧНО: Сохраняем текущую клавиатуру
-                    const originalReplyMarkup = callback.message.reply_markup; 
-                    try {
-                        // 1. 🛑 СРАЗУ ОТВЕЧАЕМ НА КОЛБЭК! (ОК)
-                        await answerCallbackQuery(callback.id, `🔄 Запускаю поворот видео...`, env.TELEGRAM_BOT_TOKEN);
-                        
-                        // 2. Извлекаем fileId из KV
-                        const stateJSON = await env.LAST_PHOTO_STORAGE.get(KV_KEY);
-                        if (!stateJSON) {
-                            // Редактируем подпись оригинального сообщения
-                            await editMessageCaption(chatId, originalMessageId, "❌ Ошибка: Срок действия кнопки истек", env.TELEGRAM_BOT_TOKEN, originalReplyMarkup);
-                            return new Response('OK', { status: 200 }); 
-                        }
-                        const rotationState = JSON.parse(stateJSON);
-                        const fileId = rotationState.fileId; 
-                        
-                        // 3. 📢 ОТПРАВЛЯЕМ НОВОЕ СООБЩЕНИЕ для статуса
-                        const loadingMessage = await sendMessageMarkdown(chatId, `⏳ **Начинаю преобразование...**`, env.TELEGRAM_BOT_TOKEN);
-                        const loadingMessageId = loadingMessage.result.message_id;
-                
-                        // 🛑 ВРЕМЕННЫЙ ОТЛАДОЧНЫЙ КОД (Используйте вашу функцию логирования)
-                        ctx.waitUntil(logDebug("DEBUG_ANGLE", `Angle: '${angle}', Data: '${data}'`, envData));
-                        // 🛑 КОНЕЦ ОТЛАДОЧНОГО КОДА
-
-                        // 3. 🛑 Запуск асинхронной задачи для ВИДЕО
-                        ctx.waitUntil(
-                            runVideoRotationInBackground( // <-- НОВАЯ ФУНКЦИЯ
-                                chatId, 
-                                fileId, 
-                                originalMessageId, 
-                                loadingMessageId, 
-                                originalReplyMarkup, 
-                                angle, 
-                                env, 
-                                env.TELEGRAM_BOT_TOKEN,
-                                ctx 
-                            )
-                        );
-                        
-                    } catch (e) {
-                        console.error("Critical Rotate Error (Launch):", e);
-                        await sendMessage(chatId, `❌ Критическая ошибка Worker'а: ${e.message.substring(0, 150)}`, token); 
                         return new Response('OK', { status: 200 });
                     }
-                    return new Response('OK', { status: 200 }); 
-                               
-                    // УСТАНОВКА СТАНДАРТНОГО ПРОМПТА (set_default_prompt)
-                } else if (data.startsWith('set_default_prompt|')) {
-                    const type = data.split('|')[1]; // Получаем 'photo' или 'video'
-                    // Выбираем промпт на основе типа
-                    const newPrompt = (type === 'video') 
-                        ? DEFAULT_VIDEO_PROMPT 
-                        : (type === 'audio') 
-                            ? DEFAULT_AUDIO_PROMPT // Используем константу
-                            : DEFAULT_IMAGE_PROMPT; // Если не video и не audio, то image
-                    const LAST_PROMPT_KEY = chatId + LAST_PROMPT_KEY_SUFFIX;
-                    ctx.waitUntil(storage.put(LAST_PROMPT_KEY, newPrompt)); 
-
-                    // 2. Уведомление
-                    ctx.waitUntil(answerCallbackQuery(callback, `✅ Установлен стандартный промпт для ${type === 'video' ? 'видео' : (type === 'audio' ? 'аватара' : 'фото')}.`, token));
-                    // Определяем флаг
-                    const flag = '🇷🇺 RU';
-
-                    // Формируем сообщение с флагом
-                    const messagePrompt = `**Язык:** ${flag}\n\n**Промпт:**\n\`${newPrompt}\`\n\nЧто вы хотите сделать с этим промптом?`;
-
-                    // 4. Редактируем сообщение с новой клавиатурой
-                    const keyboardObject = getPromptKeyboard(newPrompt);
-                    await editMessageWithKeyboard(
-                        chatId, messageId,
-                        messagePrompt,
-                        token,
-                        keyboardObject.inline_keyboard // <-- ПЕРЕДАЕМ ТОЛЬКО МАССИВ КНОПОК
-                    );
-                    return new Response('OK', { status: 200 });
-                } else if (data.startsWith('checkvideo')) {
-                    const parts = data.split('|');
-                    const command = parts[0]; // 'checkvideo'
-                    const args = parts.slice(1).join('|'); // Task ID
-                    // Вызываем функцию-обработчик команды /checkvideo с переданным ID
-                    await handleCheckVideoCommand(chatId, messageText, envData); // <--- ДОБАВЛЕН text
-                    return new Response('OK', { status: 200 });
-                // ЛОГИКА ДЛЯ КОЛБЭКОВ МЕНЮ ГЕНЕРАЦИИ ВИДЕО 
-                } else if (data.startsWith('set_video_') || data.startsWith('start_video_generation')) {
                     
-                    // 1. Инициализация переменных
-                    const callbackQueryId = callback.id; 
-                    const chatKey = chatId.toString();
-                    const storage = envData.LAST_PHOTO_STORAGE; 
-                    const token = envData.TELEGRAM_BOT_TOKEN;
-                    const messageId = callback.message.message_id; // Используем messageId
-
-                    // Константы суффиксов (должны быть глобально доступны)
-                    const LAST_PROMPT_KEY = chatKey + LAST_PROMPT_KEY_SUFFIX;
-                    const VIDEO_PARAMS_KEY = chatKey + VIDEO_PARAMS_KEY_SUFFIX;
-                    const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
-                    const LAST_VIDEO_KEY = chatKey + LAST_VIDEO_DATA_KEY_SUFFIX;
-                    const LAST_AUDIO_KEY = chatKey + LAST_AUDIO_DATA_KEY_SUFFIX;
-
-                    // Инициализация дефолтов
-                    const DEFAULT_VIDEO_PARAMS = { 
-                        seconds: '6', // Храним как строку
-                        aspectRatio: '16:9',
-                        resolution: '480p', 
-                        mode: 'T2V' // ✅ РЕЖИМ ТЕПЕРЬ ЗДЕСЬ
-                    };
-                    
-                    // 2. Чтение данных (ОДИН GET ДЛЯ ПАРАМЕТРОВ)
-                    const [lastPrompt, videoParams, rawImageKVData, rawVideoKVData, rawAudioKVData] = await Promise.all([ 
-                        storage.get(LAST_PROMPT_KEY),
-                        // Читаем все параметры ОДИН РАЗ, мержим с дефолтами
-                        storage.get(VIDEO_PARAMS_KEY, { type: 'json' })
-                            .then(res => ({...DEFAULT_VIDEO_PARAMS, ...res}))
-                            .catch(() => DEFAULT_VIDEO_PARAMS),
-                        storage.get(LAST_IMAGE_KEY, { type: 'text' }),
-                        storage.get(LAST_VIDEO_KEY, { type: 'text' }),
-                        storage.get(LAST_AUDIO_KEY, { type: 'text' })
-                    ]);
-                    
-                    // Деструктуризация для удобства
-                    const {seconds, aspectRatio, resolution, mode: currentMode } = videoParams;
-                    
-                    // 3. ПОЛНЫЙ ПАРСИНГ ФОТО ДАННЫХ
-                    let isPhotoSaved = false;
-                    let aspectType = 'portrait'; // Дефолтное значение
-
-                    if (rawImageKVData) {
-                        try {
-                            const imageData = JSON.parse(rawImageKVData);
-                            if (imageData && imageData.base64 && imageData.base64.length > 100) { 
-                                isPhotoSaved = true; 
-                                aspectType = imageData.aspect_type || aspectType; 
-                            }
-                        } catch (e) {
-                            if (rawImageKVData.length > 100) {
-                                isPhotoSaved = true;
-                            }
-                        }
+                    // 🛑 A2V (Нет аудио) - Сохраняем и уведомляем
+                    if (newMode === 'A2V' && !isAudioSaved) { 
+                        videoParams.mode = newMode; // ✅ ОБНОВЛЯЕМ РЕЖИМ
+                        
+                        ctx.waitUntil(Promise.allSettled([
+                            storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)), // ✅ СОХРАНЯЕМ
+                            answerCallbackQuery(callbackQueryId, "✅ Режим A2V активирован. Теперь загрузите аудио!", token)
+                        ]));
+                        
+                        await editVideoGenerationMenu(
+                            chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token,
+                            videoParams, isTaskAvailable, previousTaskId, envData // Используем newMode
+                        );
+                        return new Response('OK', { status: 200 });
                     }
-                    // 🛑 ОПРЕДЕЛЕНИЕ СТАТУСА ВИДЕО/АУДИО
-                    const isVideoSaved = !!rawVideoKVData && rawVideoKVData.length > 100;
-                    const isAudioSaved = !!rawAudioKVData && rawAudioKVData.length > 100;
-                    
-                    // 🛑 ЧИТАЕМ СТАТУС ЗАДАЧИ ДЛЯ МЕНЮ (Нужно, чтобы передавать в editVideoGenerationMenu)
-                    const { isTaskAvailable, previousTaskId } = await getTaskAvailabilityStatus(chatId, envData);
-
-                    // --- 1. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (set_video_mode) ---
-                    if (data.startsWith('set_video_mode|')) {
-                        const newMode = data.split('|')[1];
-                        let finalAspectRatio = videoParams.aspectRatio; 
-                        
-                        // 🛑 V2V (Нет видео) - Сохраняем и уведомляем
-                        if (newMode === 'V2V' && !isVideoSaved) { 
-                            videoParams.mode = newMode; // ✅ ОБНОВЛЯЕМ РЕЖИМ
-                            
-                            ctx.waitUntil(Promise.allSettled([
-                                storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)), // ✅ СОХРАНЯЕМ
-                                answerCallbackQuery(callbackQueryId, "✅ Режим V2V активирован. Теперь загрузите видео!", token)
-                            ]));
-                            
-                            await editVideoGenerationMenu(
-                                chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token,
-                                videoParams, isTaskAvailable, previousTaskId, envData // Используем newMode
-                            );
-                            return new Response('OK', { status: 200 });
-                        }
-                        
-                        // 🛑 A2V (Нет аудио) - Сохраняем и уведомляем
-                        if (newMode === 'A2V' && !isAudioSaved) { 
-                            videoParams.mode = newMode; // ✅ ОБНОВЛЯЕМ РЕЖИМ
-                            
-                            ctx.waitUntil(Promise.allSettled([
-                                storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)), // ✅ СОХРАНЯЕМ
-                                answerCallbackQuery(callbackQueryId, "✅ Режим A2V активирован. Теперь загрузите аудио!", token)
-                            ]));
-                            
-                            await editVideoGenerationMenu(
-                                chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token,
-                                videoParams, isTaskAvailable, previousTaskId, envData // Используем newMode
-                            );
-                            return new Response('OK', { status: 200 });
-                        }
-                        // 🔥 НОВЫЙ БЛОК: A2V (Есть аудио) - Автоматически устанавливаем длительность
+                    // 🔥 НОВЫЙ БЛОК: A2V (Есть аудио) - Автоматически устанавливаем длительность
                         if (newMode === 'A2V' && isAudioSaved) {
                             const DURATION_KEY = chatId.toString() + '_audio_duration'; 
                             const rawDuration = await storage.get(DURATION_KEY); 
@@ -18846,7 +18845,7 @@ ${historyText}`;
                             // Если текущая длительность отличается от длительности аудио
                             if (videoParams.seconds !== audioLength.toString()) {
                                 videoParams.seconds = audioLength.toString(); // Обновляем длительность в памяти
-                                
+                            
                                 ctx.waitUntil(logDebug(
                                     "CALLBACK",
                                     `A2V mode activated. Duration auto-set to ${audioLength}s.`,
@@ -18854,443 +18853,206 @@ ${historyText}`;
                                 ));
                             }
                         }
-                        // I2V (Есть фото) - Автоматически меняем аспект, если нужно
-                        if (newMode === 'I2V' && isPhotoSaved) {
-                            const photoAspectRatio = mapAspectTypeToRatio(aspectType);
-                            
-                            if (videoParams.aspectRatio !== photoAspectRatio) {
-                                finalAspectRatio = photoAspectRatio;
-                                videoParams.aspectRatio = finalAspectRatio; // Обновляем аспект в памяти
-                                
-                                ctx.waitUntil(logDebug(
-                                    "CALLBACK",
-                                    `I2V mode activated. Aspect Ratio auto-set to ${finalAspectRatio}.`,
-                                    envData
-                                ));
-                            }
-                        }
+                    // I2V (Есть фото) - Автоматически меняем аспект, если нужно
+                    if (newMode === 'I2V' && isPhotoSaved) {
+                        const photoAspectRatio = mapAspectTypeToRatio(aspectType);
                         
-                        // 🟢 УСПЕШНОЕ ПЕРЕКЛЮЧЕНИЕ (T2V, I2V с фото, V2V/A2V с контентом): Сохраняем и перерисовываем
-                        
-                        videoParams.mode = newMode; // ✅ ФИНАЛЬНОЕ ОБНОВЛЕНИЕ РЕЖИМА
-                        
-                        ctx.waitUntil(Promise.allSettled([
-                            // ✅ Только одна операция PUT
-                            storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)), 
+                        if (videoParams.aspectRatio !== photoAspectRatio) {
+                            finalAspectRatio = photoAspectRatio;
+                            videoParams.aspectRatio = finalAspectRatio; // Обновляем аспект в памяти
                             
-                            answerCallbackQuery(callbackQueryId, "Режим изменен!", token),
-                            
-                            // Обновляем меню (используем новые значения из videoParams)
-                            editVideoGenerationMenu(
-                                chatId, 
-                                messageId, 
-                                lastPrompt, 
-                                isPhotoSaved, 
-                                isVideoSaved, 
-                                isAudioSaved,
-                                token, 
-                                videoParams, // Используем обновленный параметр
-                                isTaskAvailable, 
-                                previousTaskId,
+                            ctx.waitUntil(logDebug(
+                                "CALLBACK",
+                                `I2V mode activated. Aspect Ratio auto-set to ${finalAspectRatio}.`,
                                 envData
-                            ) 
-                        ]));
+                            ));
+                        }
+                    }
+                    
+                    // 🟢 УСПЕШНОЕ ПЕРЕКЛЮЧЕНИЕ (T2V, I2V с фото, V2V/A2V с контентом): Сохраняем и перерисовываем
+                    
+                    videoParams.mode = newMode; // ✅ ФИНАЛЬНОЕ ОБНОВЛЕНИЕ РЕЖИМА
+                    
+                    ctx.waitUntil(Promise.allSettled([
+                        // ✅ Только одна операция PUT
+                        storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)), 
                         
+                        answerCallbackQuery(callbackQueryId, "Режим изменен!", token),
+                        
+                        // Обновляем меню (используем новые значения из videoParams)
+                        editVideoGenerationMenu(
+                            chatId, 
+                            messageId, 
+                            lastPrompt, 
+                            isPhotoSaved, 
+                            isVideoSaved, 
+                            isAudioSaved,
+                            token, 
+                            videoParams, // Используем обновленный параметр
+                            isTaskAvailable, 
+                            previousTaskId,
+                            envData
+                        ) 
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                }
+
+                // --- 2. УСТАНОВКА ДЛИТЕЛЬНОСТИ (set_video_sec) ---
+                if (data.startsWith('set_video_sec|')) {
+                    const newSeconds = data.split('|')[1]; // ✅ ИСПОЛЬЗУЕМ СТРОКУ, НЕ parseInt
+                    videoParams.seconds = newSeconds;
+                    
+                    ctx.waitUntil(Promise.allSettled([
+                        storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)),
+                        answerCallbackQuery(callbackQueryId, `Длительность: ${newSeconds} сек.`, token),
+                        editVideoGenerationMenu(
+                            chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token, 
+                            videoParams, isTaskAvailable, previousTaskId, envData
+                        ) 
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                }
+                // --- 3. УСТАНОВКА СООТНОШЕНИЯ СТОРОН (set_video_ratio) ---
+                if (data.startsWith('set_video_ratio|')) {
+                    const newRatio = data.split('|')[1];
+                    videoParams.aspectRatio = newRatio;
+                    
+                    ctx.waitUntil(Promise.allSettled([
+                        storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)),
+                        answerCallbackQuery(callbackQueryId, `Соотношение сторон: ${newRatio}`, token),
+                        editVideoGenerationMenu(
+                            chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token, 
+                            videoParams, isTaskAvailable, previousTaskId, envData
+                        ) 
+                    ]));
+
+                    return new Response('OK', { status: 200 });
+                }
+                // --- 4. УСТАНОВКА Разрешения (set_video_resolution) ---
+                if (data.startsWith('set_video_resolution|')) {
+                    const newResolution = data.split('|')[1];
+                    videoParams.resolution = newResolution;
+                    
+                    ctx.waitUntil(Promise.allSettled([
+                        storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)),
+                        answerCallbackQuery(callbackQueryId, `Разрешение: ${newResolution}`, token),
+                        editVideoGenerationMenu(
+                            chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token, 
+                            videoParams, isTaskAvailable, previousTaskId, envData
+                        ) 
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                }
+                // --- 5. ЗАПУСК ГЕНЕРАЦИИ (start_video_generation) ---
+                // ИЗМЕНЕНИЕ 1: ИСПОЛЬЗУЕМ start_video_generation|MODE
+                if (data.startsWith('start_video_generation|')) {
+                    // 🔑 ИЗВЛЕЧЕНИЕ РЕЖИМА ИЗ КОЛБЭКА
+                    const parts = data.split('|');
+                    const requestedMode = parts[1]; // I2V, T2V, A2V, V2V или undefined, если нет
+                    
+                    // Используем запрошенный режим, если он есть, иначе берем из памяти (если кнопка не передала)
+                    const finalMode = requestedMode || currentMode; // currentMode прочитан из KV в начале функции
+                    
+                    // Если кнопка явно передала режим, сохраняем его в параметрах
+                    if (requestedMode && finalMode !== videoParams.mode) {
+                        videoParams.mode = finalMode;
+                        // Сохранение будет ниже, если все проверки пройдут
+                    }
+
+                    // 1. ОПРЕДЕЛЯЕМ ФИНАЛЬНЫЙ ПРОМПТ НА ОСНОВЕ РЕЖИМА
+                    const promptWasEmpty = !lastPrompt;
+                    let finalPrompt = '';
+
+                    // 🔑 ИЗМЕНЕНИЕ 2: ИСПОЛЬЗУЕМ finalMode ВМЕСТО currentMode
+                    if (finalMode === 'A2V') {
+                        finalPrompt = lastPrompt || DEFAULT_AUDIO_PROMPT; 
+                    } else if (finalMode === 'I2V') {
+                        finalPrompt = lastPrompt || DEFAULT_VIDEO_PROMPT; 
+                    } else if (finalMode === 'T2V') {
+                        finalPrompt = lastPrompt || DEFAULT_VIDEO_PROMPT; 
+                    } else {
+                        finalPrompt = lastPrompt || ''; 
+                    }
+
+                    // 2. ПРОВЕРКИ ПЕРЕД ЗАПУСКОМ (на основе finalMode)
+                    
+                    // Проверка: I2V требует фото
+                    if (finalMode === 'I2V' && !isPhotoSaved) { // <-- Используем finalMode
+                        ctx.waitUntil(editMessage(chatId, messageId, "❌ **Ошибка:** Для Image-to-Video требуется загруженное фото.", token));
+                        ctx.waitUntil(answerCallbackQuery(callbackQueryId, "❌ Загрузите фото", token));
+                        return new Response('OK', { status: 200 });
+                    }
+                    
+                    // Проверка: A2V требует фото И аудио
+                    if (finalMode === 'A2V' && (!isPhotoSaved || !isAudioSaved)) { // <-- Используем finalMode
+                        ctx.waitUntil(editMessage(chatId, messageId, "❌ **Ошибка:** Для Audio-to-Video (Аватар) требуется и фото, и аудио.", token));
+                        ctx.waitUntil(answerCallbackQuery(callbackQueryId, "❌ Загрузите фото и аудио", token));
+                        return new Response('OK', { status: 200 });
+                    }
+                    
+                    // Проверка: V2V требует видео
+                    if (finalMode === 'V2V' && !isVideoSaved) { // <-- Используем finalMode
+                        ctx.waitUntil(editMessage(chatId, messageId, "❌ **Ошибка:** Для Video-to-Video требуется загруженное видео (загрузите его пожалуйста).", token));
+                        ctx.waitUntil(answerCallbackQuery(callbackQueryId, "❌ Требуется Ваш видеоролик", token));
                         return new Response('OK', { status: 200 });
                     }
 
-                    // --- 2. УСТАНОВКА ДЛИТЕЛЬНОСТИ (set_video_sec) ---
-                    if (data.startsWith('set_video_sec|')) {
-                        const newSeconds = data.split('|')[1]; // ✅ ИСПОЛЬЗУЕМ СТРОКУ, НЕ parseInt
-                        videoParams.seconds = newSeconds;
-                        
-                        ctx.waitUntil(Promise.allSettled([
-                            storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)),
-                            answerCallbackQuery(callbackQueryId, `Длительность: ${newSeconds} сек.`, token),
-                            editVideoGenerationMenu(
-                                chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token, 
-                                videoParams, isTaskAvailable, previousTaskId, envData
-                            ) 
-                        ]));
-                        
-                        return new Response('OK', { status: 200 });
+                    // 3. СОХРАНЕНИЕ ПРОМПТА ПО УМОЛЧАНИЮ (и нового режима, если он был задан)
+                    const putPromises = [];
+                    if (promptWasEmpty && finalPrompt) {
+                        putPromises.push(storage.put(LAST_PROMPT_KEY, finalPrompt)); 
                     }
-                    // --- 3. УСТАНОВКА СООТНОШЕНИЯ СТОРОН (set_video_ratio) ---
-                    if (data.startsWith('set_video_ratio|')) {
-                        const newRatio = data.split('|')[1];
-                        videoParams.aspectRatio = newRatio;
-                        
-                        ctx.waitUntil(Promise.allSettled([
-                            storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)),
-                            answerCallbackQuery(callbackQueryId, `Соотношение сторон: ${newRatio}`, token),
-                            editVideoGenerationMenu(
-                                chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token, 
-                                videoParams, isTaskAvailable, previousTaskId, envData
-                            ) 
-                        ]));
-
-                        return new Response('OK', { status: 200 });
+                    // Сохраняем параметры, если режим был изменен кнопкой
+                    if (requestedMode) {
+                        putPromises.push(storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)));
                     }
-                    // --- 4. УСТАНОВКА Разрешения (set_video_resolution) ---
-                    if (data.startsWith('set_video_resolution|')) {
-                        const newResolution = data.split('|')[1];
-                        videoParams.resolution = newResolution;
-                        
-                        ctx.waitUntil(Promise.allSettled([
-                            storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)),
-                            answerCallbackQuery(callbackQueryId, `Разрешение: ${newResolution}`, token),
-                            editVideoGenerationMenu(
-                                chatId, messageId, lastPrompt, isPhotoSaved, isVideoSaved, isAudioSaved, token, 
-                                videoParams, isTaskAvailable, previousTaskId, envData
-                            ) 
-                        ]));
-                        
-                        return new Response('OK', { status: 200 });
-                    }
-                    // --- 5. ЗАПУСК ГЕНЕРАЦИИ (start_video_generation) ---
-                    // ИЗМЕНЕНИЕ 1: ИСПОЛЬЗУЕМ start_video_generation|MODE
-                    if (data.startsWith('start_video_generation|')) {
-                        // 🔑 ИЗВЛЕЧЕНИЕ РЕЖИМА ИЗ КОЛБЭКА
-                        const parts = data.split('|');
-                        const requestedMode = parts[1]; // I2V, T2V, A2V, V2V или undefined, если нет
-                        
-                        // Используем запрошенный режим, если он есть, иначе берем из памяти (если кнопка не передала)
-                        const finalMode = requestedMode || currentMode; // currentMode прочитан из KV в начале функции
-                        
-                        // Если кнопка явно передала режим, сохраняем его в параметрах
-                        if (requestedMode && finalMode !== videoParams.mode) {
-                            videoParams.mode = finalMode;
-                            // Сохранение будет ниже, если все проверки пройдут
-                        }
+                    ctx.waitUntil(Promise.allSettled(putPromises));
 
-                        // 1. ОПРЕДЕЛЯЕМ ФИНАЛЬНЫЙ ПРОМПТ НА ОСНОВЕ РЕЖИМА
-                        const promptWasEmpty = !lastPrompt;
-                        let finalPrompt = '';
-
-                        // 🔑 ИЗМЕНЕНИЕ 2: ИСПОЛЬЗУЕМ finalMode ВМЕСТО currentMode
-                        if (finalMode === 'A2V') {
-                            finalPrompt = lastPrompt || DEFAULT_AUDIO_PROMPT; 
-                        } else if (finalMode === 'I2V') {
-                            finalPrompt = lastPrompt || DEFAULT_VIDEO_PROMPT; 
-                        } else if (finalMode === 'T2V') {
-                            finalPrompt = lastPrompt || DEFAULT_VIDEO_PROMPT; 
-                        } else {
-                            finalPrompt = lastPrompt || ''; 
-                        }
-
-                        // 2. ПРОВЕРКИ ПЕРЕД ЗАПУСКОМ (на основе finalMode)
+                    // 4. ОТВЕТ НА КОЛБЭК И ЗАПУСК
+                    ctx.waitUntil(answerCallbackQuery(callbackQueryId, "Запускаю генерацию видео...", token));
+                    
+                    // --- ЗАПУСК ГЕНЕРАЦИИ В ФОНЕ ---
+                    ctx.waitUntil(Promise.allSettled([
+                        editMessage(chatId, messageId, `⏳ **Запускаю генерацию видео...**\n\nПромпт: \`${finalPrompt.substring(0, 100)}...\``, token).catch(e => {
+                            console.error("Не удалось отредактировать сообщение для start_video_generation:", e);
+                        }),
                         
-                        // Проверка: I2V требует фото
-                        if (finalMode === 'I2V' && !isPhotoSaved) { // <-- Используем finalMode
-                            ctx.waitUntil(editMessage(chatId, messageId, "❌ **Ошибка:** Для Image-to-Video требуется загруженное фото.", token));
-                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, "❌ Загрузите фото", token));
-                            return new Response('OK', { status: 200 });
-                        }
-                        
-                        // Проверка: A2V требует фото И аудио
-                        if (finalMode === 'A2V' && (!isPhotoSaved || !isAudioSaved)) { // <-- Используем finalMode
-                            ctx.waitUntil(editMessage(chatId, messageId, "❌ **Ошибка:** Для Audio-to-Video (Аватар) требуется и фото, и аудио.", token));
-                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, "❌ Загрузите фото и аудио", token));
-                            return new Response('OK', { status: 200 });
-                        }
-                        
-                        // Проверка: V2V требует видео
-                        if (finalMode === 'V2V' && !isVideoSaved) { // <-- Используем finalMode
-                            ctx.waitUntil(editMessage(chatId, messageId, "❌ **Ошибка:** Для Video-to-Video требуется загруженное видео (загрузите его пожалуйста).", token));
-                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, "❌ Требуется Ваш видеоролик", token));
-                            return new Response('OK', { status: 200 });
-                        }
-
-                        // 3. СОХРАНЕНИЕ ПРОМПТА ПО УМОЛЧАНИЮ (и нового режима, если он был задан)
-                        const putPromises = [];
-                        if (promptWasEmpty && finalPrompt) {
-                            putPromises.push(storage.put(LAST_PROMPT_KEY, finalPrompt)); 
-                        }
-                        // Сохраняем параметры, если режим был изменен кнопкой
-                        if (requestedMode) {
-                            putPromises.push(storage.put(VIDEO_PARAMS_KEY, JSON.stringify(videoParams)));
-                        }
-                        ctx.waitUntil(Promise.allSettled(putPromises));
-
-                        // 4. ОТВЕТ НА КОЛБЭК И ЗАПУСК
-                        ctx.waitUntil(answerCallbackQuery(callbackQueryId, "Запускаю генерацию видео...", token));
-                        
-                        // --- ЗАПУСК ГЕНЕРАЦИИ В ФОНЕ ---
-                        ctx.waitUntil(Promise.allSettled([
-                            editMessage(chatId, messageId, `⏳ **Запускаю генерацию видео...**\n\nПромпт: \`${finalPrompt.substring(0, 100)}...\``, token).catch(e => {
-                                console.error("Не удалось отредактировать сообщение для start_video_generation:", e);
-                            }),
-                            
-                            // ✅ Передаем finalPrompt и уже загруженные параметры
-                            startVideoGenerationLogic(chatId, finalPrompt, messageId, envData, videoParams) 
-                        ]));
-                        
-                        return new Response('OK', { status: 200 });
-                    }
-                    // ЛОГИКА ДЛЯ КОЛБЭКОВ МЕНЮ АПСКЕЙЛА (I2U / V2U)
-                    } else if (data.startsWith('select_upscale_mode|') || data.startsWith('generate_upscale_now|')) {
-                        
-                        // 1. Инициализация переменных (используем Вашу нотацию)
-                        const callbackQueryId = callback.id; 
-                        const chatKey = chatId.toString(); // chatId должен быть определен ранее в области видимости
-                        const storage = envData.LAST_PHOTO_STORAGE; 
-                        const token = envData.TELEGRAM_BOT_TOKEN;
-                        const messageId = callback.message.message_id;
-
-                        // Константы суффиксов
-                        const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
-                        const LAST_VIDEO_TASK_KEY = chatKey + LAST_ACTIVE_VIDEO_KEY_SUFFIX; // <-- НОВЫЙ СУФФИКС для Task ID
-
-                        // 2. Чтение данных
-                        const [lastPrompt, rawImageKVData, rawTaskData] = await Promise.all([ // <-- ДОБАВЛЕНО rawTaskData
-                            storage.get(LAST_PROMPT_KEY),
-                            storage.get(LAST_IMAGE_KEY, { type: 'text' }), 
-                            storage.get(LAST_VIDEO_TASK_KEY), // <-- Чтение данных Task ID (taskDataRaw из handleCheckVideoCommand)
-                        ]);
-
-                        // Определяем статус медиа (фото или видео)
-                        const isMediaSaved = !!rawImageKVData && rawImageKVData.length > 100;
-
-                        // Определяем статус Task ID
-                        const isTaskValid = !!rawTaskData; // Есть ли Task ID для V2U
-                                            
-                        // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_upscale_mode|...) ---
-                        if (data.startsWith('select_upscale_mode|')) {
-                            const selectedMode = data.split('|')[1]; // 'IMAGE_TO_UPSCALE' или 'VIDEO_TO_UPSCALE'
-                            let menu;
-                            
-                            if (selectedMode === 'IMAGE_TO_UPSCALE') {
-                                menu = await getUpscaleImageMenuKeyboard(chatId, storage, lastPrompt, isMediaSaved);
-                            } else if (selectedMode === 'VIDEO_TO_UPSCALE') {
-                                menu = await getUpscaleVideoMenuKeyboard(chatId, storage, lastPrompt, isMediaSaved);
-                            }
-                                                    
-                            ctx.waitUntil(Promise.allSettled([
-                                editMessageWithKeyboard(
-                                    chatId, 
-                                    messageId, 
-                                    menu.messageText, 
-                                    token, 
-                                    menu.keyboardObject
-                                ),
-                                answerCallbackQuery(callbackQueryId, `Переключено на ${selectedMode === 'VIDEO_TO_UPSCALE' ? 'Видео' : 'Фото'} апскейл.`, token)
-                            ]));
-                            
-                            return new Response('OK', { status: 200 });
-                        }                    
-                        // --- 3. ЗАПУСК ГЕНЕРАЦИИ (generate_upscale_now|...) ---
-                        if (data.startsWith('generate_upscale_now|')) {
-                            const parts = data.split('|');
-                            const finalMode = parts[1]; // IMAGE_TO_UPSCALE или VIDEO_TO_UPSCALE
-                            
-                            let canRun = false;
-                            let requiredText = '';
-                        
-                            if (finalMode === 'IMAGE_TO_UPSCALE') {
-                                // Условие для I2U: нужно сохраненное фото
-                                canRun = isMediaSaved; 
-                                requiredText = "фотографию";
-                            } else if (finalMode === 'VIDEO_TO_UPSCALE') {
-                                // Условие для V2U: нужен сохраненный Task ID
-                                canRun = isTaskValid; // Используем новый флаг isTaskValid
-                                requiredText = "Task ID предыдущего задания (/checkvideo)";
-                            } else {
-                                // Неизвестный режим
-                                ctx.waitUntil(answerCallbackQuery(callbackQueryId, "Ошибка: Неизвестный режим апскейла", token));
-                                return new Response('OK', { status: 200 });
-                            }
-                        
-                            if (!canRun) {
-                                // Единое сообщение об ошибке для обоих режимов
-                                ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Невозможно запустить. Сначала получите ${requiredText}.`, token));
-                                return new Response('OK', { status: 200 });
-                            }
-                            
-                            // Логика запуска, которая использует:
-                            // - finalMode (для выбора I2U или V2U)
-                            // - Task ID (если finalMode == V2U, то taskDataRaw доступен через rawTaskData)
-                            ctx.waitUntil(processUpscaleGenerateCommand(finalMode, chatId, envData, storage, rawTaskData)); // <-- Передаем rawTaskData
-                            
-                            ctx.waitUntil(Promise.allSettled([
-                                answerCallbackQuery(callbackQueryId, "Запускаю апскейл...", token),
-                                editMessage(chatId, messageId, `⏳ Запускаю Апскейл Режим: ${finalMode}`, token)
-                            ]));
-                            
-                            return new Response('OK', { status: 200 });
-                        } // --- КОНЕЦ НОВОГО БЛОКА АПСКЕЙЛА ---
-
-                // ЛОГИКА КОЛБЭКОВ ДЛЯ РЕСАЙЗА
-                } else if (data.startsWith('select_resize_mode|') || data.startsWith('generate_resize_now|') || data.startsWith('generate_rotate_now|')) {
+                        // ✅ Передаем finalPrompt и уже загруженные параметры
+                        startVideoGenerationLogic(chatId, finalPrompt, messageId, envData, videoParams) 
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                }
+                // ЛОГИКА ДЛЯ КОЛБЭКОВ МЕНЮ АПСКЕЙЛА (I2U / V2U)
+                } else if (data.startsWith('select_upscale_mode|') || data.startsWith('generate_upscale_now|')) {
+                    
+                    // 1. Инициализация переменных (используем Вашу нотацию)
                     const callbackQueryId = callback.id; 
-                    const chatKey = chatId.toString();
+                    const chatKey = chatId.toString(); // chatId должен быть определен ранее в области видимости
                     const storage = envData.LAST_PHOTO_STORAGE; 
                     const token = envData.TELEGRAM_BOT_TOKEN;
                     const messageId = callback.message.message_id;
 
-                    // 1. Получаем статусы медиа
-                    const [rawImage, rawVideo] = await Promise.all([
-                        envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_IMAGE_DATA_KEY_SUFFIX),
-                        envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_VIDEO_DATA_KEY_SUFFIX),
+                    // Константы суффиксов
+                    const LAST_IMAGE_KEY = chatKey + LAST_IMAGE_DATA_KEY_SUFFIX; 
+                    const LAST_VIDEO_TASK_KEY = chatKey + LAST_ACTIVE_VIDEO_KEY_SUFFIX; // <-- НОВЫЙ СУФФИКС для Task ID
+
+                    // 2. Чтение данных
+                    const [lastPrompt, rawImageKVData, rawTaskData] = await Promise.all([ // <-- ДОБАВЛЕНО rawTaskData
+                        storage.get(LAST_PROMPT_KEY),
+                        storage.get(LAST_IMAGE_KEY, { type: 'text' }), 
+                        storage.get(LAST_VIDEO_TASK_KEY), // <-- Чтение данных Task ID (taskDataRaw из handleCheckVideoCommand)
                     ]);
-                    const isPhotoSaved = !!rawImage;
-                    const isVideoSaved = !!rawVideo;
-                    
-                    // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_resize_mode|...) ---
-                    if (data.startsWith('select_resize_mode|')) {
-                        
-                        const selectedMode = data.split('|')[1]; // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
-                        let newMenu;
 
-                        // 🛑 ИСПРАВЛЕНО: Использование 'selectedMode' и передача 'storage'
-                        if (selectedMode === RESIZE_IMAGE_MODE) {
-                            newMenu = await getResizeImageMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storage);
-                        } else if (selectedMode === RESIZE_VIDEO_MODE) {
-                            newMenu = await getResizeVideoMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storage);
-                        } else {
-                            // Добавьте обработку неожиданного режима
-                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, 'Неизвестный режим изменения размера.', token));
-                            return new Response('OK', { status: 200 });
-                        }
-                        
-                        // 🛑 ИСПРАВЛЕНО: Использование 'newMenu' вместо 'menu'
-                        ctx.waitUntil(Promise.allSettled([
-                            editMessageWithKeyboard(
-                                chatId, 
-                                messageId, 
-                                newMenu.messageText, // ИСПРАВЛЕНО
-                                token, 
-                                newMenu.keyboardObject // ИСПРАВЛЕНО
-                            ),
-                            answerCallbackQuery(callbackQueryId, `Переключено на ${selectedMode === RESIZE_VIDEO_MODE ? 'Видео' : 'Фото'} изменение размера.`, token)
-                        ]));
-                        
-                        return new Response('OK', { status: 200 });
-                    }
-                    
-                    // --- 3. ЗАПУСК ГЕНЕРАЦИИ (generate_resize_now|...) ---
-                    if (data.startsWith('generate_resize_now|')) {
-                        const chatKey = chatId.toString();
-                        const parts = data.split('|');
-                        const finalMode = parts[1];      // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
-                        const actionParam = parts[2];    // Разрешение
+                    // Определяем статус медиа (фото или видео)
+                    const isMediaSaved = !!rawImageKVData && rawImageKVData.length > 100;
 
-                        let fileId; // Переменная для ID файла
-
-                        if (finalMode === 'VIDEO_TO_RESIZE') {
-                            const rawVideo = await envData.LAST_PHOTO_STORAGE.get(chatId + '_last_video_data');
-                            if (!rawVideo) {
-                                ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Данные видео не найдены`, token));
-                                return new Response('OK', { status: 200 });
-                            }
-                            // Для видео file_id лежит внутри JSON (как и было)
-                            const mediaData = JSON.parse(rawVideo);
-                            fileId = mediaData.file_id;
-                        } else if (finalMode === 'IMAGE_TO_RESIZE') {
-                            // берем file_id напрямую из его собственного ключа
-                            fileId = await envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_FILE_ID_KEY_SUFFIX);
-                        }
-
-                        // ✅ ГЛАВНАЯ ПРОВЕРКА: Если ключа нет или он протух
-                        if (!fileId) {
-                            const mediaName = finalMode === 'VIDEO_TO_RESIZE' ? 'видео' : 'фото';
-                            
-                            // 1. Убираем "часики" с кнопки
-                            await answerCallbackQuery(callbackQueryId, `❌ Данные ${mediaName} устарели.`, token);
-                            
-                            // 2. Информируем в чате
-                            await editMessage(chatId, originalMessageId, 
-                                `⚠️ **Ошибка: файл не найден.**\n\nСкорее всего, прошло более часа с момента загрузки. Пожалуйста, отправьте ${mediaName} боту еще раз.`, 
-                                token
-                            );
-                            return new Response('OK', { status: 200 }); // Завершаем выполнение
-                        }
-                        
-                        // Остальные переменные
-                        const originalReplyMarkup = callback.message.reply_markup; // Сохраняем клавиатуру
-                        const originalMessageId = callback.message.message_id; 
-                        
-                        // Запуск асинхронной обработки в фоне
-                        ctx.waitUntil(sendMediaToConverterInBackground(
-                            chatId, 
-                            fileId, 
-                            originalMessageId, 
-                            finalMode, 
-                            actionParam, 
-                            envData, 
-                            token, 
-                            ctx,
-                            originalReplyMarkup
-                        ));
-
-                        ctx.waitUntil(Promise.allSettled([
-                            answerCallbackQuery(callbackQueryId, `Запускаю изменение размера`, token),
-                            editMessage(chatId, originalMessageId, `⏳ Запускаю Изменение размера, Параметр: ${actionParam}`, token)
-                        ]));
-                        
-                        return new Response('OK', { status: 200 });
-                    } // --- КОНЕЦ НОВОГО БЛОКА RESIZE ---
-                    // --- ЗАПУСК ПОВОРОТА (generate_rotate_now|...) ---
-                    if (data.startsWith('generate_rotate_now|')) {
-                        const chatKey = chatId.toString();
-                        const parts = data.split('|');
-                        const finalMode = parts[1];      // IMAGE_TO_ROTATE или VIDEO_TO_ROTATE
-                        const actionParam = parts[2];    // Разрешение
-
-                        let fileId; // Переменная для ID файла
-
-                        if (finalMode === 'VIDEO_TO_ROTATE') {
-                            const rawVideo = await envData.LAST_PHOTO_STORAGE.get(chatId + '_last_video_data');
-                            if (!rawVideo) {
-                                ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Данные видео не найдены`, token));
-                                return new Response('OK', { status: 200 });
-                            }
-                            // Для видео file_id лежит внутри JSON (как и было)
-                            const mediaData = JSON.parse(rawVideo);
-                            fileId = mediaData.file_id;
-                        } else if (finalMode === 'IMAGE_TO_ROTATE') {
-                            // берем file_id напрямую из его собственного ключа
-                            fileId = await envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_FILE_ID_KEY_SUFFIX);
-                        }
-
-                        // ✅ ГЛАВНАЯ ПРОВЕРКА: Если ключа нет или он протух
-                        if (!fileId) {
-                            const mediaName = finalMode === 'VIDEO_TO_ROTATE' ? 'видео' : 'фото';
-                            
-                            // 1. Убираем "часики" с кнопки
-                            await answerCallbackQuery(callbackQueryId, `❌ Данные ${mediaName} устарели.`, token);
-                            
-                            // 2. Информируем в чате
-                            await editMessage(chatId, originalMessageId, 
-                                `⚠️ **Ошибка: файл не найден.**\n\nСкорее всего, прошло более часа с момента загрузки. Пожалуйста, отправьте ${mediaName} боту еще раз.`, 
-                                token
-                            );
-                            return new Response('OK', { status: 200 }); // Завершаем выполнение
-                        }
-                        
-                        // Остальные переменные
-                        const originalReplyMarkup = callback.message.reply_markup; // Сохраняем клавиатуру
-                        const originalMessageId = callback.message.message_id; 
-                        
-                        // Запуск асинхронной обработки в фоне
-                        ctx.waitUntil(sendMediaToConverterInBackground(
-                            chatId, 
-                            fileId, 
-                            originalMessageId, 
-                            finalMode, 
-                            actionParam, 
-                            envData, 
-                            token, 
-                            ctx,
-                            originalReplyMarkup
-                        ));
-
-                        ctx.waitUntil(Promise.allSettled([
-                            answerCallbackQuery(callbackQueryId, `Запускаю поворот изображения`, token),
-                            editMessage(chatId, originalMessageId, `⏳ Запускаю Поворот изображения, Параметр: ${actionParam}`, token)
-                        ]));
-                        
-                        return new Response('OK', { status: 200 });
-                    } // --- КОНЕЦ НОВОГО БЛОКА ROTATE ---
+                    // Определяем статус Task ID
+                    const isTaskValid = !!rawTaskData; // Есть ли Task ID для V2U
+                                        
                     // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_upscale_mode|...) ---
                     if (data.startsWith('select_upscale_mode|')) {
                         const selectedMode = data.split('|')[1]; // 'IMAGE_TO_UPSCALE' или 'VIDEO_TO_UPSCALE'
@@ -19343,7 +19105,6 @@ ${historyText}`;
                             return new Response('OK', { status: 200 });
                         }
                         
-                        // 🔑 ВНИМАНИЕ: Сюда нужно вставить Ваш вызов логики запуска апскейла
                         // Логика запуска, которая использует:
                         // - finalMode (для выбора I2U или V2U)
                         // - Task ID (если finalMode == V2U, то taskDataRaw доступен через rawTaskData)
@@ -19351,581 +19112,818 @@ ${historyText}`;
                         
                         ctx.waitUntil(Promise.allSettled([
                             answerCallbackQuery(callbackQueryId, "Запускаю апскейл...", token),
-                            editMessage(chatId, messageId, `⏳ **Запускаю Апскейл...** (Режим: ${finalMode})`, token)
+                            editMessage(chatId, messageId, `⏳ Запускаю Апскейл Режим: ${finalMode}`, token)
                         ]));
                         
                         return new Response('OK', { status: 200 });
-                    }// --- КОНЕЦ НОВОГО БЛОКА АПСКЕЙЛА ---
-                    
-                // Колбэк gif_to_video - Конвертация GIF в Видео
-                } else if (data === 'gif_to_video') {
-                    // Исправлено: используем callback.id вместо callbackQuery.id
-                    const callbackQueryId = callback.id; 
-                    const token = envData.TELEGRAM_BOT_TOKEN;
-                    const GIF_DATA_KEY = `${chatId}_last_gif_data`;
-                    const rawData = await envData.LAST_PHOTO_STORAGE.get(GIF_DATA_KEY);
+                    } // --- КОНЕЦ НОВОГО БЛОКА АПСКЕЙЛА ---
 
-                    if (!rawData) {
-                        await answerCallbackQuery(callbackQueryId, "❌ Данные устарели. Пришлите файл снова.", token);
-                        return new Response('OK', { status: 200 });
-                    }
+            // ЛОГИКА КОЛБЭКОВ ДЛЯ РЕСАЙЗА
+            } else if (data.startsWith('select_resize_mode|') || data.startsWith('generate_resize_now|') || data.startsWith('generate_rotate_now|')) {
+                const callbackQueryId = callback.id; 
+                const chatKey = chatId.toString();
+                const storage = envData.LAST_PHOTO_STORAGE; 
+                const token = envData.TELEGRAM_BOT_TOKEN;
+                const messageId = callback.message.message_id;
 
-                    const gifData = JSON.parse(rawData);
-                    const originalMessageId = callback.message.message_id;
-
-                    await answerCallbackQuery(callbackQueryId, "🎬 Начинаю конвертацию...", token);
-                    await editMessage(chatId, originalMessageId, "⏳ **Магия FFmpeg:** превращаю анимацию в видео...", token);
-
-                    ctx.waitUntil(sendGifToConverterInBackground(
-                        chatId,
-                        gifData.file_id,
-                        originalMessageId,
-                        envData,
-                        token
-                    ));
-                    return new Response('OK', { status: 200 });
-
-                // Колбэк video_to_gif - Конвертация Видео в GIF
-                } else if (data.startsWith('video_to_gif:')) {
-                    const format = data.split(':')[1]; // gif или mp4
-                    const callbackQueryId = callback.id;
-                    const VIDEO_DATA_KEY = `${chatId}_last_video_data`; // Используем твой ключ для видео
-                    const rawData = await envData.LAST_PHOTO_STORAGE.get(VIDEO_DATA_KEY);
-
-                    if (!rawData) {
-                        await answerCallbackQuery(callbackQueryId, "❌ Видео не найдено. Пришлите его снова.", token);
-                        return new Response('OK', { status: 200 });
-                    }
-
-                    const videoData = JSON.parse(rawData);
-                    const originalMessageId = callback.message.message_id;
-
-                    await answerCallbackQuery(callbackQueryId, `Создаю ${format}...`, token);
-                    await editMessage(chatId, originalMessageId, `⏳ Нарезаю первые 5 секунд видео в ${format.toUpperCase()}...`, token);
-                    await editMessage(chatId, originalMessageId, "⏳ **Магия FFmpeg:** превращаю видео в гифку...", token);
-                    ctx.waitUntil(sendVideoToGifInBackground(
-                        chatId,
-                        videoData,
-                        originalMessageId,
-                        format,
-                        envData,
-                        token
-                    ));
-
-                    return new Response('OK', { status: 200 });
-
-                } else if (data === 'delete_message') {
-                    // Исправлено: используем callback.id здесь тоже
-                    const callbackQueryId = callback.id; 
-                    const token = envData.TELEGRAM_BOT_TOKEN;
-                    
-                    await deleteMessage(chatId, callback.message.message_id, token);
-                    await answerCallbackQuery(callbackQueryId, "Меню закрыто", token);
-                    return new Response('OK', { status: 200 });
+                // 1. Получаем статусы медиа
+                const [rawImage, rawVideo] = await Promise.all([
+                    envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_IMAGE_DATA_KEY_SUFFIX),
+                    envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_VIDEO_DATA_KEY_SUFFIX),
+                ]);
+                const isPhotoSaved = !!rawImage;
+                const isVideoSaved = !!rawVideo;
                 
-                // ОБРАБОТКА КОЛБЭКОВ МЕНЮ ГОЛОСА
-                } else if (data.startsWith('say_') || data === 'ignore_empty_text') {
-                    // 1. Инициализация переменных
-                    const chatKey = chatId.toString();
-                    const storage = envData.LAST_PHOTO_STORAGE; 
-                    const token = envData.TELEGRAM_BOT_TOKEN;
-                    const callbackId = callback.id;
-                    const messageId = callback.message.message_id; // Используем messageId
+                // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_resize_mode|...) ---
+                if (data.startsWith('select_resize_mode|')) {
                     
-                    // --- ДАННЫЕ ДЛЯ ОБРАБОТКИ ---
-                    const SAY_VOICE_KEY = chatKey + SAY_VOICE_KEY_SUFFIX; 
-                    const SAY_TEXT_KEY = chatKey + SAY_TEXT_KEY_SUFFIX; 
-                    const LAST_ACTION_KEY = chatKey + envData.LAST_ACTION_KEY_SUFFIX;
-                    
-                    // 🛑 НОВЫЕ КЛЮЧИ ЗДЕСЬ
-                    const SAY_AWAITING_VOICE_KEY = chatKey + SAY_AWAITING_VOICE_KEY_SUFFIX; 
-                    const SAY_MESSAGE_ID_KEY = chatKey + SAY_MESSAGE_ID_KEY_SUFFIX; // Тоже нужен для обновления меню
-                    // Читаем текущее состояние
-                    let currentVoice = await storage.get(SAY_VOICE_KEY) || DEFAULT_VOICE;
-                    let currentText = await storage.get(SAY_TEXT_KEY) || null;
-                    
-                    if (data === 'say_input') {
-                        // 1. АКТИВАЦИЯ РЕЖИМА ОЖИДАНИЯ ВВОДА ТЕКСТА
-                        ctx.waitUntil(storage.put(LAST_ACTION_KEY, 'awaiting_say_text', { expirationTtl: 300 }));
-                        ctx.waitUntil(answerCallbackQuery(callback.id, "💬 Жду текст для озвучки...", token));
-                        
-                        await sendSayControlMenu(chatId, token, currentVoice, currentText, messageId, true);
-                        return new Response('OK', { status: 200 });
-                        
-                    } else if (data.startsWith('say_set_voice|')) {
-                        // 2. СМЕНА ГОЛОСА (включая VOICE_USER)
-                        const newVoice = data.split('|')[1];
-                        
-                        if (newVoice !== currentVoice) {
-                            // Установка нового голоса
-                            await storage.put(SAY_VOICE_KEY, newVoice); 
-                            currentVoice = newVoice; 
-                            
-                            // Очищаем текст, если перешли в режим СВОЙ ГОЛОС, т.к. текст больше не нужен
-                            if (newVoice === VOICE_USER) {
-                                 await storage.delete(SAY_TEXT_KEY);
-                                 currentText = null;
-                            }
-                            
-                            ctx.waitUntil(answerCallbackQuery(callback.id, `✅ Выбран голос: ${newVoice}`, token));
-                            await sendSayControlMenu(chatId, token, currentVoice, currentText, messageId);
-                        } else {
-                            ctx.waitUntil(answerCallbackQuery(callback.id, `Голос "${newVoice}" уже выбран!`, token));
-                        }
-                        
-                        return new Response('OK', { status: 200 }); 
-                        
-                    // 🛑 НОВЫЙ БЛОК: ИНИЦИАЦИЯ ЗАПИСИ ГОЛОСА
-                    } else if (data === 'say_input_voice') {
-                        // 1. Устанавливаем флаг ожидания ГОЛОСОВОГО сообщения (с TTL 300 секунд)
-                        // 1. АКТИВАЦИЯ РЕЖИМА ОЖИДАНИЯ ВВОДА ТЕКСТА
-                        ctx.waitUntil(storage.put(LAST_ACTION_KEY, 'awaiting_say_text', { expirationTtl: 300 }));
-                        
-                        // 2. Сохраняем ID сообщения меню, чтобы знать, какое редактировать позже
-                        await storage.put(SAY_MESSAGE_ID_KEY, messageId.toString());
-                        
-                        const promptMessage = "🎤 **Ожидаю голосовое сообщение.** Пожалуйста, **в ответ на это сообщение** запишите и отправьте ваш голос.\n\nЯ выполню OGG→MP3 конвертацию.";
-                        
-                        const replyMarkup = JSON.stringify({
-                            force_reply: true,
-                            selective: true 
-                        });
+                    const selectedMode = data.split('|')[1]; // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
+                    let newMenu;
 
-                        // 3. Отправляем сообщение с force_reply (в фоне)
-                        ctx.waitUntil(sendMessage(chatId, promptMessage, token, replyMarkup, 'Markdown'));
-                        
-                        // 4. Обновляем меню, чтобы показать статус "Ожидаю ввода"
-                        // Устанавливаем isAwaitingInput = true
-                        await sendSayControlMenu(chatId, token, currentVoice, currentText, messageId, true);
-
-                        ctx.waitUntil(answerCallbackQuery(callback.id, "🎤 Готов к записи голоса!", token));
-                        return new Response('OK', { status: 200 });
-
-                    } else if (data === 'say_run') {
-                        // ЗАПУСК ОЗВУЧКИ
-                        const token = envData.TELEGRAM_BOT_TOKEN;
-
-                        // 1. Извлечение стейта
-                        const savedVoice = await storage.get(chatKey + SAY_VOICE_KEY_SUFFIX) || DEFAULT_VOICE;
-                        const textToSpeak = await storage.get(chatKey + SAY_TEXT_KEY_SUFFIX) || '';
-
-                        // Валидация текста
-                        if (!textToSpeak || textToSpeak.includes("Ошибка STT")) {
-                            await answerCallbackQuery(callbackId, '⚠️ Сначала введите текст/голос!', token);
-                            return new Response('OK', { status: 200 });
-                        }
-
-                        // 2. Инициализация сообщения "Загрузка..."
-                        await answerCallbackQuery(callbackId, '⏳ Запуск процесса озвучки...', token);
-                        const loadingMessage = await sendMessageMarkdown(chatId, "🔊 **Генерация аудио...**", token);
-                        const loadingMessageId = loadingMessage.result.message_id;
-
-                        try {
-                            // --- ВЕТВЛЕНИЕ: TTS (М/Ж) vs VTA (Свой голос) ---
-                            // 🛑 Логируем начало процесса
-                            envData.ctx.waitUntil(logDebug("SAY_RUN_START", `Голос: ${savedVoice}, Текст: ${textToSpeak.substring(0, 50)}`, envData));
-                            if (savedVoice === VOICE_MALE || savedVoice === VOICE_FEMALE) {
-                                // =======================================================
-                                // РЕЖИМ 1: TTS (TEXT-TO-SPEECH)
-                                // =======================================================
-                                
-                                envData.ctx.waitUntil(logDebug("SAY_RUN_TTS", `Запуск TTS для голоса: ${savedVoice}`, envData));
-                                await editMessage(chatId, loadingMessageId, `🔊 **Запускаю TTS...**`, token);
-                                
-                                // 2.1. Загрузка конфигурации TTS
-                                const t2aResult = await loadActiveConfig('TEXT_TO_AUDIO', envData, chatId); 
-                                const t2aConfig = t2aResult.config; 
-                                
-                                // 2.2. Запуск TTS
-                                const ttsResponse = await t2aConfig.FUNCTION(t2aConfig, textToSpeak, envData, savedVoice);
-                    
-                                // 2.3. Отправка результата
-                                const audioBase64 = ttsResponse.audioBase64;
-                                const mimeType = ttsResponse.mimeType; 
-                                await sendAudioMessage(chatId, audioBase64, mimeType, token, envData);
-                    
-                                // 2.4. Финальное сообщение
-                                await editMessage(chatId, loadingMessageId, `✅ **Генерация голоса завершена!**`, token);
-                                
-                                return new Response('OK', { status: 200 });
-                    
-                            } else if (savedVoice === VOICE_USER) { 
-                                // =======================================================
-                                // РЕЖИМ 2: VTA (OGG -> MP3) - Конвертация "Свой голос"
-                                // =======================================================
-                                
-                                const sourceVoiceFileId = await storage.get(chatKey + SAY_VOICE_SOURCE_ID_SUFFIX); 
-                                // 🛑 Логируем попытку извлечения ID
-                                envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_INIT", `Поиск исходного ID OGG`, envData));
-                                
-                                if (!sourceVoiceFileId) {
-                                    envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_FAIL", "File ID OGG не найден.", envData));
-                                    // Если нет ID исходного OGG, значит, голосовое сообщение не было отправлено в этом режиме.
-                                    await answerCallbackQuery(callbackId, '⚠️ Сначала отправьте голосовое сообщение для конвертации!', token);
-                                    await editMessage(chatId, loadingMessageId, `⚠️ **Ошибка:** Сначала отправьте OGG-файл в чат.`, token);
-                                    // 🛑 Здесь мы должны выйти сразу, так как нечего конвертировать.
-                                    return new Response('OK', { status: 200 }); 
-                                }
-                                // 🛑 Логируем успешное извлечение ID
-                                envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_SUCCESS", `ID OGG найден. Запускаю Health Check.`, envData));
-                                
-                                // 1. ПРОВЕРКА ЗДОРОВЬЯ КОНВЕРТЕРА
-                                await editMessage(chatId, loadingMessageId, '🔊 **Проверка сервиса конвертации...**', token);
-                                const isHealthy = await checkConverterHealth(envData); // Используем функцию, которую мы разработали
-                                
-                                if (!isHealthy) {
-                                    await editMessage(chatId, loadingMessageId, '❌ **Ошибка:** Конвертер недоступен (Render).', token);
-                                    return new Response('OK', { status: 200 }); 
-                                }
-                                await editMessage(chatId, loadingMessageId, '🔊 **Конвертация OGG → MP3...**', token);
-                                // 🛑 Логируем перед вызовом конвертера (последний лог перед потенциальным зависанием)
-                                envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_CONVERT", `Вызов convertOggToMp3 для ID: ${sourceVoiceFileId.substring(0, 10)}...`, envData));
-                                // 2.1. Конвертация (используем исходный OGG ID)
-                                const mp3Buffer = await convertOggToMp3(sourceVoiceFileId, envData); 
-                                // 🛑 Логируем после возврата из конвертера
-                                envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_RETURN", `Конвертер вернул данные. Размер: ${mp3Buffer ? mp3Buffer.byteLength : '0'}`, envData));
-                                if (!mp3Buffer) {
-                                    throw new Error("Конвертер OGG->MP3 вернул пустые данные.");
-                                }
-                                    
-                                const mp3Base64 = arrayBufferToBase64(mp3Buffer); 
-                    
-                                // 2.2. Отправка финального MP3
-                                await sendAudioMessage(chatId, mp3Base64, 'audio/mpeg', token, envData);
-                                
-                                // 2.3. Финальное сообщение
-                                await editMessage(chatId, loadingMessageId, `✅ **Конвертация "Свой голос" завершена!**`, token);
-                                
-                            } else {
-                                // Неизвестный голос
-                                await editMessage(chatId, loadingMessageId, `⚠️ Неизвестный голос: ${savedVoice}`, token);
-                            }
-                            
-                            // 3. ЕДИНАЯ ТОЧКА ВЫХОДА ИЗ try:
-                            return new Response('OK', { status: 200 }); 
-                    
-                        } catch (e) {
-                            // Обработка ошибок
-                            const errorMessage = e.message.substring(0, 1000);
-                            // 🛑 Логируем ошибку для админа
-                            envData.ctx.waitUntil(logDebug("SAY_RUN_CRITICAL_ERROR", `Критическая ошибка: ${errorMessage}`, envData));
-                            console.error("Ошибка при запуске озвучки:", e);
-                            
-                            // Редактируем сообщение с ошибкой
-                            await editMessage(chatId, loadingMessageId, `❌ **Ошибка при озвучивании:**\n\`${errorMessage.substring(0, 100)}\``, token);
-                            
-                            return new Response('OK', { status: 200 });
-                        }
-                        
-                    } else if (data === 'ignore_empty_text') {
-                        ctx.waitUntil(answerCallbackQuery(callback.id, "Введите текст для озвучки!", token));
+                    // 🛑 ИСПРАВЛЕНО: Использование 'selectedMode' и передача 'storage'
+                    if (selectedMode === RESIZE_IMAGE_MODE) {
+                        newMenu = await getResizeImageMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storage);
+                    } else if (selectedMode === RESIZE_VIDEO_MODE) {
+                        newMenu = await getResizeVideoMenuKeyboard(chatId, envData, null, isPhotoSaved, isVideoSaved, storage);
+                    } else {
+                        // Добавьте обработку неожиданного режима
+                        ctx.waitUntil(answerCallbackQuery(callbackQueryId, 'Неизвестный режим изменения размера.', token));
                         return new Response('OK', { status: 200 });
                     }
-                // ЛОГИКА ДЛЯ АДМИН-КОМАНД (Начинаются с 'admin_')
-                } else if (data.startsWith('admin_') || data === 'toggle_') { // <-- ДОБАВЛЕНО 'toggle_tts'
-                        const storage = env.LAST_PHOTO_STORAGE;
-                        const token = envData.TELEGRAM_BOT_TOKEN;
+                    
+                    // 🛑 ИСПРАВЛЕНО: Использование 'newMenu' вместо 'menu'
+                    ctx.waitUntil(Promise.allSettled([
+                        editMessageWithKeyboard(
+                            chatId, 
+                            messageId, 
+                            newMenu.messageText, // ИСПРАВЛЕНО
+                            token, 
+                            newMenu.keyboardObject // ИСПРАВЛЕНО
+                        ),
+                        answerCallbackQuery(callbackQueryId, `Переключено на ${selectedMode === RESIZE_VIDEO_MODE ? 'Видео' : 'Фото'} изменение размера.`, token)
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                }
+                
+                // --- 3. ЗАПУСК ГЕНЕРАЦИИ (generate_resize_now|...) ---
+                if (data.startsWith('generate_resize_now|')) {
+                    const chatKey = chatId.toString();
+                    const parts = data.split('|');
+                    const finalMode = parts[1];      // IMAGE_TO_RESIZE или VIDEO_TO_RESIZE
+                    const actionParam = parts[2];    // Разрешение
 
-                        // Проверяем, является ли пользователь администратором
-                        if (chatId.toString() !== envData.ADMIN_CHAT_ID.toString()) {
-                        ctx.waitUntil(sendMessage(chatId, "❌ Вы не можете использовать эти админ-функции.", token));
+                    let fileId; // Переменная для ID файла
+
+                    if (finalMode === 'VIDEO_TO_RESIZE') {
+                        const rawVideo = await envData.LAST_PHOTO_STORAGE.get(chatId + '_last_video_data');
+                        if (!rawVideo) {
+                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Данные видео не найдены`, token));
+                            return new Response('OK', { status: 200 });
+                        }
+                        // Для видео file_id лежит внутри JSON (как и было)
+                        const mediaData = JSON.parse(rawVideo);
+                        fileId = mediaData.file_id;
+                    } else if (finalMode === 'IMAGE_TO_RESIZE') {
+                        // берем file_id напрямую из его собственного ключа
+                        fileId = await envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_FILE_ID_KEY_SUFFIX);
+                    }
+
+                    // ✅ ГЛАВНАЯ ПРОВЕРКА: Если ключа нет или он протух
+                    if (!fileId) {
+                        const mediaName = finalMode === 'VIDEO_TO_RESIZE' ? 'видео' : 'фото';
+                        
+                        // 1. Убираем "часики" с кнопки
+                        await answerCallbackQuery(callbackQueryId, `❌ Данные ${mediaName} устарели.`, token);
+                        
+                        // 2. Информируем в чате
+                        await editMessage(chatId, originalMessageId, 
+                            `⚠️ **Ошибка: файл не найден.**\n\nСкорее всего, прошло более часа с момента загрузки. Пожалуйста, отправьте ${mediaName} боту еще раз.`, 
+                            token
+                        );
+                        return new Response('OK', { status: 200 }); // Завершаем выполнение
+                    }
+                    
+                    // Остальные переменные
+                    const originalReplyMarkup = callback.message.reply_markup; // Сохраняем клавиатуру
+                    const originalMessageId = callback.message.message_id; 
+                    
+                    // Запуск асинхронной обработки в фоне
+                    ctx.waitUntil(sendMediaToConverterInBackground(
+                        chatId, 
+                        fileId, 
+                        originalMessageId, 
+                        finalMode, 
+                        actionParam, 
+                        envData, 
+                        token, 
+                        ctx,
+                        originalReplyMarkup
+                    ));
+
+                    ctx.waitUntil(Promise.allSettled([
+                        answerCallbackQuery(callbackQueryId, `Запускаю изменение размера`, token),
+                        editMessage(chatId, originalMessageId, `⏳ Запускаю Изменение размера, Параметр: ${actionParam}`, token)
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                } // --- КОНЕЦ НОВОГО БЛОКА RESIZE ---
+                // --- ЗАПУСК ПОВОРОТА (generate_rotate_now|...) ---
+                if (data.startsWith('generate_rotate_now|')) {
+                    const chatKey = chatId.toString();
+                    const parts = data.split('|');
+                    const finalMode = parts[1];      // IMAGE_TO_ROTATE или VIDEO_TO_ROTATE
+                    const actionParam = parts[2];    // Разрешение
+
+                    let fileId; // Переменная для ID файла
+
+                    if (finalMode === 'VIDEO_TO_ROTATE') {
+                        const rawVideo = await envData.LAST_PHOTO_STORAGE.get(chatId + '_last_video_data');
+                        if (!rawVideo) {
+                            ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Данные видео не найдены`, token));
+                            return new Response('OK', { status: 200 });
+                        }
+                        // Для видео file_id лежит внутри JSON (как и было)
+                        const mediaData = JSON.parse(rawVideo);
+                        fileId = mediaData.file_id;
+                    } else if (finalMode === 'IMAGE_TO_ROTATE') {
+                        // берем file_id напрямую из его собственного ключа
+                        fileId = await envData.LAST_PHOTO_STORAGE.get(chatKey + LAST_FILE_ID_KEY_SUFFIX);
+                    }
+
+                    // ✅ ГЛАВНАЯ ПРОВЕРКА: Если ключа нет или он протух
+                    if (!fileId) {
+                        const mediaName = finalMode === 'VIDEO_TO_ROTATE' ? 'видео' : 'фото';
+                        
+                        // 1. Убираем "часики" с кнопки
+                        await answerCallbackQuery(callbackQueryId, `❌ Данные ${mediaName} устарели.`, token);
+                        
+                        // 2. Информируем в чате
+                        await editMessage(chatId, originalMessageId, 
+                            `⚠️ **Ошибка: файл не найден.**\n\nСкорее всего, прошло более часа с момента загрузки. Пожалуйста, отправьте ${mediaName} боту еще раз.`, 
+                            token
+                        );
+                        return new Response('OK', { status: 200 }); // Завершаем выполнение
+                    }
+                    
+                    // Остальные переменные
+                    const originalReplyMarkup = callback.message.reply_markup; // Сохраняем клавиатуру
+                    const originalMessageId = callback.message.message_id; 
+                    
+                    // Запуск асинхронной обработки в фоне
+                    ctx.waitUntil(sendMediaToConverterInBackground(
+                        chatId, 
+                        fileId, 
+                        originalMessageId, 
+                        finalMode, 
+                        actionParam, 
+                        envData, 
+                        token, 
+                        ctx,
+                        originalReplyMarkup
+                    ));
+
+                    ctx.waitUntil(Promise.allSettled([
+                        answerCallbackQuery(callbackQueryId, `Запускаю поворот изображения`, token),
+                        editMessage(chatId, originalMessageId, `⏳ Запускаю Поворот изображения, Параметр: ${actionParam}`, token)
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                } // --- КОНЕЦ НОВОГО БЛОКА ROTATE ---
+                // --- 2. ПЕРЕКЛЮЧЕНИЕ РЕЖИМА (select_upscale_mode|...) ---
+                if (data.startsWith('select_upscale_mode|')) {
+                    const selectedMode = data.split('|')[1]; // 'IMAGE_TO_UPSCALE' или 'VIDEO_TO_UPSCALE'
+                    let menu;
+                    
+                    if (selectedMode === 'IMAGE_TO_UPSCALE') {
+                        menu = await getUpscaleImageMenuKeyboard(chatId, storage, lastPrompt, isMediaSaved);
+                    } else if (selectedMode === 'VIDEO_TO_UPSCALE') {
+                        menu = await getUpscaleVideoMenuKeyboard(chatId, storage, lastPrompt, isMediaSaved);
+                    }
+                                            
+                    ctx.waitUntil(Promise.allSettled([
+                        editMessageWithKeyboard(
+                            chatId, 
+                            messageId, 
+                            menu.messageText, 
+                            token, 
+                            menu.keyboardObject
+                        ),
+                        answerCallbackQuery(callbackQueryId, `Переключено на ${selectedMode === 'VIDEO_TO_UPSCALE' ? 'Видео' : 'Фото'} апскейл.`, token)
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                }                    
+                // --- 3. ЗАПУСК ГЕНЕРАЦИИ (generate_upscale_now|...) ---
+                if (data.startsWith('generate_upscale_now|')) {
+                    const parts = data.split('|');
+                    const finalMode = parts[1]; // IMAGE_TO_UPSCALE или VIDEO_TO_UPSCALE
+                    
+                    let canRun = false;
+                    let requiredText = '';
+                
+                    if (finalMode === 'IMAGE_TO_UPSCALE') {
+                        // Условие для I2U: нужно сохраненное фото
+                        canRun = isMediaSaved; 
+                        requiredText = "фотографию";
+                    } else if (finalMode === 'VIDEO_TO_UPSCALE') {
+                        // Условие для V2U: нужен сохраненный Task ID
+                        canRun = isTaskValid; // Используем новый флаг isTaskValid
+                        requiredText = "Task ID предыдущего задания (/checkvideo)";
+                    } else {
+                        // Неизвестный режим
+                        ctx.waitUntil(answerCallbackQuery(callbackQueryId, "Ошибка: Неизвестный режим апскейла", token));
                         return new Response('OK', { status: 200 });
+                    }
+                
+                    if (!canRun) {
+                        // Единое сообщение об ошибке для обоих режимов
+                        ctx.waitUntil(answerCallbackQuery(callbackQueryId, `❌ Невозможно запустить. Сначала получите ${requiredText}.`, token));
+                        return new Response('OK', { status: 200 });
+                    }
+                    
+                    // 🔑 ВНИМАНИЕ: Сюда нужно вставить Ваш вызов логики запуска апскейла
+                    // Логика запуска, которая использует:
+                    // - finalMode (для выбора I2U или V2U)
+                    // - Task ID (если finalMode == V2U, то taskDataRaw доступен через rawTaskData)
+                    ctx.waitUntil(processUpscaleGenerateCommand(finalMode, chatId, envData, storage, rawTaskData)); // <-- Передаем rawTaskData
+                    
+                    ctx.waitUntil(Promise.allSettled([
+                        answerCallbackQuery(callbackQueryId, "Запускаю апскейл...", token),
+                        editMessage(chatId, messageId, `⏳ **Запускаю Апскейл...** (Режим: ${finalMode})`, token)
+                    ]));
+                    
+                    return new Response('OK', { status: 200 });
+                }// --- КОНЕЦ НОВОГО БЛОКА АПСКЕЙЛА ---
+                
+            // Колбэк gif_to_video - Конвертация GIF в Видео
+            } else if (data === 'gif_to_video') {
+                // Исправлено: используем callback.id вместо callbackQuery.id
+                const callbackQueryId = callback.id; 
+                const token = envData.TELEGRAM_BOT_TOKEN;
+                const GIF_DATA_KEY = `${chatId}_last_gif_data`;
+                const rawData = await envData.LAST_PHOTO_STORAGE.get(GIF_DATA_KEY);
+
+                if (!rawData) {
+                    await answerCallbackQuery(callbackQueryId, "❌ Данные устарели. Пришлите файл снова.", token);
+                    return new Response('OK', { status: 200 });
                 }
 
-                // ✅ КОРРЕКЦИЯ: ЯВНАЯ ОБРАБОТКА admin_update_cmds В ОСНОВНОМ БЛОКЕ
-                if (data === 'admin_update_cmds') {
-                    // Логика  обновления команд (admin_update_cmds)
-                    const resultPublic = await setBotCommands(token, PUBLIC_COMMANDS, 'default');
-                    const resultAdmin = await setBotCommands(token, ADMIN_COMMANDS, 'chat', envData.ADMIN_CHAT_ID);
-                    // ✅ НОВОЕ КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Установка для all_private_chats
-                    // Этот скоуп имеет самый высокий приоритет для личных чатов и принудит к обновлению.
-                    const resultPrivate = await setBotCommands(token, PUBLIC_COMMANDS, 'all_private_chats');
-                    
-                    let message = "✅ **Команды обновлены!**\n\n";
-                    message += `**Приватные (private) для всех:** ${resultPrivate.ok ? 'Успех' : 'Ошибка'}\n`; // <-- Новая строка
-                    message += `**Публичные (default) для всех:** ${resultPublic.ok ? 'Успех' : `Ошибка: ${resultPublic.description || 'Нет ответа от API'}`}\n`;
-                    message += `**Админские (chat ID ${envData.ADMIN_CHAT_ID}) для меня:** ${resultAdmin.ok ? 'Успех' : `Ошибка: ${resultAdmin.description || 'Нет ответа от API'}`}`;
+                const gifData = JSON.parse(rawData);
+                const originalMessageId = callback.message.message_id;
 
-                    await sendMessageMarkdown(chatId, message, token);
-            
-            // КРИТИЧНО: Возвращаем ответ и завершаем Worker
-            return new Response('OK', { status: 200 });
-        }
-                // ВЫЗОВ НОВОЙ ФУНКЦИИ
-                // Возвращаем await, чтобы отлавливать синхронные ошибки
-                const handled = await handleAdminCallback(chatId, callback, envData, ctx); 
-                
+                await answerCallbackQuery(callbackQueryId, "🎬 Начинаю конвертацию...", token);
+                await editMessage(chatId, originalMessageId, "⏳ **Магия FFmpeg:** превращаю анимацию в видео...", token);
+
+                ctx.waitUntil(sendGifToConverterInBackground(
+                    chatId,
+                    gifData.file_id,
+                    originalMessageId,
+                    envData,
+                    token
+                ));
                 return new Response('OK', { status: 200 });
+
+            // Колбэк video_to_gif - Конвертация Видео в GIF
+            } else if (data.startsWith('video_to_gif:')) {
+                const format = data.split(':')[1]; // gif или mp4
+                const callbackQueryId = callback.id;
+                const VIDEO_DATA_KEY = `${chatId}_last_video_data`; // Используем твой ключ для видео
+                const rawData = await envData.LAST_PHOTO_STORAGE.get(VIDEO_DATA_KEY);
+
+                if (!rawData) {
+                    await answerCallbackQuery(callbackQueryId, "❌ Видео не найдено. Пришлите его снова.", token);
+                    return new Response('OK', { status: 200 });
+                }
+
+                const videoData = JSON.parse(rawData);
+                const originalMessageId = callback.message.message_id;
+
+                await answerCallbackQuery(callbackQueryId, `Создаю ${format}...`, token);
+                await editMessage(chatId, originalMessageId, `⏳ Нарезаю первые 5 секунд видео в ${format.toUpperCase()}...`, token);
+                await editMessage(chatId, originalMessageId, "⏳ **Магия FFmpeg:** превращаю видео в гифку...", token);
+                ctx.waitUntil(sendVideoToGifInBackground(
+                    chatId,
+                    videoData,
+                    originalMessageId,
+                    format,
+                    envData,
+                    token
+                ));
+
+                return new Response('OK', { status: 200 });
+
+            } else if (data === 'delete_message') {
+                // Исправлено: используем callback.id здесь тоже
+                const callbackQueryId = callback.id; 
+                const token = envData.TELEGRAM_BOT_TOKEN;
                 
-                // --- ЛОГИКА vision_generate (СОЗДАТЬ КАРТИНКУ) ---
-                } else if (data === 'vision_generate') {
-                    const promptToGenerate = await storage.get(LAST_PROMPT_KEY);
+                await deleteMessage(chatId, callback.message.message_id, token);
+                await answerCallbackQuery(callbackQueryId, "Меню закрыто", token);
+                return new Response('OK', { status: 200 });
+            
+            // ОБРАБОТКА КОЛБЭКОВ МЕНЮ ГОЛОСА
+            } else if (data.startsWith('say_') || data === 'ignore_empty_text') {
+                // 1. Инициализация переменных
+                const chatKey = chatId.toString();
+                const storage = envData.LAST_PHOTO_STORAGE; 
+                const token = envData.TELEGRAM_BOT_TOKEN;
+                const callbackId = callback.id;
+                const messageId = callback.message.message_id; // Используем messageId
+                
+                // --- ДАННЫЕ ДЛЯ ОБРАБОТКИ ---
+                const SAY_VOICE_KEY = chatKey + SAY_VOICE_KEY_SUFFIX; 
+                const SAY_TEXT_KEY = chatKey + SAY_TEXT_KEY_SUFFIX; 
+                const LAST_ACTION_KEY = chatKey + envData.LAST_ACTION_KEY_SUFFIX;
+                
+                // 🛑 НОВЫЕ КЛЮЧИ ЗДЕСЬ
+                const SAY_AWAITING_VOICE_KEY = chatKey + SAY_AWAITING_VOICE_KEY_SUFFIX; 
+                const SAY_MESSAGE_ID_KEY = chatKey + SAY_MESSAGE_ID_KEY_SUFFIX; // Тоже нужен для обновления меню
+                // Читаем текущее состояние
+                let currentVoice = await storage.get(SAY_VOICE_KEY) || DEFAULT_VOICE;
+                let currentText = await storage.get(SAY_TEXT_KEY) || null;
+                
+                if (data === 'say_input') {
+                    // 1. АКТИВАЦИЯ РЕЖИМА ОЖИДАНИЯ ВВОДА ТЕКСТА
+                    ctx.waitUntil(storage.put(LAST_ACTION_KEY, 'awaiting_say_text', { expirationTtl: 300 }));
+                    ctx.waitUntil(answerCallbackQuery(callback.id, "💬 Жду текст для озвучки...", token));
                     
-                    // Получаем ID колбэка для немедленного ответа
-                    const callbackId = callback.id; 
-                    const messageId = callback.message.message_id; // ✅ ID сообщения меню
-
-                    // 1. НЕМЕДЛЕННЫЙ ОТВЕТ НА КОЛБЭК
-                    ctx.waitUntil(answerCallbackQuery(callbackId, "⏳ Запускаю создание изображения...", token));
-
-                    if (promptToGenerate) {
+                    await sendSayControlMenu(chatId, token, currentVoice, currentText, messageId, true);
+                    return new Response('OK', { status: 200 });
+                    
+                } else if (data.startsWith('say_set_voice|')) {
+                    // 2. СМЕНА ГОЛОСА (включая VOICE_USER)
+                    const newVoice = data.split('|')[1];
+                    
+                    if (newVoice !== currentVoice) {
+                        // Установка нового голоса
+                        await storage.put(SAY_VOICE_KEY, newVoice); 
+                        currentVoice = newVoice; 
                         
-                        // Опционально: Редактируем сообщение, чтобы показать, что процесс начался
-                        ctx.waitUntil(editMessage(chatId, messageId, `🖼️ **Создание изображения** по промпту: \`${promptToGenerate}\``, token));
-
-                        // Вызываем существующую функцию processCreateCommand
-                        ctx.waitUntil(processText2ImageCommand(
-                            chatId,
-                            promptToGenerate, // Передаем промпт из KV
-                            token,
-                            storage,
-                            envData,
-                            messageId // ✅ НОВЫЙ 6-й аргумент: ID сообщения для редактирования
-                        ));
+                        // Очищаем текст, если перешли в режим СВОЙ ГОЛОС, т.к. текст больше не нужен
+                        if (newVoice === VOICE_USER) {
+                                await storage.delete(SAY_TEXT_KEY);
+                                currentText = null;
+                        }
+                        
+                        ctx.waitUntil(answerCallbackQuery(callback.id, `✅ Выбран голос: ${newVoice}`, token));
+                        await sendSayControlMenu(chatId, token, currentVoice, currentText, messageId);
                     } else {
-                        await editMessage(chatId, messageId, `⚠️ Промпт устарел или не найден. Сначала отправьте фото.`, token);
+                        ctx.waitUntil(answerCallbackQuery(callback.id, `Голос "${newVoice}" уже выбран!`, token));
                     }
                     
-                    // Возвращаем OK после того, как все асинхронные задачи поставлены в очередь
+                    return new Response('OK', { status: 200 }); 
+                    
+                // 🛑 НОВЫЙ БЛОК: ИНИЦИАЦИЯ ЗАПИСИ ГОЛОСА
+                } else if (data === 'say_input_voice') {
+                    // 1. Устанавливаем флаг ожидания ГОЛОСОВОГО сообщения (с TTL 300 секунд)
+                    // 1. АКТИВАЦИЯ РЕЖИМА ОЖИДАНИЯ ВВОДА ТЕКСТА
+                    ctx.waitUntil(storage.put(LAST_ACTION_KEY, 'awaiting_say_text', { expirationTtl: 300 }));
+                    
+                    // 2. Сохраняем ID сообщения меню, чтобы знать, какое редактировать позже
+                    await storage.put(SAY_MESSAGE_ID_KEY, messageId.toString());
+                    
+                    const promptMessage = "🎤 **Ожидаю голосовое сообщение.** Пожалуйста, **в ответ на это сообщение** запишите и отправьте ваш голос.\n\nЯ выполню OGG→MP3 конвертацию.";
+                    
+                    const replyMarkup = JSON.stringify({
+                        force_reply: true,
+                        selective: true 
+                    });
+
+                    // 3. Отправляем сообщение с force_reply (в фоне)
+                    ctx.waitUntil(sendMessage(chatId, promptMessage, token, replyMarkup, 'Markdown'));
+                    
+                    // 4. Обновляем меню, чтобы показать статус "Ожидаю ввода"
+                    // Устанавливаем isAwaitingInput = true
+                    await sendSayControlMenu(chatId, token, currentVoice, currentText, messageId, true);
+
+                    ctx.waitUntil(answerCallbackQuery(callback.id, "🎤 Готов к записи голоса!", token));
                     return new Response('OK', { status: 200 });
 
-                // --- ЛОГИКА start_command (Открыть главное меню) ---
-                } else if (data === 'start_command') {
-                    const callbackId = callback.id;
-                    const messageId = callback.message.message_id;
-                    const STORAGE = envData.LAST_PHOTO_STORAGE; 
-                    // ✅ ИСПРАВЛЕНО: Определяем, есть ли сохраненное изображение
-                    const isPhotoSaved = !!(await STORAGE.get(chatId + LAST_IMAGE_DATA_KEY_SUFFIX));
-                    const isVideoSaved = !!(await STORAGE.get(chatId + LAST_VIDEO_DATA_KEY_SUFFIX));
-                    // 1. Получаем данные главного меню
-                    const { messageText, keyboardObject } = getStartMenuData(isPhotoSaved, isVideoSaved);
+                } else if (data === 'say_run') {
+                    // ЗАПУСК ОЗВУЧКИ
+                    const token = envData.TELEGRAM_BOT_TOKEN;
 
-                    // 2. Редактируем сообщение (вместо отправки нового)
-                    ctx.waitUntil(
-                        (async () => {
-                            // Отвечаем на колбэк (убираем часы)
-                            await answerCallbackQuery(callbackId, "Открываю главное меню...", token);
+                    // 1. Извлечение стейта
+                    const savedVoice = await storage.get(chatKey + SAY_VOICE_KEY_SUFFIX) || DEFAULT_VOICE;
+                    const textToSpeak = await storage.get(chatKey + SAY_TEXT_KEY_SUFFIX) || '';
 
-                            // Редактируем сообщение, заменяя его на меню /start
-                            await editMessageWithKeyboard(
-                                chatId,
-                                messageId,
-                                messageText,
-                                token,
-                                keyboardObject.inline_keyboard
-                            );
-                        })()
-                    );
-                    return new Response('OK', { status: 200 });
-
-                // --- ЛОГИКА regenerate_prompt (ПЕРЕГЕНЕРАЦИЯ ИЗ ФОТО) ---
-                } else if (data === 'regenerate_prompt') {
-                    const imageBase64 = await storage.get(LAST_IMAGE_DATA_KEY); // Проверяем наличие фото
-
-                    if (!imageBase64) {
-                            await editMessage(chatId, messageId, "⚠️ **Внимание:** Нет исходного изображения для повторного анализа. Сначала отправьте фотографию.", token);
-                            return new Response('OK', { status: 200 });
-                        }
-
-                        ctx.waitUntil(processPromptRegeneration(chatId, imageBase64, token, storage, envData)); // Вызываем функцию
-
-                        return new Response('OK', { status: 200 });
-
-                // --- ЛОГИКА edit_prompt (РЕДАКТИРОВАНИЕ ТЕКСТА) ---
-                } else if (data === 'edit_prompt') {
-                    const currentPrompt = await storage.get(LAST_PROMPT_KEY); // Проверяем наличие текста промпта
-
-                    if (!currentPrompt) {
-                        await editMessage(chatId, messageId, "⚠️ **Ошибка:** Нечего редактировать. Сначала получите промпт, отправив фотографию или создайте его вручную.", token);
+                    // Валидация текста
+                    if (!textToSpeak || textToSpeak.includes("Ошибка STT")) {
+                        await answerCallbackQuery(callbackId, '⚠️ Сначала введите текст/голос!', token);
                         return new Response('OK', { status: 200 });
                     }
 
-                    // ✅ ИСПРАВЛЕНИЕ: Используем STATE_AWAITING_PROMPT_EDIT, который определен выше
-                    await storage.put(USER_STATE_KEY, STATE_AWAITING_PROMPT_EDIT, { expirationTtl: 300 });
+                    // 2. Инициализация сообщения "Загрузка..."
+                    await answerCallbackQuery(callbackId, '⏳ Запуск процесса озвучки...', token);
+                    const loadingMessage = await sendMessageMarkdown(chatId, "🔊 **Генерация аудио...**", token);
+                    const loadingMessageId = loadingMessage.result.message_id;
 
-                    await editMessage(chatId, messageId, `✏️ **Редактирование промпта**\n\nЯ сохраню его и буду использовать для дальнейшей работы.\n\nТекущий промпт: \`${currentPrompt}\``, token);
+                    try {
+                        // --- ВЕТВЛЕНИЕ: TTS (М/Ж) vs VTA (Свой голос) ---
+                        // 🛑 Логируем начало процесса
+                        envData.ctx.waitUntil(logDebug("SAY_RUN_START", `Голос: ${savedVoice}, Текст: ${textToSpeak.substring(0, 50)}`, envData));
+                        if (savedVoice === VOICE_MALE || savedVoice === VOICE_FEMALE) {
+                            // =======================================================
+                            // РЕЖИМ 1: TTS (TEXT-TO-SPEECH)
+                            // =======================================================
+                            
+                            envData.ctx.waitUntil(logDebug("SAY_RUN_TTS", `Запуск TTS для голоса: ${savedVoice}`, envData));
+                            await editMessage(chatId, loadingMessageId, `🔊 **Запускаю TTS...**`, token);
+                            
+                            // 2.1. Загрузка конфигурации TTS
+                            const t2aResult = await loadActiveConfig('TEXT_TO_AUDIO', envData, chatId); 
+                            const t2aConfig = t2aResult.config; 
+                            
+                            // 2.2. Запуск TTS
+                            const ttsResponse = await t2aConfig.FUNCTION(t2aConfig, textToSpeak, envData, savedVoice);
+                
+                            // 2.3. Отправка результата
+                            const audioBase64 = ttsResponse.audioBase64;
+                            const mimeType = ttsResponse.mimeType; 
+                            await sendAudioMessage(chatId, audioBase64, mimeType, token, envData);
+                
+                            // 2.4. Финальное сообщение
+                            await editMessage(chatId, loadingMessageId, `✅ **Генерация голоса завершена!**`, token);
+                            
+                            return new Response('OK', { status: 200 });
+                
+                        } else if (savedVoice === VOICE_USER) { 
+                            // =======================================================
+                            // РЕЖИМ 2: VTA (OGG -> MP3) - Конвертация "Свой голос"
+                            // =======================================================
+                            
+                            const sourceVoiceFileId = await storage.get(chatKey + SAY_VOICE_SOURCE_ID_SUFFIX); 
+                            // 🛑 Логируем попытку извлечения ID
+                            envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_INIT", `Поиск исходного ID OGG`, envData));
+                            
+                            if (!sourceVoiceFileId) {
+                                envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_FAIL", "File ID OGG не найден.", envData));
+                                // Если нет ID исходного OGG, значит, голосовое сообщение не было отправлено в этом режиме.
+                                await answerCallbackQuery(callbackId, '⚠️ Сначала отправьте голосовое сообщение для конвертации!', token);
+                                await editMessage(chatId, loadingMessageId, `⚠️ **Ошибка:** Сначала отправьте OGG-файл в чат.`, token);
+                                // 🛑 Здесь мы должны выйти сразу, так как нечего конвертировать.
+                                return new Response('OK', { status: 200 }); 
+                            }
+                            // 🛑 Логируем успешное извлечение ID
+                            envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_SUCCESS", `ID OGG найден. Запускаю Health Check.`, envData));
+                            
+                            // 1. ПРОВЕРКА ЗДОРОВЬЯ КОНВЕРТЕРА
+                            await editMessage(chatId, loadingMessageId, '🔊 **Проверка сервиса конвертации...**', token);
+                            const isHealthy = await checkConverterHealth(envData); // Используем функцию, которую мы разработали
+                            
+                            if (!isHealthy) {
+                                await editMessage(chatId, loadingMessageId, '❌ **Ошибка:** Конвертер недоступен (Render).', token);
+                                return new Response('OK', { status: 200 }); 
+                            }
+                            await editMessage(chatId, loadingMessageId, '🔊 **Конвертация OGG → MP3...**', token);
+                            // 🛑 Логируем перед вызовом конвертера (последний лог перед потенциальным зависанием)
+                            envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_CONVERT", `Вызов convertOggToMp3 для ID: ${sourceVoiceFileId.substring(0, 10)}...`, envData));
+                            // 2.1. Конвертация (используем исходный OGG ID)
+                            const mp3Buffer = await convertOggToMp3(sourceVoiceFileId, envData); 
+                            // 🛑 Логируем после возврата из конвертера
+                            envData.ctx.waitUntil(logDebug("SAY_RUN_VTA_RETURN", `Конвертер вернул данные. Размер: ${mp3Buffer ? mp3Buffer.byteLength : '0'}`, envData));
+                            if (!mp3Buffer) {
+                                throw new Error("Конвертер OGG->MP3 вернул пустые данные.");
+                            }
+                                
+                            const mp3Base64 = arrayBufferToBase64(mp3Buffer); 
+                
+                            // 2.2. Отправка финального MP3
+                            await sendAudioMessage(chatId, mp3Base64, 'audio/mpeg', token, envData);
+                            
+                            // 2.3. Финальное сообщение
+                            await editMessage(chatId, loadingMessageId, `✅ **Конвертация "Свой голос" завершена!**`, token);
+                            
+                        } else {
+                            // Неизвестный голос
+                            await editMessage(chatId, loadingMessageId, `⚠️ Неизвестный голос: ${savedVoice}`, token);
+                        }
+                        
+                        // 3. ЕДИНАЯ ТОЧКА ВЫХОДА ИЗ try:
+                        return new Response('OK', { status: 200 }); 
+                
+                    } catch (e) {
+                        // Обработка ошибок
+                        const errorMessage = e.message.substring(0, 1000);
+                        // 🛑 Логируем ошибку для админа
+                        envData.ctx.waitUntil(logDebug("SAY_RUN_CRITICAL_ERROR", `Критическая ошибка: ${errorMessage}`, envData));
+                        console.error("Ошибка при запуске озвучки:", e);
+                        
+                        // Редактируем сообщение с ошибкой
+                        await editMessage(chatId, loadingMessageId, `❌ **Ошибка при озвучивании:**\n\`${errorMessage.substring(0, 100)}\``, token);
+                        
+                        return new Response('OK', { status: 200 });
+                    }
+                    
+                } else if (data === 'ignore_empty_text') {
+                    ctx.waitUntil(answerCallbackQuery(callback.id, "Введите текст для озвучки!", token));
+                    return new Response('OK', { status: 200 });
+                }
+            // ЛОГИКА ДЛЯ АДМИН-КОМАНД (Начинаются с 'admin_')
+            } else if (data.startsWith('admin_') || data === 'toggle_') { // <-- ДОБАВЛЕНО 'toggle_tts'
+                    const storage = env.LAST_PHOTO_STORAGE;
+                    const token = envData.TELEGRAM_BOT_TOKEN;
+
+                    // Проверяем, является ли пользователь администратором
+                    if (chatId.toString() !== envData.ADMIN_CHAT_ID.toString()) {
+                    ctx.waitUntil(sendMessage(chatId, "❌ Вы не можете использовать эти админ-функции.", token));
+                    return new Response('OK', { status: 200 });
+            }
+
+            // ✅ КОРРЕКЦИЯ: ЯВНАЯ ОБРАБОТКА admin_update_cmds В ОСНОВНОМ БЛОКЕ
+            if (data === 'admin_update_cmds') {
+                // Логика  обновления команд (admin_update_cmds)
+                const resultPublic = await setBotCommands(token, PUBLIC_COMMANDS, 'default');
+                const resultAdmin = await setBotCommands(token, ADMIN_COMMANDS, 'chat', envData.ADMIN_CHAT_ID);
+                // ✅ НОВОЕ КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Установка для all_private_chats
+                // Этот скоуп имеет самый высокий приоритет для личных чатов и принудит к обновлению.
+                const resultPrivate = await setBotCommands(token, PUBLIC_COMMANDS, 'all_private_chats');
+                
+                let message = "✅ **Команды обновлены!**\n\n";
+                message += `**Приватные (private) для всех:** ${resultPrivate.ok ? 'Успех' : 'Ошибка'}\n`; // <-- Новая строка
+                message += `**Публичные (default) для всех:** ${resultPublic.ok ? 'Успех' : `Ошибка: ${resultPublic.description || 'Нет ответа от API'}`}\n`;
+                message += `**Админские (chat ID ${envData.ADMIN_CHAT_ID}) для меня:** ${resultAdmin.ok ? 'Успех' : `Ошибка: ${resultAdmin.description || 'Нет ответа от API'}`}`;
+
+                await sendMessageMarkdown(chatId, message, token);
+        
+        // КРИТИЧНО: Возвращаем ответ и завершаем Worker
+        return new Response('OK', { status: 200 });
+    }
+            // ВЫЗОВ НОВОЙ ФУНКЦИИ
+            // Возвращаем await, чтобы отлавливать синхронные ошибки
+            const handled = await handleAdminCallback(chatId, callback, envData, ctx); 
+            
+            return new Response('OK', { status: 200 });
+            
+            // --- ЛОГИКА vision_generate (СОЗДАТЬ КАРТИНКУ) ---
+            } else if (data === 'vision_generate') {
+                const promptToGenerate = await storage.get(LAST_PROMPT_KEY);
+                
+                // Получаем ID колбэка для немедленного ответа
+                const callbackId = callback.id; 
+                const messageId = callback.message.message_id; // ✅ ID сообщения меню
+
+                // 1. НЕМЕДЛЕННЫЙ ОТВЕТ НА КОЛБЭК
+                ctx.waitUntil(answerCallbackQuery(callbackId, "⏳ Запускаю создание изображения...", token));
+
+                if (promptToGenerate) {
+                    
+                    // Опционально: Редактируем сообщение, чтобы показать, что процесс начался
+                    ctx.waitUntil(editMessage(chatId, messageId, `🖼️ **Создание изображения** по промпту: \`${promptToGenerate}\``, token));
+
+                    // Вызываем существующую функцию processCreateCommand
+                    ctx.waitUntil(processText2ImageCommand(
+                        chatId,
+                        promptToGenerate, // Передаем промпт из KV
+                        token,
+                        storage,
+                        envData,
+                        messageId // ✅ НОВЫЙ 6-й аргумент: ID сообщения для редактирования
+                    ));
+                } else {
+                    await editMessage(chatId, messageId, `⚠️ Промпт устарел или не найден. Сначала отправьте фото.`, token);
+                }
+                
+                // Возвращаем OK после того, как все асинхронные задачи поставлены в очередь
+                return new Response('OK', { status: 200 });
+
+            // --- ЛОГИКА start_command (Открыть главное меню) ---
+            } else if (data === 'start_command') {
+                const callbackId = callback.id;
+                const messageId = callback.message.message_id;
+                const STORAGE = envData.LAST_PHOTO_STORAGE; 
+                // ✅ ИСПРАВЛЕНО: Определяем, есть ли сохраненное изображение
+                const isPhotoSaved = !!(await STORAGE.get(chatId + LAST_IMAGE_DATA_KEY_SUFFIX));
+                const isVideoSaved = !!(await STORAGE.get(chatId + LAST_VIDEO_DATA_KEY_SUFFIX));
+                // 1. Получаем данные главного меню
+                const { messageText, keyboardObject } = getStartMenuData(isPhotoSaved, isVideoSaved);
+
+                // 2. Редактируем сообщение (вместо отправки нового)
+                ctx.waitUntil(
+                    (async () => {
+                        // Отвечаем на колбэк (убираем часы)
+                        await answerCallbackQuery(callbackId, "Открываю главное меню...", token);
+
+                        // Редактируем сообщение, заменяя его на меню /start
+                        await editMessageWithKeyboard(
+                            chatId,
+                            messageId,
+                            messageText,
+                            token,
+                            keyboardObject.inline_keyboard
+                        );
+                    })()
+                );
+                return new Response('OK', { status: 200 });
+
+            // --- ЛОГИКА regenerate_prompt (ПЕРЕГЕНЕРАЦИЯ ИЗ ФОТО) ---
+            } else if (data === 'regenerate_prompt') {
+                const imageBase64 = await storage.get(LAST_IMAGE_DATA_KEY); // Проверяем наличие фото
+
+                if (!imageBase64) {
+                        await editMessage(chatId, messageId, "⚠️ **Внимание:** Нет исходного изображения для повторного анализа. Сначала отправьте фотографию.", token);
+                        return new Response('OK', { status: 200 });
+                    }
+
+                    ctx.waitUntil(processPromptRegeneration(chatId, imageBase64, token, storage, envData)); // Вызываем функцию
 
                     return new Response('OK', { status: 200 });
 
-                // --- ЛОГИКА translate_prompt (ДВУСТОРОННИЙ ПЕРЕВОД) ---
-                } else if (data === 'translate_prompt') {
+            // --- ЛОГИКА edit_prompt (РЕДАКТИРОВАНИЕ ТЕКСТА) ---
+            } else if (data === 'edit_prompt') {
+                const currentPrompt = await storage.get(LAST_PROMPT_KEY); // Проверяем наличие текста промпта
+
+                if (!currentPrompt) {
+                    await editMessage(chatId, messageId, "⚠️ **Ошибка:** Нечего редактировать. Сначала получите промпт, отправив фотографию или создайте его вручную.", token);
+                    return new Response('OK', { status: 200 });
+                }
+
+                // ✅ ИСПРАВЛЕНИЕ: Используем STATE_AWAITING_PROMPT_EDIT, который определен выше
+                await storage.put(USER_STATE_KEY, STATE_AWAITING_PROMPT_EDIT, { expirationTtl: 300 });
+
+                await editMessage(chatId, messageId, `✏️ **Редактирование промпта**\n\nЯ сохраню его и буду использовать для дальнейшей работы.\n\nТекущий промпт: \`${currentPrompt}\``, token);
+
+                return new Response('OK', { status: 200 });
+
+            // --- ЛОГИКА translate_prompt (ДВУСТОРОННИЙ ПЕРЕВОД) ---
+            } else if (data === 'translate_prompt') {
+
+            // 1. Построение ключа для языка (предполагаем, что LAST_PROMPT_LANG_KEY_SUFFIX доступен)
+            const LAST_PROMPT_LANG_KEY = chatId + envData.LAST_PROMPT_LANG_KEY_SUFFIX; // <-- ИСПРАВЛЕНО
+
+            // 2. Читаем текущий промпт и язык
+            const currentPrompt = await storage.get(LAST_PROMPT_KEY);
+            let currentLang = await storage.get(LAST_PROMPT_LANG_KEY);
+
+            // Определяем язык источника и назначения
+            if (!currentLang) {
+                currentLang = 'ru'; // Исходный промпт (после ввода пользователя) по умолчанию RU
+            }
+            const targetLang = (currentLang === 'ru') ? 'en' : 'ru';
+            const sourceLang = currentLang;
+
+            if (!currentPrompt) {
+                await editMessage(chatId, messageId, "⚠️ **Ошибка:** Нет промпта для перевода. Сначала получите промпт.", token);
+                return new Response('OK', { status: 200 });
+            }
+
+            // Запускаем асинхронный процесс перевода
+            ctx.waitUntil(
+                (async () => {
+                    const displayPrompt = currentPrompt.length > 30 ? currentPrompt.substring(0, 30) + '...' : currentPrompt;
+
+                    // Сообщение о начале перевода с указанием направления
+                    await editMessage(
+                        chatId,
+                        messageId,
+                        `🌐 **Перевожу:** ${sourceLang.toUpperCase()} → ${targetLang.toUpperCase()} (${displayPrompt})`,
+                        token
+                    );
+
+                    try {
+                        // ВАЖНО: Ваша функция callWorkersAITranslate должна принимать sourceLang и targetLang
+                        const translatedPrompt = await callWorkersAITranslate(currentPrompt, envData, sourceLang, targetLang);
+                        
+                        // 3. Сохраняем новый промпт и НОВЫЙ язык
+                        await storage.put(LAST_PROMPT_KEY, translatedPrompt, { expirationTtl: 86400 });
+                        await storage.put(LAST_PROMPT_LANG_KEY, targetLang, { expirationTtl: 86400 });
+                        const charCount = translatedPrompt ? currentPrompt.length : 0;
+                        // 4. Готовим итоговое сообщение в режиме Markdown
+                        let message = `✅ **Перевод выполнен!**\n\n`;
+
+                        // Определяем флаг
+                        const flag = (targetLang === 'ru') ? '🇷🇺' : '🇬🇧';
+
+                        // Формируем сообщение с флагом
+                        message += `**Язык:** ${flag} ${targetLang.toUpperCase()}\n\n**Промпт:**\n\`${translatedPrompt}\`\n\n**Кол-во символов:** ${charCount}\n\nЧто вы хотите сделать с этим промптом?`;
+
+                        // 4. Редактируем сообщение с новой клавиатурой
+                        const keyboardObject = getPromptKeyboard(translatedPrompt);
+
+                        await editMessageWithKeyboard(
+                            chatId, messageId,
+                            message,
+                            token,
+                            keyboardObject.inline_keyboard // <-- ПЕРЕДАЕМ ТОЛЬКО МАССИВ КНОПОК
+                        );
+                    } catch (e) {
+                        // Ловим ошибку и сообщаем о ней
+                        await editMessage(chatId, messageId, `❌ **Ошибка перевода:** ${e.message}`, token);
+                        // Логируем ошибку
+                        //ctx.waitUntil(logToKV('ERROR', `Translate error for chat ${chatId}: ${e.message}`, envData));
+                    }
+                })()
+            );
+            return new Response('OK', { status: 200 });
+
+            // --- ЛОГИКА clear_prompt (ОЧИСТКА ПРОМПТА) ---
+            } else if (data === 'clear_prompt') {
 
                 // 1. Построение ключа для языка (предполагаем, что LAST_PROMPT_LANG_KEY_SUFFIX доступен)
                 const LAST_PROMPT_LANG_KEY = chatId + envData.LAST_PROMPT_LANG_KEY_SUFFIX; // <-- ИСПРАВЛЕНО
 
-                // 2. Читаем текущий промпт и язык
-                const currentPrompt = await storage.get(LAST_PROMPT_KEY);
-                let currentLang = await storage.get(LAST_PROMPT_LANG_KEY);
-
-                // Определяем язык источника и назначения
-                if (!currentLang) {
-                    currentLang = 'ru'; // Исходный промпт (после ввода пользователя) по умолчанию RU
-                }
-                const targetLang = (currentLang === 'ru') ? 'en' : 'ru';
-                const sourceLang = currentLang;
-
-                if (!currentPrompt) {
-                    await editMessage(chatId, messageId, "⚠️ **Ошибка:** Нет промпта для перевода. Сначала получите промпт.", token);
-                    return new Response('OK', { status: 200 });
-                }
-
-                // Запускаем асинхронный процесс перевода
+                // Запускаем асинхронный процесс очистки в фоне
                 ctx.waitUntil(
                     (async () => {
-                        const displayPrompt = currentPrompt.length > 30 ? currentPrompt.substring(0, 30) + '...' : currentPrompt;
-
-                        // Сообщение о начале перевода с указанием направления
-                        await editMessage(
-                            chatId,
-                            messageId,
-                            `🌐 **Перевожу:** ${sourceLang.toUpperCase()} → ${targetLang.toUpperCase()} (${displayPrompt})`,
-                            token
-                        );
-
                         try {
-                            // ВАЖНО: Ваша функция callWorkersAITranslate должна принимать sourceLang и targetLang
-                            const translatedPrompt = await callWorkersAITranslate(currentPrompt, envData, sourceLang, targetLang);
-                            
-                            // 3. Сохраняем новый промпт и НОВЫЙ язык
-                            await storage.put(LAST_PROMPT_KEY, translatedPrompt, { expirationTtl: 86400 });
-                            await storage.put(LAST_PROMPT_LANG_KEY, targetLang, { expirationTtl: 86400 });
-                            const charCount = translatedPrompt ? currentPrompt.length : 0;
-                            // 4. Готовим итоговое сообщение в режиме Markdown
-                            let message = `✅ **Перевод выполнен!**\n\n`;
+                            // 2. Удаление промпта и языка из хранилища
+                            await storage.delete(LAST_PROMPT_KEY);
+                            await storage.delete(LAST_PROMPT_LANG_KEY);
 
-                            // Определяем флаг
-                            const flag = (targetLang === 'ru') ? '🇷🇺' : '🇬🇧';
+                            const clearedPrompt = '';
 
-                            // Формируем сообщение с флагом
-                            message += `**Язык:** ${flag} ${targetLang.toUpperCase()}\n\n**Промпт:**\n\`${translatedPrompt}\`\n\n**Кол-во символов:** ${charCount}\n\nЧто вы хотите сделать с этим промптом?`;
+                            // 3. Готовим итоговое сообщение в режиме Markdown
+                            let message = `🗑️ **Промпт очищен!**\n\nТеперь вы можете ввести новый промпт, не ограничивая свой творческий потенциал.`;
 
-                            // 4. Редактируем сообщение с новой клавиатурой
-                            const keyboardObject = getPromptKeyboard(translatedPrompt);
+                            // 4. Редактируем сообщение с новой клавиатурой.
+                            // Передаем пустую строку, чтобы функция getPromptKeyboard вернула кнопки для пустого промпта.
+                            const keyboardObject = getPromptKeyboard(clearedPrompt);
 
                             await editMessageWithKeyboard(
                                 chatId, messageId,
                                 message,
                                 token,
-                                keyboardObject.inline_keyboard // <-- ПЕРЕДАЕМ ТОЛЬКО МАССИВ КНОПОК
+                                keyboardObject.inline_keyboard // Передаем только массив кнопок
                             );
                         } catch (e) {
-                            // Ловим ошибку и сообщаем о ней
-                            await editMessage(chatId, messageId, `❌ **Ошибка перевода:** ${e.message}`, token);
+                            // Ловим ошибку очистки хранилища
+                            await editMessage(chatId, messageId, `❌ **Ошибка очистки промпта:** ${e.message}`, token);
                             // Логируем ошибку
-                            //ctx.waitUntil(logToKV('ERROR', `Translate error for chat ${chatId}: ${e.message}`, envData));
+                            //ctx.waitUntil(logToKV('ERROR', `Clear prompt error for chat ${chatId}: ${e.message}`, envData));
                         }
                     })()
                 );
                 return new Response('OK', { status: 200 });
 
-                // --- ЛОГИКА clear_prompt (ОЧИСТКА ПРОМПТА) ---
-                } else if (data === 'clear_prompt') {
+                
+            // --- ЛОГИКА create_new_prompt (Установка стейта для нового промпта) ---
+            } else if (data === 'create_new_prompt') {
+                // ✅ ИСПРАВЛЕНИЕ: Используем STATE_AWAITING_NEW_PROMPT, который определен выше
+                await storage.put(USER_STATE_KEY, STATE_AWAITING_NEW_PROMPT, { expirationTtl: 300 });
 
-                    // 1. Построение ключа для языка (предполагаем, что LAST_PROMPT_LANG_KEY_SUFFIX доступен)
-                    const LAST_PROMPT_LANG_KEY = chatId + envData.LAST_PROMPT_LANG_KEY_SUFFIX; // <-- ИСПРАВЛЕНО
-
-                    // Запускаем асинхронный процесс очистки в фоне
-                    ctx.waitUntil(
-                        (async () => {
-                            try {
-                                // 2. Удаление промпта и языка из хранилища
-                                await storage.delete(LAST_PROMPT_KEY);
-                                await storage.delete(LAST_PROMPT_LANG_KEY);
-
-                                const clearedPrompt = '';
-
-                                // 3. Готовим итоговое сообщение в режиме Markdown
-                                let message = `🗑️ **Промпт очищен!**\n\nТеперь вы можете ввести новый промпт, не ограничивая свой творческий потенциал.`;
-
-                                // 4. Редактируем сообщение с новой клавиатурой.
-                                // Передаем пустую строку, чтобы функция getPromptKeyboard вернула кнопки для пустого промпта.
-                                const keyboardObject = getPromptKeyboard(clearedPrompt);
-
-                                await editMessageWithKeyboard(
-                                    chatId, messageId,
-                                    message,
-                                    token,
-                                    keyboardObject.inline_keyboard // Передаем только массив кнопок
-                                );
-                            } catch (e) {
-                                // Ловим ошибку очистки хранилища
-                                await editMessage(chatId, messageId, `❌ **Ошибка очистки промпта:** ${e.message}`, token);
-                                // Логируем ошибку
-                                //ctx.waitUntil(logToKV('ERROR', `Clear prompt error for chat ${chatId}: ${e.message}`, envData));
-                            }
-                        })()
-                    );
-                    return new Response('OK', { status: 200 });
-
-                    
-                // --- ЛОГИКА create_new_prompt (Установка стейта для нового промпта) ---
-                } else if (data === 'create_new_prompt') {
-                    // ✅ ИСПРАВЛЕНИЕ: Используем STATE_AWAITING_NEW_PROMPT, который определен выше
-                    await storage.put(USER_STATE_KEY, STATE_AWAITING_NEW_PROMPT, { expirationTtl: 300 });
-
-                    ctx.waitUntil(sendMessageMarkdown(chatId,
-                        "✏️ **Введите новый промпт**\n\n" +
-                    "Введите текстом всё что хотите вообразить а я сохраню эту информацию, и при нажатии кнопки 📖 **Создать картинку по промпту** попытаюсь воплотить Вашу фантазию в виде изображения.",
-                        token
-                    ));
-                    return new Response('OK', { status: 200 });
-                }
-            } // !!! КОНЕЦ ИСПРАВЛЕННОГО БЛОКА INLINE-КНОПОК !!!
-            // Если ни медиа, ни голос не колбэк, далее идет обработка messageText            
-
-            // 4. ОБРАБОТКА ОБЫЧНОГО ТЕКСТА (ЧАТ)
-            if (messageText.length > 0) {
-
-                // --- 4.1. ОБРАБОТКА ИНТЕРАКТИВНОГО АДМИН-РЕЖИМА (Без изменений) ---
-                if (chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
-                    const isAdminModeProcessed = await processAdminStateMessage(chatId, messageText, envData, ctx);
-                    if (isAdminModeProcessed) {
-                        return new Response('OK', { status: 200 });
-                    }
-                }
-
-                // --- 4.2. ОБЫЧНАЯ ОБРАБОТКА ТЕКСТА (ИСПРАВЛЕНО) ---
-                // Сначала пытаемся обработать интерактивный ввод (сохранение промпта, которое требует await)
-                const isPromptInteraction = await processTextMessage(chatId, messageText, envData);
-
-                if (isPromptInteraction === true) { // Проверяем на явное true
-                    // Если промпт был сохранен, мы возвращаем OK, блокируя завершение Worker'а,
-                    // пока запись в KV не завершится (благодаря await внутри processTextMessage).
-                    return new Response('OK', { status: 200 });
-                } else {
-                    // Иначе, это обычный чат. Его можно безопасно отправить в фон.
-                    // ВНИМАНИЕ: Если processTextMessage возвращает false,
-                    // то это обычная чат-логика (п. 2 в функции).
-                    //ctx.waitUntil(processTextMessage(chatId, messageText, envData));
-                    return new Response('OK', { status: 200 });
-                }
-            } // КОНЕЦ БЛОКА ОБРАБОТКИ ОБЫЧНОГО ТЕКСТА
-
-            // Игнорируем остальные обновления (например, стикеры, pin-сообщения)
-            return new Response('OK', { status: 200 });
-
-            // 5. ГЛОБАЛЬНАЯ ОБРАБОТКА ОШИБОК И ЛОГИРОВАНИЕ
-        } catch (e) {
-            const errorMessage = `Fatal error processing update for chat ${chatId}: ${e.message} Stack: ${e.stack ? e.stack.substring(0, 500) : 'N/A'}`;
-
-            // Логируем ошибку, чтобы она появилась в админ-панели
-            //ctx.waitUntil(logToKV('FATAL', errorMessage, envData));
-
-            // Отправляем пользователю сообщение об ошибке (если есть chatId)
-            if (chatId) {
-                const token = env.TELEGRAM_BOT_TOKEN;
-                // Отправляем сообщение об ошибке только в DEBUG_CHAT_ID или ADMIN_CHAT_ID (если определен)
-                if (envData.DEBUG_ENABLED && envData.DEBUG_CHAT_ID) {
-                    const debugTarget = envData.DEBUG_CHAT_ID || envData.ADMIN_CHAT_ID;
-                    ctx.waitUntil(sendMessage(debugTarget, `❌ **КРИТИЧЕСКАЯ ОШИБКА**\n\n${errorMessage}`, token, { parse_mode: 'Markdown' }));
-                }
-                // Отправляем вежливый ответ пользователю
-                ctx.waitUntil(sendMessage(chatId, "❌ Произошла непредвиденная ошибка. Мы уже работаем над ее устранением. Пожалуйста, попробуйте позже.", token));
+                ctx.waitUntil(sendMessageMarkdown(chatId,
+                    "✏️ **Введите новый промпт**\n\n" +
+                "Введите текстом всё что хотите вообразить а я сохраню эту информацию, и при нажатии кнопки 📖 **Создать картинку по промпту** попытаюсь воплотить Вашу фантазию в виде изображения.",
+                    token
+                ));
+                return new Response('OK', { status: 200 });
             }
-            // Возвращаем ответ Telegram, чтобы избежать повторных попыток
-            return new Response('Error', { status: 500 });
-        }   // КОНЕЦ БЛОКА ГЛОБАЛЬНОЙ ОБРАБОТКИ ОШИБОК
-    },
+        } // !!! КОНЕЦ ИСПРАВЛЕННОГО БЛОКА INLINE-КНОПОК !!!
+        // Если ни медиа, ни голос не колбэк, далее идет обработка messageText            
+
+        // 4. ОБРАБОТКА ОБЫЧНОГО ТЕКСТА (ЧАТ)
+        if (messageText.length > 0) {
+
+            // --- 4.1. ОБРАБОТКА ИНТЕРАКТИВНОГО АДМИН-РЕЖИМА (Без изменений) ---
+            if (chatId.toString() === envData.ADMIN_CHAT_ID.toString()) {
+                const isAdminModeProcessed = await processAdminStateMessage(chatId, messageText, envData, ctx);
+                if (isAdminModeProcessed) {
+                    return new Response('OK', { status: 200 });
+                }
+            }
+
+            // --- 4.2. ОБЫЧНАЯ ОБРАБОТКА ТЕКСТА (ИСПРАВЛЕНО) ---
+            // Сначала пытаемся обработать интерактивный ввод (сохранение промпта, которое требует await)
+            const isPromptInteraction = await processTextMessage(chatId, messageText, envData);
+
+            if (isPromptInteraction === true) { // Проверяем на явное true
+                // Если промпт был сохранен, мы возвращаем OK, блокируя завершение Worker'а,
+                // пока запись в KV не завершится (благодаря await внутри processTextMessage).
+                return new Response('OK', { status: 200 });
+            } else {
+                // Иначе, это обычный чат. Его можно безопасно отправить в фон.
+                // ВНИМАНИЕ: Если processTextMessage возвращает false,
+                // то это обычная чат-логика (п. 2 в функции).
+                //ctx.waitUntil(processTextMessage(chatId, messageText, envData));
+                return new Response('OK', { status: 200 });
+            }
+        } // КОНЕЦ БЛОКА ОБРАБОТКИ ОБЫЧНОГО ТЕКСТА
+
+        // Игнорируем остальные обновления (например, стикеры, pin-сообщения)
+        return new Response('OK', { status: 200 });
+
+        // 5. ГЛОБАЛЬНАЯ ОБРАБОТКА ОШИБОК И ЛОГИРОВАНИЕ
+    } catch (e) {
+        const errorMessage = `Fatal error processing update for chat ${chatId}: ${e.message} Stack: ${e.stack ? e.stack.substring(0, 500) : 'N/A'}`;
+
+        // Логируем ошибку, чтобы она появилась в админ-панели
+        //ctx.waitUntil(logToKV('FATAL', errorMessage, envData));
+
+        // Отправляем пользователю сообщение об ошибке (если есть chatId)
+        if (chatId) {
+            const token = env.TELEGRAM_BOT_TOKEN;
+            // Отправляем сообщение об ошибке только в DEBUG_CHAT_ID или ADMIN_CHAT_ID (если определен)
+            if (envData.DEBUG_ENABLED && envData.DEBUG_CHAT_ID) {
+                const debugTarget = envData.DEBUG_CHAT_ID || envData.ADMIN_CHAT_ID;
+                ctx.waitUntil(sendMessage(debugTarget, `❌ **КРИТИЧЕСКАЯ ОШИБКА**\n\n${errorMessage}`, token, { parse_mode: 'Markdown' }));
+            }
+            // Отправляем вежливый ответ пользователю
+            ctx.waitUntil(sendMessage(chatId, "❌ Произошла непредвиденная ошибка. Мы уже работаем над ее устранением. Пожалуйста, попробуйте позже.", token));
+        }
+        // Возвращаем ответ Telegram, чтобы избежать повторных попыток
+        return new Response('Error', { status: 500 });
+    }   // КОНЕЦ БЛОКА ГЛОБАЛЬНОЙ ОБРАБОТКИ ОШИБОК
 };
 
 module.exports = { worker_code_fetch };
