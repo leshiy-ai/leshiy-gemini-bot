@@ -47,7 +47,6 @@ const FREE_LIMIT = 80; // 80 бесплатных кредитов (4 видео
 const VIP_THRESHOLD_RUB = 1000; // Порог VIP в рублях
 const SUBSCRIPTION_DAYS = 30; // Длительность подписки по умолчанию (для setCreditSubscription)
 const SUBSCRIPTION_END_KEY_SUFFIX = '_sub_end_credit'; // Ключ для хранения метки времени окончания безлимита
-const LESHIY_CONVERTER = envData.LESHIY_CONVERTER;
 const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
 // 🛑 ЕДИНАЯ КОНСТАНТА, СОДЕРЖАЩАЯ ВСЕ ТАРИФЫ И КРЕДИТЫ (для System Prompts и Перехватов)
 const TARIFF_MESSAGE_TEXT = `Валюта бота: 💰 Кредиты (1 Кредит = ${CREDIT_COST_RUB} руб.)
@@ -16152,7 +16151,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         VIDEO_ENABLED: isVideoEnabled, 
         PAYMENT_LINK: PAYMENT_LINK,
         WORKER_DOMAIN: `https://${new URL(request.url).host}`,
-        LESHIY_CONVERTER: LESHIY_CONVERTER,
+        LESHIY_CONVERTER: env.LESHIY_CONVERTER,
         PUBLIC_COMMANDS: PUBLIC_COMMANDS,
         ADMIN_COMMANDS: ADMIN_COMMANDS,
         // !!! КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ИСПОЛЬЗУЕМ НОВЫЕ ПЕРЕМЕННЫЕ !!!
