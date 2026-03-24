@@ -4773,8 +4773,8 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
  */
 async function callWorkersAISpeechToText(config, audioBuffer, envData) {
     // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
-    const CLOUDFLARE_ACCOUNT_ID = env.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
-    const CLOUDFLARE_API_TOKEN = env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
+    const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
     // --- УНИФИКАЦИЯ: Используем модель из конфигурации ---
     const WHISPER_MODEL = config.MODEL; 
     // ---------------------------------------------------
@@ -4826,8 +4826,8 @@ async function callWorkersAISpeechToText(config, audioBuffer, envData) {
  * @returns {Promise<string>} Сгенерированный текстовый промпт.
  */
 async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМЕНЕНА ПОДПИСЬ
-    const CLOUDFLARE_ACCOUNT_ID = env.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
-    const CLOUDFLARE_API_TOKEN = env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
+    const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
     // --- УНИФИКАЦИЯ: Используем модель из конфигурации ---
     const VISION_MODEL = config.MODEL; 
     // ---------------------------------------------------
