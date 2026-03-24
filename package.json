@@ -1,0 +1,9 @@
+{
+  "name": "leshiy-gemini-bot",
+  "version": "5.0.0",
+  "dependencies": {
+    "ydb-sdk": "^3.9.0",
+    "node-fetch": "^2.7.0",
+    "aws-sdk": "^2.1500.0"
+  }
+}

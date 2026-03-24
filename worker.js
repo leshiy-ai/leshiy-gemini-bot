@@ -1,7 +1,7 @@
 // Worker для Cloudflare: Мультимодальный Telegram-бот "Gemini AI" by Leshiy
 // Автор: Огорельцев Александр Валерьевич @Leshiyalex
 
-const VERSION = 'v4.6 от 11.03.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
+const VERSION = 'v5.0 от 24.03.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
 
 // --- ГЛОБАЛЬНЫЕ КОНСТАНТЫ ---
 const GLOBAL_DEBUG_KEY = 'global_debug_setting'; // Отладка / Debug
@@ -47,7 +47,7 @@ const FREE_LIMIT = 80; // 80 бесплатных кредитов (4 видео
 const VIP_THRESHOLD_RUB = 1000; // Порог VIP в рублях
 const SUBSCRIPTION_DAYS = 30; // Длительность подписки по умолчанию (для setCreditSubscription)
 const SUBSCRIPTION_END_KEY_SUFFIX = '_sub_end_credit'; // Ключ для хранения метки времени окончания безлимита
-const LESHIY_RENDER_HOST = 'https://leshiy-media-converter.onrender.com';
+const LESHIY_CONVERTER = 'https://leshiy-media-converter.onrender.com';
 const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
 // 🛑 ЕДИНАЯ КОНСТАНТА, СОДЕРЖАЩАЯ ВСЕ ТАРИФЫ И КРЕДИТЫ (для System Prompts и Перехватов)
 const TARIFF_MESSAGE_TEXT = `Валюта бота: 💰 Кредиты (1 Кредит = ${CREDIT_COST_RUB} руб.)
@@ -14945,7 +14945,7 @@ async function setBotCommands(TELEGRAM_BOT_TOKEN, commands, scopeType, chatId = 
  * @throws {Error} - Выбрасывает ошибку в случае сбоя Render-сервиса или таймаута.
  */
 async function callLeshiyMp3Converter(endpoint, fetchOptions, queryParams, envData) {
-    const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = LESHIY_CONVERTER || 'https://leshiy-media-converter.onrender.com';
     const FULL_URL = RENDER_HOST_URL + endpoint;
     const timeoutSeconds = 120; // Максимальный таймаут по умолчанию 2 минуты
 
@@ -15007,7 +15007,7 @@ async function callLeshiyMp3Converter(endpoint, fetchOptions, queryParams, envDa
  * @returns {Promise<boolean>} true, если сервис доступен и вернул 200 OK.
  */
 async function checkConverterHealth(envData) {
-    const DEBUG_URL = LESHIY_RENDER_HOST + '/debug';
+    const DEBUG_URL = LESHIY_CONVERTER + '/debug';
     try {
         const response = await fetch(DEBUG_URL, {
             method: 'GET',
@@ -15350,7 +15350,7 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
 }
 
 async function sendGifToConverterInBackground(chatId, fileId, messageId, envData, token) {
-    const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = LESHIY_CONVERTER || 'https://leshiy-media-converter.onrender.com';
     try {
         // --- 1. ПОЛУЧАЕМ ИСХОДНЫЕ ДАННЫЕ ИЗ KV ---
         const gifDataRaw = await envData.LAST_PHOTO_STORAGE.get(`${chatId}_last_gif_data`);
@@ -15378,7 +15378,7 @@ async function sendGifToConverterInBackground(chatId, fileId, messageId, envData
         formData.append('gif', fileBlob, 'input.gif');
 
         // Отправляем на проснувшийся сервер
-        const converterResponse = await fetch(`${LESHIY_RENDER_HOST}/gif2video`, {
+        const converterResponse = await fetch(`${LESHIY_CONVERTER}/gif2video`, {
             method: 'POST',
             body: formData
         });
@@ -15430,7 +15430,7 @@ async function sendGifToConverterInBackground(chatId, fileId, messageId, envData
 }
 
 async function sendVideoToGifInBackground(chatId, videoData, messageId, format, envData, token) {
-    const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = LESHIY_CONVERTER || 'https://leshiy-media-converter.onrender.com';
     try {
         // Прогрев сервера через твой Health Check
         const isAlive = await checkConverterHealth(envData);
@@ -15545,7 +15545,7 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
  * ✅ sendMediaToConverterInBackground - Асинхронно скачивает медиа, отправляет на Render для обработки (Resize/Rotate) и обновляет сообщение.
  */
 async function sendMediaToConverterInBackground(chatId, fileId, originalMessageId, mode, param, envData, token, ctx, originalReplyMarkup = null) {
-    const RENDER_HOST_URL = LESHIY_RENDER_HOST || 'https://leshiy-media-converter.onrender.com';
+    const RENDER_HOST_URL = LESHIY_CONVERTER || 'https://leshiy-media-converter.onrender.com';
     const chatKey = chatId.toString();
     // 1. ПРОВЕРЯЕМ РЕАЛЬНЫЙ ТИП МЕДИА (самый надежный способ)
     const lastMediaType = await envData.LAST_PHOTO_STORAGE.get(`${chatKey}_last_media_type`);
@@ -15564,7 +15564,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
 
     if (!RENDER_HOST_URL) {
         // Если переменная хоста пуста, выбрасываем явную ошибку
-        throw new TypeError("Критическая ошибка: Конвертер LESHIY_RENDER_HOST не настроен в ENV."); 
+        throw new TypeError("Критическая ошибка: Конвертер LESHIY_CONVERTER не настроен в ENV."); 
     }
     // 1. ОПРЕДЕЛЕНИЕ РЕЖИМА
     if (mode === RESIZE_VIDEO_MODE) {
@@ -15886,7 +15886,7 @@ export default {
                     <div class="container">
                         <h1>Telegram-бот "Gemini AI" by Leshiy.</h1>
                         <p>Этот Worker предназначен для обработки вебхуков Telegram.</p>
-                        <img src="https://images.leshiyalex.workers.dev/qr-code_geminiai_tg_bot.jpg" alt="QR Code" style="max-width: 300px;">
+                        <img src="public/qr-code_geminiai_tg_bot.jpg" alt="QR Code" style="max-width: 300px;">
                         <p>Найди меня в Telegram: <a href="https://t.me/gemini_aitg_bot" target="_blank">@gemini_aitg_bot</a></p>
                     </div>
                 </body>
@@ -16247,7 +16247,7 @@ export default {
             VIDEO_ENABLED: isVideoEnabled, 
             PAYMENT_LINK: PAYMENT_LINK,
             WORKER_DOMAIN: `https://${new URL(request.url).host}`,
-            LESHIY_RENDER_HOST: LESHIY_RENDER_HOST,
+            LESHIY_CONVERTER: LESHIY_CONVERTER,
             PUBLIC_COMMANDS: PUBLIC_COMMANDS,
             ADMIN_COMMANDS: ADMIN_COMMANDS,
             // !!! КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ИСПОЛЬЗУЕМ НОВЫЕ ПЕРЕМЕННЫЕ !!!
@@ -19927,3 +19927,5 @@ ${historyText}`;
         }   // КОНЕЦ БЛОКА ГЛОБАЛЬНОЙ ОБРАБОТКИ ОШИБОК
     },
 };
+
+module.exports = { worker_code_fetch };

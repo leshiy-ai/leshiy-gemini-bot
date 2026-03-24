@@ -1,31 +1,57 @@
-name: Deploy Cloudflare Worker
+name: Deploy to Yandex.Cloud Functions
 
 on:
   push:
     branches:
-      - main 
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # 1. Устанавливаем Node.js (необходимо для npx и Wrangler)
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Deploy Function
+        uses: yc-actions/yc-sls-function@v4
         with:
-          node-version: '20'
-
-      # 2. Устанавливаем Wrangler (фиксируем на стабильной v4)
-      #- name: Install Wrangler
-      #  run: npm install -g wrangler@4
-
-      # 3. Запускаем развертывание напрямую (через команду run)
-      #    Это гарантирует, что переменные окружения будут переданы
-      #- name: Deploy Worker
-      #  run: npx wrangler deploy
-        # Здесь Wrangler ищет CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          yc-sa-json-credentials: ${{ secrets.YANDEX_SECRET_KEY }}
+          folder-id: ${{ secrets.YANDEX_FOLDER_ID }}
+          function-name: 'leshiy-gemini-bot'
+          runtime: 'nodejs22'
+          memory: '512Mb'
+          execution-timeout: '60s'
+          service-account: ${{ secrets.YANDEX_SERVICE_ID }}
+          network-id: ${{ secrets.YANDEX_NETWORK_ID }}
+          entrypoint: 'index.handler'
+          environment: |
+            ADMIN_CHAT_ID=${{ vars.ADMIN_CHAT_ID }}
+            DEBUG_CHAT_ID=${{ vars.DEBUG_CHAT_ID }}
+            DEBUG_ENABLED=${{ vars.DEBUG_ENABLED }}
+            LESHIY_CONVERTER=${{ vars.LESHIY_CONVERTER }}
+            PHOTO_ENABLED=${{ vars.PHOTO_ENABLED }}
+            TTS_ENABLED=${{ vars.TTS_ENABLED }}
+            VIDEO_ENABLED=${{ vars.VIDEO_ENABLED }}
+            WORKER_DOMAIN=${{ vars.WORKER_DOMAIN }}
+            BOTHUB_API_KEY=${{ secrets.BOTHUB_API_KEY }}
+            CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+            CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
+            DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}
+            FREEPIK_API_KEY=${{ secrets.FREEPIK_API_KEY }}
+            FUSIONBRAIN_API_KEY=${{ secrets.FUSIONBRAIN_API_KEY }}
+            FUSIONBRAIN_SECRET_KEY=${{ secrets.FUSIONBRAIN_SECRET_KEY }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            GEMINI_PROXY=${{ secrets.GEMINI_PROXY }}
+            GEMINI_PROXY_KEY=${{ secrets.GEMINI_PROXY_KEY }}
+            GIGACHAT_API_KEY=${{ secrets.GIGACHAT_API_KEY }}
+            GROK_API_KEY=${{ secrets.GROK_API_KEY }}
+            KIEAI_API_KEY=${{ secrets.KIEAI_API_KEY }}
+            LESHIY_AI_PROXY=${{ secrets.LESHIY_AI_PROXY }}
+            MODELSLAB_API_KEY=${{ secrets.MODELSLAB_API_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+            RUNWAY_API_KEY=${{ secrets.RUNWAY_API_KEY }}
+            STABILITY_API_KEY=${{ secrets.STABILITY_API_KEY }}
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            VOICERSS_API_KEY=${{ secrets.VOICERSS_API_KEY }}
+            YANDEX_API_KEY=${{ secrets.YANDEX_API_KEY }}
