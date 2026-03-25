@@ -1199,7 +1199,6 @@ async function loadActiveConfig(serviceType, envData, chatId) {
  */
 async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
-    const PUBLIC_DOMAIN = envData.WORKER_DOMAIN;
     
     if (!IMAGE_STORAGE) {
          throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
@@ -1233,14 +1232,14 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     });
 
     // 5. Формируем URL
-    const baseUrl = PUBLIC_DOMAIN.startsWith('http') ? PUBLIC_DOMAIN : `https://${PUBLIC_DOMAIN}`;
+    const baseUrl = envData.WORKER_DOMAIN.startsWith('http') ? envData.WORKER_DOMAIN : `https://${envData.WORKER_DOMAIN}`;
     return `${baseUrl}/kv-images/${imageKey}`;
 }
 
 // ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
 async function sendAiRequest(body, url, config, envData, isRawBody = false) {
     const isBinary = isRawBody && (body instanceof ArrayBuffer || body instanceof Uint8Array);
-    const PROXY_SECRET = envData.PROXY_SECRET_KEY;
+    const PROXY_SECRET = envData.GEMINI_PROXY_KEY;
 
     // 1. Формируем заголовки для прокси-врапперов (Яндекс/CF)
     const commonHeaders = {
@@ -1258,7 +1257,7 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
     let response;
     let errors = [];
 
-    // --- ПОПЫТКА 1: Основной прокси (через Яндекс) ---
+    // --- ПОПЫТКА 1: Основной прокси (через Яндекс.Клауд Функцию) ---
     try {
         response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
             method: 'POST',
@@ -1266,8 +1265,8 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
             body: isBinary ? body : JSON.stringify(body)
         });
         if (response.ok) return response;
-        errors.push(`P1(${response.status})`);
-    } catch (e) { errors.push(`P1_Err(${e.message})`); }
+        errors.push(`P1 Yandex (${response.status})`);
+    } catch (e) { errors.push(`P1_Yandex_Err(${e.message})`); }
 
     // --- ПОПЫТКА 2: Резервный прокси (Cloudflare) ---
     try {
@@ -1279,9 +1278,9 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
                 body: isBinary ? body : JSON.stringify(body)
             });
             if (response.ok) return response;
-            errors.push(`P2(${response.status})`);
+            errors.push(`P2 Cloudflare(${response.status})`);
         }
-    } catch (e) { errors.push(`P2_Err(${e.message})`); }
+    } catch (e) { errors.push(`P2_Cloudflare_Err(${e.message})`); }
 
     // --- ПОПЫТКА 3: Специальный Gemini прокси (только для Gemini) ---
     if (config.SERVICE === 'GEMINI') {
@@ -1295,8 +1294,8 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
                 body: JSON.stringify(body)
             });
             if (response.ok) return response;
-            errors.push(`P3(${response.status})`);
-        } catch (e) { errors.push(`P3_Err(${e.message})`); }
+            errors.push(`P3 GeminiProxy (${response.status})`);
+        } catch (e) { errors.push(`P3_GeminiProxy_Err(${e.message})`); }
     }
 
     throw new Error(`Все прокси отказали: ${errors.join(' -> ')}`);
@@ -4234,14 +4233,14 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     const API_KEY = envData[API_KEY_ENV_NAME]; 
     const BASE_URL = config.BASE_URL;
     const MODEL = config.MODEL;
-    const PROXY_KEY_ENV_NAME = config.PROXY_KEY; 
-    const PROXY_KEY = envData[PROXY_KEY_ENV_NAME]; 
-    const PROXY_URL = envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev/v1beta';
+    //const PROXY_KEY_ENV_NAME = config.PROXY_KEY; 
+    //const PROXY_KEY = envData[PROXY_KEY_ENV_NAME]; 
+    //const PROXY_URL = envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev/v1beta';
 
     // --- УНИФИЦИРОВАННАЯ СБОРКА URL ---
     // Формат: BASE_URL/models/МОДЕЛЬ:generateContent?key=КЛЮЧ
     const url = `${BASE_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
-    const proxyUrl = `${PROXY_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
+    //const proxyUrl = `${PROXY_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
     // ------------------------------------
 
     const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
