@@ -18,7 +18,7 @@ module.exports.handler = async (event, context) => {
         body = event.body;
     }
 
-    let uri = event.url || event.headers['x-envoy-original-path'] || '/';
+    let uri = event.url || event.headers['x-envoy-original-path'] || '/gemini';
     /*if (uri.startsWith('/gemini')) {
         uri = uri.replace('/gemini', '') || '/';
     }*/
