@@ -12461,7 +12461,7 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
         
         const finalPrompt = await activeModelConfig.FUNCTION(
             activeModelConfig,      // <-- Передаем конфигурацию
-            imageArrayBuffer,   // <-- ArrayBuffer
+            imageUint8Array,   // <-- ArrayBuffer
             envData
         ); 
 
