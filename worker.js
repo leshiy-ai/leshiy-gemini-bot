@@ -4789,14 +4789,14 @@ async function callWorkersAISpeechToText(config, audioBuffer, envData) {
             throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
         }
 
-    /*/ Workers AI ожидает массив байтов (Array of numbers)
+    // Workers AI ожидает массив байтов (Array of numbers)
     // Функция теперь принимает audioBuffer вторым аргументом, согласно новой подписи.
-    const audioData = [...new Uint8Array(audioBuffer)]; 
+    //const audioData = [...new Uint8Array(audioBuffer)]; 
 
     try {
         console.log(`[ASR] Отправка бинарного потока к Cloudflare AI...`);
 
-        const response = await fetch(URL, {
+        /*const response = await fetch(URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
