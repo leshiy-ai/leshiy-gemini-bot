@@ -12406,7 +12406,7 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
         } // Если chatId не совпадает с ADMIN_CHAT_ID, сообщение пропускается.
 
      try {
-        const loadingMessage = await sendMessageMarkdown(chatId, "✨ **Повторный анализ фото: Генерирую новый промпт...**", token); 
+        const loadingMessage = await sendMessage(chatId, "✨ **Повторный анализ фото: Генерирую новый промпт...**", token); 
         if (loadingMessage.ok) { workingMessageId = loadingMessage.result.message_id; }
 
         if (!originalImageBase64 || originalImageBase64.length < 1000) {
