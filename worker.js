@@ -12410,8 +12410,19 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
         // 2. Очистка и Парсинг Base64
         let base64Data;
         try {
-            const kvObject = JSON.parse(originalImageBase64);
-            base64Data = kvObject.base64;
+            // Сначала убираем возможные лишние кавычки по краям, которые видны в твоем логе "{\"
+            let rawData = typeof originalImageBase64 === 'string' 
+                ? originalImageBase64.trim().replace(/^"+|"+$/g, '') 
+                : originalImageBase64;
+
+            let kvObject = JSON.parse(rawData);
+            
+            // Если после первого парсинга мы получили строку (двойная сериализация), парсим еще раз
+            if (typeof kvObject === 'string') {
+                kvObject = JSON.parse(kvObject);
+            }
+            
+            base64Data = kvObject.base64 || rawData;
         } catch (e) {
             base64Data = originalImageBase64;
         }
@@ -12420,27 +12431,30 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
              throw new Error("Не удалось извлечь Base64-данные из хранилища.");
         }
         
-        // Проверяем, является ли base64Data строкой
+        // Гарантируем, что это строка, и чистим её
         if (typeof base64Data === 'string') {
+            // Убираем префикс, если он есть
             if (base64Data.includes(',')) {
                 base64Data = base64Data.split(',')[1];
             }
+            
+            // Чистим от пробелов и переносов (важно для корректного base64ToUint8Array)
+            base64Data = base64Data.replace(/\s/g, '');
+
             while (base64Data.length % 4) {
                 base64Data += '=';
             }
         } else {
-            throw new Error('Критическая ошибка: Не удалось извлечь Base64-данные в виде строки.');
+            // Если это Buffer (Node.js), пробуем перегнать в base64
+            if (Buffer.isBuffer(base64Data)) {
+                base64Data = base64Data.toString('base64');
+            } else {
+                throw new Error('Критическая ошибка: Не удалось извлечь Base64-данные в виде строки.');
+            }
         }
 
-        // 3. Декодируем и готовим ArrayBuffer для Vision AI
+        // 3. Декодируем (используем твой base64ToUint8Array)
         const imageUint8Array = base64ToUint8Array(base64Data);
-
-        
-        if (imageUint8Array.byteLength === 0) {
-            throw new Error(`Критическая ошибка: Декодирование Base64 не удалось. Размер: ${imageUint8Array.byteLength} байт.`);
-        }
-
-        const imageArrayBuffer = new Uint8Array(imageUint8Array).buffer; 
 
         // 4. УНИВЕРСАЛЬНЫЙ Вызов Vision AI 
         await editMessage(chatId, workingMessageId, `🔄 Анализ фото через ${activeModelConfig.SERVICE} Vision...`, token);
