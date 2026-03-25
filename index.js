@@ -18,20 +18,16 @@ module.exports.handler = async (event, context) => {
         body = event.body;
     }
 
-    // 1. Собираем параметры запроса в строку
-    const qs = event.queryStringParameters 
-        ? '?' + new URLSearchParams(event.queryStringParameters).toString() 
-        : '';
-
     let uri = event.url || event.headers['x-envoy-original-path'] || '/';
     if (uri.startsWith('/gemini')) {
         uri = uri.replace('/gemini', '') || '/';
     }
 
     const domain = process.env.WORKER_DOMAIN || "d5dtt5rfr7nk66bbrec2.apigw.yandexcloud.net";
-    const fullUrl = `https://${domain.replace(/\/$/, '')}${uri}${qs}`;
-    console.log(`🛠 URL ДЛЯ ВОРКЕРА: ${fullUrl}`);
-
+    const origin = `https://${domain.replace(/\/$/, '')}`;
+    const fullUrl = new URL(uri, origin).href;
+    //console.log(`🛠 URL ДЛЯ ВОРКЕРА: ${fullUrl}`);
+    
     const requestOptions = {
         method: event.httpMethod,
         headers: { ...event.headers },

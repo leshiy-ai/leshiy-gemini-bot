@@ -4789,7 +4789,7 @@ async function callWorkersAISpeechToText(config, audioBuffer, envData) {
             throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
         }
 
-    // Workers AI ожидает массив байтов (Array of numbers)
+    /*/ Workers AI ожидает массив байтов (Array of numbers)
     // Функция теперь принимает audioBuffer вторым аргументом, согласно новой подписи.
     const audioData = [...new Uint8Array(audioBuffer)]; 
 
@@ -4804,7 +4804,10 @@ async function callWorkersAISpeechToText(config, audioBuffer, envData) {
             },
             // Передаем твой audioData (массив байтов) как Buffer, чтобы fetch его съел
             body: Buffer.from(audioData) 
-        });
+        });*/
+
+        // Посылаем на отправку
+        const response = await sendAiRequest(audioBuffer, URL, config, envData, true);
 
         // Получаем результат в переменную aiResponse
         const result = await response.json();
@@ -5400,7 +5403,7 @@ async function callBotHubTextChat(config, history, messageText, envData) {
     }
     // ------------------------------------
 
-    /*/ 3. Отправка запроса
+    // 3. Отправка запроса
     const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -5422,8 +5425,7 @@ async function callBotHubTextChat(config, history, messageText, envData) {
         throw new Error(`BOTHUB API error (Status ${response.status}): ${errorText}`);
     }
 
-    */
-    const response = await sendAiRequest(body, url, config, envData);
+    //const response = await sendAiRequest(body, url, config, envData);
     // 4. Обработка ответа
     const data = await response.json();
     let responseText = '';
