@@ -4845,12 +4845,16 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
         throw new Error("VISION_FAIL: Не настроены CLOUDFLARE_ACCOUNT_ID или CLOUDFLARE_API_TOKEN.");
     }
 
-    // Здесь audioBuffer стал вторым аргументом, а promptText - третьим.
-    const imageBytes = [...new Uint8Array(imageBuffer)];
+    // Переводим Buffer/ArrayBuffer в обычный массив чисел (то, что ждет Workers AI)
+    const uint8Array = new Uint8Array(imageBuffer);
+    const imageArray = Array.from(uint8Array);
 
-    // Uform-Gen2 требует простого промпта. Мы используем эффективную инструкцию на английском.
-    const simplifiedPrompt = `Describe the attached image in full detail as a high-quality, atmospheric, long prompt (max 750 characters) for an image generation AI like Stable Diffusion or Midjourney. Focus on subject, style, lighting, and composition. The response must be ONLY in RUSSIAN, without any added commentary.`;
-    const base64Str = Buffer.from(imageBuffer).toString('base64');
+    const body = {
+        // Uform-Gen2 требует простого промпта. Мы используем эффективную инструкцию на английском.
+        prompt: "Describe the attached image in full detail as a high-quality, atmospheric, long prompt (max 750 characters) for an image generation AI like Stable Diffusion or Midjourney. Focus on subject, style, lighting, and composition. The response must be ONLY in RUSSIAN, without any added commentary. Russian language only",
+        image: imageArray 
+    };
+
     try {
         const response = await fetch(URL, {
             method: 'POST',
@@ -4858,22 +4862,24 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                prompt: simplifiedPrompt,
-                image: base64Str // строка [...new Uint8Array]
-            })
+            body: JSON.stringify(body)
         });
 
         const result = await response.json();
         
-        // Для совместимости: Cloudflare API через HTTP возвращает { result: { description: "..." } }
+        // ДЕБАГ: посмотрим, что реально ответил CF, если там не успех
+        if (!response.ok) {
+            console.error("CF Error Status:", response.status, result);
+            throw new Error(`CF Status ${response.status}: ${JSON.stringify(result.errors || result)}`);
+        }
+
         const aiResponse = result.result;
 
         if (!aiResponse || !aiResponse.description) { // <-- Uform возвращает 'description'
-            throw new Error(`Vision API не вернул ожидаемый ответ. Response: ${JSON.stringify(aiResponse)}`);
+            throw new Error(`Vision API не вернул ожидаемый ответ. Result: ${JSON.stringify(result)}`);
         }
 
-        return aiResponse.description.trim();
+        return (aiResponse.description || aiResponse.label || "Не удалось описать фото").trim();
     } catch (e) {
         console.error("Workers AI Vision call failed:", e);
         throw new Error(`VISION_FAIL: Ошибка Workers AI Vision: ${e.message}`);
