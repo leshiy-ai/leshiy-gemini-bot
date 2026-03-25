@@ -12437,21 +12437,21 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
             finalBase64Str += '=';
         }
 
-        // 3. Декодируем (используем нативный Buffer Node.js — это быстрее)
-        const imageUint8Array = new Uint8Array(Buffer.from(finalBase64Str, 'base64'));
+        // 3. Декодируем (используем нативный Buffer Node.js — это самое надежное)
+        // Убираем все пробелы и переносы, которые могут сломать Base64
+        const cleanStr = finalBase64Str.replace(/\s/g, ''); 
+        const finalBuffer = Buffer.from(cleanStr, 'base64');
         
-        if (imageUint8Array.byteLength === 0) {
-            throw new Error(`Критическая ошибка: Декодирование Base64 не удалось. Размер: ${imageUint8Array.byteLength} байт.`);
+        if (finalBuffer.length === 0) {
+            throw new Error(`Критическая ошибка: Декодирование не удалось. Размер: 0 байт.`);
         }
-
-        const imageArrayBuffer = new Uint8Array(imageUint8Array).buffer; 
 
         // 4. УНИВЕРСАЛЬНЫЙ Вызов Vision AI 
         await editMessage(chatId, workingMessageId, `🔄 Анализ фото через ${activeModelConfig.SERVICE} Vision...`, token);
         
         const finalPrompt = await activeModelConfig.FUNCTION(
             activeModelConfig,      // <-- Передаем конфигурацию
-            imageArrayBuffer,   // <-- ArrayBuffer
+            finalBuffer,   // <-- ArrayBuffer
             envData
         ); 
 
