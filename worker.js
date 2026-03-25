@@ -5400,7 +5400,7 @@ async function callBotHubTextChat(config, history, messageText, envData) {
     }
     // ------------------------------------
 
-    // 3. Отправка запроса
+    /*/ 3. Отправка запроса
     const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -5422,6 +5422,8 @@ async function callBotHubTextChat(config, history, messageText, envData) {
         throw new Error(`BOTHUB API error (Status ${response.status}): ${errorText}`);
     }
 
+    */
+    const response = await sendAiRequest(body, url, config, envData);
     // 4. Обработка ответа
     const data = await response.json();
     let responseText = '';
