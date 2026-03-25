@@ -12420,15 +12420,21 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
              throw new Error("Не удалось извлечь Base64-данные из хранилища.");
         }
         
-        if (base64Data.includes(',')) {
-            base64Data = base64Data.split(',')[1];
-        }
-        while (base64Data.length % 4) {
-            base64Data += '=';
+        // Проверяем, является ли base64Data строкой
+        if (typeof base64Data === 'string') {
+            if (base64Data.includes(',')) {
+                base64Data = base64Data.split(',')[1];
+            }
+            while (base64Data.length % 4) {
+                base64Data += '=';
+            }
+        } else {
+            throw new Error('Критическая ошибка: Не удалось извлечь Base64-данные в виде строки.');
         }
 
         // 3. Декодируем и готовим ArrayBuffer для Vision AI
-        const imageUint8Array = base64ToUint8Array(base64Data); 
+        const imageUint8Array = base64ToUint8Array(base64Data);
+
         
         if (imageUint8Array.byteLength === 0) {
             throw new Error(`Критическая ошибка: Декодирование Base64 не удалось. Размер: ${imageUint8Array.byteLength} байт.`);
