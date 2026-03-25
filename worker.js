@@ -1198,37 +1198,43 @@ async function loadActiveConfig(serviceType, envData, chatId) {
  * @returns {Promise<string>} - Публичный URL изображения.
  */
 async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
-    
-    // Получаем необходимые ресурсы из envData
     const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
-    // Используем ваш публичный домен:
     const PUBLIC_DOMAIN = envData.WORKER_DOMAIN;
     
     if (!IMAGE_STORAGE) {
-         throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing for I2V upload.");
+         throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
     }
 
-    // 1. Убираем префикс, если он есть
-    const base64 = base64Data.replace(/^data:image\/(png|jpeg);base64,/, '');
+    let buffer;
 
-    // 2. Декодирование Base64 в бинарные данные
-    // Используем стандартный API Cloudflare Workers
-    const buffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    // 1. Проверяем: если это уже Buffer (бинарные данные), работаем напрямую
+    if (Buffer.isBuffer(base64Data) || base64Data instanceof Uint8Array) {
+        buffer = base64Data;
+    } 
+    // 2. Если это строка (Base64)
+    else if (typeof base64Data === 'string') {
+        // Убираем префикс через регулярку (теперь .replace сработает)
+        const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
+        // В Node.js декодируем через Buffer.from (быстрее и стабильнее чем atob)
+        buffer = Buffer.from(base64, 'base64');
+    } else {
+        throw new Error("Unsupported image data type: " + typeof base64Data);
+    }
     
     // 3. Создаем уникальный ключ
     const imageKey = `i2v/${chatId}/${Date.now()}.png`;
 
-    // 4. Сохраняем в KV (с Content-Type для корректной отдачи)
+    // 4. Сохраняем в KV/S3
+    // ВАЖНО: В Яндексе (S3/DB) метод .put может отличаться от Cloudflare KV.
+    // Если LAST_PHOTO_STORAGE — это твой адаптер DB, убедись, что он принимает Buffer.
     await IMAGE_STORAGE.put(imageKey, buffer, {
-        httpMetadata: {
-            contentType: 'image/png' 
-        },
-        expirationTtl: 60 * 60 // Храним 1 час
+        httpMetadata: { contentType: 'image/png' },
+        expirationTtl: 3600 // 1 час
     });
 
-    // 5. Возвращаем публичный URL для KIE.ai API
-    // ⚠️ Это предполагает, что ваш основной воркер имеет роутинг для /kv-images/*
-    return `${PUBLIC_DOMAIN}/kv-images/${imageKey}`;
+    // 5. Формируем URL
+    const baseUrl = PUBLIC_DOMAIN.startsWith('http') ? PUBLIC_DOMAIN : `https://${PUBLIC_DOMAIN}`;
+    return `${baseUrl}/kv-images/${imageKey}`;
 }
 
 // ✅ *** sendAudioByUrl - Отправка аудио по внешнему URL (для Kie.ai TTS)
@@ -12399,25 +12405,40 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
         // 2. Очистка и Парсинг Base64
         let base64Data;
         try {
-            const kvObject = JSON.parse(originalImageBase64);
+            // Если пришел Buffer, переводим в строку для парсинга
+            const rawString = Buffer.isBuffer(originalImageBase64) 
+                ? originalImageBase64.toString('utf8') 
+                : originalImageBase64;
+
+            const kvObject = JSON.parse(rawString);
             base64Data = kvObject.base64;
         } catch (e) {
-            base64Data = originalImageBase64;
+            // Если не JSON, значит это либо чистый Base64 (строка), либо бинарник
+            base64Data = Buffer.isBuffer(originalImageBase64) 
+                ? originalImageBase64.toString('base64') 
+                : originalImageBase64;
         }
 
         if (!base64Data) {
              throw new Error("Не удалось извлечь Base64-данные из хранилища.");
         }
         
-        if (base64Data.includes(',')) {
-            base64Data = base64Data.split(',')[1];
-        }
-        while (base64Data.length % 4) {
-            base64Data += '=';
+        // ПРЕВРАЩАЕМ В СТРОКУ (на случай если это Buffer), чтобы методы ниже сработали
+        let finalBase64Str = String(base64Data);
+
+        if (finalBase64Str.includes(',')) {
+            finalBase64Str = finalBase64Str.split(',')[1];
         }
 
-        // 3. Декодируем и готовим ArrayBuffer для Vision AI
-        const imageUint8Array = base64ToUint8Array(base64Data); 
+        // Убираем лишние пробелы/переносы, которые могли прийти из БД
+        finalBase64Str = finalBase64Str.trim();
+
+        while (finalBase64Str.length % 4) {
+            finalBase64Str += '=';
+        }
+
+        // 3. Декодируем (используем нативный Buffer Node.js — это быстрее)
+        const imageUint8Array = new Uint8Array(Buffer.from(finalBase64Str, 'base64'));
         
         if (imageUint8Array.byteLength === 0) {
             throw new Error(`Критическая ошибка: Декодирование Base64 не удалось. Размер: ${imageUint8Array.byteLength} байт.`);
