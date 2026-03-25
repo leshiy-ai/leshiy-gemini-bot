@@ -37,6 +37,7 @@ jobs:
             CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
             DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}
+            FALLBACK_PROXY=${{ secrets.FALLBACK_PROXY }}
             FREEPIK_API_KEY=${{ secrets.FREEPIK_API_KEY }}
             FUSIONBRAIN_API_KEY=${{ secrets.FUSIONBRAIN_API_KEY }}
             FUSIONBRAIN_SECRET_KEY=${{ secrets.FUSIONBRAIN_SECRET_KEY }}

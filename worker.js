@@ -1237,6 +1237,71 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     return `${baseUrl}/kv-images/${imageKey}`;
 }
 
+// ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
+async function sendAiRequest(body, url, config, envData, isRawBody = false) {
+    const isBinary = isRawBody && (body instanceof ArrayBuffer || body instanceof Uint8Array);
+    const PROXY_SECRET = envData.PROXY_SECRET_KEY;
+
+    // 1. Формируем заголовки для прокси-врапперов (Яндекс/CF)
+    const commonHeaders = {
+        'X-Target-URL': url,
+        'X-Proxy-Secret': PROXY_SECRET,
+        'Content-Type': isBinary ? 'application/octet-stream' : 'application/json'
+    };
+
+    // Если есть Auth (для Bothub/OpenAI), добавляем его
+    const authKey = envData[config.API_KEY];
+    if (config.SERVICE === 'BOTHUB' || config.SERVICE === 'OPENAI') {
+        commonHeaders['X-Proxy-Authorization'] = `Bearer ${authKey}`;
+    }
+
+    let response;
+    let errors = [];
+
+    // --- ПОПЫТКА 1: Основной прокси (через Яндекс) ---
+    try {
+        response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
+            method: 'POST',
+            headers: commonHeaders,
+            body: isBinary ? body : JSON.stringify(body)
+        });
+        if (response.ok) return response;
+        errors.push(`P1(${response.status})`);
+    } catch (e) { errors.push(`P1_Err(${e.message})`); }
+
+    // --- ПОПЫТКА 2: Резервный прокси (Cloudflare) ---
+    try {
+        const fallbackUrl = envData.FALLBACK_PROXY || 'https://leshiy-ai-proxy.leshiyalex.workers.dev';
+        if (fallbackUrl) {
+            response = await fetch(fallbackUrl, {
+                method: 'POST',
+                headers: commonHeaders,
+                body: isBinary ? body : JSON.stringify(body)
+            });
+            if (response.ok) return response;
+            errors.push(`P2(${response.status})`);
+        }
+    } catch (e) { errors.push(`P2_Err(${e.message})`); }
+
+    // --- ПОПЫТКА 3: Специальный Gemini прокси (только для Gemini) ---
+    if (config.SERVICE === 'GEMINI') {
+        try {
+            const geminiProxy = envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev';
+            const geminiUrl = url.replace(new URL(url).origin, geminiProxy);
+            
+            response = await fetch(geminiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Proxy-Secret': PROXY_SECRET },
+                body: JSON.stringify(body)
+            });
+            if (response.ok) return response;
+            errors.push(`P3(${response.status})`);
+        } catch (e) { errors.push(`P3_Err(${e.message})`); }
+    }
+
+    throw new Error(`Все прокси отказали: ${errors.join(' -> ')}`);
+}
+
 // ✅ *** sendAudioByUrl - Отправка аудио по внешнему URL (для Kie.ai TTS)
 async function sendAudioByUrl(chatId, fileUrl, token, caption = '✅ Ваше аудио готово!') {
     const apiUrl = `https://api.telegram.org/bot${token}/sendAudio`;
@@ -4070,7 +4135,7 @@ async function callGeminiVision(config, imageBuffer, envData) {
     }
 
     // ТРЕБУЕТСЯ КОНВЕРТАЦИЯ: Base64 для Gemini.
-    const imageBase64 = arrayBufferToBase64(imageBuffer); 
+    const imageBase64 = Buffer.from(imageBuffer).toString('base64');
 
     const systemInstructionText = "РОЛЬ И ЯЗЫК: Действуй как 'Фотореставратор'. Общение СТРОГО на РУССКОМ языке. ЦЕЛЬ: Создать максимально детализированный, буквальный промпт для Image-to-Image генерации. Твой ответ должен быть только промптом, без приветствий и объяснений.";
     
@@ -4217,11 +4282,11 @@ ${TARIFF_MESSAGE_TEXT}
         contents: contents
     };
 
-    let response;
-    let firstAttemptError = null;
-    let secondAttemptError = null;
+    //let response;
+    //let firstAttemptError = null;
+    //let secondAttemptError = null;
 
-    // --- ПОПЫТКА 1: Прямой прокси (GEMINI_PROXY) ---
+    /*/ --- ПОПЫТКА 1: Прямой прокси (GEMINI_PROXY) ---
     try {
         // 🛑 ДЕБАГ: ЛОГИРОВАНИЕ ТЕЛА ЗАПРОСА
         envData.ctx.waitUntil(logDebug("Gemini-Proxy", `Отправка запроса. Попытка 1: Через GEMINI_PROXY`, envData));
@@ -4267,14 +4332,18 @@ ${TARIFF_MESSAGE_TEXT}
             // Если и тут беда — выбрасываем критическую ошибку
             throw new Error(`Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${secondAttemptError}`);
         }
-    }
+    }*/
 
-    // --- ФИНАЛЬНАЯ ПРОВЕРКА ---
+    
+
+    /*/ --- ФИНАЛЬНАЯ ПРОВЕРКА ---
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Gemini Chat API Error: ${response.status} - ${errorText.substring(0, 300)}...`);
-    }
-
+    }*/
+    
+    // Посылаем на отправку
+    const response = await sendAiRequest(body, url, config, envData);
     const data = await response.json();
     const textResult = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
@@ -16149,6 +16218,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         LESHIY_AI_PROXY: env.LESHIY_AI_PROXY,
         GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY,
         GEMINI_PROXY: env.GEMINI_PROXY,
+        FALLBACK_PROXY: env.FALLBACK_PROXY,
         DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,
         BOTHUB_API_KEY: env.BOTHUB_API_KEY,
         KIEAI_API_KEY: env.KIEAI_API_KEY,
