@@ -4860,20 +4860,31 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
             },
             body: JSON.stringify({
                 prompt: simplifiedPrompt,
-                image: imageBytes // Твой массив байтов [...new Uint8Array]
+                image: imageBytes // Массив из [...new Uint8Array]
             })
         });
 
         const result = await response.json();
         
-        // Для совместимости: Cloudflare API через HTTP возвращает { result: { description: "..." } }
-        const aiResponse = result.result;
-
-        if (!aiResponse || !aiResponse.description) { // <-- Uform возвращает 'description'
-            throw new Error(`Vision API не вернул ожидаемый ответ. Response: ${JSON.stringify(aiResponse)}`);
+        // 1. ЕСЛИ ОТВЕТ НЕ OK — ВЫВОДИМ ВСЁ
+        if (!response.ok) {
+            console.error("DEBUG CF ERROR:", JSON.stringify(result));
+            throw new Error(`CF_STATUS_${response.status}: ${JSON.stringify(result)}`);
         }
 
-        return aiResponse.description.trim();
+        // 2. ЕСЛИ ОТВЕТ OK, НО ПУСТОЙ — СМОТРИМ СТРУКТУРУ
+        console.log("DEBUG CF SUCCESS RESULT:", JSON.stringify(result));
+
+        const aiResponse = result.result;
+
+        // Внимание: Uform может вернуть 'label' вместо 'description'
+        const finalOutput = aiResponse?.description || aiResponse?.label;
+
+        if (!finalOutput) {
+            throw new Error(`Vision API вернул успех, но нет данных. Ответ: ${JSON.stringify(result)}`);
+        }
+
+        return finalOutput.trim();
     } catch (e) {
         console.error("Workers AI Vision call failed:", e);
         throw new Error(`VISION_FAIL: Ошибка Workers AI Vision: ${e.message}`);
