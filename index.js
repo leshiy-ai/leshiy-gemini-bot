@@ -19,14 +19,15 @@ module.exports.handler = async (event, context) => {
     }
 
     let uri = event.url || event.headers['x-envoy-original-path'] || '/';
-    if (uri.startsWith('/gemini')) {
+    /*if (uri.startsWith('/gemini')) {
         uri = uri.replace('/gemini', '') || '/';
-    }
+    }*/
 
     const domain = process.env.WORKER_DOMAIN || "d5dtt5rfr7nk66bbrec2.apigw.yandexcloud.net";
-    const fullUrl = `https://${domain.replace(/\/$/, '')}${uri}`;
+    //const fullUrl = `https://${domain.replace(/\/$/, '')}${uri}`;
+    const fullUrl = `https://${domain}${uri}`;
     
-    //console.log("🛠 URL ДЛЯ ВОРКЕРА:", fullUrl);
+    console.log("🛠 URL ДЛЯ ВОРКЕРА:", fullUrl);
     const requestOptions = {
         method: event.httpMethod,
         headers: { ...event.headers },
