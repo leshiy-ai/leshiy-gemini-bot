@@ -4851,40 +4851,34 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
     // Uform-Gen2 требует простого промпта. Мы используем эффективную инструкцию на английском.
     const simplifiedPrompt = `Describe the attached image in full detail as a high-quality, atmospheric, long prompt (max 750 characters) for an image generation AI like Stable Diffusion or Midjourney. Focus on subject, style, lighting, and composition. The response must be ONLY in RUSSIAN, without any added commentary.`;
 
+    const payload = {
+        prompt: simplifiedPrompt,
+        image: imageBytes
+    };
+
     try {
-        const response = await fetch(URL, {
+        const fetchResponse = await fetch(URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                prompt: simplifiedPrompt,
-                image: imageBytes // Массив из [...new Uint8Array]
-            })
+            body: JSON.stringify(payload)
         });
 
-        const result = await response.json();
-        
-        // 1. ЕСЛИ ОТВЕТ НЕ OK — ВЫВОДИМ ВСЁ
-        if (!response.ok) {
-            console.error("DEBUG CF ERROR:", JSON.stringify(result));
-            throw new Error(`CF_STATUS_${response.status}: ${JSON.stringify(result)}`);
+        if (!fetchResponse.ok) {
+            const errorBody = await fetchResponse.json();
+            throw new Error(`Cloudflare API Error: ${fetchResponse.status} - ${errorBody.errors?.[0]?.message || fetchResponse.statusText}`);
         }
 
-        // 2. ЕСЛИ ОТВЕТ OK, НО ПУСТОЙ — СМОТРИМ СТРУКТУРУ
-        console.log("DEBUG CF SUCCESS RESULT:", JSON.stringify(result));
+        const aiResponse = await fetchResponse.json();
 
-        const aiResponse = result.result;
-
-        // Внимание: Uform может вернуть 'label' вместо 'description'
-        const finalOutput = aiResponse?.description || aiResponse?.label;
-
-        if (!finalOutput) {
-            throw new Error(`Vision API вернул успех, но нет данных. Ответ: ${JSON.stringify(result)}`);
+        // В внешнем API ответ всегда обернут в .result
+        if (!aiResponse.success || !aiResponse.result || !aiResponse.result.description) {
+            throw new Error(`Vision API не вернул описание. Response: ${JSON.stringify(aiResponse)}`);
         }
 
-        return finalOutput.trim();
+        return aiResponse.result.description.trim();
     } catch (e) {
         console.error("Workers AI Vision call failed:", e);
         throw new Error(`VISION_FAIL: Ошибка Workers AI Vision: ${e.message}`);
@@ -12406,7 +12400,7 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
         } // Если chatId не совпадает с ADMIN_CHAT_ID, сообщение пропускается.
 
      try {
-        const loadingMessage = await sendMessage(chatId, "✨ **Повторный анализ фото: Генерирую новый промпт...**", token); 
+        const loadingMessage = await sendMessageMarkdown(chatId, "✨ **Повторный анализ фото: Генерирую новый промпт...**", token); 
         if (loadingMessage.ok) { workingMessageId = loadingMessage.result.message_id; }
 
         if (!originalImageBase64 || originalImageBase64.length < 1000) {
@@ -12416,59 +12410,38 @@ async function processPromptRegeneration(chatId, imageBase64, token, storage, en
         // 2. Очистка и Парсинг Base64
         let base64Data;
         try {
-            // Если пришел Buffer, переводим в строку для парсинга
-            const rawString = Buffer.isBuffer(originalImageBase64) 
-                ? originalImageBase64.toString('utf8') 
-                : originalImageBase64;
-
-            const kvObject = JSON.parse(rawString);
+            const kvObject = JSON.parse(originalImageBase64);
             base64Data = kvObject.base64;
         } catch (e) {
-            // Если не JSON, значит это либо чистый Base64 (строка), либо бинарник
-            base64Data = Buffer.isBuffer(originalImageBase64) 
-                ? originalImageBase64.toString('base64') 
-                : originalImageBase64;
+            base64Data = originalImageBase64;
         }
 
         if (!base64Data) {
              throw new Error("Не удалось извлечь Base64-данные из хранилища.");
         }
         
-        // ПРЕВРАЩАЕМ В СТРОКУ (на случай если это Buffer), чтобы методы ниже сработали
-        let finalBase64Str = String(base64Data);
-
-        if (finalBase64Str.includes(',')) {
-            finalBase64Str = finalBase64Str.split(',')[1];
+        if (base64Data.includes(',')) {
+            base64Data = base64Data.split(',')[1];
+        }
+        while (base64Data.length % 4) {
+            base64Data += '=';
         }
 
-        // Убираем лишние пробелы/переносы, которые могли прийти из БД
-        finalBase64Str = finalBase64Str.trim();
-
-        while (finalBase64Str.length % 4) {
-            finalBase64Str += '=';
-        }
-
-        // 3. Декодируем (используем нативный Buffer Node.js — это самое надежное)
-        // Убираем все пробелы и переносы, которые могут сломать Base64
-        const cleanStr = finalBase64Str.replace(/\s/g, ''); 
+        // 3. Декодируем и готовим ArrayBuffer для Vision AI
+        const imageUint8Array = base64ToUint8Array(base64Data); 
         
-        // В Node.js аналог рабочего способа через Buffer:
-        const byteString = Buffer.from(cleanStr, 'base64').toString('binary');
-        const byteArray = new Uint8Array(byteString.length);
-        for (let i = 0; i < byteString.length; i++) {
-            byteArray[i] = byteString.charCodeAt(i);
-        }
-        
-        if (byteArray.length === 0) {
-            throw new Error(`Критическая ошибка: Декодирование не удалось. Размер: 0 байт.`);
+        if (imageUint8Array.byteLength === 0) {
+            throw new Error(`Критическая ошибка: Декодирование Base64 не удалось. Размер: ${imageUint8Array.byteLength} байт.`);
         }
 
-        // 4. УНИВЕРСАЛЬНЫЙ Вызов Vision AI
+        const imageArrayBuffer = new Uint8Array(imageUint8Array).buffer; 
+
+        // 4. УНИВЕРСАЛЬНЫЙ Вызов Vision AI 
         await editMessage(chatId, workingMessageId, `🔄 Анализ фото через ${activeModelConfig.SERVICE} Vision...`, token);
         
         const finalPrompt = await activeModelConfig.FUNCTION(
             activeModelConfig,      // <-- Передаем конфигурацию
-            byteArray.buffer,  // <-- ArrayBuffer
+            imageArrayBuffer,   // <-- ArrayBuffer
             envData
         ); 
 
