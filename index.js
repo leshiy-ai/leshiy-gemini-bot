@@ -25,7 +25,8 @@ module.exports.handler = async (event, context) => {
 
     const domain = process.env.WORKER_DOMAIN || "d5dtt5rfr7nk66bbrec2.apigw.yandexcloud.net";
     const fullUrl = `https://${domain.replace(/\/$/, '')}${uri}`;
-    console.log("🛠 URL ДЛЯ ВОРКЕРА:", fullUrl);
+    const originalUrl = new URL(fullUrl);
+    console.log(`🛠 URL ДЛЯ ВОРКЕРА: ${fullUrl}${originalUrl.pathname}${originalUrl.search}`);
     const requestOptions = {
         method: event.httpMethod,
         headers: { ...event.headers },

@@ -5392,7 +5392,7 @@ async function callBotHubTextChat(config, history, messageText, envData) {
     if (DEBUG_ENABLED) {
         const logData = {
             url: url,
-            body: JSON.stringify(body).substring(0, 1000), // Ограничиваем тело
+            //body: JSON.stringify(body).substring(0, 1000), // Ограничиваем тело
             historyLength: apiMessages.length,
         };
         // Предполагается, что logDebug также глобально доступна
