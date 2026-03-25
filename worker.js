@@ -1249,9 +1249,12 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
     };
 
     // Если есть Auth (для Bothub/OpenAI), добавляем его
-    const authKey = envData[config.API_KEY];
-    if (config.SERVICE === 'BOTHUB' || config.SERVICE === 'OPENAI') {
-        commonHeaders['X-Proxy-Authorization'] = `Bearer ${authKey}`;
+    if (config.SERVICE === 'WORKERS_AI' || config.SERVICE === 'CLOUDFLARE') {
+        // Если идем в CF AI, прокси должен пробросить этот заголовок
+        commonHeaders['Authorization'] = `Bearer ${envData.CLOUDFLARE_API_TOKEN}`;
+    } else if (config.SERVICE === 'BOTHUB' || config.SERVICE === 'OPENAI') {
+        // Если в Bothub
+        commonHeaders['X-Proxy-Authorization'] = `Bearer ${envData[config.API_KEY]}`;
     }
 
     let response;
@@ -1270,7 +1273,9 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
 
     // --- ПОПЫТКА 2: Резервный прокси (Cloudflare) ---
     try {
+        console.log("Trying P2: Cloudflare...");
         const fallbackUrl = envData.FALLBACK_PROXY || 'https://leshiy-ai-proxy.leshiyalex.workers.dev';
+
         if (fallbackUrl) {
             response = await fetch(fallbackUrl, {
                 method: 'POST',
@@ -1285,10 +1290,15 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
     // --- ПОПЫТКА 3: Специальный Gemini прокси (только для Gemini) ---
     if (config.SERVICE === 'GEMINI') {
         try {
-            const geminiProxy = envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev';
-            const geminiUrl = url.replace(new URL(url).origin, geminiProxy);
+            console.log("Trying P3: GeminiProxy...");
+            const originalUrl = new URL(url); 
+            const proxyBase = new URL(envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev/v1beta');
             
-            response = await fetch(geminiUrl, {
+            // Собираем финальный URL: база прокси + путь от гугла + параметры (ключ)
+            const finalProxyUrl = `${proxyBase.origin}${originalUrl.pathname}${originalUrl.search}`;
+            console.log("DEBUG GeminiProxy URL:", finalProxyUrl); // Увидишь, что получилось в логах
+
+            response = await fetch(finalProxyUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Proxy-Secret': PROXY_SECRET },
                 body: JSON.stringify(body)
@@ -4233,14 +4243,10 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     const API_KEY = envData[API_KEY_ENV_NAME]; 
     const BASE_URL = config.BASE_URL;
     const MODEL = config.MODEL;
-    //const PROXY_KEY_ENV_NAME = config.PROXY_KEY; 
-    //const PROXY_KEY = envData[PROXY_KEY_ENV_NAME]; 
-    //const PROXY_URL = envData.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev/v1beta';
 
     // --- УНИФИЦИРОВАННАЯ СБОРКА URL ---
     // Формат: BASE_URL/models/МОДЕЛЬ:generateContent?key=КЛЮЧ
     const url = `${BASE_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
-    //const proxyUrl = `${PROXY_URL}/models/${MODEL}:generateContent?key=${API_KEY}`;
     // ------------------------------------
 
     const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
@@ -4281,66 +4287,6 @@ ${TARIFF_MESSAGE_TEXT}
         contents: contents
     };
 
-    //let response;
-    //let firstAttemptError = null;
-    //let secondAttemptError = null;
-
-    /*/ --- ПОПЫТКА 1: Прямой прокси (GEMINI_PROXY) ---
-    try {
-        // 🛑 ДЕБАГ: ЛОГИРОВАНИЕ ТЕЛА ЗАПРОСА
-        envData.ctx.waitUntil(logDebug("Gemini-Proxy", `Отправка запроса. Попытка 1: Через GEMINI_PROXY`, envData));
-
-        response = await fetch(proxyUrl, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-Proxy-Secret': PROXY_KEY 
-            },
-            body: JSON.stringify(body),
-        });
-
-        // Если получили 429 или любую ошибку 4xx/5xx — идем в catch
-        if (!response.ok) {
-            firstAttemptError = `Status ${response.status}`;
-            throw new Error(firstAttemptError);
-        }
-    } catch (err) {
-        // ДЕБАГ - Переход к AI-Proxy
-        envData.ctx.waitUntil(logDebug("Gemini-Proxy", `GEMINI_PROXY не справился (${err.message}). Попытка 2: Через AI_PROXY`, envData));
-        // --- ПОПЫТКА 2: Универсальный прокси (LESHIY_AI_PROXY) ---
-        try {
-            // Здесь мы используем оригинальный URL Google как цель
-            response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-Target-URL': url,
-                    'X-Proxy-Secret': PROXY_KEY // <--- ДОБАВЛЯЕМ для GEMINY-PROXY
-                },
-                body: JSON.stringify(body),
-            });
-
-            // ДОБАВЛЯЕМ ВТОРУЮ ПРОВЕРКУ
-            if (!response.ok) {
-                secondAttemptError = `Status ${response.status}`;
-                throw new Error(secondAttemptError);
-            }
-        } catch (err2) {
-            // ДЕБАГ - Итоговый вывод ошибки
-            envData.ctx.waitUntil(logDebug("Gemini-Proxy", `Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${secondAttemptError}`, envData));
-            // Если и тут беда — выбрасываем критическую ошибку
-            throw new Error(`Оба прокси пали. 1-й: ${firstAttemptError}, 2-й: ${secondAttemptError}`);
-        }
-    }*/
-
-    
-
-    /*/ --- ФИНАЛЬНАЯ ПРОВЕРКА ---
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Gemini Chat API Error: ${response.status} - ${errorText.substring(0, 300)}...`);
-    }*/
-    
     // Посылаем на отправку
     const response = await sendAiRequest(body, url, config, envData);
     const data = await response.json();
@@ -4809,30 +4755,14 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
         temperature: 0.7 // Умеренная температура
     };
     try {
-            const httpResponse = await fetch(URL, { // Переименовал для ясности, что это поток
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!httpResponse.ok) {
-                const errorData = await httpResponse.text();
-                throw new Error(`CF API Error: ${httpResponse.status} - ${errorData}`);
-            }
-
-            const result = await httpResponse.json();
-            // Сохраняем твою переменную aiResponse (в твоем коде ниже ты используешь response)
-            const response = result.result; 
-
-            // Твоя проверка (теперь она сработает, т.к. в response лежит содержимое result)
-            if (!response || !response.response) {
-                throw new Error(`Workers AI не вернул ожидаемый ответ. Response: ${JSON.stringify(result)}`);
-            }
-
-        return response.response.trim(); // Возвращаем сырой, но полный ответ
+        // Посылаем на отправку
+        const response = await sendAiRequest(payload, URL, config, envData);
+        const data = await response.json();
+        // У Workers AI текст лежит в result.response
+        const textResult = data.result?.response || data.result?.description || data.result;
+        
+        if (!textResult) throw new Error("Workers AI вернул пустой результат");
+        return textResult.trim();
     } catch (e) {
         console.error("Workers AI call failed:", e);
         throw new Error(`Ошибка Workers AI: ${e.message}`);
