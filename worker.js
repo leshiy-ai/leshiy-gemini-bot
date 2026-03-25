@@ -4850,7 +4850,7 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
 
     // Uform-Gen2 требует простого промпта. Мы используем эффективную инструкцию на английском.
     const simplifiedPrompt = `Describe the attached image in full detail as a high-quality, atmospheric, long prompt (max 750 characters) for an image generation AI like Stable Diffusion or Midjourney. Focus on subject, style, lighting, and composition. The response must be ONLY in RUSSIAN, without any added commentary.`;
-
+    const base64Str = Buffer.from(imageBuffer).toString('base64');
     try {
         const response = await fetch(URL, {
             method: 'POST',
@@ -4860,7 +4860,7 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
             },
             body: JSON.stringify({
                 prompt: simplifiedPrompt,
-                image: imageBytes // Твой массив байтов [...new Uint8Array]
+                image: base64Str // строка [...new Uint8Array]
             })
         });
 
