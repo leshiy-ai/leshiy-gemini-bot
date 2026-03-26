@@ -1239,9 +1239,10 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
 
 // ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
 async function sendAiRequest(body, url, config, envData, isRawBody = false) {
+    const safeConfig = config || {};
     const isBinary = isRawBody && (body instanceof ArrayBuffer || body instanceof Uint8Array);
     const PROXY_SECRET = envData.GEMINI_PROXY_KEY;
-
+ 
     // 1. Формируем заголовки для прокси-врапперов (Яндекс/CF)
     const commonHeaders = {
         'X-Target-URL': url,
@@ -1250,12 +1251,16 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
     };
 
     // Если есть Auth (для Bothub/OpenAI), добавляем его
-    if (config.SERVICE === 'WORKERS_AI' || config.SERVICE === 'CLOUDFLARE') {
-        // Если идем в CF AI, прокси должен пробросить этот заголовок
-        commonHeaders['Authorization'] = `Bearer ${envData.CLOUDFLARE_API_TOKEN}`;
-    } else if (config.SERVICE === 'BOTHUB' || config.SERVICE === 'OPENAI') {
+    if (safeConfig.SERVICE === 'WORKERS_AI' || safeConfig.SERVICE === 'CLOUDFLARE') {
+        // Берем токен напрямую, если он есть в envData
+        const cfAccount = envData.CLOUDFLARE_ACCOUNT_ID || envData['CLOUDFLARE_ACCOUNT_ID'];
+        const cfToken = envData.CLOUDFLARE_API_TOKEN || envData['CLOUDFLARE_API_TOKEN'];
+        
+        if (cfToken) commonHeaders['Authorization'] = `Bearer ${cfToken}`;
+
+    } else if (safeConfig.SERVICE === 'BOTHUB' || safeConfig.SERVICE === 'OPENAI') {
         // Если в Bothub
-        commonHeaders['X-Proxy-Authorization'] = `Bearer ${envData[config.API_KEY]}`;
+        commonHeaders['X-Proxy-Authorization'] = `Bearer ${envData[safeConfig.API_KEY]}`;
     }
 
     let response;
@@ -1263,6 +1268,7 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
 
     // --- ПОПЫТКА 1: Основной прокси (через Яндекс.Клауд Функцию) ---
     try {
+        console.log("Trying P1: Yandex.Cloud...");
         response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
             method: 'POST',
             headers: commonHeaders,
@@ -5088,7 +5094,7 @@ async function callWorkersAITextToImage(uniConfig, uniPrompt, uniEnvData) {
         if (envData.ctx) {
             envData.ctx.waitUntil(logDebug('IMG_GEN_BUFFER_START', `Начинаю чтение ArrayBuffer...`, envData));
         }
-        
+
         // Ответ в виде ArrayBuffer 
         apiResponse = await fetchResponse.arrayBuffer();
 
