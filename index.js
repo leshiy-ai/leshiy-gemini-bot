@@ -2,6 +2,8 @@ const { USER_DB_ADAPTER, FILES_DB_ADAPTER, TypedValues, runQuery, filesDriver } 
 const nodeCrypto = require('crypto');
 const worker = require('./worker'); 
 const fetch = require('node-fetch');
+const FormData = require('form-data');
+global.FormData = require('form-data');
 
 // Один-в-один как в работающем сторадже
 global.fetch = fetch;
@@ -42,6 +44,25 @@ async function prepareMultipart(formData) {
     };
 }
 
+// --- ПЕРЕХВАТ ГЛОБАЛЬНОГО FETCH ---
+const originalFetch = global.fetch;
+global.fetch = async (url, opts) => {
+    if (opts && opts.body && (opts.body instanceof FormData || opts.body.constructor.name === 'FormData')) {
+        const { body, contentType } = await prepareMultipart(opts.body);
+        
+        // Создаем новые опции, чтобы не мутировать старые
+        const newOpts = { ...opts };
+        newOpts.body = body;
+        newOpts.headers = {
+            ...(opts.headers || {}),
+            'Content-Type': contentType,
+            'Content-Length': body.length.toString()
+        };
+        return originalFetch(url, newOpts);
+    }
+    return originalFetch(url, opts);
+};
+
 module.exports.handler = async (event, context) => {
     let body = {};
     try {
@@ -81,8 +102,8 @@ module.exports.handler = async (event, context) => {
         headers.delete('content-length'); 
     }
 
-    // ДЕБАГ-ЛОГ (добавь временно, чтобы увидеть, что доходит до воркера)
-    console.log("🛠 REQUEST TO WORKER:", {url: fullUrl, method: requestOptions.method, contentType: headers.get('content-type')});
+    // ДЕБАГ-ЛОГ: Всё в одну строку для удобства чтения в Cloud Logs
+    console.log(`🛠 [WORKER_IN] URL ДЛЯ ВОРКЕРА ${fullUrl} -> ${requestOptions.method} | TYPE: ${headers.get('content-type') || 'none'}`);
 
     const env = {
         ...process.env,
