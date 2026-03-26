@@ -10,6 +10,38 @@ global.Request = fetch.Request;
 global.Response = fetch.Response;
 global.crypto = nodeCrypto;
 
+// Функция пересборки Multipart formData при каждом обращении
+async function prepareMultipart(formData) {
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+    const chunks = [];
+    const crlf = '\r\n';
+
+    for (const [key, value] of formData.entries()) {
+        chunks.push(Buffer.from(`--${boundary}${crlf}`));
+        
+        // Проверяем, файл это или обычное поле
+        if (value && typeof value === 'object' && (value.arrayBuffer || value instanceof Buffer)) {
+            const filename = value.name || 'file.dat';
+            const type = value.type || 'application/octet-stream';
+            chunks.push(Buffer.from(`Content-Disposition: form-data; name="${key}"; filename="${filename}"${crlf}`));
+            chunks.push(Buffer.from(`Content-Type: ${type}${crlf}${crlf}`));
+            
+            const buffer = value.arrayBuffer ? await value.arrayBuffer() : value;
+            chunks.push(Buffer.from(buffer));
+        } else {
+            chunks.push(Buffer.from(`Content-Disposition: form-data; name="${key}"${crlf}${crlf}`));
+            chunks.push(Buffer.from(String(value)));
+        }
+        chunks.push(Buffer.from(crlf));
+    }
+    chunks.push(Buffer.from(`--${boundary}--${crlf}`));
+
+    return {
+        body: Buffer.concat(chunks),
+        contentType: `multipart/form-data; boundary=${boundary}`
+    };
+}
+
 module.exports.handler = async (event, context) => {
     let body = {};
     try {
@@ -67,19 +99,26 @@ module.exports.handler = async (event, context) => {
             fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
         },
         LESHIY_CONVERTER: {
-            // Принимаем url, который пришел из воркера (тот самый DEBUG_URL или ROTATE_URL)
-            fetch: (url, opts) => {
-                // Если url пришел как строка (результат сложения объекта со строкой), 
-                // используем его. Если нет — берем базу.
+            toString: () => process.env.LESHIY_CONVERTER,
+            fetch: async (url, opts) => {
+                let finalOpts = { ...opts };
+    
+                // Если пришел FormData — магия автоматизации
+                if (opts.body && (opts.body instanceof FormData || opts.body.constructor.name === 'FormData')) {
+                    const { body, contentType } = await prepareMultipart(opts.body);
+                    finalOpts.body = body;
+                    // Важно: перебиваем заголовки, чтобы был правильный boundary и длина
+                    finalOpts.headers = {
+                        ...(opts.headers || {}),
+                        'Content-Type': contentType,
+                        'Content-Length': body.length.toString()
+                    };
+                }
+    
+                // Вызываем системный fetch с уже "правильным" телом
                 const finalUrl = (typeof url === 'string') ? url : process.env.LESHIY_CONVERTER;
-                
-                // ЛОГ, чтобы ты увидел в консоли Яндекса: ">>> FETCHING: .../rotate-image"
-                console.log(`[CONVERTER] ${opts.method || 'GET'} -> ${finalUrl}`);
-                
-                return fetch(finalUrl, opts);
-            },
-            // МАГИЯ: этот метод вызывается, когда ты делаешь + "/debug"
-            toString: () => process.env.LESHIY_CONVERTER.replace(/\/$/, '')
+                return fetch(finalUrl, finalOpts);
+            }
         }
     };
 
