@@ -1,16 +1,20 @@
 const { USER_DB_ADAPTER, FILES_DB_ADAPTER, TypedValues, runQuery, filesDriver } = require('./db_adapter');
 const nodeCrypto = require('crypto');
-const worker = require('./worker'); 
-const fetch = require('node-fetch');
-const FormData = require('form-data');
-global.FormData = require('form-data');
 
-// Один-в-один как в работающем сторадже
-global.fetch = fetch;
-global.Headers = fetch.Headers;
-global.Request = fetch.Request;
-global.Response = fetch.Response;
+// 1. ВАЖНО: Удаляем FormData из зависимостей, берем нативную или фиксим через глобал
+// Если в Node 18+ есть глобальный FormData, используем его.
+// Если нет — заставляем всех использовать одну и ту же версию.
+const NativeFormData = global.FormData || require('form-data');
+
+// 2. ЖЕСТКАЯ ПОДМЕНА для всего проекта
+global.FormData = NativeFormData;
 global.crypto = nodeCrypto;
+
+// Магия: подменяем модуль в кэше, чтобы воркер не юзал свою старую версию
+require.cache[require.resolve('form-data')] = { exports: NativeFormData };
+
+// 1. Сохраняем чистый системный fetch
+const originalFetch = global.fetch;
 
 // Функция пересборки Multipart formData при каждом обращении
 async function prepareMultipart(formData) {
@@ -20,16 +24,13 @@ async function prepareMultipart(formData) {
 
     for (const [key, value] of formData.entries()) {
         chunks.push(Buffer.from(`--${boundary}${crlf}`));
-        
-        // Проверяем, файл это или обычное поле
-        if (value && typeof value === 'object' && (value.arrayBuffer || value instanceof Buffer)) {
+        if (value && typeof value === 'object' && (value.arrayBuffer || Buffer.isBuffer(value))) {
             const filename = value.name || 'file.dat';
             const type = value.type || 'application/octet-stream';
             chunks.push(Buffer.from(`Content-Disposition: form-data; name="${key}"; filename="${filename}"${crlf}`));
             chunks.push(Buffer.from(`Content-Type: ${type}${crlf}${crlf}`));
-            
-            const buffer = value.arrayBuffer ? await value.arrayBuffer() : value;
-            chunks.push(Buffer.from(buffer));
+            const buffer = value.arrayBuffer ? Buffer.from(await value.arrayBuffer()) : value;
+            chunks.push(buffer);
         } else {
             chunks.push(Buffer.from(`Content-Disposition: form-data; name="${key}"${crlf}${crlf}`));
             chunks.push(Buffer.from(String(value)));
@@ -38,30 +39,58 @@ async function prepareMultipart(formData) {
     }
     chunks.push(Buffer.from(`--${boundary}--${crlf}`));
 
+    const finalBuffer = Buffer.concat(chunks);
+
+    // --- ВОТ ЭТА МАГИЯ ---
+    // Прикидываемся стримом для старых библиотек типа node-fetch v2
+    finalBuffer.on = () => {}; 
+    finalBuffer.pause = () => {};
+    finalBuffer.resume = () => {};
+
     return {
-        body: Buffer.concat(chunks),
+        body: finalBuffer,
         contentType: `multipart/form-data; boundary=${boundary}`
     };
 }
 
-// --- ПЕРЕХВАТ ГЛОБАЛЬНОГО FETCH ---
-const originalFetch = global.fetch;
-global.fetch = async (url, opts) => {
-    if (opts && opts.body && (opts.body instanceof FormData || opts.body.constructor.name === 'FormData')) {
+// --- УНИВЕРСАЛЬНАЯ ОБЕРТКА FETCH ---
+const smartFetch = async (url, opts) => {
+    const isFormData = opts?.body && (
+        opts.body instanceof FormData || 
+        opts.body.constructor.name === 'FormData' ||
+        (typeof opts.body === 'object' && opts.body.append)
+    );
+
+    if (isFormData) {
         const { body, contentType } = await prepareMultipart(opts.body);
-        
-        // Создаем новые опции, чтобы не мутировать старые
         const newOpts = { ...opts };
+        const rawHeaders = {};
+        if (opts.headers) {
+            const entries = opts.headers instanceof Headers ? [...opts.headers] : Object.entries(opts.headers);
+            for (const [k, v] of entries) { rawHeaders[k.toLowerCase()] = String(v); }
+        }
+        rawHeaders['content-type'] = contentType;
+        rawHeaders['content-length'] = String(body.length);
         newOpts.body = body;
-        newOpts.headers = {
-            ...(opts.headers || {}),
-            'Content-Type': contentType,
-            'Content-Length': body.length.toString()
-        };
+        newOpts.headers = rawHeaders;
         return originalFetch(url, newOpts);
     }
     return originalFetch(url, opts);
 };
+
+// ГЛОБАЛЬНАЯ ПОДМЕНА (чтобы никто не ушел обиженным)
+global.fetch = smartFetch;
+global.FormData = FormData;
+global.crypto = nodeCrypto;
+
+// ПОДМЕНА МОДУЛЯ node-fetch (Критично для твоего воркера!)
+// Если воркер делает require('node-fetch'), он получит наш smartFetch
+require.cache[require.resolve('node-fetch')] = {
+    exports: smartFetch
+};
+
+// Только ПОСЛЕ этого подключаем воркер
+const worker = require('./worker');
 
 module.exports.handler = async (event, context) => {
     let body = {};
