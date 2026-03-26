@@ -678,15 +678,7 @@ function generateModelMenuConfig(AI_MODELS) {
 
 // arrayBufferToBase64 - БЕЗОПАСНАЯ конвертация ArrayBuffer в Base64 (без переполнения стека)
 function arrayBufferToBase64(buffer) {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-
-    // Используем буфер для предотвращения переполнения
-    for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
+    return Buffer.from(buffer).toString('base64');
 }
 
 // bufferToBase64 - Вспомогательная функция
@@ -702,14 +694,14 @@ function bufferToBase64(buffer) {
 
 // Вспомогательная функция для конвертации Base64 в ArrayBuffer (требуется для ответа DALL-E)
 function base64ToArrayBuffer(base64) {
-    // В Cloudflare Worker'е используется atob
-    const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
+    // 1. Убираем префикс (Data URL), если он есть
+    const cleanBase64 = base64.replace(/^data:audio\/(mpeg|mp3|ogg);base64,/, "");
+    
+    // 2. Используем нативный Buffer Node.js - это самый быстрый и точный способ
+    const buf = Buffer.from(cleanBase64, 'base64');
+    
+    // 3. Возвращаем именно ArrayBuffer, который ждет Response
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
 // Хелпер для конвертации строки в ArrayBuffer (замена TextEncoder для старых Workers)
@@ -1255,7 +1247,7 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
         // Берем токен напрямую, если он есть в envData
         const cfAccount = envData.CLOUDFLARE_ACCOUNT_ID || envData['CLOUDFLARE_ACCOUNT_ID'];
         const cfToken = envData.CLOUDFLARE_API_TOKEN || envData['CLOUDFLARE_API_TOKEN'];
-        
+
         if (cfToken) commonHeaders['Authorization'] = `Bearer ${cfToken}`;
 
     } else if (safeConfig.SERVICE === 'BOTHUB' || safeConfig.SERVICE === 'OPENAI') {
