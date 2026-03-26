@@ -276,7 +276,7 @@ const AI_MODELS = {
         API_KEY: 'GEMINI_API_KEY', 
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta'
     },
-    /*// ❌ ПЛАТНО: You exceeded your current quota
+    // ❌ ПЛАТНО: You exceeded your current quota
     TEXT_TO_IMAGE_GEMINI: { 
         SERVICE: 'GEMINI', 
         FUNCTION: callGeminiText2Image, 
@@ -296,7 +296,7 @@ const AI_MODELS = {
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
     },
-    // ❌ ПЛАТНО: Video generation is not available in your country
+    /*/ ❌ ПЛАТНО: Video generation is not available in your country
     IMAGE_TO_VIDEO_VEO: { 
         SERVICE: 'GEMINI', 
         FUNCTION: startGeminiVeoImageToVideo, 
@@ -590,14 +590,14 @@ const AI_MODELS = {
         pricing: 2 // 2 кредита за апскейл
     },
 
-    // --- ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ (Пример) ---
-    // IMAGE_TO_IMAGE_FREEPIK: { 
-    //     SERVICE: 'FREEPIK', 
-    //     FUNCTION: callFreePikImg2Img,
-    //     MODEL: 'freepik-model-1', 
-    //     API_KEY: 'FREEPIK_API_KEY', 
-    //     BASE_URL: 'https://freepik.api.url/generate/v1' 
-    // },
+    /*/ --- ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ (Пример) ---
+    IMAGE_TO_IMAGE_FREEPIK: { 
+        SERVICE: 'FREEPIK', 
+        FUNCTION: callFreePikImg2Img,
+        MODEL: 'freepik-model-1', 
+        API_KEY: 'FREEPIK_API_KEY', 
+        BASE_URL: 'https://freepik.api.url/generate/v1' 
+    },*/
 };
 
 // --- КАРТА СЕРВИСОВ ДЛЯ АДМИН-МЕНЮ ---
@@ -1066,7 +1066,8 @@ async function sendPhotoFromBase64(chatId, base64Image, caption, token) {
         // Части полей: chat_id, caption, parse_mode
         parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${chatId}\r\n`);
         parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption}\r\n`);
-        parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nMarkdownV2\r\n`);
+        //parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nMarkdownV2\r\n`);
+        parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n`);
 
         // Заголовок файла 'photo'
         const photoHeader = `--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="image.png"\r\nContent-Type: image/png\r\n\r\n`;
@@ -3331,7 +3332,8 @@ async function sendVideoWithCaption(chatId, videoArrayBuffer, caption, token, en
     formData.append('chat_id', chatId.toString());
     formData.append('caption', caption); // Для видео обычно проще использовать Markdown
     formData.append('video', videoFile, 'video.mp4');
-    formData.append('parse_mode', 'Markdown');
+    //formData.append('parse_mode', 'Markdown');
+    formData.append('parse_mode', 'HTML');
 
     // 1. ОТПРАВКА ВИДЕО
     const response = await fetch(apiUrl, {
@@ -3404,7 +3406,8 @@ async function sendVideo(chatId, videoUrl, token, caption = "") {
     const body = {
         chat_id: chatId,
         video: videoUrl,
-        parse_mode: 'Markdown'
+        //parse_mode: 'Markdown'
+        parse_mode: 'HTML'
     };
     if (caption) { body.caption = caption; }
     await fetch(url, {
@@ -3780,7 +3783,8 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
         
         head += `--${boundary}${crlf}`;
         head += `Content-Disposition: form-data; name="parse_mode"${crlf}${crlf}`;
-        head += `MarkdownV2${crlf}`; 
+        //head += `MarkdownV2${crlf}`; 
+        head += `HTML${crlf}`; 
     }
 
     // Заголовок для самого файла
