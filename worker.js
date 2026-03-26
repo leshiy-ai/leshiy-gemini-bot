@@ -7483,7 +7483,6 @@ const ADMIN_COMMANDS = [
  */
 async function convertOggToMp3(fileId, envData) {
     // 🛑 АДРЕС ВАШЕГО КОНВЕРТЕРА:
-    const CONVERTER_URL = `${envData.LESHIY_CONVERTER}/ogg2mp3`; 
     const token = envData.TELEGRAM_BOT_TOKEN;
 
     // 1. Получаем file_path из Telegram
@@ -15146,7 +15145,7 @@ async function runPhotoRotationInBackground(chatId, fileId, originalMessageId, l
       const photoFile = new File([photoBuffer], 'photo.jpg', { type: 'image/jpeg' });
       formData.append('image', photoFile);
   
-      const rotateResponse = await envData.LESHIY_CONVERTER.fetch(`${ROTATE_ENDPOINT}?angle=${angle}`, {
+      const rotateResponse = await env.LESHIY_CONVERTER.fetch(`${ROTATE_ENDPOINT}?angle=${angle}`, {
         method: 'POST',
         body: formData,
         signal: AbortSignal.timeout(60000)
@@ -17770,7 +17769,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                     await sendMediaDataControlMenu(chatId, token, envData, messageId);
                     return new Response('OK', { status: 200 });
                     case 'grab_frame': {
-                        const RENDER_HOST_URL = envData.LESHIY_CONVERTER;
+                        const RENDER_HOST_URL = env.LESHIY_CONVERTER;
                         const VIDEO_TO_IMAGE_ENDPOINT = RENDER_HOST_URL + '/video2image';
                         const DEFAULT_TIMESTAMP = '00:00:01.000'; // Используем формат Render
                     
@@ -17813,7 +17812,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                             const finalRenderUrl = `${VIDEO_TO_IMAGE_ENDPOINT}?timestamp=${DEFAULT_TIMESTAMP}&format=jpg`;
                     
                             // 🛑 ИСПРАВЛЕНИЕ: Корректно парсим тело как JSON
-                            const renderResponse = await fetch(finalRenderUrl, {
+                            const renderResponse = await env.LESHIY_CONVERTER.fetch(finalRenderUrl, {
                                 method: 'POST',
                                 body: renderFormData,
                                 signal: AbortSignal.timeout(120000)
