@@ -18,12 +18,12 @@ module.exports.handler = async (event, context) => {
         body = event.body;
     }
 
-    let uri = event.url || event.headers['x-envoy-original-path'] || '/gemini';
+    let uri = event.url || event.headers['x-envoy-original-path'] || '/';
     /*if (uri.startsWith('/gemini')) {
         uri = uri.replace('/gemini', '') || '/';
     }*/
 
-    const domain = process.env.WORKER_DOMAIN || "d5dtt5rfr7nk66bbrec2.apigw.yandexcloud.net";
+    const domain = process.env.WORKER_DOMAIN || "d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net";
     //const fullUrl = `https://${domain.replace(/\/$/, '')}${uri}`;
     const fullUrl = `https://${domain}${uri}`;
     

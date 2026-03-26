@@ -12,7 +12,7 @@ npm-debug.log
 .DS_Store
 
 # Gateway
-storage-gateway.yml
+*gateway.yml
 
 # версии
 versions
