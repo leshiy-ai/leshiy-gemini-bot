@@ -5159,7 +5159,7 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
 
     let response;
     try {
-        const response = await sendAiRequest(inputs, url, config, envData);
+        response = await sendAiRequest(inputs, url, config, envData);
         /*response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -5170,16 +5170,6 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
             signal: AbortSignal.timeout(60000)
         });*/
         
-        if (response.ok) {
-            const contentType = response.headers.get('Content-Type');
-            if (contentType && contentType.includes('image/png')) {
-                return await response.arrayBuffer();
-            }
-            throw new Error("Workers AI вернул не PNG.");
-        } else {
-            const errorText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
     } catch (e) {
         await logDebug("Img2Img", `Ошибка Fetch: ${e.message}`, envData);
         throw new Error(`Ошибка сети/таймаута при вызове Workers AI: ${e.message}`);
@@ -5293,7 +5283,8 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
 
     let response;
     try {
-        response = await fetch(url, {
+        response = await sendAiRequest(inputs, url, config, envData);
+        /*response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -5301,7 +5292,7 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
             },
             body: JSON.stringify(inputs),
             signal: AbortSignal.timeout(60000)
-        });
+        });*/
     } catch (e) {
         envData.ctx.waitUntil(logDebug("TTS_WorkersAI", `Ошибка Fetch: ${e.message}`, envData));
         throw new Error(`Ошибка сети/таймаута при вызове Workers AI: ${e.message}`);
