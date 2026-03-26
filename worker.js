@@ -5073,6 +5073,10 @@ async function callWorkersAITextToImage(uniConfig, uniPrompt, uniEnvData) {
             body: JSON.stringify(inputs)
         });*/
 
+        if (envData.ctx) {
+            envData.ctx.waitUntil(logDebug('IMG_GEN_FETCH_STATUS', `Status: ${fetchResponse.status}, OK: ${fetchResponse.ok}`, envData));
+        }
+
         if (!fetchResponse.ok) {
             const errorBody = await fetchResponse.json();
              if (envData.BOT_LOGS_STORAGE && envData.ctx) {
@@ -5081,6 +5085,10 @@ async function callWorkersAITextToImage(uniConfig, uniPrompt, uniEnvData) {
             throw new Error(`Cloudflare API Error: ${fetchResponse.status} - ${errorBody.errors?.[0]?.message || fetchResponse.statusText}`);
         }
 
+        if (envData.ctx) {
+            envData.ctx.waitUntil(logDebug('IMG_GEN_BUFFER_START', `Начинаю чтение ArrayBuffer...`, envData));
+        }
+        
         // Ответ в виде ArrayBuffer 
         apiResponse = await fetchResponse.arrayBuffer();
 
