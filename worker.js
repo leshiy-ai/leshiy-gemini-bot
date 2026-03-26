@@ -3758,14 +3758,11 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     envData.ctx.waitUntil(logDebug("SendPhoto", `Выбран метод: ${method}. Размер фото (bytes): ${photoArrayBuffer.byteLength}. Chat ID: ${chatId}`, envData));
     // =========================================================================
 
-    //const formData = new FormData();
-    //const imageFile = new File([photoArrayBuffer], 'image.png', { type: 'image/png' });
-
     // 1. Конвертируем ArrayBuffer в Buffer
     const buffer = Buffer.from(photoArrayBuffer);
 
     envData.ctx.waitUntil(logDebug("SendPhoto", `Подготовка ручного multipart. Размер: ${photoArrayBuffer.byteLength} bytes. Метод: ${method}`, envData));
-    
+
     // 2. Формируем multipart/form-data ВРУЧНУЮ
     const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
     const crlf = '\r\n';
@@ -3826,7 +3823,6 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
 
     envData.ctx.waitUntil(logDebug("SendPhoto", `Ответ Telegram. Status: ${response.status}. Ok: ${responseData.ok}. Результат: Успех`, envData));
 
-    
     // =========================================================================
     // 2. БЛОК ДОБАВЛЕНИЯ ИНЛАЙН-КНОПКИ (С использованием KV для обхода лимита 64 байт)
     // =========================================================================
@@ -15010,9 +15006,9 @@ async function callLeshiyMp3Converter(endpoint, fetchOptions, queryParams, envDa
  * @returns {Promise<boolean>} true, если сервис доступен и вернул 200 OK.
  */
 async function checkConverterHealth(envData) {
-    const DEBUG_URL = LESHIY_CONVERTER + '/debug';
+    const DEBUG_URL = envData.LESHIY_CONVERTER + '/debug';
     try {
-        const response = await fetch(DEBUG_URL, {
+        const response = await envData.LESHIY_CONVERTER.fetch(DEBUG_URL, {
             method: 'GET',
             // 🛑 Увеличиваем таймаут до 45 секунд
             signal: AbortSignal.timeout(45000)
@@ -16219,7 +16215,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         PHOTO_ENABLED: isPhotoEnabled, 
         VIDEO_ENABLED: isVideoEnabled, 
         PAYMENT_LINK: PAYMENT_LINK,
-        WORKER_DOMAIN: `https://${new URL(request.url).host}`,
+        WORKER_DOMAIN: env.WORKER_DOMAIN,
         LESHIY_CONVERTER: env.LESHIY_CONVERTER,
         PUBLIC_COMMANDS: PUBLIC_COMMANDS,
         ADMIN_COMMANDS: ADMIN_COMMANDS,
