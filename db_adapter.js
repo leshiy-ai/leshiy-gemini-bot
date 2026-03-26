@@ -45,14 +45,14 @@ const USER_DB_ADAPTER = {
             if (typeof val === 'string' && !val.trim().startsWith('{') && !val.trim().startsWith('[')) {
                 return val; 
             }
-            // Если это уже объект - отдаем как есть
-            if (typeof val === 'object') return val;
-            // Если это строка JSON - пробуем распарсить
-            try {
-                return JSON.parse(val);
-            } catch (e) {
-                return val;
+            // --- ВОТ ТУТ ГЛОБАЛЬНЫЙ ФИКС ---
+            // Если база вернула объект (JSON-тип из YDB), 
+            // мы превращаем его обратно в строку, чтобы Воркер мог сделать свой JSON.parse
+            if (typeof val === 'object') {
+                return JSON.stringify(val); 
             }
+
+            return val; // Возвращаем как строку
         } catch (e) {
             console.error("DB GET ERROR:", key, e);
             return null;
