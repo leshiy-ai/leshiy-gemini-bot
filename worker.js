@@ -4972,9 +4972,9 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
             const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${model}`;
 
             const currentConfig = {
-                ...config,
-                MODEL: model,
-                SERVICE: 'WORKERS_AI' // Чтобы sendAiRequest применил заголовки CF
+                MODEL: model,           // Для логов
+                SERVICE: 'WORKERS_AI',  // Чтобы добавился Bearer токен Cloudflare
+                API_KEY: 'CLOUDFLARE_API_TOKEN' // Имя ключа в твоем envData
             };
 
             const body = { 
@@ -4982,8 +4982,8 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
                 max_tokens: 300 
             };
 
-            //const response = await sendAiRequest(body, URL, currentConfig, envData);
-            const response = await fetch(URL, {
+            const response = await sendAiRequest(body, URL, currentConfig, envData);
+            /*const response = await fetch(URL, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -4993,7 +4993,7 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
                     prompt: translatePrompt, 
                     max_tokens: 300 
                 })
-            });
+            });*/
 
             const result = await response.json();
             
