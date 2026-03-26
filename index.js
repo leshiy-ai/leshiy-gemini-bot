@@ -50,11 +50,7 @@ module.exports.handler = async (event, context) => {
     }
 
     // ДЕБАГ-ЛОГ (добавь временно, чтобы увидеть, что доходит до воркера)
-    console.log("🛠 REQUEST TO WORKER:", {
-        method: requestOptions.method,
-        url: fullUrl,
-        contentType: headers.get('content-type')
-    });
+    console.log("🛠 REQUEST TO WORKER:", {url: fullUrl, method: requestOptions.method, contentType: headers.get('content-type')});
 
     const env = {
         ...process.env,
@@ -81,7 +77,9 @@ module.exports.handler = async (event, context) => {
                 console.log(`[CONVERTER] ${opts.method || 'GET'} -> ${finalUrl}`);
                 
                 return fetch(finalUrl, opts);
-            }
+            },
+            // МАГИЯ: этот метод вызывается, когда ты делаешь + "/debug"
+            toString: () => process.env.LESHIY_CONVERTER.replace(/\/$/, '')
         }
     };
 
