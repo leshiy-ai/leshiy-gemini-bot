@@ -1,9 +1,9 @@
 const { USER_DB_ADAPTER, FILES_DB_ADAPTER, TypedValues, runQuery, filesDriver } = require('./db_adapter');
 const nodeCrypto = require('crypto');
+const FormData = require('form-data');
+const fetchLib = require('node-fetch'); // Добавили только импорт библиотеки
 
-// 1. ВАЖНО: Удаляем FormData из зависимостей, берем нативную или фиксим через глобал
-// Если в Node 18+ есть глобальный FormData, используем его.
-// Если нет — заставляем всех использовать одну и ту же версию.
+// Фиксим FormData
 const NativeFormData = global.FormData || require('form-data');
 
 // 2. ЖЕСТКАЯ ПОДМЕНА для всего проекта
@@ -41,8 +41,7 @@ async function prepareMultipart(formData) {
 
     const finalBuffer = Buffer.concat(chunks);
 
-    // --- ВОТ ЭТА МАГИЯ ---
-    // Прикидываемся стримом для старых библиотек типа node-fetch v2
+    // --- Прикидываемся стримом для старых библиотек типа node-fetch v2
     finalBuffer.on = () => {}; 
     finalBuffer.pause = () => {};
     finalBuffer.resume = () => {};
@@ -82,8 +81,12 @@ const smartFetch = async (url, opts) => {
 global.fetch = smartFetch;
 global.FormData = FormData;
 global.crypto = nodeCrypto;
+global.Headers = fetchLib.Headers;   // <-- ВАЖНО
+global.Request = fetchLib.Request;   // <-- ВАЖНО
+global.Response = fetchLib.Response; // <-- ВАЖНО
 
 // ПОДМЕНА МОДУЛЯ node-fetch (Критично для твоего воркера!)
+require.cache[require.resolve('form-data')] = { exports: NativeFormData };
 // Если воркер делает require('node-fetch'), он получит наш smartFetch
 require.cache[require.resolve('node-fetch')] = {
     exports: smartFetch
