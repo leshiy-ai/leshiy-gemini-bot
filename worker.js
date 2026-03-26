@@ -3759,20 +3759,32 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     // =========================================================================
 
     const formData = new FormData();
-    const imageFile = new File([photoArrayBuffer], 'image.png', { type: 'image/png' });
+    //const imageFile = new File([photoArrayBuffer], 'image.png', { type: 'image/png' });
+    // Превращаем ArrayBuffer в Buffer (это "родной" язык для Node.js)
+    const buffer = Buffer.from(photoArrayBuffer);
 
-    // 2. Добавляем параметры
+    // 1. Добавляем основные параметры
     formData.append('chat_id', chatId.toString());
+    formData.append('caption', escapeMarkdownV2(finalCaption));
+    formData.append('parse_mode', 'MarkdownV2');
     
-    // ИСПРАВЛЕНИЕ: Экранируем подпись перед отправкой
+    /*/ ИСПРАВЛЕНИЕ: Экранируем подпись перед отправкой
     const safeCaption = escapeMarkdownV2(finalCaption);
     
     formData.append('caption', safeCaption); 
-    formData.append('photo', imageFile, 'image.png');
+    //formData.append('photo', imageFile, 'image.png');
     // Если "method" = sendDocument, то fileParamName = "document"
     // Если "method" = sendPhoto, то fileParamName = "photo"
     formData.append(fileParamName, imageFile, 'image.png');
     formData.append('parse_mode', 'MarkdownV2');
+    */
+
+    // 2. Добавляем файл ОДИН РАЗ, используя правильное имя параметра
+    // Для Node.js в append передаем Buffer и объект с filename
+    formData.append(fileParamName, buffer, { 
+        filename: isTooBig ? 'image.png' : 'image.jpg',
+        contentType: 'image/jpeg' 
+    });
 
     envData.ctx.waitUntil(logDebug("SendPhoto", `Отправка в Telegram. Размер фото (bytes): ${photoArrayBuffer.byteLength}. Chat ID: ${chatId}`, envData));
 
