@@ -14969,7 +14969,7 @@ async function callLeshiyMp3Converter(endpoint, fetchOptions, queryParams, envDa
     try {
         console.log(`[RENDER_CALL] Calling: ${finalUrl}`);
         
-        const renderResponse = await fetch(finalUrl, finalOptions);
+        const renderResponse = await envData.LESHIY_CONVERTER.fetch(finalUrl, finalOptions);
 
         // 5. ОБРАБОТКА HTTP-ОШИБОК
         if (!renderResponse.ok) {
@@ -15146,7 +15146,7 @@ async function runPhotoRotationInBackground(chatId, fileId, originalMessageId, l
       const photoFile = new File([photoBuffer], 'photo.jpg', { type: 'image/jpeg' });
       formData.append('image', photoFile);
   
-      const rotateResponse = await fetch(`${ROTATE_ENDPOINT}?angle=${angle}`, {
+      const rotateResponse = await envData.LESHIY_CONVERTER.fetch(`${ROTATE_ENDPOINT}?angle=${angle}`, {
         method: 'POST',
         body: formData,
         signal: AbortSignal.timeout(60000)
@@ -15241,7 +15241,7 @@ async function runVideoRotationInBackground(chatId, fileId, originalMessageId, l
         renderFormData.append('video', videoFile);
 
         const finalRenderUrl = `${ROTATE_VIDEO_ENDPOINT}?angle=${encodeURIComponent(angle)}`;
-        const renderResponse = await fetch(finalRenderUrl, {
+        const renderResponse = await env.LESHIY_CONVERTER.fetch(finalRenderUrl, {
         method: 'POST',
         body: renderFormData,
         signal: AbortSignal.timeout(120000)
@@ -15377,7 +15377,7 @@ async function sendGifToConverterInBackground(chatId, fileId, messageId, envData
         formData.append('gif', fileBlob, 'input.gif');
 
         // Отправляем на проснувшийся сервер
-        const converterResponse = await fetch(`${LESHIY_CONVERTER}/gif2video`, {
+        const converterResponse = await envData.LESHIY_CONVERTER.fetch(`${RENDER_HOST_URL}/gif2video`, {
             method: 'POST',
             body: formData
         });
@@ -15492,7 +15492,7 @@ async function sendVideoToGifInBackground(chatId, videoData, messageId, format, 
         // Уникальное имя гарантирует, что Multer на сервере создаст НОВЫЙ файл
         formDataForServer.append('video', videoBlob, `video-${Date.now()}.mp4`);
 
-        const converterResponse = await fetch(`${RENDER_HOST_URL}/video2gif?${queryParams.toString()}`, {
+        const converterResponse = await envData.LESHIY_CONVERTER.fetch(`${RENDER_HOST_URL}/video2gif?${queryParams.toString()}`, {
             method: 'POST',
             body: formDataForServer
         });
@@ -15628,7 +15628,7 @@ async function sendMediaToConverterInBackground(chatId, fileId, originalMessageI
         const mediaBlob = new Blob([mediaBuffer], { type: mimeType });
         renderFormData.append(formKey, mediaBlob, fileName);
 
-        const renderResponse = await fetch(FINAL_RENDER_URL, {
+        const renderResponse = await envData.LESHIY_CONVERTER.fetch(FINAL_RENDER_URL, {
             method: 'POST',
             body: renderFormData,
             signal: AbortSignal.timeout(RENDER_TIMEOUT_MS) // Таймаут на всю операцию FFmpeg
