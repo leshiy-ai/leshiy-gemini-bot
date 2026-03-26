@@ -4788,7 +4788,7 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
         temperature: 0.7 // Умеренная температура
     };
     try {
-        // Посылаем на отправку
+        // Посылаем на отправку через sendAiRequest
         const response = await sendAiRequest(payload, URL, config, envData);
         const data = await response.json();
         // У Workers AI текст лежит в result.response
@@ -4839,7 +4839,7 @@ async function callWorkersAISpeechToText(config, audioBuffer, envData) {
             body: Buffer.from(audioData) 
         });*/
 
-        // Посылаем на отправку
+        // Посылаем на отправку в sendAiRequest
         const response = await sendAiRequest(audioBuffer, URL, config, envData, true);
 
         // Получаем результат в переменную aiResponse
@@ -4891,14 +4891,15 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
     };
 
     try {
-        const fetchResponse = await fetch(URL, {
+        const fetchResponse = await sendAiRequest(payload, URL, config, envData);
+        /*const fetchResponse = await fetch(URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)
-        });
+        });*/
 
         if (!fetchResponse.ok) {
             const errorBody = await fetchResponse.json();
@@ -4969,7 +4970,20 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
     for (const model of FREE_MODELS) {
         try {
             const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${model}`;
-            const response = await fetch(URL, {
+
+            const currentConfig = {
+                ...config,
+                MODEL: model,
+                SERVICE: 'WORKERS_AI' // Чтобы sendAiRequest применил заголовки CF
+            };
+
+            const body = { 
+                prompt: translatePrompt, 
+                max_tokens: 300 
+            };
+
+            const response = await sendAiRequest(body, URL, currentConfig, envData);
+            /*const response = await fetch(URL, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -4979,7 +4993,7 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
                     prompt: translatePrompt, 
                     max_tokens: 300 
                 })
-            });
+            });*/
 
             const result = await response.json();
             
