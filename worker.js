@@ -3758,48 +3758,61 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     envData.ctx.waitUntil(logDebug("SendPhoto", `Выбран метод: ${method}. Размер фото (bytes): ${photoArrayBuffer.byteLength}. Chat ID: ${chatId}`, envData));
     // =========================================================================
 
-    const formData = new FormData();
+    //const formData = new FormData();
     //const imageFile = new File([photoArrayBuffer], 'image.png', { type: 'image/png' });
-    // 1. Превращаем ArrayBuffer в Blob (это поймет любая FormData)
-    const imageBlob = new Blob([photoArrayBuffer], { type: 'image/png' });
 
-    // 2. Добавляем параметры
-    formData.append('chat_id', chatId.toString());
-    
-    // Экранируем подпись (MarkdownV2 капризный, если упадет — уберем parse_mode)
-    const safeCaption = escapeMarkdownV2(finalCaption);
-    formData.append('caption', safeCaption);
-    formData.append('parse_mode', 'MarkdownV2');
-    
-    /*/ ИСПРАВЛЕНИЕ: Экранируем подпись перед отправкой
-    const safeCaption = escapeMarkdownV2(finalCaption);
-    
-    formData.append('caption', safeCaption); 
-    //formData.append('photo', imageFile, 'image.png');
-    // Если "method" = sendDocument, то fileParamName = "document"
-    // Если "method" = sendPhoto, то fileParamName = "photo"
-    formData.append(fileParamName, imageFile, 'image.png');
-    formData.append('parse_mode', 'MarkdownV2');
-    */
+    // 1. Конвертируем ArrayBuffer в Buffer
+    const buffer = Buffer.from(photoArrayBuffer);
 
-    // 3. Добавляем файл ОДИН РАЗ (убираем дублирование из твоего прошлого кода)
-    // Третий аргумент 'image.png' КРИТИЧЕСКИ важен для Telegram
-    formData.append(fileParamName, imageBlob, 'image.png');
+    envData.ctx.waitUntil(logDebug("SendPhoto", `Подготовка ручного multipart. Размер: ${photoArrayBuffer.byteLength} bytes. Метод: ${method}`, envData));
+    
+    // 2. Формируем multipart/form-data ВРУЧНУЮ
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+    const crlf = '\r\n';
 
-    //envData.ctx.waitUntil(logDebug("SendPhoto", `Отправка в Telegram. Размер фото (bytes): ${photoArrayBuffer.byteLength}. Chat ID: ${chatId}`, envData));
-    envData.ctx.waitUntil(logDebug("SendPhoto", `Отправка в Telegram. Метод: ${method}, Файл: ${fileParamName}`, envData));
+    // Собираем текстовую часть
+    let head = '';
+    head += `--${boundary}${crlf}`;
+    head += `Content-Disposition: form-data; name="chat_id"${crlf}${crlf}`;
+    head += `${chatId}${crlf}`;
+
+    if (finalCaption) {
+        head += `--${boundary}${crlf}`;
+        head += `Content-Disposition: form-data; name="caption"${crlf}${crlf}`;
+        head += `${finalCaption}${crlf}`; // Если используешь MarkdownV2, тут должен быть уже экранированный текст
+        
+        head += `--${boundary}${crlf}`;
+        head += `Content-Disposition: form-data; name="parse_mode"${crlf}${crlf}`;
+        head += `MarkdownV2${crlf}`; 
+    }
+
+    // Заголовок для самого файла
+    head += `--${boundary}${crlf}`;
+    head += `Content-Disposition: form-data; name="${fileParamName}"; filename="image.png"${crlf}`;
+    head += `Content-Type: image/png${crlf}${crlf}`;
+
+    const headBuffer = Buffer.from(head, 'utf-8');
+    const tailBuffer = Buffer.from(`${crlf}--${boundary}--${crlf}`, 'utf-8');
+
+    // Склеиваем всё в один бинарный массив
+    const finalBody = Buffer.concat([headBuffer, buffer, tailBuffer]);
+
+    envData.ctx.waitUntil(logDebug("SendPhoto", `Отправка в Telegram. Метод: ${method}, Файл: ${fileParamName}, Chat ID: ${chatId}`, envData));
 
     // --- 1. ОТПРАВКА ФОТО ---
     let response;
     try {
         response = await fetch(apiUrl, {
             method: 'POST',
-            body: formData,
-            signal: AbortSignal.timeout(60000)
+            headers: {
+                'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                'Content-Length': finalBody.length.toString()
+            },
+            body: finalBody
         });
     } catch (e) {
         envData.ctx.waitUntil(logDebug("SendPhoto", `Ошибка Fetch: ${e.message}`, envData));
-        throw new Error(`Ошибка сети/таймаута при отправке фото в Telegram: ${e.message}`);
+        throw new Error(`Сетевая ошибка: ${e.message}`);
     }
 
     const responseText = await response.text();
