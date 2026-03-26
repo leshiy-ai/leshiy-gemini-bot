@@ -4982,8 +4982,8 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
                 max_tokens: 300 
             };
 
-            const response = await sendAiRequest(body, URL, currentConfig, envData);
-            /*const response = await fetch(URL, {
+            //const response = await sendAiRequest(body, URL, currentConfig, envData);
+            const response = await fetch(URL, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -4993,7 +4993,7 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
                     prompt: translatePrompt, 
                     max_tokens: 300 
                 })
-            });*/
+            });
 
             const result = await response.json();
             
