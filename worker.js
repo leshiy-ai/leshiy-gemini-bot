@@ -5045,14 +5045,15 @@ async function callWorkersAITextToImage(uniConfig, uniPrompt, uniEnvData) {
     let apiResponse;
     try {
         // 3. Вызываем API через fetch
-        const fetchResponse = await fetch(URL, {
+        const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
+        /*const fetchResponse = await fetch(URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}` 
             },
             body: JSON.stringify(inputs)
-        });
+        });*/
 
         if (!fetchResponse.ok) {
             const errorBody = await fetchResponse.json();
@@ -5158,7 +5159,8 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
 
     let response;
     try {
-        response = await fetch(url, {
+        const response = await sendAiRequest(inputs, url, config, envData);
+        /*response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -5166,7 +5168,18 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
             },
             body: JSON.stringify(inputs),
             signal: AbortSignal.timeout(60000)
-        });
+        });*/
+        
+        if (response.ok) {
+            const contentType = response.headers.get('Content-Type');
+            if (contentType && contentType.includes('image/png')) {
+                return await response.arrayBuffer();
+            }
+            throw new Error("Workers AI вернул не PNG.");
+        } else {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
     } catch (e) {
         await logDebug("Img2Img", `Ошибка Fetch: ${e.message}`, envData);
         throw new Error(`Ошибка сети/таймаута при вызове Workers AI: ${e.message}`);
