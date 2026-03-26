@@ -71,7 +71,17 @@ module.exports.handler = async (event, context) => {
             fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
         },
         LESHIY_CONVERTER: {
-            fetch: (url, opts) => fetch(process.env.LESHIY_CONVERTER, opts)
+            // Принимаем url, который пришел из воркера (тот самый DEBUG_URL или ROTATE_URL)
+            fetch: (url, opts) => {
+                // Если url пришел как строка (результат сложения объекта со строкой), 
+                // используем его. Если нет — берем базу.
+                const finalUrl = (typeof url === 'string') ? url : process.env.LESHIY_CONVERTER;
+                
+                // ЛОГ, чтобы ты увидел в консоли Яндекса: ">>> FETCHING: .../rotate-image"
+                console.log(`[CONVERTER] ${opts.method || 'GET'} -> ${finalUrl}`);
+                
+                return fetch(finalUrl, opts);
+            }
         }
     };
 
