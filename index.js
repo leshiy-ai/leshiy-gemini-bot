@@ -19,13 +19,12 @@ module.exports.handler = async (event, context) => {
     }
 
     let uri = event.url || event.headers['x-envoy-original-path'] || '/';
-    /*if (uri.startsWith('/gemini')) {
-        uri = uri.replace('/gemini', '') || '/';
-    }*/
+    const domain = process.env.WORKER_DOMAIN || "https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net";
+    const origin = domain.startsWith('http') ? domain : `https://${domain}`;
 
-    const domain = process.env.WORKER_DOMAIN || "d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net";
-    //const fullUrl = `https://${domain.replace(/\/$/, '')}${uri}`;
-    const fullUrl = `https://${domain}${uri}`;
+    // Используем конструктор URL для защиты от двойных слэшей и протоколов
+    const urlObj = new URL(uri, origin);
+    const fullUrl = urlObj.toString();
     //console.log("🛠 URL ДЛЯ ВОРКЕРА:", fullUrl);
 
     // 1. Формируем чистые заголовки
@@ -39,7 +38,7 @@ module.exports.handler = async (event, context) => {
         headers: headers, // Используем объект Headers
     };
 
-    // 2. Обработка Body
+    // Обработка Body (бинарники из Telegram приходят в base64)
     if (event.httpMethod !== 'GET' && event.httpMethod !== 'HEAD' && event.body) {
         requestOptions.body = event.isBase64Encoded 
             ? Buffer.from(event.body, 'base64') 
@@ -50,15 +49,11 @@ module.exports.handler = async (event, context) => {
         headers.delete('content-length'); 
     }
 
-    // 3. Создаем запрос ПРЯМО из опций
-    const request = new Request(fullUrl, requestOptions);
-
     // ДЕБАГ-ЛОГ (добавь временно, чтобы увидеть, что доходит до воркера)
     console.log("🛠 REQUEST TO WORKER:", {
-        method: request.method,
-        url: request.url,
-        contentType: request.headers.get('content-type'),
-        bodyLength: requestOptions.body ? requestOptions.body.length : 0
+        method: requestOptions.method,
+        url: fullUrl,
+        contentType: headers.get('content-type')
     });
 
     const env = {
@@ -71,9 +66,12 @@ module.exports.handler = async (event, context) => {
         runQuery,
         filesDriver,
         nodeCrypto,
-        // Теперь АИ-прокси — объект с методом fetch, как и хочет воркер
+        // Функции с методом fetch:
         LESHIY_AI_PROXY: {
             fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
+        },
+        LESHIY_CONVERTER: {
+            fetch: (url, opts) => fetch(process.env.LESHIY_CONVERTER, opts)
         }
     };
 
@@ -81,8 +79,12 @@ module.exports.handler = async (event, context) => {
 
     try {
         // Пробуем вызвать воркер
-        const response = await (worker.fetch ? worker.fetch(request, env, ctx) : worker.worker_code_fetch(request, env, ctx));
-        
+        //const response = await (worker.fetch ? worker.fetch(request, env, ctx) : worker.worker_code_fetch(request, env, ctx));
+        const response = await (worker.fetch ? 
+            worker.fetch(new Request(fullUrl, requestOptions), env, ctx) : 
+            worker.worker_code_fetch(new Request(fullUrl, requestOptions), env, ctx)
+        );
+
         const responseText = await response.text();
         const responseHeaders = {};
         response.headers.forEach((v, k) => { responseHeaders[k] = v; });
