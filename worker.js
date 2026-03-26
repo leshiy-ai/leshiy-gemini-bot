@@ -3768,7 +3768,7 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     const safeCaption = escapeMarkdownV2(finalCaption);
     
     formData.append('caption', safeCaption); 
-    //formData.append('photo', imageFile, 'image.png');
+    formData.append('photo', imageFile, 'image.png');
     // Если "method" = sendDocument, то fileParamName = "document"
     // Если "method" = sendPhoto, то fileParamName = "photo"
     formData.append(fileParamName, imageFile, 'image.png');
