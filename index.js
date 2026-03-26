@@ -26,21 +26,40 @@ module.exports.handler = async (event, context) => {
     const domain = process.env.WORKER_DOMAIN || "d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net";
     //const fullUrl = `https://${domain.replace(/\/$/, '')}${uri}`;
     const fullUrl = `https://${domain}${uri}`;
-    
-    console.log("🛠 URL ДЛЯ ВОРКЕРА:", fullUrl);
+    //console.log("🛠 URL ДЛЯ ВОРКЕРА:", fullUrl);
+
+    // 1. Формируем чистые заголовки
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(event.headers || {})) {
+        headers.set(key, value);
+    }
+
     const requestOptions = {
         method: event.httpMethod,
-        headers: { ...event.headers },
+        headers: headers, // Используем объект Headers
     };
 
+    // 2. Обработка Body
     if (event.httpMethod !== 'GET' && event.httpMethod !== 'HEAD' && event.body) {
         requestOptions.body = event.isBase64Encoded 
             ? Buffer.from(event.body, 'base64') 
             : event.body;
+            
+        // КРИТИЧНО: Если это POST, нам нужно убедиться, что Content-Length не конфликтует
+        // node-fetch сам пересчитает его для Buffer
+        headers.delete('content-length'); 
     }
 
-    // Используем глобальный Request (который мы приравняли к fetch.Request выше)
-    const request = new Request(fullUrl, { ...requestOptions });
+    // 3. Создаем запрос ПРЯМО из опций
+    const request = new Request(fullUrl, requestOptions);
+
+    // ДЕБАГ-ЛОГ (добавь временно, чтобы увидеть, что доходит до воркера)
+    console.log("🛠 REQUEST TO WORKER:", {
+        method: request.method,
+        url: request.url,
+        contentType: request.headers.get('content-type'),
+        bodyLength: requestOptions.body ? requestOptions.body.length : 0
+    });
 
     const env = {
         ...process.env,
