@@ -3760,12 +3760,15 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
 
     const formData = new FormData();
     //const imageFile = new File([photoArrayBuffer], 'image.png', { type: 'image/png' });
-    // Превращаем ArrayBuffer в Buffer (это "родной" язык для Node.js)
-    const buffer = Buffer.from(photoArrayBuffer);
+    // 1. Превращаем ArrayBuffer в Blob (это поймет любая FormData)
+    const imageBlob = new Blob([photoArrayBuffer], { type: 'image/png' });
 
-    // 1. Добавляем основные параметры
+    // 2. Добавляем параметры
     formData.append('chat_id', chatId.toString());
-    formData.append('caption', escapeMarkdownV2(finalCaption));
+    
+    // Экранируем подпись (MarkdownV2 капризный, если упадет — уберем parse_mode)
+    const safeCaption = escapeMarkdownV2(finalCaption);
+    formData.append('caption', safeCaption);
     formData.append('parse_mode', 'MarkdownV2');
     
     /*/ ИСПРАВЛЕНИЕ: Экранируем подпись перед отправкой
@@ -3779,14 +3782,12 @@ async function sendPhotoWithCaption(chatId, photoArrayBuffer, caption, token, en
     formData.append('parse_mode', 'MarkdownV2');
     */
 
-    // 2. Добавляем файл ОДИН РАЗ, используя правильное имя параметра
-    // Для Node.js в append передаем Buffer и объект с filename
-    formData.append(fileParamName, buffer, { 
-        filename: isTooBig ? 'image.png' : 'image.jpg',
-        contentType: 'image/jpeg' 
-    });
+    // 3. Добавляем файл ОДИН РАЗ (убираем дублирование из твоего прошлого кода)
+    // Третий аргумент 'image.png' КРИТИЧЕСКИ важен для Telegram
+    formData.append(fileParamName, imageBlob, 'image.png');
 
-    envData.ctx.waitUntil(logDebug("SendPhoto", `Отправка в Telegram. Размер фото (bytes): ${photoArrayBuffer.byteLength}. Chat ID: ${chatId}`, envData));
+    //envData.ctx.waitUntil(logDebug("SendPhoto", `Отправка в Telegram. Размер фото (bytes): ${photoArrayBuffer.byteLength}. Chat ID: ${chatId}`, envData));
+    envData.ctx.waitUntil(logDebug("SendPhoto", `Отправка в Telegram. Метод: ${method}, Файл: ${fileParamName}`, envData));
 
     // --- 1. ОТПРАВКА ФОТО ---
     let response;
