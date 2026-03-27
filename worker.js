@@ -5043,9 +5043,9 @@ async function callWorkersAITextToImage(config, prompt, envData) {
   const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${MODEL_NAME}`;
   if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
         throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
-    } else {
-        envData.ctx.waitUntil(logDebug('TEXT2IMG_CF_API_TOKEN', CLOUDFLARE_API_TOKEN, envData));
     }
+    
+    envData.ctx.waitUntil(logDebug('TEXT2IMG_CF_API_TOKEN', CLOUDFLARE_API_TOKEN, envData));
 
     const finalPrompt = `${prompt}, photorealistic, cinematic light, detailed background`;
 
