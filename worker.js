@@ -5339,10 +5339,14 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
         const contentType = response.headers.get('Content-Type') || '';
         const responseBuffer = await response.arrayBuffer();
         
+        // Подготавливаем превью для лога (первые 100 символов)
+        const debugPreview = new TextDecoder().decode(responseBuffer.slice(0, 100)).replace(/[\n\r]/g, ' ');
+
         // --- ДЕБАГ #2 (ВЕРНУЛ КАК БЫЛО) ---
         envData.ctx.waitUntil(logDebug(
             "TTS_WorkersAI",
-            `Успешный ответ. Status: ${response.status}. Content-Type: ${contentType}. Size: ${responseBuffer.byteLength}`,
+            //`Успешный ответ. Status: ${response.status}. Content-Type: ${contentType}. Size: ${responseBuffer.byteLength}`,
+            `Успешный ответ. Status: ${response.status}. Content-Type: ${contentType}. Size: ${responseBuffer.byteLength}\nПревью ответа: \`\`\`${debugPreview}...\`\`\``,
             envData
         ));
 
@@ -5352,17 +5356,21 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
         const firstByte = new Uint8Array(responseBuffer)[0];
 
         if (firstByte === 123) {
-            // Если это JSON-обертка (те самые 26к-35к байт текста)
+            // Если это JSON-обертка
             const fullText = new TextDecoder().decode(responseBuffer);
             try {
                 const obj = JSON.parse(fullText);
-                // Вытаскиваем ЧИСТЫЙ Base64 из поля result
-                finalAudioBase64 = obj.result || Buffer.from(responseBuffer).toString('base64');
+                // Если вытащили строку из result — присваиваем её НАПРЯМУЮ
+                if (obj.result) {
+                    finalAudioBase64 = obj.result; 
+                } else {
+                    finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
+                }
             } catch (e) {
                 finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
             }
         } else {
-            // Если это ЧИСТЫЕ БАЙТЫ MP3 (те самые ~19к байт)
+            // Если это ЧИСТЫЕ БАЙТЫ MP3
             finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
         }
 
