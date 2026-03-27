@@ -5351,10 +5351,10 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
         ));
 
         // Проверяем первый байт: 123 — это '{' (начало JSON)
-        const bytes = new Uint8Array(responseBuffer);
+        const firstByte = new Uint8Array(responseBuffer)[0];
 
-        // ВАРИАНТ А: Пришел JSON (по заголовку или по первому байту)
-        if (bytes[0] === 123) {
+        // ВАРИАНТ А: Пришел JSON (определяем по первому байту)
+        if (firstByte === 123) {
             const jsonText = new TextDecoder().decode(responseBuffer);
             try {
                 const obj = JSON.parse(jsonText);
@@ -5368,12 +5368,10 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
                 finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
             }
         } 
-        // ВАРИАНТ Б: Пришли чистые байты (как у Orpheus)
+        // ВАРИАНТ Б: Пришли чистые байты
         else {
+            // ЭТО АУДИО-БАЙТЫ
             finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
-            if (contentType.includes('audio')) {
-                finalMimeType = contentType.split(';')[0];
-            }
         }
 
         // ИТОГОВЫЙ ЛОГ
@@ -5396,7 +5394,7 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
         //const audioBase64 = Buffer.from(responseBuffer).toString('base64');
 
         // --- ПОСЛЕДНЯЯ ПРОВЕРКА СОДЕРЖИМОГО ---
-        const base64Head = finalAudioBase64.substring(0, 50);
+        const base64Head = finalAudioBase64.substring(0, 98);
         
         envData.ctx.waitUntil(logDebug(
             "TTS_WorkersAI",
