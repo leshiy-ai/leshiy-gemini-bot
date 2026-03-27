@@ -5336,41 +5336,31 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
 
     // 3. Обработка ОТВЕТА
     if (response.ok) {
-        // СРАЗУ забираем ArrayBuffer, не глядя на заголовки
         const responseBuffer = await response.arrayBuffer();
-        const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
         
         let finalAudioBase64;
         let finalMimeType = 'audio/mpeg';
-        
-        // --- ДЕБАГ #2: ЛОГИРОВАНИЕ УСПЕШНОГО ОТВЕТА ---
-        envData.ctx.waitUntil(logDebug(
-            "TTS_WorkersAI",
-            `Успешный ответ. Status: ${response.status}. Content-Type: ${contentType}`,
-            envData
-        ));
 
-        // ВАРИАНТ А: Пришел JSON (как у Athena/Luna)
-        if (contentType.includes('json')) {
+        // Проверяем первый байт. 123 — это символ '{' (начало JSON)
+        const firstByte = new Uint8Array(responseBuffer)[0];
+
+        if (firstByte === 123) { 
+            // Это реально JSON (бывает у некоторых моделей)
             const jsonText = new TextDecoder().decode(responseBuffer);
             try {
                 const obj = JSON.parse(jsonText);
-                // Если Cloudflare упаковал аудио в поле result
-                if (obj.result) {
-                    finalAudioBase64 = obj.result; 
-                } else {
-                    throw new Error("JSON без поля result");
-                }
+                finalAudioBase64 = obj.result || Buffer.from(responseBuffer).toString('base64');
             } catch (e) {
-                throw new Error(`Ошибка парсинга аудио-JSON: ${e.message}`);
+                // Если не распарсилось, значит это был "шумный" MP3, берем как байты
+                finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
             }
-        } 
-        // ВАРИАНТ Б: Пришли чистые байты (как у Orpheus)
-        else {
+        } else {
+            // Это ЧИСТЫЕ БАЙТЫ (как в твоем логе "`")
             finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
-            if (contentType.includes('audio')) finalMimeType = contentType;
         }
 
+        envData.ctx.waitUntil(logDebug("TTS_WorkersAI", `Готово. Длина Base64: ${finalAudioBase64.length}`, envData));
+        
         /*/ Проверяем: если данных мало, возможно там JSON с текстом ошибки
         if (responseBuffer.byteLength < 500) {
             const textCheck = new TextDecoder().decode(responseBuffer);
