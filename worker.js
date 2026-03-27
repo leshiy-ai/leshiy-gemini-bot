@@ -5044,16 +5044,16 @@ async function callWorkersAITextToImage(config, prompt, envData) {
   if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
         throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
     }
-    
-    envData.ctx.waitUntil(logDebug('TEXT2IMG_CF_API_TOKEN', CLOUDFLARE_API_TOKEN, envData));
+
+    //envData.ctx.waitUntil(logDebug('IMG_GEN_CF_API_TOKEN', CLOUDFLARE_API_TOKEN, envData));
 
     const finalPrompt = `${prompt}, photorealistic, cinematic light, detailed background`;
 
     // Параметры для модели
     const inputs = {
         prompt: finalPrompt,
-        num_steps: 10,
-        negative_prompt: "blurry, low quality, worst quality, deformed, mutated, cropped, text, signature, low detail",
+        //num_steps: 10,
+        //negative_prompt: "blurry, low quality, worst quality, deformed, mutated, cropped, text, signature, low detail",
     };
 
     // !!! ЛОГИРОВАНИЕ ЗАПРОСА !!!
