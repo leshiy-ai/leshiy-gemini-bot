@@ -19566,12 +19566,18 @@ ${historyText}`;
                             const ttsResponse = await t2aConfig.FUNCTION(t2aConfig, textToSpeak, envData, savedVoice, chatId);
                 
                             // 2.3. Отправка результата
-                            const audioBase64 = ttsResponse.audioBase64;
-                            const mimeType = ttsResponse.mimeType; 
-                            await sendAudioMessage(chatId, audioBase64, mimeType, token, envData);
-                
-                            // 2.4. Финальное сообщение
-                            await editMessage(chatId, loadingMessageId, `✅ **Генерация голоса завершена!**`, token);
+                            if (ttsResponse && ttsResponse.audioBase64) {
+                                const audioBase64 = ttsResponse.audioBase64;
+                                const mimeType = ttsResponse.mimeType || 'audio/mpeg'; 
+                                await sendAudioMessage(chatId, audioBase64, mimeType, token, envData);
+                                
+                                // 2.4. Финальное сообщение для синхронных моделей
+                                await editMessage(chatId, loadingMessageId, `✅ **Генерация голоса завершена!**`, token);
+                            } else if (ttsResponse && ttsResponse.taskId) {
+                                // Для Kie.ai мы ничего не шлем, она сама пришлет аудио в колбэк.
+                                // Сообщение о запуске уже отправила сама функция startKieAiTextToAudio.
+                                await deleteMessage(chatId, loadingMessageId, token); // Удаляем "Запускаю TTS...", чтобы не висело
+                            }
                             
                             return new Response('OK', { status: 200 });
                 
