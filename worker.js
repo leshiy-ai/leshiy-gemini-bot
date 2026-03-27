@@ -5090,7 +5090,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         }
 
         //if (envData.ctx) {
-        //    envData.ctx.waitUntil(logDebug('IMG_GEN_BUFFER_START', `Начинаю чтение ArrayBuffer...`, envData));
+            await logDebug('IMG_GEN_BUFFER_START', `Начинаю чтение ArrayBuffer...`, envData);
         //}
 
         // Проверяем Content-Type
@@ -5107,7 +5107,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         const magicBytes = `${view[0]} ${view[1]} ${view[2]} ${view[3]}`;
         
         //if (envData.ctx) {
-        //    envData.ctx.waitUntil(logDebug('IMG_GEN_MAGIC_BYTES', `First 4 bytes: ${magicBytes}`, envData));
+            await logDebug('IMG_GEN_MAGIC_BYTES', `First 4 bytes: ${magicBytes}`, envData);
         //}
 
     } catch (e) {
@@ -12162,7 +12162,7 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
             const translatedText = await callWorkersAITranslate(finalPrompt, envData, 'ru', 'en'); 
             if (translatedText) finalPrompt = translatedText.trim();
         } catch (e) {
-            envData.ctx.waitUntil(logDebug("Translation_ERR", `Не удалось перевести промпт: ${e.message}`, envData));
+            await logDebug("Translation_ERR", `Не удалось перевести промпт: ${e.message}`, envData);
         }
 
         // --- 6. ЗАПУСК ГЕНЕРАЦИИ ---
@@ -12213,7 +12213,7 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
         } else {
              await sendMessage(chatId, `❌ **Ошибка!** Не удалось запустить генерацию: ${errorText}`, token);
         }
-        envData.ctx.waitUntil(logDebug("FREE_CREATIVE_CRITICAL", `Полная ошибка ${mode}: ${errorText}`, envData));
+        await logDebug("FREE_CREATIVE_CRITICAL", `Полная ошибка ${mode}: ${errorText}`, envData);
     } finally {
         await storage.delete(GENERATION_LOCK_KEY);
     }
