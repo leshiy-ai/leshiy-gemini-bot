@@ -19563,7 +19563,7 @@ ${historyText}`;
                             const t2aConfig = t2aResult.config; 
                             
                             // 2.2. Запуск TTS
-                            const ttsResponse = await t2aConfig.FUNCTION(t2aConfig, textToSpeak, envData, savedVoice);
+                            const ttsResponse = await t2aConfig.FUNCTION(t2aConfig, textToSpeak, envData, savedVoice, chatId);
                 
                             // 2.3. Отправка результата
                             const audioBase64 = ttsResponse.audioBase64;
