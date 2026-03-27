@@ -5395,6 +5395,15 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
         // 4. БЕЗОПАСНОЕ и БЫСТРОЕ преобразование в Base64 через Buffer
         //const audioBase64 = Buffer.from(responseBuffer).toString('base64');
 
+        // --- ПОСЛЕДНЯЯ ПРОВЕРКА СОДЕРЖИМОГО ---
+        const base64Head = finalAudioBase64.substring(0, 50);
+        
+        envData.ctx.waitUntil(logDebug(
+            "TTS_WorkersAI",
+            `ПРОВЕРКА ТИПА: Head=${base64Head}`,
+            envData
+        ));
+        
         // Возвращаем результат. Если тип не пришел, ставим audio/mpeg принудительно
         return { 
             audioBase64: finalAudioBase64, 
