@@ -5336,84 +5336,51 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
 
     // 3. Обработка ОТВЕТА
     if (response.ok) {
-        const responseBuffer = await response.arrayBuffer();
+        const contentType = response.headers.get('Content-Type') || '';
         
-        let finalAudioBase64;
+        // --- ДЕБАГ #2: ЛОГ (ВОЗВРАЩАЕМ) ---
+        envData.ctx.waitUntil(logDebug(
+            "TTS_WorkersAI",
+            `Успешный ответ. Status: ${response.status}. Content-Type: ${contentType}`,
+            envData
+        ));
+
+        const responseBuffer = await response.arrayBuffer();
+        let audioBase64;
         let finalMimeType = 'audio/mpeg';
 
-        // Проверяем первый байт. 123 — это символ '{' (начало JSON)
-        const firstByte = new Uint8Array(responseBuffer)[0];
+        // Проверка: это JSON-текст или сырые байты? (123 = '{')
+        const isJson = new Uint8Array(responseBuffer)[0] === 123;
 
-        if (firstByte === 123) { 
-            // Это реально JSON (бывает у некоторых моделей)
+        if (isJson) {
             const jsonText = new TextDecoder().decode(responseBuffer);
             try {
                 const obj = JSON.parse(jsonText);
-                finalAudioBase64 = obj.result || Buffer.from(responseBuffer).toString('base64');
+                audioBase64 = obj.result || Buffer.from(responseBuffer).toString('base64');
             } catch (e) {
-                // Если не распарсилось, значит это был "шумный" MP3, берем как байты
-                finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
+                audioBase64 = Buffer.from(responseBuffer).toString('base64');
             }
         } else {
-            // Это ЧИСТЫЕ БАЙТЫ (как в твоем логе "`")
-            finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
+            audioBase64 = Buffer.from(responseBuffer).toString('base64');
         }
 
-        envData.ctx.waitUntil(logDebug("TTS_WorkersAI", `Готово. Длина Base64: ${finalAudioBase64.length}`, envData));
-        
-        /*/ Проверяем: если данных мало, возможно там JSON с текстом ошибки
-        if (responseBuffer.byteLength < 500) {
-            const textCheck = new TextDecoder().decode(responseBuffer);
-            if (textCheck.includes('"success":false') || textCheck.includes('"errors"')) {
-                throw new Error(`Workers AI вернул ошибку в JSON: ${textCheck}`);
-            }
-        }*/
+        // Если сервер прислал в типе "audio", используем его
+        if (contentType.toLowerCase().includes('audio')) {
+            finalMimeType = contentType;
+        }
 
-        // Если мы здесь — значит у нас есть байты. 
-        // 4. БЕЗОПАСНОЕ и БЫСТРОЕ преобразование в Base64 через Buffer
-        //const audioBase64 = Buffer.from(responseBuffer).toString('base64');
+        // Доп. лог для финальной проверки данных
+        envData.ctx.waitUntil(logDebug(
+            "TTS_WorkersAI", 
+            `ИТОГ: Mode=${isJson ? 'JSON' : 'Bytes'}, Len=${audioBase64.length}, Mime=${finalMimeType}`, 
+            envData
+        ));
 
-        // Возвращаем результат. Если тип не пришел, ставим audio/mpeg принудительно
         return { 
-            audioBase64: finalAudioBase64,
+            audioBase64: audioBase64,
             mimeType: finalMimeType
-            //mimeType: contentType.includes('audio') ? contentType : 'audio/mpeg' 
-            //mimeType: (contentType && contentType.includes('audio')) ? contentType : 'audio/mpeg'
         };
-        /*/ TTS возвращает ArrayBuffer (аудио)
-        if (contentType && contentType.includes('audio/')) {
-            const responseBuffer = await response.arrayBuffer();
-
-            if (responseBuffer.byteLength < 1000) { 
-                throw new Error(`TTS generation failed. Returned buffer size: ${responseBuffer.byteLength} bytes. (Too small)`);
-            }
-            
-            // 4. Безопасное преобразование ArrayBuffer в Base64
-            let binary = '';
-            const bytes = new Uint8Array(responseBuffer);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            const audioBase64 = btoa(binary);
-
-            return { audioBase64: audioBase64, mimeType: contentType }; // Используем фактический MIME-тип
-                    
-        } else {
-            const errorText = await response.text();
-            let errorData = {};
-            try { errorData = JSON.parse(errorText); } catch(e) { / не JSON / }
-
-            const errorMessage = errorData.errors?.[0]?.message || errorText.substring(0, 500) || 'Неизвестная ошибка 200 OK, не аудио.';
-            
-            envData.ctx.waitUntil(logDebug(
-                "TTS_WorkersAI",
-                `Не аудио. Status 200, но Content-Type не audio/*. Ответ: ${errorMessage}`,
-                envData
-            ));
-
-            throw new Error(`Workers AI TTS: Непредвиденный ответ. ${errorMessage}`);
-        }*/
+    
     } else {
         // --- ДЕБАГ #3: ЛОГИРОВАНИЕ HTTP-ОШИБКИ (4xx, 5xx) ---
         const errorText = await response.text();
