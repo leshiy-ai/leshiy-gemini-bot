@@ -5073,15 +5073,15 @@ async function callWorkersAITextToImage(uniConfig, uniPrompt, uniEnvData) {
     let apiResponse;
     try {
         // 3. Вызываем API через fetch
-        const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
-        /*const fetchResponse = await fetch(URL, {
+        //const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
+        const fetchResponse = await fetch(URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}` 
             },
             body: JSON.stringify(inputs)
-        });*/
+        });
 
         if (envData.ctx) {
             envData.ctx.waitUntil(logDebug('IMG_GEN_FETCH_STATUS', `Status: ${fetchResponse.status}, OK: ${fetchResponse.ok}`, envData));
@@ -5099,8 +5099,22 @@ async function callWorkersAITextToImage(uniConfig, uniPrompt, uniEnvData) {
             envData.ctx.waitUntil(logDebug('IMG_GEN_BUFFER_START', `Начинаю чтение ArrayBuffer...`, envData));
         }
 
+        // Проверяем Content-Type
+        const contentType = fetchResponse.headers.get('content-type');
+        if (envData.ctx) {
+            envData.ctx.waitUntil(logDebug('IMG_GEN_CONTENT_TYPE', `Content-Type: ${contentType}`, envData));
+        }
+
         // Ответ в виде ArrayBuffer 
         apiResponse = await fetchResponse.arrayBuffer();
+
+        // ПРОВЕРКА НА МАГИЧЕСКИЕ БАЙТЫ (PNG начинается с 137 80 78 71)
+        const view = new Uint8Array(apiResponse);
+        const magicBytes = `${view[0]} ${view[1]} ${view[2]} ${view[3]}`;
+        
+        if (envData.ctx) {
+            envData.ctx.waitUntil(logDebug('IMG_GEN_MAGIC_BYTES', `First 4 bytes: ${magicBytes}`, envData));
+        }
 
     } catch (e) {
         if (envData.BOT_LOGS_STORAGE && envData.ctx) {
