@@ -5319,8 +5319,8 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
 
     let response;
     try {
-        response = await sendAiRequest(inputs, url, config, envData);
-        /*response = await fetch(url, {
+        //response = await sendAiRequest(inputs, url, config, envData);
+        response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -5328,7 +5328,7 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
             },
             body: JSON.stringify(inputs),
             signal: AbortSignal.timeout(60000)
-        });*/
+        });
     } catch (e) {
         envData.ctx.waitUntil(logDebug("TTS_WorkersAI", `Ошибка Fetch: ${e.message}`, envData));
         throw new Error(`Ошибка сети/таймаута при вызове Workers AI: ${e.message}`);
