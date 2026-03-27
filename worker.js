@@ -1260,7 +1260,7 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
 
     // --- ПОПЫТКА 1: Основной прокси (через Яндекс.Клауд Функцию) ---
     try {
-        console.log("Trying P1: Yandex.Cloud...");
+        //console.log("Trying P1: Yandex.Cloud...");
         response = await envData.LESHIY_AI_PROXY.fetch(url, { // <--- вызываем через биндинг
             method: 'POST',
             headers: commonHeaders,
