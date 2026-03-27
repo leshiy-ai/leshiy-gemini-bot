@@ -5067,7 +5067,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     // 💓 СОЗДАЕМ "ПУЛЬС", чтобы Яндекс не заснул
     const heartbeat = setInterval(() => {
         console.log("Keep-alive: Waiting for Cloudflare GPU...");
-    }, 2000); // Каждые 2 секунды
+    }, 1000); // Каждую секунду
 
     try {
         // 3. Вызываем API через fetch
@@ -5126,7 +5126,6 @@ async function callWorkersAITextToImage(config, prompt, envData) {
 
         // ОСТАНАВЛИВАЕМ ПУЛЬС
         clearInterval(heartbeat);
-        
         throw new Error(`Ошибка при вызове Cloudflare API (${MODEL_NAME}): ${e.message}`);
     }
 
