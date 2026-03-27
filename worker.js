@@ -4996,8 +4996,8 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
                 max_tokens: 300 
             };
 
-            const response = await sendAiRequest(body, URL, currentConfig, envData);
-            /*const response = await fetch(URL, {
+            //const response = await sendAiRequest(body, URL, currentConfig, envData);
+            const response = await fetch(URL, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -5007,7 +5007,7 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
                     prompt: translatePrompt, 
                     max_tokens: 300 
                 })
-            });*/
+            });
 
             const result = await response.json();
             
@@ -5036,17 +5036,13 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
  */
 // ИСПОЛЬЗУЕМ НОВЫЕ ИМЕНА В СИГНАТУРЕ, ЧТОБЫ ИЗБЕЖАТЬ КОНФЛИКТА
 async function callWorkersAITextToImage(config, prompt, envData) { 
-    // ВАШИ РАБОЧИЕ ПЕРЕМЕННЫЕ:
-    const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID;
-    const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN;
-
-    // ✅ ИСПОЛЬЗУЕМ МОДЕЛЬ ИЗ КОНФИГА
-    const GENERATION_MODEL = config.MODEL; 
-
-    const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${GENERATION_MODEL}`;
-
-    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
-         throw new Error("КРИТИЧЕСКАЯ ОШИБКА: Не настроены CLOUDFLARE_ACCOUNT_ID или CLOUDFLARE_API_TOKEN.");
+    // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
+  const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+  const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
+  const MODEL_NAME = config.MODEL;
+  const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${MODEL_NAME}`;
+  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+        throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
     }
 
     const finalPrompt = `${prompt}, photorealistic, cinematic light, detailed background`;
