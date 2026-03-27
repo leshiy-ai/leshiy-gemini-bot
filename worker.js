@@ -5059,8 +5059,22 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     // !!! ЛОГИРОВАНИЕ ЗАПРОСА !!!
     const debugInputs = JSON.stringify({ model: MODEL_NAME, inputs: inputs });
     //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
-        logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData);
+    //    logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData);
     //}
+
+    // --- 5. СООБЩЕНИЯ О СТАТУСЕ ---
+    const keyboard = {
+        inline_keyboard: [[
+            { text: "🔄 Получить результат генерации", callback_data: 'cmd:/vision_generate_free_t2i' }
+        ]]
+    };
+
+    await sendMessageMarkdown(chatId, 
+        `⏳ **Генерация запущена!**\n\n` +
+        `Нейросеть рисует ваш шедевр. Из-за особенностей платформы, если через 5-10 секунд картинка не пришла сама — **нажмите кнопку ниже**, чтобы "подтолкнуть" процесс.`, 
+        token, 
+        JSON.stringify(keyboard)
+    );
 
     let apiResponse;
     try {
