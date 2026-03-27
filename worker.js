@@ -5336,6 +5336,8 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
 
     // 3. Обработка ОТВЕТА
     if (response.ok) {
+        // СРАЗУ забираем ArrayBuffer, не глядя на заголовки
+        const responseBuffer = await response.arrayBuffer();
         const contentType = response.headers.get('Content-Type');
         
         // --- ДЕБАГ #2: ЛОГИРОВАНИЕ УСПЕШНОГО ОТВЕТА ---
@@ -5345,7 +5347,25 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
             envData
         ));
 
-        // TTS возвращает ArrayBuffer (аудио)
+        // Проверяем: если данных мало, возможно там JSON с текстом ошибки
+        if (responseBuffer.byteLength < 500) {
+            const textCheck = new TextDecoder().decode(responseBuffer);
+            if (textCheck.includes('"success":false') || textCheck.includes('"errors"')) {
+                throw new Error(`Workers AI вернул ошибку в JSON: ${textCheck}`);
+            }
+        }
+
+        // Если мы здесь — значит у нас есть байты. 
+        // 4. БЕЗОПАСНОЕ и БЫСТРОЕ преобразование в Base64 через Buffer
+        const audioBase64 = Buffer.from(responseBuffer).toString('base64');
+
+        // Возвращаем результат. Если тип не пришел, ставим audio/mpeg принудительно
+        return { 
+            audioBase64: audioBase64, 
+            //mimeType: contentType.includes('audio') ? contentType : 'audio/mpeg' 
+            mimeType: (contentType && contentType.includes('audio')) ? contentType : 'audio/mpeg'
+        };
+        /*/ TTS возвращает ArrayBuffer (аудио)
         if (contentType && contentType.includes('audio/')) {
             const responseBuffer = await response.arrayBuffer();
 
@@ -5363,11 +5383,11 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
             const audioBase64 = btoa(binary);
 
             return { audioBase64: audioBase64, mimeType: contentType }; // Используем фактический MIME-тип
-            
+                    
         } else {
             const errorText = await response.text();
             let errorData = {};
-            try { errorData = JSON.parse(errorText); } catch(e) { /* не JSON */ }
+            try { errorData = JSON.parse(errorText); } catch(e) { / не JSON / }
 
             const errorMessage = errorData.errors?.[0]?.message || errorText.substring(0, 500) || 'Неизвестная ошибка 200 OK, не аудио.';
             
@@ -5378,7 +5398,7 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
             ));
 
             throw new Error(`Workers AI TTS: Непредвиденный ответ. ${errorMessage}`);
-        }
+        }*/
     } else {
         // --- ДЕБАГ #3: ЛОГИРОВАНИЕ HTTP-ОШИБКИ (4xx, 5xx) ---
         const errorText = await response.text();
