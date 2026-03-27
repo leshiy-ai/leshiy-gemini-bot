@@ -5338,7 +5338,10 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
     if (response.ok) {
         // СРАЗУ забираем ArrayBuffer, не глядя на заголовки
         const responseBuffer = await response.arrayBuffer();
-        const contentType = response.headers.get('Content-Type');
+        const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
+        
+        let finalAudioBase64;
+        let finalMimeType = 'audio/mpeg';
         
         // --- ДЕБАГ #2: ЛОГИРОВАНИЕ УСПЕШНОГО ОТВЕТА ---
         envData.ctx.waitUntil(logDebug(
@@ -5347,23 +5350,45 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
             envData
         ));
 
-        // Проверяем: если данных мало, возможно там JSON с текстом ошибки
+        // ВАРИАНТ А: Пришел JSON (как у Athena/Luna)
+        if (contentType.includes('json')) {
+            const jsonText = new TextDecoder().decode(responseBuffer);
+            try {
+                const obj = JSON.parse(jsonText);
+                // Если Cloudflare упаковал аудио в поле result
+                if (obj.result) {
+                    finalAudioBase64 = obj.result; 
+                } else {
+                    throw new Error("JSON без поля result");
+                }
+            } catch (e) {
+                throw new Error(`Ошибка парсинга аудио-JSON: ${e.message}`);
+            }
+        } 
+        // ВАРИАНТ Б: Пришли чистые байты (как у Orpheus)
+        else {
+            finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
+            if (contentType.includes('audio')) finalMimeType = contentType;
+        }
+
+        /*/ Проверяем: если данных мало, возможно там JSON с текстом ошибки
         if (responseBuffer.byteLength < 500) {
             const textCheck = new TextDecoder().decode(responseBuffer);
             if (textCheck.includes('"success":false') || textCheck.includes('"errors"')) {
                 throw new Error(`Workers AI вернул ошибку в JSON: ${textCheck}`);
             }
-        }
+        }*/
 
         // Если мы здесь — значит у нас есть байты. 
         // 4. БЕЗОПАСНОЕ и БЫСТРОЕ преобразование в Base64 через Buffer
-        const audioBase64 = Buffer.from(responseBuffer).toString('base64');
+        //const audioBase64 = Buffer.from(responseBuffer).toString('base64');
 
         // Возвращаем результат. Если тип не пришел, ставим audio/mpeg принудительно
         return { 
-            audioBase64: audioBase64, 
+            audioBase64: finalAudioBase64,
+            mimeType: finalMimeType
             //mimeType: contentType.includes('audio') ? contentType : 'audio/mpeg' 
-            mimeType: (contentType && contentType.includes('audio')) ? contentType : 'audio/mpeg'
+            //mimeType: (contentType && contentType.includes('audio')) ? contentType : 'audio/mpeg'
         };
         /*/ TTS возвращает ArrayBuffer (аудио)
         if (contentType && contentType.includes('audio/')) {
