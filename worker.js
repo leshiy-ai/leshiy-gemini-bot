@@ -5029,19 +5029,13 @@ async function callWorkersAITranslate(text, envData, sourceLang, targetLang) {
 // ✅ *** 2.14. callWorkersAITextToImage - ФИНАЛЬНАЯ РАБОЧАЯ УНИФИКАЦИЯ ***
 /**
  * Генерирует изображение по заданному промпту, используя внешний HTTP-запрос к API.
- * @param {Object} uniConfig - УНИФИЦИРОВАННЫЙ АРГУМЕНТ: Объект активной конфигурации.
- * @param {string} uniPrompt - УНИФИЦИРОВАННЫЙ АРГУМЕНТ: Промпт для генерации изображения.
- * @param {Object} uniEnvData - УНИФИЦИРОВАННЫЙ АРГУМЕНТ: Объект окружения.
+ * @param {Object} config - Объект активной конфигурации.
+ * @param {string} prompt - Промпт для генерации изображения.
+ * @param {Object} envData - Объект окружения.
  * @returns {Promise<ArrayBuffer>} Бинарные данные изображения (PNG).
  */
 // ИСПОЛЬЗУЕМ НОВЫЕ ИМЕНА В СИГНАТУРЕ, ЧТОБЫ ИЗБЕЖАТЬ КОНФЛИКТА
-async function callWorkersAITextToImage(uniConfig, uniPrompt, uniEnvData) { 
-    
-    // ПЕРЕНАЗНАЧАЕМ ПЕРЕМЕННЫЕ НА ТЕ ИМЕНА, КОТОРЫЕ ИСПОЛЬЗОВАЛА ВАША СТАРАЯ ЛОГИКА
-    const prompt = uniPrompt;
-    const envData = uniEnvData;
-    const config = uniConfig; // Для модели
-
+async function callWorkersAITextToImage(config, prompt, envData) { 
     // ВАШИ РАБОЧИЕ ПЕРЕМЕННЫЕ:
     const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID;
     const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN;

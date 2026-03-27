@@ -20,7 +20,7 @@ jobs:
           function-name: 'leshiy-gemini-bot'
           runtime: 'nodejs22'
           memory: '512Mb'
-          execution-timeout: '60s'
+          execution-timeout: '180s'
           service-account: ${{ secrets.YANDEX_SERVICE_ID }}
           network-id: ${{ secrets.YANDEX_NETWORK_ID }}
           entrypoint: 'index.handler'
