@@ -3470,23 +3470,35 @@ async function sendAudioMessage(chatId, audioBase64, mimeType, token, envData) {
     ctx.waitUntil(storage.put(BASE64_KEY, audioBase64, { expirationTtl: 86400 })); // Храним 24 часа
     
     // 2. ВРЕМЕННОЕ СОХРАНЕНИЕ BASE64 в KV для прокси
-    const tempKey = `temp_audio_${chatId}_${Date.now()}`;
-    const audioProxyUrl = `${envData.WORKER_DOMAIN}/audio_proxy?key=${tempKey}&type=${encodeURIComponent(mimeType)}`;
+    //const tempKey = `temp_audio_${chatId}_${Date.now()}`;
+    //const audioProxyUrl = `${envData.WORKER_DOMAIN}/audio_proxy?key=${tempKey}&type=${encodeURIComponent(mimeType)}`;
     
     // Устанавливаем короткий TTL для временного ключа
-    await storage.put(tempKey, audioBase64, { expirationTtl: 300 }); 
+    //await storage.put(tempKey, audioBase64, { expirationTtl: 300 }); 
     
     // 3. Отправляем запрос в Telegram, используя метод "по URL"
     const apiUrl = `https://api.telegram.org/bot${token}/sendAudio`; 
+
+    // Превращаем Base64 сразу в байты
+    const audioBuffer = base64ToArrayBuffer(audioBase64); 
+    
+    const formData = new FormData();
+    formData.append('chat_id', chatId.toString());
+    // Создаем Blob из байтов
+    const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+    formData.append('audio', audioBlob, 'voice.mp3');
+    formData.append('caption', '🔊 Ответ AI');
+
     const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: formData, // Передаем FormData, а не JSON
+        //headers: { 'Content-Type': 'application/json' },
+        /*body: JSON.stringify({
             chat_id: chatId.toString(),
             audio: audioProxyUrl,
             mime_type: finalMimeType, 
             caption: '🔊 Ответ AI'
-        }),
+        }),*/
         signal: AbortSignal.timeout(60000)
     });
 
@@ -3533,7 +3545,7 @@ async function sendAudioMessage(chatId, audioBase64, mimeType, token, envData) {
     }
      
     // 5. Очистка временного ключа
-    ctx.waitUntil(storage.delete(tempKey));
+    //ctx.waitUntil(storage.delete(tempKey));
 
     return responseData;
 }
