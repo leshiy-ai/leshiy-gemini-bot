@@ -5336,31 +5336,48 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
 
     // 3. Обработка ОТВЕТА
     if (response.ok) {
-        // Нам плевать, что в заголовке Content-Type, раз он врет.
         const contentType = response.headers.get('Content-Type') || '';
         const responseBuffer = await response.arrayBuffer();
-
-        // Проверяем только размер
-        if (responseBuffer.byteLength < 1000) { 
-            throw new Error(`TTS failed. Buffer too small: ${responseBuffer.byteLength} bytes.`);
-        }
-
-        // --- ДЕБАГ #2 ---
+        
+        // --- ДЕБАГ #2 (ВЕРНУЛ КАК БЫЛО) ---
         envData.ctx.waitUntil(logDebug(
             "TTS_WorkersAI",
             `Успешный ответ. Status: ${response.status}. Content-Type: ${contentType}. Size: ${responseBuffer.byteLength}`,
             envData
         ));
 
-        // 4. ПРЕОБРАЗОВАНИЕ (Buffer в Node.js — это база)
-        const audioBase64 = Buffer.from(responseBuffer).toString('base64');
+        let finalAudioBase64;
+        
+        // Проверяем самое начало: 123 — это '{' (JSON)
+        const firstByte = new Uint8Array(responseBuffer)[0];
 
-        // Возвращаем результат. 
-        // Если в заголовке БЫЛО слово audio — берем его, иначе ЖЕСТКО audio/mpeg
+        if (firstByte === 123) {
+            // Если это JSON-обертка (те самые 26к-35к байт текста)
+            const fullText = new TextDecoder().decode(responseBuffer);
+            try {
+                const obj = JSON.parse(fullText);
+                // Вытаскиваем ЧИСТЫЙ Base64 из поля result
+                finalAudioBase64 = obj.result || Buffer.from(responseBuffer).toString('base64');
+            } catch (e) {
+                finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
+            }
+        } else {
+            // Если это ЧИСТЫЕ БАЙТЫ MP3 (те самые ~19к байт)
+            finalAudioBase64 = Buffer.from(responseBuffer).toString('base64');
+        }
+
+        // Дополнительный лог, чтобы сравнить Size и финальную длину
+        envData.ctx.waitUntil(logDebug(
+            "TTS_WorkersAI",
+            `ИТОГ: Final Base64 Length: ${finalAudioBase64.length}`,
+            envData
+        ));
+
         return { 
-            audioBase64: audioBase64, 
-            mimeType: contentType.includes('audio') ? contentType.split(';')[0] : 'audio/mpeg'
+            audioBase64: finalAudioBase64, 
+            mimeType: 'audio/mpeg' 
         };
+    
     
     } else {
         // --- ДЕБАГ #3: ЛОГИРОВАНИЕ HTTP-ОШИБКИ (4xx, 5xx) ---
