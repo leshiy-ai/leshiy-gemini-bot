@@ -1239,7 +1239,8 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false) {
     const commonHeaders = {
         'X-Target-URL': url,
         'X-Proxy-Secret': PROXY_SECRET,
-        'Content-Type': isBinary ? 'application/octet-stream' : 'application/json'
+        'Content-Type': isBinary ? 'application/octet-stream' : 'application/json',
+        'Accept': (url.includes('/ai/run/') && !isBinary) ? 'audio/mpeg, application/json' : '*/*'
     };
 
     // Если есть Auth (для Bothub/OpenAI), добавляем его
@@ -5319,16 +5320,17 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
 
     let response;
     try {
-        //response = await sendAiRequest(inputs, url, config, envData);
-        response = await fetch(url, {
+        response = await sendAiRequest(inputs, url, config, envData);
+        /*response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
                 'Content-Type': 'application/json',
+                'Accept': 'audio/mpeg' // Явно просим звук
             },
             body: JSON.stringify(inputs),
             signal: AbortSignal.timeout(60000)
-        });
+        });*/
     } catch (e) {
         envData.ctx.waitUntil(logDebug("TTS_WorkersAI", `Ошибка Fetch: ${e.message}`, envData));
         throw new Error(`Ошибка сети/таймаута при вызове Workers AI: ${e.message}`);
