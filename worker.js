@@ -5052,8 +5052,8 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     // Параметры для модели
     const inputs = {
         prompt: finalPrompt,
-        //num_steps: 10,
-        //negative_prompt: "blurry, low quality, worst quality, deformed, mutated, cropped, text, signature, low detail",
+        num_steps: 10,
+        negative_prompt: "blurry, low quality, worst quality, deformed, mutated, cropped, text, signature, low detail",
     };
 
     // !!! ЛОГИРОВАНИЕ ЗАПРОСА !!!
@@ -5066,11 +5066,12 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     try {
         // 3. Вызываем API через fetch
         //const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
-        const fetchResponse = await worker_code_fetch(URL, {
+        const fetchResponse = await globalThis.fetch(URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}` 
+                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                'Accept': 'image/png'
             },
             body: JSON.stringify(inputs)
         });
