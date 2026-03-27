@@ -5123,10 +5123,11 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
             await logDebug('IMG_GEN_FETCH_CRIT_ERROR', e.message, envData);
         //}
-        throw new Error(`Ошибка при вызове Cloudflare API (${MODEL_NAME}): ${e.message}`);
 
         // ОСТАНАВЛИВАЕМ ПУЛЬС
         clearInterval(heartbeat);
+        
+        throw new Error(`Ошибка при вызове Cloudflare API (${MODEL_NAME}): ${e.message}`);
     }
 
     const byteLength = apiResponse?.byteLength || 0;
