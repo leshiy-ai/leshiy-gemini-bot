@@ -12178,11 +12178,10 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
             ]]
         };
 
-        await sendMessageWithKeyboard(chatId, 
-            `⏳ **Генерация запущена!**\n\n` +
-            `Нейросеть рисует ваш шедевр. Из-за особенностей платформы, если через 5-10 секунд картинка не пришла сама — **нажмите кнопку ниже**, чтобы "подтолкнуть" процесс.`, 
+        await editMessageWithKeyboard(chatId, workingMessageId,
+            `⏳ **Генерация запущена!**\n\n**Нажмите кнопку ниже**, чтобы "получить" сгенериррованную картинку.`, 
             token, 
-            JSON.stringify(keyboard)
+            keyboard
         );
         
         if (mode === 'T2I') {
