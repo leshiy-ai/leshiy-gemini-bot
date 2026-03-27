@@ -5062,7 +5062,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         await logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData);
     //}
 
-    let apiResponse;
+    //let apiResponse;
     try {
         // 3. Вызываем API через fetch
         //const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
