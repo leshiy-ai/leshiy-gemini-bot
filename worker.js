@@ -5066,7 +5066,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     try {
         // 3. Вызываем API через fetch
         //const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
-        const fetchResponse = await globalThis.fetch(URL, {
+        const fetchResponse = await fetch(URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -181,16 +181,20 @@ module.exports.handler = async (event, context) => {
             worker.fetch(new Request(fullUrl, requestOptions), env, ctx) : 
             worker.worker_code_fetch(new Request(fullUrl, requestOptions), env, ctx)
         );
-
-        const responseText = await response.text();
+    
+        // ВАЖНО: Читаем как ArrayBuffer, а не как текст!
+        const responseArrayBuffer = await response.arrayBuffer();
+        const responseBuffer = Buffer.from(responseArrayBuffer);
+        
         const responseHeaders = {};
         response.headers.forEach((v, k) => { responseHeaders[k] = v; });
-
+    
         return {
             statusCode: response.status || 200,
             headers: responseHeaders,
-            body: responseText,
-            isBase64Encoded: false
+            // Передаем как Base64, чтобы Яндекс не ломал бинарные данные
+            body: responseBuffer.toString('base64'),
+            isBase64Encoded: true 
         };
 
     } catch (err) {
