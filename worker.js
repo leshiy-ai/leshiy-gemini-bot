@@ -3460,9 +3460,9 @@ async function sendAudioMessage(chatId, audioBase64, mimeType, token, envData) {
     const DURATION_KEY = chatKey + AUDIO_DURATION_KEY_SUFFIX; // 🔥 НОВЫЙ КЛЮЧ ДЛИТЕЛЬНОСТИ
     
     // Проверка необходимых env-переменных и данных
-    if (!audioBase64 || !storage || !envData.WORKER_DOMAIN) {
-        ctx.waitUntil(logDebug("SendAudio", `Отсутствует Base64, KV-Storage или WORKER_DOMAIN.`, envData, ctx));
-        throw new Error("Не удалось отправить аудио: не настроен KV-прокси.");
+    if (!audioBase64 || !storage) {
+        ctx.waitUntil(logDebug("SendAudio", `Отсутствует Base64 или KV-Storage.`, envData, ctx));
+        throw new Error("Не удалось отправить аудио: нет данных или хранилища.");
     }
     
     // --- 1. СОХРАНЕНИЕ BASE64 ДАННЫХ (для повторного использования в /avatar) ---
