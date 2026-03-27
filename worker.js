@@ -5058,9 +5058,9 @@ async function callWorkersAITextToImage(config, prompt, envData) {
 
     // !!! ЛОГИРОВАНИЕ ЗАПРОСА !!!
     const debugInputs = JSON.stringify({ model: MODEL_NAME, inputs: inputs });
-    if (envData.BOT_LOGS_STORAGE && envData.ctx) {
-        envData.ctx.waitUntil(logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData));
-    }
+    //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
+        await logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData);
+    //}
 
     let apiResponse;
     try {
