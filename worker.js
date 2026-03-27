@@ -5278,8 +5278,8 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
     const WORKERS_AI_VOICE_MAP = {
         [VOICE_MALE]: 'orpheus', // Мужской голос
         //[VOICE_MALE]: 'zeus', // Мужской голос
-        [VOICE_FEMALE]: 'athena' // Женский голос
-        //[VOICE_FEMALE]: 'luna' // Женский голос
+        //[VOICE_FEMALE]: 'athena' // Женский голос
+        [VOICE_FEMALE]: 'luna' // Женский голос
     };
     // 💡 1. Динамический выбор голоса
     const selectedVoiceName = WORKERS_AI_VOICE_MAP[requestedVoice] || WORKERS_AI_VOICE_MAP[VOICE_MALE]; // По умолчанию - мужской
