@@ -5351,7 +5351,7 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
         ));
 
         // Проверяем первый байт: 123 — это '{' (начало JSON)
-        const firstByte = new Uint8Array(responseBuffer)[0];
+        const bytes = new Uint8Array(responseBuffer);
 
         // ВАРИАНТ А: Пришел JSON (по заголовку или по первому байту)
         if (bytes[0] === 123) {
