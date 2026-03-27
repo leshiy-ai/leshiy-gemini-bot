@@ -5055,7 +5055,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     };
 
     // !!! ЛОГИРОВАНИЕ ЗАПРОСА !!!
-    const debugInputs = JSON.stringify({ model: GENERATION_MODEL, inputs: inputs });
+    const debugInputs = JSON.stringify({ model: MODEL_NAME, inputs: inputs });
     if (envData.BOT_LOGS_STORAGE && envData.ctx) {
         envData.ctx.waitUntil(logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData));
     }
@@ -5110,7 +5110,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         if (envData.BOT_LOGS_STORAGE && envData.ctx) {
             envData.ctx.waitUntil(logDebug('IMG_GEN_FETCH_CRIT_ERROR', e.message, envData));
         }
-        throw new Error(`Ошибка при вызове Cloudflare API (${GENERATION_MODEL}): ${e.message}`);
+        throw new Error(`Ошибка при вызове Cloudflare API (${MODEL_NAME}): ${e.message}`);
     }
 
     const byteLength = apiResponse?.byteLength || 0;
