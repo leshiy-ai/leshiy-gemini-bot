@@ -5059,16 +5059,10 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     // !!! ЛОГИРОВАНИЕ ЗАПРОСА !!!
     const debugInputs = JSON.stringify({ model: MODEL_NAME, inputs: inputs });
     //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
-        await logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData);
+        logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData);
     //}
 
     let apiResponse;
-
-    // 💓 СОЗДАЕМ "ПУЛЬС", чтобы Яндекс не заснул
-    const heartbeat = setInterval(() => {
-        console.log("Keep-alive: Waiting for Cloudflare GPU...");
-    }, 1000); // Каждую секунду
-
     try {
         // 3. Вызываем API через fetch
         //const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
@@ -5082,7 +5076,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
             body: JSON.stringify(inputs)
         });
 
-        await logDebug('IMG_GEN_FETCH_STATUS', `Status: ${fetchResponse.status}, OK: ${fetchResponse.ok}`, envData);
+        logDebug('IMG_GEN_FETCH_STATUS', `Status: ${fetchResponse.status}, OK: ${fetchResponse.ok}`, envData);
         //if (envData.ctx) {
         //    envData.ctx.waitUntil(logDebug('IMG_GEN_FETCH_STATUS', `Status: ${fetchResponse.status}, OK: ${fetchResponse.ok}`, envData));
         //}
@@ -5090,19 +5084,19 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         if (!fetchResponse.ok) {
             const errorBody = await fetchResponse.json();
              //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
-                await logDebug('IMG_GEN_FETCH_ERROR', JSON.stringify(errorBody), envData);
+                logDebug('IMG_GEN_FETCH_ERROR', JSON.stringify(errorBody), envData);
              //}
             throw new Error(`Cloudflare API Error: ${fetchResponse.status} - ${errorBody.errors?.[0]?.message || fetchResponse.statusText}`);
         }
 
         //if (envData.ctx) {
-            await logDebug('IMG_GEN_BUFFER_START', `Начинаю чтение ArrayBuffer...`, envData);
+            logDebug('IMG_GEN_BUFFER_START', `Начинаю чтение ArrayBuffer...`, envData);
         //}
 
         // Проверяем Content-Type
         const contentType = fetchResponse.headers.get('content-type');
         //if (envData.ctx) {
-            await logDebug('IMG_GEN_CONTENT_TYPE', `Content-Type: ${contentType}`, envData);
+            logDebug('IMG_GEN_CONTENT_TYPE', `Content-Type: ${contentType}`, envData);
         //}
 
         // Ответ в виде ArrayBuffer 
@@ -5113,19 +5107,13 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         const magicBytes = `${view[0]} ${view[1]} ${view[2]} ${view[3]}`;
         
         //if (envData.ctx) {
-            await logDebug('IMG_GEN_MAGIC_BYTES', `First 4 bytes: ${magicBytes}`, envData);
+            logDebug('IMG_GEN_MAGIC_BYTES', `First 4 bytes: ${magicBytes}`, envData);
         //}
-
-        // ОСТАНАВЛИВАЕМ ПУЛЬС
-        clearInterval(heartbeat);
 
     } catch (e) {
         //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
-            await logDebug('IMG_GEN_FETCH_CRIT_ERROR', e.message, envData);
+            logDebug('IMG_GEN_FETCH_CRIT_ERROR', e.message, envData);
         //}
-
-        // ОСТАНАВЛИВАЕМ ПУЛЬС
-        clearInterval(heartbeat);
         throw new Error(`Ошибка при вызове Cloudflare API (${MODEL_NAME}): ${e.message}`);
     }
 
@@ -5133,12 +5121,12 @@ async function callWorkersAITextToImage(config, prompt, envData) {
 
     // !!! ЛОГИРОВАНИЕ ОТВЕТА !!!
     //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
-        await logDebug('IMG_GEN_RAW_RESPONSE_FETCH', `Type: ${typeof apiResponse}, Length: ${byteLength}`, envData);
+        logDebug('IMG_GEN_RAW_RESPONSE_FETCH', `Type: ${typeof apiResponse}, Length: ${byteLength}`, envData);
     //}
 
     if (!apiResponse || byteLength < 1024) {
         //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
-            await logDebug('IMG_GEN_EMPTY_RESPONSE_FETCH', `Response was too small or null. Length: ${byteLength}.`, envData);
+            logDebug('IMG_GEN_EMPTY_RESPONSE_FETCH', `Response was too small or null. Length: ${byteLength}.`, envData);
         //}
         throw new Error(`API Cloudflare вернул пустые данные (Размер: ${byteLength}). Проверьте токен/ID аккаунта.`);
     }
