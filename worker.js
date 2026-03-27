@@ -5100,14 +5100,14 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         //}
 
         // Ответ в виде ArrayBuffer 
-        apiResponse = await fetchResponse.arrayBuffer();
+        //apiResponse = await fetchResponse.arrayBuffer();
 
         // ПРОВЕРКА НА МАГИЧЕСКИЕ БАЙТЫ (PNG начинается с 137 80 78 71)
-        const view = new Uint8Array(apiResponse);
-        const magicBytes = `${view[0]} ${view[1]} ${view[2]} ${view[3]}`;
+        //const view = new Uint8Array(apiResponse);
+        //const magicBytes = `${view[0]} ${view[1]} ${view[2]} ${view[3]}`;
         
         //if (envData.ctx) {
-            await logDebug('IMG_GEN_MAGIC_BYTES', `First 4 bytes: ${magicBytes}`, envData);
+        //    await logDebug('IMG_GEN_MAGIC_BYTES', `First 4 bytes: ${magicBytes}`, envData);
         //}
 
     } catch (e) {
@@ -5116,7 +5116,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         //}
         throw new Error(`Ошибка при вызове Cloudflare API (${MODEL_NAME}): ${e.message}`);
     }
-
+    /*
     const byteLength = apiResponse?.byteLength || 0;
 
     // !!! ЛОГИРОВАНИЕ ОТВЕТА !!!
@@ -5129,8 +5129,21 @@ async function callWorkersAITextToImage(config, prompt, envData) {
             await logDebug('IMG_GEN_EMPTY_RESPONSE_FETCH', `Response was too small or null. Length: ${byteLength}.`, envData);
         //}
         throw new Error(`API Cloudflare вернул пустые данные (Размер: ${byteLength}). Проверьте токен/ID аккаунта.`);
+    }*/
+
+    // Вместо arrayBuffer() используем потоковое чтение
+    const reader = fetchResponse.body.getReader();
+    let chunks = [];
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        // Пока мы читаем чанки, Node.js видит активность и не спит
     }
 
+    // Собираем всё в один буфер в конце
+    const blob = new Blob(chunks);
+    const apiResponse = await blob.arrayBuffer();
     return apiResponse; // ArrayBuffer
 }
 
