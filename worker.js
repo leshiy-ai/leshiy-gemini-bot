@@ -5354,7 +5354,7 @@ async function callWorkersAITextToAudio(config, text, envData, requestedVoice) {
         const firstByte = new Uint8Array(responseBuffer)[0];
 
         // ВАРИАНТ А: Пришел JSON (по заголовку или по первому байту)
-        if (contentType.includes('json') || firstByte === 123) {
+        if (bytes[0] === 123) {
             const jsonText = new TextDecoder().decode(responseBuffer);
             try {
                 const obj = JSON.parse(jsonText);
