@@ -4206,14 +4206,14 @@ async function callGeminiVision(config, imageBuffer, envData) {
         // !!! ОШИБКА ИСПРАВЛЕНА: config: {} удалено, т.к. вызывает ошибку Gemini API.
     };
     
+    const fullUrl = `${url}?key=${API_KEY}`;
+    const response = await sendAiRequest(body, fullUrl, config, envData, true);
     /*const response = await fetch(`${url}?key=${API_KEY}`, { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     });*/
 
-    const fullUrl = `${url}?key=${API_KEY}`;
-    const response = await sendAiRequest(body, fullUrl, config, envData, true);
     const data = await response.json();
     if (data.error) { throw new Error(`Gemini API Error: ${data.error.message}`); }
     const textResult = data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -4262,14 +4262,14 @@ async function callGeminiVideoVision(config, videoBuffer, mimeType, envData) {
         }],
     };
     
+    const fullUrl = `${url}?key=${API_KEY}`;
+    const response = await sendAiRequest(body, fullUrl, config, envData, true);
     /*const response = await fetch(`${url}?key=${API_KEY}`, { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     });*/
     
-    const fullUrl = `${url}?key=${API_KEY}`;
-    const response = await sendAiRequest(body, fullUrl, config, envData, true);
     const data = await response.json();
     if (data.error) { throw new Error(`Gemini API Error: ${data.error.message}`); }
     const textResult = data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -4385,17 +4385,17 @@ async function callGeminiText2Image(config, prompt, envData) {
     };
 
     try {
+        const response = await sendAiRequest(body, url, config, envData, true);
         /*const response = await fetch(url, { method: 'POST', headers: {
              'Content-Type': 'application/json'
-        }, body: JSON.stringify(body) });
+        }, body: JSON.stringify(body) });*/
 
         if (!response.ok) {
             const errorText = await response.text();
             const errorMessage = `Gemini T2I API Error (${model}): ${response.status} - Response: ${errorText.substring(0, 150)}... | 🌐 Sent URL: ${url}`;
             throw new Error(errorMessage);
-        }*/
+        }
 
-        const response = await sendAiRequest(body, url, config, envData, true);
         const data = await response.json();
         
         if (data.error) { 
@@ -4463,10 +4463,10 @@ async function callGeminiImage2Image(config, prompt, imageBase64, envData, final
     };
 
     try {
-        /*
-        const response = await fetch(url, { method: 'POST', headers: {
+        const response = await sendAiRequest(body, url, config, envData, true);
+        /*const response = await fetch(url, { method: 'POST', headers: {
             'Content-Type': 'application/json'
-        }, body: JSON.stringify(body) });
+        }, body: JSON.stringify(body) });*/
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -4474,9 +4474,8 @@ async function callGeminiImage2Image(config, prompt, imageBase64, envData, final
             // !!! ИСПРАВЛЕНО: Добавляем Sent URL в случае ошибки response.ok !!!
             const errorMessage = `Gemini Image API Error (${model}): ${response.status} - Response: ${errorText.substring(0, 150)}... | 🌐 Sent URL: ${url}`;
             throw new Error(errorMessage);
-        }*/
+        }
 
-        const response = await sendAiRequest(body, url, config, envData, true);
         const data = await response.json();
         
         if (data.error) { 
@@ -4560,14 +4559,14 @@ async function callGeminiSpeechToText(config, audioBuffer, envData) { // <-- У�
         }]
     };
     
+    const fullUrl = `${url}?key=${API_KEY}`; // <-- УНИФИЦИРОВАННЫЙ URL И КЛЮЧ
+    const response = await sendAiRequest(body, fullUrl, config, envData, true);
     /*const response = await fetch(`${url}?key=${API_KEY}`, { // <-- УНИФИЦИРОВАННЫЙ URL И КЛЮЧ
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     });*/
 
-    const fullUrl = `${url}?key=${API_KEY}`; // <-- УНИФИЦИРОВАННЫЙ URL И КЛЮЧ
-    const response = await sendAiRequest(body, fullUrl, config, envData, true);
     const data = await response.json();
     if (data.error) { throw new Error(`Gemini STT API Error: ${data.error.message}`); }
     const textResult = data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -4640,21 +4639,21 @@ async function callGeminiTextToAudio(config, text, envData, requestedVoice) {
 
     try {
         // 1. ВЫЗОВ GEMINI API (получение Base64 PCM)
+        const fullUrl = `${url}?key=${API_KEY}`; // <-- УНИФИЦИРОВАННЫЙ URL И КЛЮЧ
+        const response = await sendAiRequest(body, fullUrl, config, envData, true);
         /*const response = await fetch(`${url}?key=${API_KEY}`, { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
             signal: AbortSignal.timeout(30000) // Таймаут на API
-        });
+        });*/
 
         if (!response.ok) {
             const errorText = await response.text();
             envData.ctx.waitUntil(logDebug("Gemini_TTS", `HTTP Error ${response.status}. Response: ${errorText.substring(0, 500)}`, envData));
             throw new Error(`Gemini TTS API Error: ${response.status} - Response: ${errorText.substring(0, 150)}...`);
-        }*/
+        }
         
-        const fullUrl = `${url}?key=${API_KEY}`; // <-- УНИФИЦИРОВАННЫЙ URL И КЛЮЧ
-        const response = await sendAiRequest(body, fullUrl, config, envData, true);
         const data = await response.json();
 
         // 2. ИЗВЛЕЧЕНИЕ BASE64
@@ -4674,7 +4673,7 @@ async function callGeminiTextToAudio(config, text, envData, requestedVoice) {
         // 3. 🛑 КОНВЕРТАЦИЯ BASE64 В ARRAYBUFFER (для вашей функции PCM->MP3)
         const pcmBuffer = base64ToArrayBuffer(audioBase64);
         
-        // 4. 🛑 ВЫЗОВ ВАШЕГО КОНВЕРТЕРА PCM -> MP3
+        // 4. 🛑 ВЫЗОВ КОНВЕРТЕРА PCM -> MP3
         const mp3Buffer = await convertPcmToMp3(pcmBuffer, envData);
         
         if (!mp3Buffer) {
@@ -4818,7 +4817,7 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
         const data = await response.json();
         // У Workers AI текст лежит в result.response
         const textResult = data.result?.response || data.result?.description || data.result;
-        
+
         if (!textResult) throw new Error("Workers AI вернул пустой результат");
         return textResult.trim();
     } catch (e) {
@@ -4854,6 +4853,8 @@ async function callWorkersAISpeechToText(config, audioBuffer, envData) {
     try {
         console.log(`[ASR] Отправка бинарного потока к Cloudflare AI...`);
 
+        // Посылаем на отправку в sendAiRequest
+        const response = await sendAiRequest(audioBuffer, URL, config, envData, true);
         /*const response = await fetch(URL, {
             method: 'POST',
             headers: {
@@ -4863,9 +4864,6 @@ async function callWorkersAISpeechToText(config, audioBuffer, envData) {
             // Передаем твой audioData (массив байтов) как Buffer, чтобы fetch его съел
             body: Buffer.from(audioData) 
         });*/
-
-        // Посылаем на отправку в sendAiRequest
-        const response = await sendAiRequest(audioBuffer, URL, config, envData, true);
 
         // Получаем результат в переменную aiResponse
         const result = await response.json();
@@ -5068,8 +5066,8 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     let apiResponse;
     try {
         // 3. Вызываем API через fetch
-        //const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
-        const fetchResponse = await fetch(URL, {
+        const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
+        /*const fetchResponse = await fetch(URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -5077,7 +5075,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
                 'Accept': 'image/png'
             },
             body: JSON.stringify(inputs)
-        });
+        });*/
 
         logDebug('IMG_GEN_FETCH_STATUS', `Status: ${fetchResponse.status}, OK: ${fetchResponse.ok}`, envData);
         if (!fetchResponse.ok) {
@@ -5185,8 +5183,8 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
 
     let response;
     try {
-        //response = await sendAiRequest(inputs, url, config, envData);
-        response = await fetch(url, {
+        response = await sendAiRequest(inputs, url, config, envData);
+        /*response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -5194,7 +5192,7 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
             },
             body: JSON.stringify(inputs),
             signal: AbortSignal.timeout(60000)
-        });
+        });*/
         
     } catch (e) {
         await logDebug("Img2Img", `Ошибка Fetch: ${e.message}`, envData);
@@ -5506,7 +5504,6 @@ async function callBotHubTextChat(config, history, messageText, envData) {
         throw new Error(`BOTHUB API error (Status ${response.status}): ${errorText}`);
     }
 
-    //const response = await sendAiRequest(body, url, config, envData);
     // 4. Обработка ответа
     const data = await response.json();
     let responseText = '';
