@@ -5230,20 +5230,21 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
         const isPng = view[0] === 137 && view[1] === 80 && view[2] === 78 && view[3] === 71;
 
         if (isPng) {
-            await logDebug("Img2Img", `Успех! Получена PNG картинка. Размер: ${buffer.byteLength} байт`, envData);
-            return buffer; // Возвращаем ArrayBuffer
+            await logDebug("Img2Img", `Успех! Это PNG. Размер: ${buffer.byteLength}`, envData);
+            return buffer; 
         } else {
-            // Если это не PNG, значит там какой-то текст или JSON (ошибка или инфо)
-            const textDecoder = new TextDecoder();
-            const responseText = textDecoder.decode(buffer);
+            // Если это не PNG, пробуем декодировать как текст (вдруг там ошибка JSON)
+            const decoder = new TextDecoder('utf-8');
+            const responseText = decoder.decode(buffer);
             
-            await logDebug("Img2Img", `Получен текст вместо картинки: ${responseText.substring(0, 200)}`, envData);
-            
-            let errorData = {};
-            try { errorData = JSON.parse(responseText); } catch(e) {}
-            
-            const errorMessage = errorData.errors?.[0]?.message || responseText.substring(0, 200) || 'Неизвестная ошибка (не PNG)';
-            throw new Error(`Workers AI Img2Img: ${errorMessage}`);
+            // Если в тексте ЕСТЬ "PNG", значит мы пропустили байты!
+            if (responseText.includes("PNG")) {
+                await logDebug("Img2Img", "КРИТИЧЕСКАЯ ОШИБКА ЛОГИКИ: В данных есть PNG, но проверка байтов не сработала!", envData);
+                // Принудительно возвращаем как картинку
+                return buffer;
+            }
+
+            throw new Error(`Workers AI Img2Img: ${responseText.substring(0, 100)}`);
         }
     } else {
         // Обработка HTTP ошибок (4xx, 5xx)
