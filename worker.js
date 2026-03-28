@@ -4367,11 +4367,11 @@ async function callGeminiText2Image(config, prompt, envData) {
                 ]
             }
         ],
-        "generationConfig": {
+        //"generationConfig": {
             // "responseModalities": ["IMAGE"], // Можно оставить, если модель 2.0+
-            "candidateCount": 1,
-            "responseMimeType": "image/png" // Обязательно для Imagen
-        }
+            //"candidateCount": 1,
+            //"responseMimeType": "image/png" // Обязательно для Imagen
+        //}
     };
 
     try {
