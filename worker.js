@@ -5056,8 +5056,6 @@ async function callWorkersAITextToImage(config, prompt, envData) {
         throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
     }
 
-    //envData.ctx.waitUntil(logDebug('IMG_GEN_CF_API_TOKEN', CLOUDFLARE_API_TOKEN, envData));
-
     const finalPrompt = `${prompt}, photorealistic, cinematic light, detailed background`;
 
     // Параметры для модели
@@ -5069,9 +5067,9 @@ async function callWorkersAITextToImage(config, prompt, envData) {
 
     // !!! ЛОГИРОВАНИЕ ЗАПРОСА !!!
     const debugInputs = JSON.stringify({ model: MODEL_NAME, inputs: inputs });
-    //if (envData.BOT_LOGS_STORAGE && envData.ctx) {
-    //    logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData);
-    //}
+    if (envData.BOT_LOGS_STORAGE && envData.ctx) {
+        logDebug('IMG_GEN_REQUEST_FETCH', debugInputs, envData);
+    }
 
     let apiResponse;
     try {
