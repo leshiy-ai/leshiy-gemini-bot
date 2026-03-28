@@ -281,7 +281,7 @@ const AI_MODELS = {
         SERVICE: 'GEMINI', 
         FUNCTION: callGeminiText2Image, 
         //MODEL: 'gemini-2.5-flash-image',
-        MODEL: 'gemini-2.5-flash',
+        MODEL: 'gemini-3.1-flash-image-preview',
         API_KEY: 'GEMINI_API_KEY', 
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
@@ -4358,20 +4358,21 @@ async function callGeminiText2Image(config, prompt, envData) {
     // ✅ КОРРЕКТНЫЙ URL: Используем :generateContent, как в вашем curl-тесте
     const url = `${config.BASE_URL}/models/${model}:generateContent?key=${apiKey}`; 
 
-    // ✅ КОРРЕКТНЫЙ BODY: Используем структуру чата, но responseModalities помещаем в generationConfig
-    const body = {
-            "contents": [
-                {
-                    "parts": [
-                        { "text": prompt }
-                    ]
-                }
-            ],
-            // ✅ ИСПРАВЛЕНИЕ: МЕНЯЕМ "config" НА "generationConfig"
-            "generationConfig": { 
-                "responseModalities": ["Image"] 
-            }
-        };
+    // ✅ КОРРЕКТНЫЙ BODY ПО ИНСТРУКЦИИ
+    const body = {
+        "contents": [
+            {
+                "parts": [
+                    { "text": prompt }
+                ]
+            }
+        ],
+        "generationConfig": {
+            // "responseModalities": ["IMAGE"], // Можно оставить, если модель 2.0+
+            "candidateCount": 1,
+            "responseMimeType": "image/png" // Обязательно для Imagen
+        }
+    };
 
     try {
         /*const response = await fetch(url, { method: 'POST', headers: {
