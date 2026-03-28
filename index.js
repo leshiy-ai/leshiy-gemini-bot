@@ -172,16 +172,28 @@ module.exports.handler = async (event, context) => {
         }
     };
 
-    const ctx = { waitUntil: (promise) => promise };
+    // Список для сбора обещаний, которые нужно дождаться
+    const pendingPromises = [];
+    const ctx = { 
+        waitUntil: (promise) => {
+            pendingPromises.push(promise);
+        } 
+    };
 
     try {
         // Пробуем вызвать воркер
         //const response = await (worker.fetch ? worker.fetch(request, env, ctx) : worker.worker_code_fetch(request, env, ctx));
-        const response = await (worker.fetch ? 
-            worker.fetch(new Request(fullUrl, requestOptions), env, ctx) : 
-            worker.worker_code_fetch(new Request(fullUrl, requestOptions), env, ctx)
-        );
-    
+        const request = new Request(fullUrl, requestOptions);
+        const responsePromise = worker.fetch ? 
+            worker.fetch(request, env, ctx) : 
+            worker.worker_code_fetch(request, env, ctx);
+
+        // Добавляем основной запрос в список ожидания
+        ctx.waitUntil(responsePromise);
+
+        // Ждем выполнения самого воркера
+        const response = await responsePromise;
+
         // ВАЖНО: Читаем как ArrayBuffer, а не как текст!
         const responseArrayBuffer = await response.arrayBuffer();
         const responseBuffer = Buffer.from(responseArrayBuffer);
@@ -189,6 +201,12 @@ module.exports.handler = async (event, context) => {
         const responseHeaders = {};
         response.headers.forEach((v, k) => { responseHeaders[k] = v; });
     
+        // Ждем все остальные фоновые задачи воркера (логи, дебаги), 
+        // которые он мог накидать в waitUntil
+        if (pendingPromises.length > 1) {
+            await Promise.all(pendingPromises);
+        }
+        
         return {
             statusCode: response.status || 200,
             headers: responseHeaders,
