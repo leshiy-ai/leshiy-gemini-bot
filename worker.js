@@ -280,8 +280,8 @@ const AI_MODELS = {
     TEXT_TO_IMAGE_GEMINI: { 
         SERVICE: 'GEMINI', 
         FUNCTION: callGeminiText2Image, 
-        //MODEL: 'gemini-2.5-flash-image',
-        MODEL: 'gemini-3.1-flash-image-preview',
+        MODEL: 'gemini-2.5-flash-image', // Nano Banana : Gemini 2.5 Flash Image
+        //MODEL: 'gemini-3.1-flash-image-preview',
         API_KEY: 'GEMINI_API_KEY', 
         BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
