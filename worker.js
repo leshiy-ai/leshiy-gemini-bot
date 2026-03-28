@@ -472,16 +472,26 @@ const AI_MODELS = {
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
     },
     // [DALL-E-3 - /create] (ПЛАТНЫЙ - 33000 CAPS / 5,19 ₽ за шт.)
-    TEXT_TO_IMAGE_BOTHUB: { 
+    TEXT_TO_IMAGE_DALLE: { 
         SERVICE: 'BOTHUB', 
-        FUNCTION: callBotHubText2Img, // <-- ОТДЕЛЬНЫЙ ОБРАБОТЧИК Dalle-E-3
+        FUNCTION: callBotHubText2ImgDalle, // <-- ОТДЕЛЬНЫЙ ОБРАБОТЧИК Dalle-E-3
         MODEL: 'dall-e-3', 
         API_KEY: 'BOTHUB_API_KEY', 
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/images/generations'
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1',
         pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
     },
-    // [gemini-2.5-flash-image для /photo] (Через BotHub API, ПЛАТНЫЙ)
+    // [T2I gemini-2.5-flash-image для /text] (Через BotHub API, ПЛАТНЫЙ)
+    TEXT_TO_IMAGE_BOTHUB: { 
+        SERVICE: 'BOTHUB', 
+        FUNCTION: callBotHubText2Image, // <-- ОБРАБОТЧИК ДЛЯ BOTHUB
+        MODEL: 'gemini-2.5-flash-image', 
+        API_KEY: 'BOTHUB_API_KEY', // Имя переменной окружения
+        //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
+        BASE_URL: 'https://bothub.chat/api/v2/openai/v1',
+        pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
+    }, 
+    // [I2I gemini-2.5-flash-image для /photo] (Через BotHub API, ПЛАТНЫЙ)
     IMAGE_TO_IMAGE_BOTHUB: { 
         SERVICE: 'BOTHUB', 
         FUNCTION: callBotHubImage2Image, // <-- ОБРАБОТЧИК ДЛЯ BOTHUB
@@ -5828,7 +5838,7 @@ async function callBothubVideoVision(config, videoData, videoMimeType, envData) 
     }
 }
 
-// ✅ *** 2.23. callBotHubText2Img (Text-to-Image - BotHub/DALL-E) - ФИНАЛЬНО ИСПРАВЛЕНО ***
+// ✅ *** 2.23a. callBotHubText2ImgDalle (Text-to-Dalle - BotHub/DALL-E) - ФИНАЛЬНО ИСПРАВЛЕНО ***
 /**
  * Генерирует изображение по промпту через BotHub (DALL-E-3).
  * Соответствует унифицированному контракту T2I.
@@ -5837,7 +5847,7 @@ async function callBothubVideoVision(config, videoData, videoMimeType, envData) 
  * @param {Object} envData - Объект окружения.
  * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
  */
-async function callBotHubText2Img(config, prompt, envData) { 
+async function callBotHubText2ImgDalle(config, prompt, envData) { 
     
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
@@ -5890,6 +5900,68 @@ async function callBotHubText2Img(config, prompt, envData) {
     }
 
     // Возвращаем бинарные данные (ArrayBuffer)
+    return imageResponse.arrayBuffer();
+}
+
+// ✅ *** 2.23. callBotHubText2Image ***
+/**
+ * Генерирует изображение по промпту через BotHub через Chat Completions.
+ * Соответствует унифицированному контракту OpenAI T2I.
+ * @param {Object} config - Объект активной конфигурации (AI_MODELS.TEXT_TO_IMAGE_DALLE).
+ * @param {string} prompt - Текстовый промпт.
+ * @param {Object} envData - Объект окружения.
+ * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
+ */
+async function callBotHubText2Image(config, prompt, envData) { 
+    const API_KEY = envData[config.API_KEY]; 
+    if (!API_KEY) { throw new Error(`BotHub API key is missing. Expected env var: ${config.API_KEY}`); }
+
+    // 1. URL
+    const URL = `${config.BASE_URL}/chat/completions`; 
+
+    // 2. Формирование тела запроса
+    const jsonBody = JSON.stringify({
+        model: config.MODEL, // например, "gemini-2.5-flash-image"
+        messages: [
+            {
+                "role": "user",
+                "content": `Создай картинку по описанию: ${prompt}`
+            }
+        ]
+    });
+    
+    // 2. Вызов API
+    const response = await fetch(URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${API_KEY}`, 
+        },
+        body: jsonBody,
+    });
+
+    // 4. Обработка ошибок
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`BotHub T2I Error (${response.status}): ${errorText.substring(0, 150)}`);
+    }
+
+    const jsonResponse = await response.json();
+
+    // 3. Извлечение URL (BotHub часто возвращает его в поле images или прямо в контенте)
+    let imageUrl = jsonResponse?.choices?.[0]?.message?.images?.[0]?.image_url?.url 
+                || jsonResponse?.choices?.[0]?.message?.content?.match(/(https?:\/\/[^\s]+)/)?.[0];
+
+    if (!imageUrl) { imageUrl = jsonResponse?.data?.[0]?.url; }
+
+    if (!imageUrl) {
+        throw new Error(`BotHub T2I: URL не найден. Ответ: ${JSON.stringify(jsonResponse).substring(0, 200)}`);
+    }
+
+    // 4. Загрузка байтов
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) throw new Error(`Ошибка загрузки PNG: ${imageResponse.status}`);
+
     return imageResponse.arrayBuffer();
 }
 
