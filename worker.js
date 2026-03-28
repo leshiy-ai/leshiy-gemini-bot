@@ -5855,9 +5855,9 @@ async function callBotHubText2Img(config, prompt, envData) {
         model: MODEL,
         prompt: prompt,
         n: 1,
-        size: config.SIZE || "1024x1024", 
+        size: config.SIZE || "1024x1024"
         // ✅ КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Запрашиваем URL, так как BotHub не возвращает b64_json по умолчанию
-        response_format: "url" 
+        //response_format: "url" 
     });
 
     // 1. ВЫЗОВ BOT-HUB API
