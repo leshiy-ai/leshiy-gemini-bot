@@ -5068,8 +5068,8 @@ async function callWorkersAITextToImage(config, prompt, envData) {
     let apiResponse;
     try {
         // 3. Вызываем API через fetch
-        const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
-        /*const fetchResponse = await fetch(URL, {
+        //const fetchResponse = await sendAiRequest(inputs, URL, config, envData);
+        const fetchResponse = await fetch(URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -5077,7 +5077,7 @@ async function callWorkersAITextToImage(config, prompt, envData) {
                 'Accept': 'image/png'
             },
             body: JSON.stringify(inputs)
-        });*/
+        });
 
         logDebug('IMG_GEN_FETCH_STATUS', `Status: ${fetchResponse.status}, OK: ${fetchResponse.ok}`, envData);
         if (!fetchResponse.ok) {
@@ -12215,7 +12215,7 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
         const callFunction = activeModelConfig.FUNCTION;
         let generatedResult;
 
-        // --- 5. СООБЩЕНИЯ О СТАТУСЕ ---
+        /*/ --- 5. СООБЩЕНИЯ О СТАТУСЕ ---
         const keyboard = {
             inline_keyboard: [[
                 { text: "🔄 Получить результат генерации", callback_data: 'cmd:/vision_generate_free_t2i' }
@@ -12226,7 +12226,7 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
             `⏳ **Генерация запущена!**\n\n**Нажмите кнопку ниже**, чтобы "получить" сгенериррованную картинку.`, 
             token, 
             keyboard
-        );
+        );*/
         
         if (mode === 'T2I') {
             // 🚨 ИСПРАВЛЕНИЕ: ВЫЗОВ СТРОГО С 3 АРГУМЕНТАМИ, КАК ОЖИДАЕТ callWorkersAITextToImage
