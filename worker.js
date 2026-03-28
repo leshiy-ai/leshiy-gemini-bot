@@ -5203,8 +5203,8 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
 
     let response;
     try {
-        response = await sendAiRequest(inputs, url, config, envData);
-        /*response = await fetch(url, {
+        //response = await sendAiRequest(inputs, url, config, envData);
+        response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
@@ -5212,48 +5212,57 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
             },
             body: JSON.stringify(inputs),
             signal: AbortSignal.timeout(60000)
-        });*/
+        });
         
     } catch (e) {
         await logDebug("Img2Img", `Ошибка Fetch: ${e.message}`, envData);
         throw new Error(`Ошибка сети/таймаута при вызове Workers AI: ${e.message}`);
     }
 
-    // 3. Обработка ОТВЕТА
+    // 3. Обработка ОТВЕТА (Остается без изменений)
     if (response.ok) {
-        const contentType = response.headers.get('Content-Type') || '';
-        const buffer = await response.arrayBuffer();
+        const contentType = response.headers.get('Content-Type');
+        const contentLength = response.headers.get('Content-Length');
 
-        // Универсальная проверка: 
-        // Либо заголовок говорит, что это картинка, 
-        // либо в первых байтах/тексте есть признаки графических форматов
-        const isImage = contentType.includes('image/') || 
-                        new TextDecoder().decode(buffer.slice(0, 100)).match(/PNG|JFIF|Exif|webp/i);
+        // --- ДЕБАГ #2: ЛОГИРОВАНИЕ УСПЕШНОГО ОТВЕТА ---
+        envData.ctx.waitUntil(logDebug(
+            "Img2Img",
+            `Успешный ответ. Status: ${response.status}. Content-Type: ${contentType}. Content-Length: ${contentLength || 'N/A'}`,
+            envData
+        ));
 
-        if (isImage) {
-            // --- ДЕБАГ: ЛОГИРОВАНИЕ УСПЕХА ---
-            envData.ctx.waitUntil(logDebug(
-                "Img2Img",
-                `Успех! Получена картинка. Тип: ${contentType}, Размер: ${buffer.byteLength}`,
-                envData
-            ));
-            return buffer;
+        if (contentType && contentType.includes('image/png')) {
+            return response.arrayBuffer();
         } else {
-            // Если точно не картинка — работаем как с текстом ошибки
-            const errorText = new TextDecoder().decode(buffer);
+            const errorText = await response.text();
             let errorData = {};
-            try { errorData = JSON.parse(errorText); } catch(e) {}
+            try { errorData = JSON.parse(errorText); } catch(e) { /* не JSON */ }
 
-            const errorMessage = errorData.errors?.[0]?.message || errorText.substring(0, 500) || 'Неизвестная ошибка 200 OK';
+            const errorMessage = errorData.errors?.[0]?.message || errorText.substring(0, 500) || 'Неизвестная ошибка 200 OK, не изображение.';
             
             envData.ctx.waitUntil(logDebug(
                 "Img2Img",
-                `Не изображение. Ответ: ${errorMessage}`,
+                `Не изображение. Status 200, но Content-Type не PNG. Ответ: ${errorMessage}`,
                 envData
             ));
 
             throw new Error(`Workers AI Img2Img: Непредвиденный ответ. ${errorMessage}`);
         }
+    } else {
+        // --- ДЕБАГ #3: ЛОГИРОВАНИЕ HTTP-ОШИБКИ (4xx, 5xx) ---
+        const errorText = await response.text();
+        let errorBody = {};
+        try { errorBody = JSON.parse(errorText); } catch(e) { /* не JSON */ }
+
+        const errorMessage = errorBody.errors?.[0]?.message || errorText.substring(0, 500) || `HTTP Error ${response.status}`;
+
+        await logDebug(
+            "Img2Img",
+            `HTTP Ошибка. Status: ${response.status}. Сообщение: ${errorMessage}`,
+            envData
+        );
+
+        throw new Error(`Workers AI External API Error: ${response.status} - ${errorMessage}`);
     }
 }
 
