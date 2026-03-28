@@ -5219,43 +5219,41 @@ async function callWorkersAIImg2Img(config, prompt, imageBase64, envData, width,
         throw new Error(`Ошибка сети/таймаута при вызове Workers AI: ${e.message}`);
     }
 
-    // 3. Обработка ОТВЕТА (Универсальная)
+    // 3. Обработка ОТВЕТА
     if (response.ok) {
-        // Сразу забираем бинарные данные
+        const contentType = response.headers.get('Content-Type') || '';
         const buffer = await response.arrayBuffer();
-        const view = new Uint8Array(buffer);
 
-        // Проверка по "Магическим байтам" PNG (137 80 78 71)
-        // Это надежнее, чем верить заголовку Content-Type
-        const isPng = view[0] === 137 && view[1] === 80 && view[2] === 78 && view[3] === 71;
+        // Универсальная проверка: 
+        // Либо заголовок говорит, что это картинка, 
+        // либо в первых байтах/тексте есть признаки графических форматов
+        const isImage = contentType.includes('image/') || 
+                        new TextDecoder().decode(buffer.slice(0, 100)).match(/PNG|JFIF|Exif|webp/i);
 
-        if (isPng) {
-            await logDebug("Img2Img", `Успех! Это PNG. Размер: ${buffer.byteLength}`, envData);
-            return buffer; 
+        if (isImage) {
+            // --- ДЕБАГ: ЛОГИРОВАНИЕ УСПЕХА ---
+            envData.ctx.waitUntil(logDebug(
+                "Img2Img",
+                `Успех! Получена картинка. Тип: ${contentType}, Размер: ${buffer.byteLength}`,
+                envData
+            ));
+            return buffer;
         } else {
-            // Если это не PNG, пробуем декодировать как текст (вдруг там ошибка JSON)
-            const decoder = new TextDecoder('utf-8');
-            const responseText = decoder.decode(buffer);
+            // Если точно не картинка — работаем как с текстом ошибки
+            const errorText = new TextDecoder().decode(buffer);
+            let errorData = {};
+            try { errorData = JSON.parse(errorText); } catch(e) {}
+
+            const errorMessage = errorData.errors?.[0]?.message || errorText.substring(0, 500) || 'Неизвестная ошибка 200 OK';
             
-            // Если в тексте ЕСТЬ "PNG", значит мы пропустили байты!
-            if (responseText.includes("PNG")) {
-                await logDebug("Img2Img", "КРИТИЧЕСКАЯ ОШИБКА ЛОГИКИ: В данных есть PNG, но проверка байтов не сработала!", envData);
-                // Принудительно возвращаем как картинку
-                return buffer;
-            }
+            envData.ctx.waitUntil(logDebug(
+                "Img2Img",
+                `Не изображение. Ответ: ${errorMessage}`,
+                envData
+            ));
 
-            throw new Error(`Workers AI Img2Img: ${responseText.substring(0, 100)}`);
+            throw new Error(`Workers AI Img2Img: Непредвиденный ответ. ${errorMessage}`);
         }
-    } else {
-        // Обработка HTTP ошибок (4xx, 5xx)
-        const errorText = await response.text();
-        let errorBody = {};
-        try { errorBody = JSON.parse(errorText); } catch(e) {}
-
-        const errorMessage = errorBody.errors?.[0]?.message || errorText.substring(0, 500) || `HTTP Error ${response.status}`;
-        await logDebug("Img2Img", `HTTP Ошибка. Status: ${response.status}. Сообщение: ${errorMessage}`, envData);
-
-        throw new Error(`Workers AI External API Error: ${response.status} - ${errorMessage}`);
     }
 }
 
