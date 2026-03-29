@@ -4366,11 +4366,14 @@ async function callGeminiText2Image(config, prompt, envData) {
     // ✅ КОРРЕКТНЫЙ URL: Используем :generateContent, как в вашем curl-тесте
     const url = `${config.BASE_URL}/models/${model}:generateContent?key=${apiKey}`; 
 
+    // ДОБАВЛЯЕМ МАГИЧЕСКУЮ ФРАЗУ К ПРОМПТУ
+    const finalPrompt = `Сгенерируй изображение по этому описанию: ${prompt}`;
+
     // ✅ КОРРЕКТНЫЙ BODY ПО ИНСТРУКЦИИ
     const body = {
         "contents": [{
             "parts": [
-                {"text": prompt}
+                {"text": finalPrompt}
             ]
         }]
     };
