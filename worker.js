@@ -1240,7 +1240,7 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
 }
 
 // ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
-async function sendAiRequest(body, url, config, envData, isRawBody = false, customHeaders) {
+async function sendAiRequest(body, url, config, envData, isRawBody = false) {
     const safeConfig = config || {};
     const isBinary = isRawBody && (body instanceof ArrayBuffer || body instanceof Uint8Array);
     const PROXY_SECRET = envData.GEMINI_PROXY_KEY;
@@ -1249,8 +1249,7 @@ async function sendAiRequest(body, url, config, envData, isRawBody = false, cust
     const commonHeaders = {
         'X-Target-URL': url,
         'X-Proxy-Secret': PROXY_SECRET,
-        'Content-Type': isBinary ? 'application/octet-stream' : 'application/json',
-        ...customHeaders
+        'Content-Type': isBinary ? 'application/octet-stream' : 'application/json'
     };
 
     // Если есть Auth (для Bothub/OpenAI), добавляем его
@@ -4378,22 +4377,15 @@ async function callGeminiText2Image(config, prompt, envData) {
                 ]
             }
         ],
-        "generationConfig": {
+        /*"generationConfig": {
             "responseModalities": ["IMAGE"], // Можно оставить, если модель 2.0+
-            //"candidateCount": 1,
-            //"responseMimeType": "image/png" // Обязательно для Imagen
-        }
-    };
-
-    // 2. Подготовка заголовков для прокси
-    // Мы передаемapiKey и в URL (как было), и в спец-заголовок
-    const customHeaders = {
-        "x-proxy-x-goog-api-key": apiKey, // Прокся превратит это в x-goog-api-key для Google
-        "Content-Type": "application/json"
+            "candidateCount": 1,
+            "responseMimeType": "image/png" // Обязательно для Imagen
+        }*/
     };
 
     try {
-        const response = await sendAiRequest(body, url, config, envData, true, customHeaders);
+        const response = await sendAiRequest(body, url, config, envData, true);
         /*const response = await fetch(url, { method: 'POST', headers: {
              'Content-Type': 'application/json'
         }, body: JSON.stringify(body) });*/
