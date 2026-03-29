@@ -4356,8 +4356,6 @@ ${TARIFF_MESSAGE_TEXT}
  * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer. // <-- ИСПРАВЛЕНО!
  */
 async function callGeminiText2Image(config, prompt, envData) {
-    // ⚠️ ВАЖНО: Удалены imageBase64, finalHeight, finalWidth, так как они не нужны для T2I
-    
     // 1. Извлечение необходимых данных
     const apiKey = envData[config.API_KEY]; 
     const model = config.MODEL; 
@@ -4370,18 +4368,11 @@ async function callGeminiText2Image(config, prompt, envData) {
 
     // ✅ КОРРЕКТНЫЙ BODY ПО ИНСТРУКЦИИ
     const body = {
-        "contents": [
-            {
-                "parts": [
-                    { "text": prompt }
-                ]
-            }
-        ],
-        /*"generationConfig": {
-            "responseModalities": ["IMAGE"], // Можно оставить, если модель 2.0+
-            "candidateCount": 1,
-            "responseMimeType": "image/png" // Обязательно для Imagen
-        }*/
+        "contents": [{
+            "parts": [
+                {"text": prompt}
+            ]
+        }]
     };
 
     try {
