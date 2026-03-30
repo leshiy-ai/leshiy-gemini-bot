@@ -6771,7 +6771,70 @@ async function callPollinationsSTT(config, audioBuffer, envData) {
     return data.text.trim();
 }
 
-// ✅ *** 2.34. callPollinationsImg2Img (Автономная: Base64 -> KV -> Pollinations GET) ***
+/**
+ * ✅ callPollinationsImg2Img - РАБОЧАЯ ВЕРСИЯ (POST + КВ-URL)
+ */
+async function callPollinationsImg2Img(config, prompt, imageBase64, envData, photoHeight, photoWidth, chatId) {
+    const API_KEY = envData[config.API_KEY];
+    
+    // 1. ДЕТЕКТОР ПРОМПТА (как мы и договаривались)
+    const p = prompt.toLowerCase();
+    const isDefault = p.includes("улучшение") || p.includes("колоризация") || p.includes("improvement");
+    const finalPrompt = isDefault 
+        ? "Professional photo restoration, colorize, highly detailed, sharp focus" 
+        : prompt;
+
+    // 2. ГЕНЕРИРУЕМ ПУБЛИЧНЫЙ URL
+    // Telegram-ссылка не пропустит сервер Pollinations, поэтому только KV!
+    const publicImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
+    console.log(`[I2I-DEBUG] Публичный URL для Pollinations: ${publicImageUrl}`);
+
+    // 3. ОТПРАВЛЯЕМ POST ЗАПРОС
+    //const url = `${config.BASE_URL}/v1/images/generations`;
+    const url = `${config.BASE_URL}/v1/images/edits`;
+    
+    const body = {
+        model: config.MODEL || "flux",
+        prompt: finalPrompt,
+        image: publicImageUrl, // Передаем ссылку на твой KV
+        size: `${photoWidth || 1024}x${photoHeight || 1024}`,
+        response_format: "b64_json", // Сразу получаем базу
+        n: 1
+    };
+    
+    // ✅ ВЫВОДИМ ПОЛНЫЙ ДЕБАГ ТЕЛА ЗАПРОСА
+    console.log(`[I2I-DEBUG] POST URL: ${url}`);
+    console.log(`[I2I-DEBUG] POST BODY: ${JSON.stringify(body, null, 2)}`);
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Pollinations API Error: ${response.status}. ${errorText.substring(0, 100)}`);
+        }
+
+        const result = await response.json();
+        const base64Data = result.data?.[0]?.b64_json;
+
+        if (!base64Data) throw new Error("API не вернул картинку в b64_json");
+
+        // Используем твой хелпер для возврата буфера в бота
+        return base64ToArrayBuffer(base64Data);
+
+    } catch (e) {
+        throw new Error(`I2I Critical Failure: ${e.message}`);
+    }
+}
+
+// ✅ *** 2.34. callPollinationsImg2ImgGet (Автономная: Base64 -> KV -> Pollinations GET) ***
 /**
  * @param {Object} config - Конфиг (IMAGE_TO_IMAGE_POLLINATIONS).
  * @param {string} prompt - Текст/Инструкция.
