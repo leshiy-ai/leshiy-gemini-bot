@@ -565,6 +565,15 @@ const AI_MODELS = {
         BASE_URL: 'https://gen.pollinations.ai',
         pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
     },
+    // [Pollinations.ai: Flux - /photo] (0.010 pollen)
+    IMAGE_TO_IMAGE_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsImg2Img,
+        MODEL: 'flux', 
+        API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
+        BASE_URL: 'https://gen.pollinations.ai',
+        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
+    },
     // [Pollinations.ai: Whisper для голосовых]
     AUDIO_TO_TEXT_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
@@ -6759,6 +6768,70 @@ async function callPollinationsSTT(config, audioBuffer, envData) {
     }
 
     return data.text.trim();
+}
+
+// ✅ *** 2.34. callPollinationsImg2Img (Pollinations.ai: OpenAI-style POST) ***
+/**
+ * Генерирует или редактирует изображение через OpenAI-совместимый API Pollinations.
+ * @param {Object} config - Объект конфигурации.
+ * @param {string} prompt - Описание того, что нужно нарисовать/изменить.
+ * @param {string|null} imageUrl - Ссылка на исходник (для Image-to-Image). Если null — обычная генерация.
+ * @param {Object} envData - Ключи.
+ * @param {number} width - Ширина (по умолчанию 1024).
+ * @param {number} height - Высота (по умолчанию 1024).
+ * @returns {Promise<ArrayBuffer>} Сгенерированное изображение.
+ */
+async function callPollinationsImg2Img(config, prompt, imageUrl, envData, width = 1024, height = 1024) {
+    
+    const API_KEY = envData[config.API_KEY]; 
+    const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
+    const MODEL = config.MODEL || 'flux'; 
+
+    if (!API_KEY) throw new Error("Pollinations API key is missing.");
+
+    // Согласно доке: /v1/images/generations
+    const url = `${BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/'}v1/images/generations`;
+
+    const body = {
+        prompt: prompt,
+        model: MODEL,
+        n: 1,
+        size: `${width}x${height}`,
+        quality: "medium",
+        response_format: "b64_json" // Получаем сразу base64, чтобы не качать по ссылке
+    };
+
+    // Если передана ссылка на картинку — это режим Image-to-Image
+    if (imageUrl) {
+        body.image = imageUrl;
+    }
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations Image Error: ${response.status} - ${errorText.substring(0, 150)}`);
+    }
+
+    const data = await response.json();
+    
+    // Извлекаем base64 из ответа (OpenAI формат: data[0].b64_json)
+    const base64Image = data?.data?.[0]?.b64_json;
+
+    if (!base64Image) {
+        throw new Error("Pollinations не вернул данные изображения.");
+    }
+
+    // Конвертируем в ArrayBuffer (используем твой метод)
+    const uint8Array = base64ToUint8Array(base64Image);
+    return uint8Array.buffer;
 }
 
 // ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ: callVoiceRSSTextToAudio
