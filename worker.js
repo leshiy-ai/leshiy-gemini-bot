@@ -1256,27 +1256,31 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
 
     if (!IMAGE_STORAGE) throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
 
-    let buffer;
-
-    // 1. Декодируем Base64 в Buffer (самый надежный бинарный формат в Node.js)
-    if (Buffer.isBuffer(base64Data)) {
-        buffer = base64Data;
+    let actualBase64 = '';
+    if (typeof base64Data === 'object' && base64Data !== null && base64Data.base64) {
+        // Если пришел объект (как на твоем скрине), берем поле base64
+        actualBase64 = base64Data.base64;
     } else if (typeof base64Data === 'string') {
-        const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
-        buffer = Buffer.from(base64, 'base64');
-    } else {
-        throw new Error("Unsupported image data type");
+        // Если пришла строка, проверяем, не JSON ли это внутри строки
+        if (base64Data.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(base64Data);
+                actualBase64 = parsed.base64 || base64Data;
+            } catch (e) {
+                actualBase64 = base64Data;
+            }
+        } else {
+            actualBase64 = base64Data;
+        }
     }
+
+    const cleanBase64 = actualBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
     
     // 2. Создаем чистый ключ (без слеша в начале!)
     const imageKey = `${creativeMode}/${chatId}/${Date.now()}.png`;
 
-    // 3. СОХРАНЯЕМ (В Яндексе для KV/S3 лучше слать Buffer)
-    // Мы НЕ ПЕРЕВОДИМ в Uint8Array здесь, оставляем Buffer
-    await IMAGE_STORAGE.put(imageKey, buffer, {
-        httpMetadata: { contentType: 'image/png' },
-        expirationTtl: 3600 
-    });
+    // 3. СОХРАНЯЕМ
+    await IMAGE_STORAGE.put(imageKey, cleanBase64);
 
     // 4. Формируем URL
     const domain = envData.WORKER_DOMAIN.replace(/^https?:\/\//, '');
