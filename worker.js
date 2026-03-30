@@ -6770,50 +6770,59 @@ async function callPollinationsSTT(config, audioBuffer, envData) {
     return data.text.trim();
 }
 
-// ✅ *** 2.34. callPollinationsImg2Img (Pollinations.ai: PURE GET I2I) ***
+// ✅ *** 2.34. callPollinationsImg2Img (Автономная: Base64 -> KV -> Pollinations GET) ***
 /**
- * Генерирует I2I через GET-запрос, передавая ссылку на изображение.
- * @param {Object} config - Объект конфигурации (IMAGE_TO_IMAGE_POLLINATIONS).
- * @param {string} prompt - Твоя инструкция по улучшению.
- * @param {string} imageUrl - Прямая ссылка на фото (из Telegram).
- * @param {Object} envData - Ключи.
- * @returns {Promise<ArrayBuffer>} Сгенерированное изображение.
+ * @param {Object} config - Конфиг (IMAGE_TO_IMAGE_POLLINATIONS).
+ * @param {string} prompt - Текст/Инструкция.
+ * @param {string} imageBase64 - Исходник в Base64.
+ * @param {Object} envData - Объекты окружения (включая LAST_PHOTO_STORAGE и WORKER_DOMAIN).
+ * @param {string} chatId - ID чата (нужен для генерации ключа в KV).
  */
-async function callPollinationsImg2Img(config, prompt, imageUrl, envData) {
+async function callPollinationsImg2Img(config, prompt, imageBase64, envData, chatId) {
     
     const API_KEY = envData[config.API_KEY]; 
     const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
-    const MODEL = config.MODEL; 
+    const MODEL = config.MODEL || 'flux'; 
 
     if (!API_KEY) throw new Error("Pollinations API key is missing.");
 
-    // 1. Формируем базовый URL для картинок (image.pollinations.ai)
+    // --- ШАГ 1: КОНВЕРТАЦИЯ В URL ЧЕРЕЗ ТВОЮ ПОДФУНКЦИЮ ---
+    // Мы скармливаем твой Base64 в твой хелпер, получаем ссылку на 1 час
+    let publicImageUrl;
+    try {
+        publicImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
+        console.log(`[I2I-DEBUG] Временная ссылка создана: ${publicImageUrl}`);
+    } catch (e) {
+        throw new Error(`Ошибка загрузки референса в KV: ${e.message}`);
+    }
+
+    // --- ШАГ 2: СБОРКА КОРОТКОГО GET-URL ---
     const encodedPrompt = encodeURIComponent(prompt.trim());
-    const encodedImageUrl = encodeURIComponent(imageUrl);
+    const encodedImageUrl = encodeURIComponent(publicImageUrl);
     const seed = Math.floor(Math.random() * 1000000);
 
-    // 2. Сборка URL со всеми параметрами из документации
-    // Добавляем seed для стабильности и пробуем прокинуть параметры через Query
-    const url = `${BASE_URL}/image/${encodedPrompt}?model=${MODEL}&image=${encodedImageUrl}&seed=${seed}&n=1&negative_prompt=${encodeURIComponent("face change, deformed, ugly, blurry")}`;
+    // Сборка по доке через /image/
+    const url = `${BASE_URL}/image/${encodedPrompt}?model=${MODEL}&image=${encodedImageUrl}&seed=${seed}&n=1`;
 
+    // --- ШАГ 3: ЗАПРОС К API ---
     try {
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${API_KEY}`
-            }
+            headers: { 'Authorization': `Bearer ${API_KEY}` }
         });
 
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Pollinations I2I GET Error: ${response.status} | URL: ${url}`);
+            const errorText = (await response.text()).substring(0, 100);
+            throw new Error(`Pollinations Status: ${response.status}. ${errorText}`);
         }
 
-        // Возвращаем ArrayBuffer напрямую, как ждет твой бот
+        // Возвращаем ArrayBuffer, который твоя основная логика отправит в телеграм
         return await response.arrayBuffer();
 
     } catch (e) {
-        throw new Error(`Pollinations I2I GET Exception: ${e.message} | URL: ${url}`);
+        // Чтобы не ломать логику ошибок, обрезаем длину
+        const msg = e.message.substring(0, 150);
+        throw new Error(`I2I Pollinations Error: ${msg}`);
     }
 }
 
