@@ -6792,7 +6792,8 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
         throw new Error(`Telegram URL фото не найден по ключу: ${telegramPhotoUrlKey}`);
     }
 
-    console.log(`[I2I-POST-DEBUG] Использую готовый URL Telegram: ${finalImageUrl}`);
+    console.log(`[I2I-DEBUG] Использую готовый URL Telegram: ${finalImageUrl}`);
+    envData.ctx.waitUntil(logDebug(`[I2I-DEBUG] Использую готовый URL Telegram: ${finalImageUrl}`, envData));
 
     // --- ШАГ 2: УЛЬТИМАТИВНЫЙ ДЕТЕКТОР ПРОМПТА (Убираем Гангстера) ---
     const p = prompt.toLowerCase();
@@ -6815,7 +6816,9 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
         n: 1
     };
 
-    console.log(`[I2I-POST-DEBUG] POST BODY: ${JSON.stringify(body, null, 2)}`);
+    // ✅ ЛОГ ПРЯМО В ЧАТ
+    const debugInfo = `POST To Pollinations:\nPrompt: ${body.prompt}\nImage: ${body.image}\nSize: ${body.size}`;
+    envData.ctx.waitUntil(logDebug("[I2I-DEBUG]", debugInfo, envData));
 
     try {
         const response = await fetch(url, {
@@ -6841,6 +6844,7 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
         return base64ToArrayBuffer(base64Image);
 
     } catch (e) {
+        envData.ctx.waitUntil(logDebug("[I2I-CRITICAL]", error.message, envData));
         throw new Error(`I2I Critical Failure: ${e.message}`);
     }
 }
