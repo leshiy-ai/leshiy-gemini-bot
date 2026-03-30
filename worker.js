@@ -1260,7 +1260,7 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     // Убираем префикс (поддерживаем jpeg и png)
     const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
     // Читаем режим (creativeMode) из базы, как у тебя заведено
-    const mode = (await IMAGE_STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX)) || 'default';
+    const mode = (await IMAGE_STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX));
     // Декодируем (Buffer — самый надежный способ в Node.js/Yandex)
     const buffer = Buffer.from(base64, 'base64');
     
@@ -6764,13 +6764,13 @@ async function callPollinationsSTT(config, audioBuffer, envData) {
 }
 
 /**
- * ✅ callPollinationsImg2Img - РЕАЛЬНЫЙ, СТОПРОЦЕНТНЫЙ I2I ЧЕРЕЗ TELEGRAM URL
+ * ✅ callPollinationsImg2Img - РЕАЛЬНЫЙ I2I ЧЕРЕЗ PUBLIC URL
  */
 async function callPollinationsImg2Img(config, prompt, imageBase64, envData, photoHeight, photoWidth, chatId) {
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
     const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
-    const DOMAIN = envData.WORKER_DOMAIN; // Твой домен для ссылок
+    const DOMAIN = envData.WORKER_DOMAIN; // домен
     const STORAGE = envData.LAST_PHOTO_STORAGE;
     const PHOTO_URL_KEY_SUFFIX = '_photo_url'; // Суффикс от downloadAndSaveBase64
 
@@ -6797,8 +6797,8 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
         : prompt;
 
     // --- ШАГ 3: ФОРМИРУЕМ POST ЗАПРОС ---
-    //const url = `${BASE_URL}/v1/images/generations`;
-    const url = `${BASE_URL}/v1/images/edits`;
+    const url = `${BASE_URL}/v1/images/generations`;
+    //const url = `${BASE_URL}/v1/images/edits`;
     
     const body = {
         model: config.MODEL,
