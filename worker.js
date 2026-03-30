@@ -1260,7 +1260,7 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     // Убираем префикс (поддерживаем jpeg и png)
     const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
     // Читаем режим (creativeMode) из базы, как у тебя заведено
-    const mode = (await STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX)) || 'default';
+    const mode = (await IMAGE_STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX)) || 'default';
     // Декодируем (Buffer — самый надежный способ в Node.js/Yandex)
     const buffer = Buffer.from(base64, 'base64');
     
