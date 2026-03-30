@@ -6772,39 +6772,50 @@ async function callPollinationsSTT(config, audioBuffer, envData) {
 }
 
 /**
- * ✅ callPollinationsImg2Img - РАБОЧАЯ ВЕРСИЯ (POST + КВ-URL)
+ * ✅ callPollinationsImg2Img - РЕАЛЬНЫЙ, СТОПРОЦЕНТНЫЙ I2I ЧЕРЕЗ TELEGRAM URL
  */
 async function callPollinationsImg2Img(config, prompt, imageBase64, envData, photoHeight, photoWidth, chatId) {
-    const API_KEY = envData[config.API_KEY];
+    const API_KEY_ENV_NAME = config.API_KEY; 
+    const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
+    const STORAGE = envData.LAST_PHOTO_STORAGE;
+    const PHOTO_URL_KEY_SUFFIX = '_photo_url'; // Суффикс от downloadAndSaveBase64
+
+    if (!API_KEY) throw new Error("Pollinations API key is missing.");
+    if (!chatId) throw new Error("Chat ID is missing in call.");
+
+    // --- ШАГ 1: ДОСТАЕМ УЖЕ ГОТОВЫЙ URL ТЕЛЕГРАМА (сохранен при download) ---
+    const telegramPhotoUrlKey = chatId + PHOTO_URL_KEY_SUFFIX;
+    const finalImageUrl = await STORAGE.get(telegramPhotoUrlKey);
     
-    // 1. ДЕТЕКТОР ПРОМПТА (как мы и договаривались)
+    if (!finalImageUrl) {
+        throw new Error(`Telegram URL фото не найден по ключу: ${telegramPhotoUrlKey}`);
+    }
+
+    console.log(`[I2I-POST-DEBUG] Использую готовый URL Telegram: ${finalImageUrl}`);
+
+    // --- ШАГ 2: УЛЬТИМАТИВНЫЙ ДЕТЕКТОР ПРОМПТА (Убираем Гангстера) ---
     const p = prompt.toLowerCase();
-    const isDefault = p.includes("улучшение") || p.includes("колоризация") || p.includes("improvement");
-    const finalPrompt = isDefault 
-        ? "Professional photo restoration, colorize, highly detailed, sharp focus" 
+    const isDefault = p.includes("улучшение") || p.includes("колоризация") || p.includes("improvement") || p.includes("enhance");
+
+    const promptForAI = isDefault 
+        ? "Colorized photo restoration, highly detailed faces, sharp focus, masterpiece" 
         : prompt;
 
-    // 2. ГЕНЕРИРУЕМ ПУБЛИЧНЫЙ URL
-    // Telegram-ссылка не пропустит сервер Pollinations, поэтому только KV!
-    const publicImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
-    console.log(`[I2I-DEBUG] Публичный URL для Pollinations: ${publicImageUrl}`);
-
-    // 3. ОТПРАВЛЯЕМ POST ЗАПРОС
-    //const url = `${config.BASE_URL}/v1/images/generations`;
-    const url = `${config.BASE_URL}/v1/images/edits`;
+    // --- ШАГ 3: ФОРМИРУЕМ POST ЗАПРОС ---
+    //const url = `${BASE_URL}/v1/images/generations`;
+    const url = `${BASE_URL}/v1/images/edits`;
     
     const body = {
-        model: config.MODEL || "flux",
-        prompt: finalPrompt,
-        image: publicImageUrl, // Передаем ссылку на твой KV
+        model: config.MODEL,
+        prompt: promptForAI,
+        image: finalImageUrl,
         size: `${photoWidth || 1024}x${photoHeight || 1024}`,
-        response_format: "b64_json", // Сразу получаем базу
+        response_format: "b64_json", 
         n: 1
     };
-    
-    // ✅ ВЫВОДИМ ПОЛНЫЙ ДЕБАГ ТЕЛА ЗАПРОСА
-    console.log(`[I2I-DEBUG] POST URL: ${url}`);
-    console.log(`[I2I-DEBUG] POST BODY: ${JSON.stringify(body, null, 2)}`);
+
+    console.log(`[I2I-POST-DEBUG] POST BODY: ${JSON.stringify(body, null, 2)}`);
 
     try {
         const response = await fetch(url, {
@@ -6817,17 +6828,17 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
         });
 
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Pollinations API Error: ${response.status}. ${errorText.substring(0, 100)}`);
+            const err = await response.text();
+            throw new Error(`Pollinations POST Error: ${response.status}. ${err.substring(0, 100)}`);
         }
 
-        const result = await response.json();
-        const base64Data = result.data?.[0]?.b64_json;
+        const data = await response.json();
+        const base64Image = data?.data?.[0]?.b64_json;
 
-        if (!base64Data) throw new Error("API не вернул картинку в b64_json");
+        if (!base64Image) throw new Error("API не вернул b64_json");
 
-        // Используем твой хелпер для возврата буфера в бота
-        return base64ToArrayBuffer(base64Data);
+        // Используем твой хелпер для конвертации обратно в ArrayBuffer
+        return base64ToArrayBuffer(base64Image);
 
     } catch (e) {
         throw new Error(`I2I Critical Failure: ${e.message}`);
