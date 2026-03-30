@@ -3165,10 +3165,10 @@ async function downloadAndSaveBase64(fileId, chatId, envData, mediaObject, rotat
 }
 
 // ✅ logDebug (КОМПЛЕКСНЫЙ ЛОГГЕР: KV + TELEGRAM) - ФИНАЛЬНАЯ ВЕРСИЯ
-async function logDebug(type, message, envData) {
-    // 1. ДОСТАЕМ CTX ИЗ ENVDATA
-    const ctx = envData.ctx;
-    // 1. КОНТРОЛЬ TELEGRAM-ЛОГОВ
+async function logDebug(type, message, envData, ctx) {
+    // ДОСТАЕМ CTX ИЗ ENVDATA
+    const ctxEnv = envData.ctx;
+    // КОНТРОЛЬ TELEGRAM-ЛОГОВ
     // Отправляем сообщение только если флаг включен
     if (envData.DEBUG_ENABLED) {
         // Мы предполагаем, что вы хотите отправлять эти логи в админ-чат,
@@ -3176,8 +3176,8 @@ async function logDebug(type, message, envData) {
         const messageText = `🪲 **[DEBUG]-[${type}]** ${message}`;
         if (envData.ADMIN_CHAT_ID && envData.TELEGRAM_BOT_TOKEN) {
             // Используем ctx.waitUntil для неблокирующей отправки, если ctx доступен
-            if (ctx && ctx.waitUntil) {
-                ctx.waitUntil(sendMessage(envData.ADMIN_CHAT_ID, messageText, envData.TELEGRAM_BOT_TOKEN));
+            if (ctxEnv && ctxEnv.waitUntil) {
+                ctxEnv.waitUntil(sendMessage(envData.ADMIN_CHAT_ID, messageText, envData.TELEGRAM_BOT_TOKEN));
             } else {
                 // Если ctx недоступен (например, в не-fetch контексте), отправляем синхронно
                 await sendMessage(envData.ADMIN_CHAT_ID, messageText, envData.TELEGRAM_BOT_TOKEN);
@@ -6780,6 +6780,7 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
     const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
+    const DOMAIN = envData.WORKER_DOMAIN; // Твой домен для ссылок
     const STORAGE = envData.LAST_PHOTO_STORAGE;
     const PHOTO_URL_KEY_SUFFIX = '_photo_url'; // Суффикс от downloadAndSaveBase64
 
@@ -6787,17 +6788,17 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
     if (!chatId) throw new Error("Chat ID is missing in call.");
 
     // --- ШАГ 1: ДОСТАЕМ УЖЕ ГОТОВЫЙ URL ТЕЛЕГРАМА (сохранен при download) ---
-    const telegramPhotoUrlKey = chatId + PHOTO_URL_KEY_SUFFIX;
-    const finalImageUrl = await STORAGE.get(telegramPhotoUrlKey);
+    //const telegramPhotoUrlKey = chatId + PHOTO_URL_KEY_SUFFIX;
+    //const finalImageUrl = await STORAGE.get(telegramPhotoUrlKey);
     
-    if (!finalImageUrl) {
-        throw new Error(`Telegram URL фото не найден по ключу: ${telegramPhotoUrlKey}`);
-    }
+    // --- ШАГ 1: ПОЛУЧАЕМ ПУБЛИЧНУЮ ССЫЛКУ ЧЕРЕЗ ТВОЮ ФУНКЦИЮ ---
+    // Она сама всё сохранит в KV и вернет готовый URL
+    const publicImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
 
-    console.log(`[I2I-DEBUG] Использую готовый URL Telegram: ${finalImageUrl}`);
-    envData.ctx.waitUntil(logDebug(`[I2I-DEBUG] Использую готовый URL Telegram: ${finalImageUrl}`, envData));
+    // --- ШАГ 2: ЛОГ В ЧАТ (Ты увидишь ссылку, на которую можно нажать) ---
+    await logDebug("I2I-SEND", `Prompt: ${prompt}\nPublic Link: ${publicImageUrl}`, envData);
 
-    // --- ШАГ 2: УЛЬТИМАТИВНЫЙ ДЕТЕКТОР ПРОМПТА (Убираем Гангстера) ---
+    // --- ШАГ 2: УЛЬТИМАТИВНЫЙ ДЕТЕКТОР ПРОМПТА ---
     const p = prompt.toLowerCase();
     const isDefault = p.includes("улучшение") || p.includes("колоризация") || p.includes("improvement") || p.includes("enhance");
 
@@ -6812,7 +6813,7 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
     const body = {
         model: config.MODEL,
         prompt: promptForAI,
-        image: finalImageUrl,
+        image: publicImageUrl,
         size: `${photoWidth || 1024}x${photoHeight || 1024}`,
         response_format: "b64_json", 
         n: 1
@@ -16394,22 +16395,31 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         if (!imageStorage) {
             return new Response('Image storage not configured.', { status: 500 });
         }
-        const data = await imageStorage.getWithMetadata(key, { type: 'arrayBuffer' });
+        //const data = await imageStorage.getWithMetadata(key, { type: 'arrayBuffer' });
 
-        if (data.value === null) {
-            return new Response('Image not found.', { status: 404 });
+        //if (data.value === null) {
+        //    return new Response('Image not found.', { status: 404 });
+        //}
+
+        // Пробуем получить как чистый поток байтов (без метаданных пока)
+        const blob = await imageStorage.get(key, { type: 'stream' }); 
+
+        if (!blob) {
+            return new Response('Image not found in KV', { status: 404 });
         }
-
+        
         // Пытаемся получить Content-Type из httpMetadata (который мы установили при сохранении)
         const contentType = data.metadata?.httpMetadata?.contentType || 'image/png';
 
-        return new Response(data.value, {
+        //return new Response(data.value, {
+        return new Response(blob, {
             headers: {
                 'Content-Type': contentType,
                 'Cache-Control': 'public, max-age=3600' // Кэшируем на час
             }
         });
     }
+    
     // Проверяем, что путь РАВЕН '/audio_proxy'
     if (path === '/audio_proxy') {
         const key = url.searchParams.get('key');
