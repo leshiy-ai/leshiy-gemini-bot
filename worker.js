@@ -544,7 +544,7 @@ const AI_MODELS = {
         SERVICE: 'POLLINATIONS', 
         FUNCTION: callPollinationsChat, 
         //MODEL: 'gemini-fast', 
-        MODEL: 'qwen-safety',       
+        MODEL: 'polly',       
         API_KEY: 'POLLINATIONS_API_KEY', 
         //BASE_URL: 'https://gen.pollinations.ai/v1/chat/completions'
         BASE_URL: 'https://gen.pollinations.ai'
