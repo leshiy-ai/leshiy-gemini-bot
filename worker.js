@@ -16367,9 +16367,9 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
         return handleKieAiCallback(request, env, ctx);
     }
-    // -----------------
-    // --- KV-ПРОКСИ ---
-    // -----------------
+    // ----------------------------
+    // --- KV-IMAGES Public Url ---
+    // ----------------------------
     if (path.startsWith('/kv-images/')) {
         const key = path.substring('/kv-images/'.length); 
         const imageStorage = env.LAST_PHOTO_STORAGE; 
@@ -16394,9 +16394,11 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
 
         return new Response(finalData, {
             headers: {
-                'Content-Type': 'image/png',
-                'Access-Control-Allow-Origin': '*', // Чтобы нейронка могла скачать
-                'Cache-Control': 'public, max-age=3600'
+            'Content-Type': 'image/png',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+            'Cache-Control': 'public, max-age=3600'
             }
         });
     }
