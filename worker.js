@@ -16409,8 +16409,9 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         }
         
         // Пытаемся получить Content-Type из httpMetadata (который мы установили при сохранении)
-        const contentType = data.metadata?.httpMetadata?.contentType || 'image/png';
-
+        //const contentType = data.metadata?.httpMetadata?.contentType || 'image/png';
+        const contentType = 'image/png';
+        
         //return new Response(data.value, {
         return new Response(blob, {
             headers: {
@@ -16419,7 +16420,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
             }
         });
     }
-    
+
     // Проверяем, что путь РАВЕН '/audio_proxy'
     if (path === '/audio_proxy') {
         const key = url.searchParams.get('key');
