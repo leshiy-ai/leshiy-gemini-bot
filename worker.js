@@ -3168,7 +3168,7 @@ async function downloadAndSaveBase64(fileId, chatId, envData, mediaObject, rotat
 async function logDebug(type, message, envData, ctx) {
     // 1. КОНТРОЛЬ TELEGRAM-ЛОГОВ
     // Отправляем сообщение только если флаг включен
-    if (envData.DEBUG_ENABLED) {
+    if (envData.GLOBAL_DEBUG_KEY) {
         // Мы предполагаем, что вы хотите отправлять эти логи в админ-чат,
         // используя глобальный ADMIN_CHAT_ID.
         const messageText = `🪲 **[DEBUG]-[${type}]** ${message}`;
@@ -3183,7 +3183,7 @@ async function logDebug(type, message, envData, ctx) {
         }
     }
 
-    // 2. ЛОГИКА ЗАПИСИ В KV (НЕ ЗАВИСИТ ОТ DEBUG_ENABLED)
+    // 2. ЛОГИКА ЗАПИСИ В KV (НЕ ЗАВИСИТ ОТ GLOBAL_DEBUG_KEY)
     const { BOT_LOGS_STORAGE } = envData;
     // Если KV-биндинг отсутствует, прекращаем запись
     if (!BOT_LOGS_STORAGE) return;
