@@ -1249,57 +1249,40 @@ async function loadActiveConfig(serviceType, envData, chatId) {
  */
 async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
-    const CREATIVE_MODE_KEY = chatId + envData.CREATIVE_MODE_KEY_SUFFIX
-    const creativeMode = await IMAGE_STORAGE.get(CREATIVE_MODE_KEY);
-    if (!IMAGE_STORAGE) {
-         throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
-    }
+    const CREATIVE_MODE_KEY = chatId + envData.CREATIVE_MODE_KEY_SUFFIX;
+    
+    // Получаем режим (если пусто — ставим default, чтобы путь не был кривым)
+    const creativeMode = (await IMAGE_STORAGE.get(CREATIVE_MODE_KEY));
+
+    if (!IMAGE_STORAGE) throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
 
     let buffer;
 
-    // 1. Проверяем: если это уже Buffer (бинарные данные), работаем напрямую
-    if (Buffer.isBuffer(base64Data) || base64Data instanceof Uint8Array) {
+    // 1. Декодируем Base64 в Buffer (самый надежный бинарный формат в Node.js)
+    if (Buffer.isBuffer(base64Data)) {
         buffer = base64Data;
-    } 
-    // 2. Если это строка (Base64)
-    else if (typeof base64Data === 'string') {
-        // Убираем префикс через регулярку (теперь .replace сработает)
+    } else if (typeof base64Data === 'string') {
         const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
-        // В Node.js декодируем через Buffer.from (быстрее и стабильнее чем atob)
         buffer = Buffer.from(base64, 'base64');
     } else {
-        throw new Error("Unsupported image data type: " + typeof base64Data);
+        throw new Error("Unsupported image data type");
     }
     
-    // 3. Создаем уникальный ключ
+    // 2. Создаем чистый ключ (без слеша в начале!)
     const imageKey = `${creativeMode}/${chatId}/${Date.now()}.png`;
 
-    // ПРЕОБРАЗУЕМ Buffer в Uint8Array для гарантированной бинарной записи
-    const binaryData = new Uint8Array(buffer);
-
-    await IMAGE_STORAGE.put(imageKey, binaryData, {
-        // Обязательно передаем метаданные, чтобы Яндекс знал, что это не текст
-        httpMetadata: { 
-            contentType: 'image/png' 
-        },
-        // Если это Cloudflare KV, параметр ниже сработает, если Яндекс S3 - он просто проигнорируется
+    // 3. СОХРАНЯЕМ (В Яндексе для KV/S3 лучше слать Buffer)
+    // Мы НЕ ПЕРЕВОДИМ в Uint8Array здесь, оставляем Buffer
+    await IMAGE_STORAGE.put(imageKey, buffer, {
+        httpMetadata: { contentType: 'image/png' },
         expirationTtl: 3600 
     });
 
-    // 4. Сохраняем в KV/S3
-    // ВАЖНО: В Яндексе (S3/DB) метод .put может отличаться от Cloudflare KV.
-    // Если LAST_PHOTO_STORAGE — это твой адаптер DB, убедись, что он принимает Buffer.
-    //await IMAGE_STORAGE.put(imageKey, buffer, {
-    //    httpMetadata: { contentType: 'image/png' },
-    //    expirationTtl: 3600 // 1 час
-    //});
-
-    // 5. Формируем URL
-    const baseUrl = envData.WORKER_DOMAIN.startsWith('http') ? envData.WORKER_DOMAIN : `https://${envData.WORKER_DOMAIN}`;
-    //return `${baseUrl}/kv-images/${imageKey}`;
-    const cleanKey = imageKey.startsWith('/') ? imageKey.substring(1) : imageKey;
+    // 4. Формируем URL
+    const domain = envData.WORKER_DOMAIN.replace(/^https?:\/\//, '');
+    const baseUrl = `https://${domain}`;
     
-    return `${baseUrl}/kv-images/${cleanKey}`;
+    return `${baseUrl}/kv-images/${imageKey}`;
 }
 
 // ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
@@ -16395,43 +16378,33 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // -----------------
     // --- KV-ПРОКСИ ---
     // -----------------
-    // Проверяем, что путь НАЧИНАЕТСЯ с '/kv-images/'
     if (path.startsWith('/kv-images/')) {
-        // Извлекаем ключ, отрезая префикс '/kv-images/'
         const key = path.substring('/kv-images/'.length); 
 
-        // Если ключ пустой (например, запрос был просто /kv-images/), возвращаем 404
         if (!key) {
             return new Response('Image key is missing.', { status: 404 });
         }
 
         const imageStorage = env.LAST_PHOTO_STORAGE; 
-
         if (!imageStorage) {
-            return new Response('Image storage not configured.', { status: 500 });
+            return new Response('Storage missing.', { status: 500 });
         }
-        //const data = await imageStorage.getWithMetadata(key, { type: 'arrayBuffer' });
 
-        //if (data.value === null) {
-        //    return new Response('Image not found.', { status: 404 });
-        //}
+        // Достаем данные как они есть (бинарно)
+        const imageData = await imageStorage.get(key); 
 
-        // Пробуем получить как чистый поток байтов (без метаданных пока)
-        const blob = await imageStorage.get(key, { type: 'stream' }); 
-
-        if (!blob) {
-            return new Response('Image not found in KV', { status: 404 });
+        if (!imageData) {
+            return new Response('Image not found.', { status: 404 });
         }
-        
-        // Пытаемся получить Content-Type из httpMetadata (который мы установили при сохранении)
-        //const contentType = data.metadata?.httpMetadata?.contentType || 'image/png';
-        const contentType = 'image/png';
 
-        //return new Response(data.value, {
-        return new Response(blob, {
+        // Отдаем ответ, который поймет любой браузер и нейронка
+        return new Response(imageData, {
             headers: {
-                'Content-Type': contentType,
-                'Cache-Control': 'public, max-age=3600' // Кэшируем на час
+                'Content-Type': 'image/png',
+                'Cache-Control': 'public, max-age=3600',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type'
             }
         });
     }
