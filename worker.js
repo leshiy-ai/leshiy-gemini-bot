@@ -549,6 +549,16 @@ const AI_MODELS = {
         pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
     },
 
+    // [Pollinations.ai: Flux - /create] (0.010 pollen)
+    TEXT_TO_IMAGE_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsText2Img,
+        MODEL: 'flux', 
+        API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
+        BASE_URL: 'https://gen.pollinations.ai',
+        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
+    },
+
     // Текст в голос - говорилка для /say
     TEXT_TO_AUDIO_VOICERSS: { 
         SERVICE: 'VOICERSS', 
@@ -6458,6 +6468,61 @@ async function callKandinskyText2Img(config, prompt, envData) {
     throw new Error("FusionBrain: Таймаут ожидания изображения (более 150 секунд).");
 }
 
+// ✅ *** 2.30. callPollinationsText2Img (Pollinations.ai: Flux) ***
+/**
+ * Генерирует изображение по промпту через Pollinations.ai: Flux (T2I).
+ * @param {Object} config - Объект активной конфигурации (BASE_URL: https://gen.pollinations.ai).
+ * @param {string} prompt - Текстовый промпт.
+ * @param {Object} envData - Объект окружения.
+ * @param {Object} [settings={}] - Дополнительные настройки.
+ * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
+ */
+async function callPollinationsText2Img(config, prompt, envData, settings = {}) { 
+    
+    const API_KEY_ENV_NAME = config.API_KEY; 
+    const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const BASE_URL = config.BASE_URL; // Должен быть https://gen.pollinations.ai
+    
+    if (!API_KEY) { 
+        throw new Error(`Pollinations.AI API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
+    }
+    
+    // 1. Подготовка параметров
+    const aspectRatio = settings.aspectRatio || '1:1';
+    const seed = settings.seed || Math.floor(Math.random() * 999999999);
+    const model = settings.model || 'flux'; // По умолчанию Flux
+    
+    // 2. ФОРМИРОВАНИЕ URL (Эндпоинт /image/{prompt})
+    const encodedPrompt = encodeURIComponent(prompt);
+    
+    // Собираем: BASE_URL + /image/ + PROMPT
+    const url = new URL(`${BASE_URL}/image/${encodedPrompt}`);
+    
+    // Добавляем обязательные параметры
+    url.searchParams.set('model', model);
+    url.searchParams.set('seed', String(seed));
+    url.searchParams.set('aspect_ratio', aspectRatio);
+    url.searchParams.set('nologo', 'true');
+    url.searchParams.set('key', API_KEY); 
+
+    // 3. ВЫЗОВ Pollinations API
+    const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: { 
+            'Authorization': `Bearer ${API_KEY}`,
+            'Accept': 'image/jpeg, image/png, image/*'
+        }
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations T2I API Error: ${response.status} - ${errorText.substring(0, 150)}`);
+    }
+
+    // 4. Возвращаем бинарные данные (ArrayBuffer)
+    return response.arrayBuffer();
+}
+
 // ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ: callVoiceRSSTextToAudio
 /**
  * Вызывает API VoiceRSS для конвертации текста в речь, используя унифицированный контракт Workers.
@@ -7359,7 +7424,7 @@ async function kieAiApiPolling(taskId, apiKey, baseUrl, isNonBlocking = false) {
     throw new Error("KIE.ai Polling Timeout: Maximum number of retries exceeded.");
 }
 
-// ✅ *** 2.30. startStabilityTextToImage (Stability AI: Stable Image Core) ***
+// ✅ *** 2.31. startStabilityTextToImage (Stability AI: Stable Image Core) ***
 /**
  * Генерирует изображение по промпту через Stability AI (T2I).
  * Соответствует унифицированному контракту T2I.
@@ -7410,7 +7475,7 @@ async function startStabilityTextToImage(config, prompt, envData, settings = {})
     return response.arrayBuffer();
 }
 
-// ✅ *** 2.31. startStabilityImageToImage (I2I) - ИСПРАВЛЕННЫЙ КОНТРАКТ И BUFFER/ENV DATA ***
+// ✅ *** 2.32. startStabilityImageToImage (I2I) - ИСПРАВЛЕННЫЙ КОНТРАКТ И BUFFER/ENV DATA ***
 /**
  * Генерирует изображение из изображения + промпта через Stability AI (I2I).
  * * Строго соответствует унифицированному контракту (принимает 7 аргументов).
@@ -16315,6 +16380,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         FUSIONBRAIN_SECRET_KEY: env.FUSIONBRAIN_SECRET_KEY, 
         VOICERSS_API_KEY: env.VOICERSS_API_KEY,
         STABILITY_API_KEY: env.STABILITY_API_KEY,
+        POLLINATIONS_API_KEY: env.POLLINATIONS_API_KEY,
         LAST_PROMPT_KEY_SUFFIX: LAST_PROMPT_KEY_SUFFIX,
         LAST_IMAGE_DATA_KEY_SUFFIX: LAST_IMAGE_DATA_KEY_SUFFIX,
         LAST_VIDEO_DATA_KEY_SUFFIX: LAST_VIDEO_DATA_KEY_SUFFIX,
