@@ -6783,23 +6783,18 @@ async function callPollinationsImg2Img(config, prompt, imageUrl, envData) {
     
     const API_KEY = envData[config.API_KEY]; 
     const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
-    const MODEL = config.MODEL || 'flux'; 
+    const MODEL = config.MODEL; 
 
     if (!API_KEY) throw new Error("Pollinations API key is missing.");
 
     // 1. Формируем базовый URL для картинок (image.pollinations.ai)
-    const imageHost = "https://image.pollinations.ai";
     const encodedPrompt = encodeURIComponent(prompt.trim());
     const encodedImageUrl = encodeURIComponent(imageUrl);
+    const seed = Math.floor(Math.random() * 1000000);
 
     // 2. Сборка URL со всеми параметрами из документации
     // Добавляем seed для стабильности и пробуем прокинуть параметры через Query
-    let url = `${imageHost}/prompt/${encodedPrompt}?model=${MODEL}&image=${encodedImageUrl}&seed=${Math.floor(Math.random() * 1000000)}&n=1`;
-
-    // Если работаем с flux/zimage, добавляем отрицательный промпт, чтобы не рисовал лишнего
-    if (MODEL === 'flux' || MODEL === 'zimage') {
-        url += `&negative_prompt=${encodeURIComponent("face change, deformed, ugly, blurry")}`;
-    }
+    const url = `${BASE_URL}/image/${encodedPrompt}?model=${MODEL}&image=${encodedImageUrl}&seed=${seed}&n=1&negative_prompt=${encodeURIComponent("face change, deformed, ugly, blurry")}`;
 
     try {
         const response = await fetch(url, {
