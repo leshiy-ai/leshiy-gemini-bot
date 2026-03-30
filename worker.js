@@ -6778,39 +6778,33 @@ async function callPollinationsSTT(config, audioBuffer, envData) {
  * @param {Object} envData - Объекты окружения (включая LAST_PHOTO_STORAGE и WORKER_DOMAIN).
  * @param {string} chatId - ID чата (нужен для генерации ключа в KV).
  */
-async function callPollinationsImg2Img(config, prompt, imageBase64, envData, chatId) {
+async function callPollinationsImg2Img(config, prompt, _unusedBase64, envData, chatId) {
     
     const API_KEY = envData[config.API_KEY]; 
     const STORAGE = envData.LAST_PHOTO_STORAGE;
     const PHOTO_URL_KEY_SUFFIX = '_photo_url';
+    const chatKey = chatId;
 
     if (!API_KEY) throw new Error("Pollinations API key is missing.");
 
-    // --- ШАГ 1: ПРОБУЕМ ВЗЯТЬ ГОТОВЫЙ URL ТЕЛЕГРАМА ---
-    let finalImageUrl = await STORAGE.get(chatId + PHOTO_URL_KEY_SUFFIX);
+    // --- ШАГ 1: ДОСТАЕМ УЖЕ ГОТОВЫЙ URL ТЕЛЕГРАМА ---
+    const photoUrl = await STORAGE.get(chatKey + PHOTO_URL_KEY_SUFFIX);
     
-    // --- ШАГ 2: ЕСЛИ НЕТ URL, ДЕЛАЕМ ЕГО ИЗ BASE64 (Твой хелпер) ---
-    if (!finalImageUrl && imageBase64) {
-        console.log(`[I2I-DEBUG] URL в KV не найден, генерирую через uploadBase64ImageToPublicUrl...`);
-        finalImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
-    }
-
-    if (!finalImageUrl) {
+    if (!photoUrl) {
+        envData.ctx.waitUntil(logDebug('I2I_MISSING_PHOTO', `Photo URL не найден по ключу: ${chatKey + PHOTO_URL_KEY_SUFFIX}`, envData));
         throw new Error("Не удалось найти URL исходного фото. Попробуйте прислать фото заново.");
     }
 
-    console.log(`[I2I-DEBUG] Использую URL: ${finalImageUrl}`);
+    console.log(`[I2I-DEBUG] Использую готовый URL Telegram: ${photoUrl}`);
 
-    // --- ШАГ 3: СБОРКА GET-URL ДЛЯ POLLINATIONS ---
-    // Добавляем префикс, чтобы Flux понял, что это реставрация, а не свободный арт
-    const enhancedPrompt = `Photo restoration, colorize, high quality: ${prompt.trim()}`;
-    const encodedPrompt = encodeURIComponent(enhancedPrompt);
-    const encodedImageUrl = encodeURIComponent(finalImageUrl);
+    // --- ШАГ 2: СБОРКА GET-URL ДЛЯ POLLINATIONS ---
+    const encodedPrompt = encodeURIComponent(prompt.trim());
+    //const encodedImageUrl = encodeURIComponent(photoUrl);
     const seed = Math.floor(Math.random() * 1000000);
 
-    const url = `${config.BASE_URL}/image/${encodedPrompt}?model=${config.MODEL}&image=${encodedImageUrl}&seed=${seed}&n=1`;
+    const url = `${config.BASE_URL}/image/${encodedPrompt}?model=${config.MODEL}&image=${photoUrl}&seed=${seed}&n=1`;
 
-    // --- ШАГ 4: ЗАПРОС ---
+    // --- ШАГ 3: ЗАПРОС ---
     try {
         const response = await fetch(url, {
             method: 'GET',
