@@ -565,6 +565,15 @@ const AI_MODELS = {
         BASE_URL: 'https://gen.pollinations.ai',
         pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
     },
+    // [Pollinations.ai: Whisper для голосовых]
+    AUDIO_TO_TEXT_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsSTT, 
+        // MODEL: 'scribe', // ElevenLabs Scribe v2
+        MODEL: 'whisper', 
+        API_KEY: 'POLLINATIONS_API_KEY', 
+        BASE_URL: 'https://gen.pollinations.ai'
+    },
 
     // ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ ---
 
@@ -6692,6 +6701,64 @@ async function callPollinationsVision(config, imageBuffer, envData) {
     }
 
     return textResult.trim();
+}
+
+// ✅ *** 2.33. callPollinationsSTT (Pollinations.ai: Whisper Multipart) ***
+/**
+ * Транскрибирует аудиофайл через Pollinations.ai (Whisper Large V3).
+ * @param {Object} config - Объект конфигурации (BASE_URL: https://gen.pollinations.ai).
+ * @param {ArrayBuffer} audioBuffer - Буфер аудиофайла.
+ * @param {Object} envData - Ключи.
+ * @returns {Promise<string>} Транскрибированный текст.
+ */
+async function callPollinationsSTT(config, audioBuffer, envData) {
+    
+    const API_KEY_ENV_NAME = config.API_KEY; 
+    const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
+    const MODEL = config.MODEL || 'whisper'; 
+    
+    if (!API_KEY) {
+        throw new Error(`Pollinations API key is missing. Expected env var: ${API_KEY_ENV_NAME}`);
+    }
+
+    // 1. ФОРМИРОВАНИЕ URL
+    const url = `${BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/'}v1/audio/transcriptions`;
+
+    // 2. ПОДГОТОВКА MULTIPART FORM DATA
+    const formData = new FormData();
+    
+    // Превращаем ArrayBuffer в Blob (Telegram шлет OGG/Opus, но Whisper его пережует как mp3/mpeg)
+    const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' }); 
+    
+    // Добавляем поля согласно документации
+    formData.append('file', audioBlob, 'voice.mp3');
+    formData.append('model', MODEL);
+    formData.append('language', 'ru'); // ISO-639-1
+    formData.append('response_format', 'json');
+
+    // 3. ОТПРАВКА ЗАПРОСА
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${API_KEY}`
+        },
+        body: formData
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations STT Error: ${response.status} - ${errorText.substring(0, 150)}`);
+    }
+
+    const data = await response.json();
+    
+    // 4. ВОЗВРАТ ЧИСТОЙ СТРОКИ
+    if (!data.text) {
+        throw new Error("Pollinations STT вернул пустой результат.");
+    }
+
+    return data.text.trim();
 }
 
 // ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ: callVoiceRSSTextToAudio
