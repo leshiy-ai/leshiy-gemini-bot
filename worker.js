@@ -1249,7 +1249,8 @@ async function loadActiveConfig(serviceType, envData, chatId) {
  */
 async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
-    
+    const CREATIVE_MODE_KEY = chatId + envData.CREATIVE_MODE_KEY_SUFFIX
+    const creativeMode = await STORAGE.get(CREATIVE_MODE_KEY);
     if (!IMAGE_STORAGE) {
          throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
     }
@@ -1271,7 +1272,7 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     }
     
     // 3. Создаем уникальный ключ
-    const imageKey = `i2v/${chatId}/${Date.now()}.png`;
+    const imageKey = `${creativeMode}/${chatId}/${Date.now()}.png`;
 
     // 4. Сохраняем в KV/S3
     // ВАЖНО: В Яндексе (S3/DB) метод .put может отличаться от Cloudflare KV.
@@ -6796,10 +6797,10 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
     let finalImageUrl = await STORAGE.get(photoUrlKey);
     
     // --- ШАГ 2: РЕЗЕРВНЫЙ ВАРИАНТ (Если в KV нет ссылки, но есть Base64) ---
-    if (!finalImageUrl && imageBase64) {
-        console.log(`[I2I-DEBUG] URL не найден по ключу ${photoUrlKey}, пробую uploadBase64...`);
+    //if (!finalImageUrl && imageBase64) {
+        //console.log(`[I2I-DEBUG] URL не найден по ключу ${photoUrlKey}, пробую uploadBase64...`);
         finalImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
-    }
+    //}
 
     if (!finalImageUrl) {
         throw new Error(`Photo URL не найден по ключу: ${photoUrlKey}`);
