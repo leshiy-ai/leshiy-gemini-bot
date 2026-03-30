@@ -537,7 +537,7 @@ const AI_MODELS = {
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1' 
     },*/
     
-    // Pollinations.ai - 0.010 pollen самовосстанавливающиеся.
+    // Pollinations.ai - 0.010 pollen самовосстанавливающиеся каждый час.
 
     // [Pollinations.ai: Gemini-fast для чата] (0.01 /M pollen)
     TEXT_TO_TEXT_POLLINATIONS: { 
@@ -560,15 +560,6 @@ const AI_MODELS = {
     TEXT_TO_IMAGE_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
         FUNCTION: callPollinationsText2Img,
-        MODEL: 'flux', 
-        API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
-        BASE_URL: 'https://gen.pollinations.ai',
-        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
-    },
-    // [Pollinations.ai: Flux - /photo] (0.010 pollen)
-    IMAGE_TO_IMAGE_POLLINATIONS: { 
-        SERVICE: 'POLLINATIONS', 
-        FUNCTION: callPollinationsImg2Img,
         MODEL: 'flux', 
         API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
         BASE_URL: 'https://gen.pollinations.ai',
@@ -6761,148 +6752,6 @@ async function callPollinationsSTT(config, audioBuffer, envData) {
     }
 
     return data.text.trim();
-}
-
-/**
- * ✅ callPollinationsImg2Img - РЕАЛЬНЫЙ I2I ЧЕРЕЗ PUBLIC URL
- */
-async function callPollinationsImg2Img(config, prompt, imageBase64, envData, photoHeight, photoWidth, chatId) {
-    const API_KEY_ENV_NAME = config.API_KEY; 
-    const API_KEY = envData[API_KEY_ENV_NAME]; 
-    const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
-    const DOMAIN = envData.WORKER_DOMAIN; // домен
-    const STORAGE = envData.LAST_PHOTO_STORAGE;
-    const PHOTO_URL_KEY_SUFFIX = '_photo_url'; // Суффикс от downloadAndSaveBase64
-
-    if (!API_KEY) throw new Error("Pollinations API key is missing.");
-    if (!chatId) throw new Error("Chat ID is missing in call.");
-
-    // --- ШАГ 1: ДОСТАЕМ УЖЕ ГОТОВЫЙ URL ТЕЛЕГРАМА (сохранен при download) ---
-    //const telegramPhotoUrlKey = chatId + PHOTO_URL_KEY_SUFFIX;
-    //const finalImageUrl = await STORAGE.get(telegramPhotoUrlKey);
-    
-    // --- ШАГ 1: ПОЛУЧАЕМ ПУБЛИЧНУЮ ССЫЛКУ ЧЕРЕЗ ТВОЮ ФУНКЦИЮ ---
-    // Она сама всё сохранит в KV и вернет готовый URL
-    const publicImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
-
-    // --- ШАГ 2: ЛОГ В ЧАТ (Ты увидишь ссылку, на которую можно нажать) ---
-    await logDebug("I2I-SEND", `Prompt: ${prompt}\nPublic Link: ${publicImageUrl}`, envData);
-
-    // --- ШАГ 2: УЛЬТИМАТИВНЫЙ ДЕТЕКТОР ПРОМПТА ---
-    const p = prompt.toLowerCase();
-    const isDefault = p.includes("улучшение") || p.includes("колоризация") || p.includes("improvement") || p.includes("enhance");
-
-    const promptForAI = isDefault 
-        ? "Colorized photo restoration, highly detailed faces, sharp focus, masterpiece" 
-        : prompt;
-
-    // --- ШАГ 3: ФОРМИРУЕМ POST ЗАПРОС ---
-    const url = `${BASE_URL}/v1/images/generations`;
-    //const url = `${BASE_URL}/v1/images/edits`;
-    
-    const body = {
-        model: config.MODEL,
-        prompt: promptForAI,
-        image: publicImageUrl,
-        size: `${photoWidth || 1024}x${photoHeight || 1024}`,
-        response_format: "b64_json", 
-        n: 1
-    };
-
-    // ✅ ЛОГ ПРЯМО В ЧАТ
-    const debugInfo = `POST To Pollinations:\nPrompt: ${body.prompt}\nImage: ${body.image}\nSize: ${body.size}`;
-    envData.ctx.waitUntil(logDebug("[I2I-DEBUG]", debugInfo, envData));
-
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
-
-        if (!response.ok) {
-            const err = await response.text();
-            throw new Error(`Pollinations POST Error: ${response.status}. ${err.substring(0, 100)}`);
-        }
-
-        const data = await response.json();
-        const base64Image = data?.data?.[0]?.b64_json;
-
-        if (!base64Image) throw new Error("API не вернул b64_json");
-
-        // Используем твой хелпер для конвертации обратно в ArrayBuffer
-        return base64ToArrayBuffer(base64Image);
-
-    } catch (e) {
-        envData.ctx.waitUntil(logDebug("[I2I-CRITICAL]", error.message, envData));
-        throw new Error(`I2I Critical Failure: ${e.message}`);
-    }
-}
-
-// ✅ *** 2.34. callPollinationsImg2ImgGet (Автономная: Base64 -> KV -> Pollinations GET) ***
-/**
- * @param {Object} config - Конфиг (IMAGE_TO_IMAGE_POLLINATIONS).
- * @param {string} prompt - Текст/Инструкция.
- * @param {string} imageBase64 - Исходник в Base64.
- * @param {Object} envData - Объекты окружения (включая LAST_PHOTO_STORAGE и WORKER_DOMAIN).
- * @param {string} chatId - ID чата (нужен для генерации ключа в KV).
- */
-async function callPollinationsImg2ImgGet(config, prompt, imageBase64, envData, photoHeight, photoWidth, chatId) {
-    
-    const API_KEY = envData[config.API_KEY]; 
-    const STORAGE = envData.LAST_PHOTO_STORAGE;
-    const PHOTO_URL_KEY_SUFFIX = '_photo_url';
-
-    if (!API_KEY) throw new Error("Pollinations API key is missing.");
-    
-    // ТЕПЕРЬ chatId ТОЧНО НА МЕСТЕ
-    if (!chatId) {
-         throw new Error("Chat ID is missing in callPollinationsImg2Img");
-    }
-
-    // --- ШАГ 1: ДОСТАЕМ URL ТЕЛЕГРАМА ---
-    const photoUrlKey = chatId + PHOTO_URL_KEY_SUFFIX;
-    let finalImageUrl = await STORAGE.get(photoUrlKey);
-    
-    // --- ШАГ 2: РЕЗЕРВНЫЙ ВАРИАНТ (Если в KV нет ссылки, но есть Base64) ---
-    //if (!finalImageUrl && imageBase64) {
-        //console.log(`[I2I-DEBUG] URL не найден по ключу ${photoUrlKey}, пробую uploadBase64...`);
-        finalImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
-    //}
-
-    if (!finalImageUrl) {
-        throw new Error(`Photo URL не найден по ключу: ${photoUrlKey}`);
-    }
-
-    console.log(`[I2I-DEBUG] УСПЕХ! Использую URL: ${finalImageUrl}`);
-
-    // --- ШАГ 3: ФОРМИРУЕМ ЗАПРОС ---
-    const enhancedPrompt = `High quality color photo restoration: ${prompt.trim()}`;
-    const encodedPrompt = encodeURIComponent(enhancedPrompt);
-    const encodedImageUrl = encodeURIComponent(finalImageUrl);
-    const seed = Math.floor(Math.random() * 1000000);
-
-    const url = `${config.BASE_URL}/image/${encodedPrompt}?model=${config.MODEL}&image=${encodedImageUrl}&seed=${seed}&width=${photoWidth || 1024}&height=${photoHeight || 1024}`;
-    console.log(`[I2I-DEBUG] Полный URL запроса: ${url}`);
-    try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${API_KEY}` }
-        });
-
-        if (!response.ok) {
-            const errorText = (await response.text()).substring(0, 100);
-            throw new Error(`Pollinations Status: ${response.status}. ${errorText}`);
-        }
-
-        return await response.arrayBuffer();
-
-    } catch (e) {
-        throw new Error(`I2I Error: ${e.message.substring(0, 150)}`);
-    }
 }
 
 // ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ: callVoiceRSSTextToAudio
