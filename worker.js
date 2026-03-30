@@ -537,15 +537,23 @@ const AI_MODELS = {
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1' 
     },*/
     
-    // ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ ---
+    // Pollinations.ai - 0.010 pollen самовосстанавливающиеся.
 
-    // [Pollinations.ai: Qwen для чата] (0.01 /M pollen)
+    // [Pollinations.ai: Gemini-fast для чата] (0.01 /M pollen)
     TEXT_TO_TEXT_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
         FUNCTION: callPollinationsChat, 
         MODEL: 'gemini-fast', 
         API_KEY: 'POLLINATIONS_API_KEY', 
         //BASE_URL: 'https://gen.pollinations.ai/v1/chat/completions'
+        BASE_URL: 'https://gen.pollinations.ai'
+    },
+    // [Pollinations.ai: Gemini-fast для распознавания фото]
+    IMAGE_TO_TEXT_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsVision, 
+        MODEL: 'gemini-fast', 
+        API_KEY: 'POLLINATIONS_API_KEY', 
         BASE_URL: 'https://gen.pollinations.ai'
     },
     // [Pollinations.ai: Flux - /create] (0.010 pollen)
@@ -557,6 +565,8 @@ const AI_MODELS = {
         BASE_URL: 'https://gen.pollinations.ai',
         pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
     },
+
+    // ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ ---
 
     // [FUSIONBRAIN Kandinsky - /create] (Тестовый, ПЛАТНЫЙ попытки 88/100 до 01.01.2026)
     TEXT_TO_IMAGE_KANDINSKY: { 
@@ -6614,6 +6624,76 @@ async function callPollinationsText2Img(config, prompt, envData, settings = {}) 
     return response.arrayBuffer();
 }
 
+// ✅ *** 2.32. callPollinationsVision (Pollinations.ai: Gemini-Vision) ***
+/**
+ * Анализирует изображение (Base64), используя Pollinations.ai (OpenAI-compatible).
+ * @param {Object} config - Объект конфигурации (AI_MODELS.IMAGE_TO_TEXT_POLLINATIONS).
+ * @param {ArrayBuffer} imageBuffer - Буфер изображения.
+ * @param {Object} envData - Ключи.
+ * @returns {Promise<string>} Описание изображения.
+ */
+async function callPollinationsVision(config, imageBuffer, envData) { 
+    
+    const API_KEY_ENV_NAME = config.API_KEY; 
+    const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
+    
+    if (!API_KEY) { 
+        throw new Error(`Pollinations API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
+    }
+
+    // 1. Конвертация в Base64 (используем твой метод)
+    const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+    const dataUrl = `data:image/jpeg;base64,${imageBase64}`;
+
+    // 2. Формирование OpenAI-совместимого запроса
+    const url = `${BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/'}v1/chat/completions`;
+
+    // Твой специфический промпт для фотореставратора
+    const userPrompt = "На основе присланного изображения, сгенерируй ОЧЕНЬ ПОДРОБНЫЙ, но не более 750 символов, точный и буквальный промпт на РУССКОМ языке для нейросети для генерации изображения. ТОЧНО ВОСПРОИЗВЕДИ сцену, но в высоком разрешении и цвете. Сохрани СТРОГО ту же КОМПОЗИЦИЮ и ракурс. Используй художественный стиль 'фотореалистичная иллюстрация' или 'картина'. Добавь в конец: 'высокая детализация, шедевр, студийное освещение'.";
+
+    const body = {
+        model: config.MODEL || "gemini-fast",
+        messages: [
+            { role: "system", content: "Действуй как 'Фотореставратор'. Общение СТРОГО на РУССКОМ языке." },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: userPrompt },
+                    {
+                        type: "image_url",
+                        image_url: { "url": dataUrl } // Передаем Inline Base64
+                    }
+                ]
+            }
+        ],
+        temperature: 0.5
+    };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations Vision Error: ${response.status} - ${errorText.substring(0, 150)}`);
+    }
+
+    const data = await response.json();
+    const textResult = data?.choices?.[0]?.message?.content;
+
+    if (!textResult) {
+        throw new Error("Pollinations Vision не вернул результат.");
+    }
+
+    return textResult.trim();
+}
+
 // ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ: callVoiceRSSTextToAudio
 /**
  * Вызывает API VoiceRSS для конвертации текста в речь, используя унифицированный контракт Workers.
@@ -7515,7 +7595,7 @@ async function kieAiApiPolling(taskId, apiKey, baseUrl, isNonBlocking = false) {
     throw new Error("KIE.ai Polling Timeout: Maximum number of retries exceeded.");
 }
 
-// ✅ *** 2.32. startStabilityTextToImage (Stability AI: Stable Image Core) ***
+// ✅ *** 2.35. startStabilityTextToImage (Stability AI: Stable Image Core) ***
 /**
  * Генерирует изображение по промпту через Stability AI (T2I).
  * Соответствует унифицированному контракту T2I.
@@ -7566,7 +7646,7 @@ async function startStabilityTextToImage(config, prompt, envData, settings = {})
     return response.arrayBuffer();
 }
 
-// ✅ *** 2.33. startStabilityImageToImage (I2I) - ИСПРАВЛЕННЫЙ КОНТРАКТ И BUFFER/ENV DATA ***
+// ✅ *** 2.36. startStabilityImageToImage (I2I) - ИСПРАВЛЕННЫЙ КОНТРАКТ И BUFFER/ENV DATA ***
 /**
  * Генерирует изображение из изображения + промпта через Stability AI (I2I).
  * * Строго соответствует унифицированному контракту (принимает 7 аргументов).
@@ -7639,7 +7719,7 @@ async function startStabilityImageToImage(config, prompt, imageBase64, envData, 
     return response.arrayBuffer();
 }
 
-// ✅ *** 2.34. startStabilityImageUpscale (Fast Upscaler) ***
+// ✅ *** 2.37. startStabilityImageUpscale (Fast Upscaler) ***
 /**
  * Увеличивает разрешение изображения в 4 раза (4x) через Fast Upscaler.
  * * Строго соответствует унифицированному контракту (принимает 7 аргументов).
