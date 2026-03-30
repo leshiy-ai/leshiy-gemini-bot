@@ -6797,7 +6797,7 @@ async function callPollinationsImg2Img(config, prompt, _unusedBase64, envData, c
 
     // --- ШАГ 2: СБОРКА GET-URL ДЛЯ POLLINATIONS ---
     const encodedPrompt = encodeURIComponent(prompt.trim());
-    const encodedImageUrl = encodeURIComponent(telegramUrl); // Ссылка на сервер Телиги
+    const encodedImageUrl = encodeURIComponent(telegramUrl);
     const seed = Math.floor(Math.random() * 1000000);
 
     const url = `${config.BASE_URL}/image/${encodedPrompt}?model=${config.MODEL}&image=${encodedImageUrl}&seed=${seed}&n=1`;
