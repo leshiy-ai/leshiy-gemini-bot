@@ -1274,17 +1274,32 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     // 3. Создаем уникальный ключ
     const imageKey = `${creativeMode}/${chatId}/${Date.now()}.png`;
 
+    // ПРЕОБРАЗУЕМ Buffer в Uint8Array для гарантированной бинарной записи
+    const binaryData = new Uint8Array(buffer);
+
+    await IMAGE_STORAGE.put(imageKey, binaryData, {
+        // Обязательно передаем метаданные, чтобы Яндекс знал, что это не текст
+        httpMetadata: { 
+            contentType: 'image/png' 
+        },
+        // Если это Cloudflare KV, параметр ниже сработает, если Яндекс S3 - он просто проигнорируется
+        expirationTtl: 3600 
+    });
+
     // 4. Сохраняем в KV/S3
     // ВАЖНО: В Яндексе (S3/DB) метод .put может отличаться от Cloudflare KV.
     // Если LAST_PHOTO_STORAGE — это твой адаптер DB, убедись, что он принимает Buffer.
-    await IMAGE_STORAGE.put(imageKey, buffer, {
-        httpMetadata: { contentType: 'image/png' },
-        expirationTtl: 3600 // 1 час
-    });
+    //await IMAGE_STORAGE.put(imageKey, buffer, {
+    //    httpMetadata: { contentType: 'image/png' },
+    //    expirationTtl: 3600 // 1 час
+    //});
 
     // 5. Формируем URL
     const baseUrl = envData.WORKER_DOMAIN.startsWith('http') ? envData.WORKER_DOMAIN : `https://${envData.WORKER_DOMAIN}`;
-    return `${baseUrl}/kv-images/${imageKey}`;
+    //return `${baseUrl}/kv-images/${imageKey}`;
+    const cleanKey = imageKey.startsWith('/') ? imageKey.substring(1) : imageKey;
+    
+    return `${baseUrl}/kv-images/${cleanKey}`;
 }
 
 // ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
@@ -16411,7 +16426,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         // Пытаемся получить Content-Type из httpMetadata (который мы установили при сохранении)
         //const contentType = data.metadata?.httpMetadata?.contentType || 'image/png';
         const contentType = 'image/png';
-        
+
         //return new Response(data.value, {
         return new Response(blob, {
             headers: {
