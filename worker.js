@@ -6795,11 +6795,11 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
     const photoUrlKey = chatId + PHOTO_URL_KEY_SUFFIX;
     let finalImageUrl = await STORAGE.get(photoUrlKey);
     
-    /*/ --- ШАГ 2: РЕЗЕРВНЫЙ ВАРИАНТ (Если в KV нет ссылки, но есть Base64) ---
+    // --- ШАГ 2: РЕЗЕРВНЫЙ ВАРИАНТ (Если в KV нет ссылки, но есть Base64) ---
     if (!finalImageUrl && imageBase64) {
         console.log(`[I2I-DEBUG] URL не найден по ключу ${photoUrlKey}, пробую uploadBase64...`);
         finalImageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId);
-    }*/
+    }
 
     if (!finalImageUrl) {
         throw new Error(`Photo URL не найден по ключу: ${photoUrlKey}`);
@@ -6814,7 +6814,7 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
     const seed = Math.floor(Math.random() * 1000000);
 
     const url = `${config.BASE_URL}/image/${encodedPrompt}?model=${config.MODEL}&image=${encodedImageUrl}&seed=${seed}&width=${photoWidth || 1024}&height=${photoHeight || 1024}`;
-
+    console.log(`[I2I-DEBUG] Полный URL запроса: ${url}`);
     try {
         const response = await fetch(url, {
             method: 'GET',
