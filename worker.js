@@ -6857,7 +6857,7 @@ async function callPollinationsImg2Img(config, prompt, imageBase64, envData, pho
  * @param {Object} envData - Объекты окружения (включая LAST_PHOTO_STORAGE и WORKER_DOMAIN).
  * @param {string} chatId - ID чата (нужен для генерации ключа в KV).
  */
-async function callPollinationsImg2Img(config, prompt, imageBase64, envData, photoHeight, photoWidth, chatId) {
+async function callPollinationsImg2ImgGet(config, prompt, imageBase64, envData, photoHeight, photoWidth, chatId) {
     
     const API_KEY = envData[config.API_KEY]; 
     const STORAGE = envData.LAST_PHOTO_STORAGE;
