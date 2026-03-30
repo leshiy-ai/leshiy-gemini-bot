@@ -1250,7 +1250,7 @@ async function loadActiveConfig(serviceType, envData, chatId) {
 async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
     const CREATIVE_MODE_KEY = chatId + envData.CREATIVE_MODE_KEY_SUFFIX
-    const creativeMode = await STORAGE.get(CREATIVE_MODE_KEY);
+    const creativeMode = await IMAGE_STORAGE.get(CREATIVE_MODE_KEY);
     if (!IMAGE_STORAGE) {
          throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
     }
