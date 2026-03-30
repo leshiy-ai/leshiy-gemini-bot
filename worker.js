@@ -1249,44 +1249,32 @@ async function loadActiveConfig(serviceType, envData, chatId) {
  */
 async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
-    const CREATIVE_MODE_KEY = chatId + envData.CREATIVE_MODE_KEY_SUFFIX;
+    const PUBLIC_DOMAIN = envData.WORKER_DOMAIN.startsWith('http') 
+        ? envData.WORKER_DOMAIN 
+        : `https://${envData.WORKER_DOMAIN}`;
     
-    // Получаем режим
-    const creativeMode = (await IMAGE_STORAGE.get(CREATIVE_MODE_KEY)) || 'T2I';
-
-    if (!IMAGE_STORAGE) throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
-
-    let actualBase64 = '';
-    if (typeof base64Data === 'object' && base64Data !== null && base64Data.base64) {
-        // Если пришел объект (как на твоем скрине), берем поле base64
-        actualBase64 = base64Data.base64;
-    } else if (typeof base64Data === 'string') {
-        // Если пришла строка, проверяем, не JSON ли это внутри строки
-        if (base64Data.startsWith('{')) {
-            try {
-                const parsed = JSON.parse(base64Data);
-                actualBase64 = parsed.base64 || base64Data;
-            } catch (e) {
-                actualBase64 = base64Data;
-            }
-        } else {
-            actualBase64 = base64Data;
-        }
+    if (!IMAGE_STORAGE) {
+         throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
     }
 
-    const cleanBase64 = actualBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
+    // Убираем префикс (поддерживаем jpeg и png)
+    const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
+    // Читаем режим (creativeMode) из базы, как у тебя заведено
+    const mode = (await STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX)) || 'default';
+    // Декодируем (Buffer — самый надежный способ в Node.js/Yandex)
+    const buffer = Buffer.from(base64, 'base64');
     
-    // 2. Создаем чистый ключ (без слеша в начале!)
-    const imageKey = `${creativeMode}/${chatId}/${Date.now()}.png`;
+    // Создаем ключ (как в твоем оригинале)
+    const imageKey = `${mode}/${chatId}/${Date.now()}.png`;
 
-    // 3. СОХРАНЯЕМ
-    await IMAGE_STORAGE.put(imageKey, cleanBase64);
+    // Сохраняем (в Яндексе put принимает Buffer напрямую)
+    await IMAGE_STORAGE.put(imageKey, buffer, {
+        httpMetadata: { contentType: 'image/png' },
+        expirationTtl: 3600 
+    });
 
-    // 4. Формируем URL
-    const domain = envData.WORKER_DOMAIN.replace(/^https?:\/\//, '');
-    const baseUrl = `https://${domain}`;
-    
-    return `${baseUrl}/kv-images/${imageKey}`;
+    // Возвращаем URL
+    return `${PUBLIC_DOMAIN}/kv-images/${imageKey}`;
 }
 
 // ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
@@ -16384,31 +16372,31 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // -----------------
     if (path.startsWith('/kv-images/')) {
         const key = path.substring('/kv-images/'.length); 
-
-        if (!key) {
-            return new Response('Image key is missing.', { status: 404 });
-        }
-
         const imageStorage = env.LAST_PHOTO_STORAGE; 
-        if (!imageStorage) {
-            return new Response('Storage missing.', { status: 500 });
+
+        if (!imageStorage) return new Response('Storage missing', { status: 500 });
+
+        // Получаем данные. В Яндексе .get() может вернуть либо Buffer, либо String
+        const rawData = await imageStorage.get(key); 
+        if (!rawData) return new Response('Not found', { status: 404 });
+
+        let finalData = rawData;
+
+        // ХИТРОСТЬ: Если Яндекс превратил Buffer в JSON-строку (как на твоем скрине)
+        if (typeof rawData === 'string' && rawData.startsWith('{"type":"Buffer"')) {
+            try {
+                const parsed = JSON.parse(rawData);
+                finalData = new Uint8Array(parsed.data); // Восстанавливаем бинарник из массива чисел
+            } catch (e) {
+                console.error("Failed to parse Buffer JSON");
+            }
         }
 
-        // Достаем данные как они есть (бинарно)
-        const imageData = await imageStorage.get(key); 
-
-        if (!imageData) {
-            return new Response('Image not found.', { status: 404 });
-        }
-
-        // Отдаем ответ, который поймет любой браузер и нейронка
-        return new Response(imageData, {
+        return new Response(finalData, {
             headers: {
                 'Content-Type': 'image/png',
-                'Cache-Control': 'public, max-age=3600',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type'
+                'Access-Control-Allow-Origin': '*', // Чтобы нейронка могла скачать
+                'Cache-Control': 'public, max-age=3600'
             }
         });
     }
