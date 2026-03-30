@@ -6770,18 +6770,16 @@ async function callPollinationsSTT(config, audioBuffer, envData) {
     return data.text.trim();
 }
 
-// ✅ *** 2.34. callPollinationsImg2Img (Pollinations.ai: OpenAI-style POST) ***
+// ✅ *** 2.34. callPollinationsImg2Img (Pollinations.ai: PURE GET I2I) ***
 /**
- * Генерирует или редактирует изображение через OpenAI-совместимый API Pollinations.
- * @param {Object} config - Объект конфигурации.
- * @param {string} prompt - Описание того, что нужно нарисовать/изменить.
- * @param {string|null} imageUrl - Ссылка на исходник (для Image-to-Image). Если null — обычная генерация.
+ * Генерирует I2I через GET-запрос, передавая ссылку на изображение.
+ * @param {Object} config - Объект конфигурации (IMAGE_TO_IMAGE_POLLINATIONS).
+ * @param {string} prompt - Твоя инструкция по улучшению.
+ * @param {string} imageUrl - Прямая ссылка на фото (из Telegram).
  * @param {Object} envData - Ключи.
- * @param {number} width - Ширина (по умолчанию 1024).
- * @param {number} height - Высота (по умолчанию 1024).
  * @returns {Promise<ArrayBuffer>} Сгенерированное изображение.
  */
-async function callPollinationsImg2Img(config, prompt, imageUrl, envData, width = 1024, height = 1024) {
+async function callPollinationsImg2Img(config, prompt, imageUrl, envData) {
     
     const API_KEY = envData[config.API_KEY]; 
     const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
@@ -6789,51 +6787,39 @@ async function callPollinationsImg2Img(config, prompt, imageUrl, envData, width 
 
     if (!API_KEY) throw new Error("Pollinations API key is missing.");
 
-    // Согласно доке: /v1/images/generations
-    const url = `${BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/'}v1/images/generations`;
+    // 1. Формируем базовый URL для картинок (image.pollinations.ai)
+    const imageHost = "https://image.pollinations.ai";
+    const encodedPrompt = encodeURIComponent(prompt.trim());
+    const encodedImageUrl = encodeURIComponent(imageUrl);
 
-    const body = {
-        prompt: prompt,
-        model: MODEL,
-        image: imageUrl, // Ссылка на оригинальное фото
-        n: 1,
-        size: `${width}x${height}`,
-        quality: "medium",
-        strength: 0.15, // <--- ВАЖНО: Значение от 0.05 до 0.3. Чем меньше, тем строже соблюдение исходника.
-        response_format: "b64_json" // Получаем сразу base64, чтобы не качать по ссылке
-    };
+    // 2. Сборка URL со всеми параметрами из документации
+    // Добавляем seed для стабильности и пробуем прокинуть параметры через Query
+    let url = `${imageHost}/prompt/${encodedPrompt}?model=${MODEL}&image=${encodedImageUrl}&seed=${Math.floor(Math.random() * 1000000)}&n=1`;
 
-    // Если передана ссылка на картинку — это режим Image-to-Image
-    if (imageUrl) {
-        body.image = imageUrl;
+    // Если работаем с flux/zimage, добавляем отрицательный промпт, чтобы не рисовал лишнего
+    if (MODEL === 'flux' || MODEL === 'zimage') {
+        url += `&negative_prompt=${encodeURIComponent("face change, deformed, ugly, blurry")}`;
     }
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-    });
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`
+            }
+        });
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Pollinations Image Error: ${response.status} - ${errorText.substring(0, 150)}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Pollinations I2I GET Error: ${response.status} | URL: ${url}`);
+        }
+
+        // Возвращаем ArrayBuffer напрямую, как ждет твой бот
+        return await response.arrayBuffer();
+
+    } catch (e) {
+        throw new Error(`Pollinations I2I GET Exception: ${e.message} | URL: ${url}`);
     }
-
-    const data = await response.json();
-    
-    // Извлекаем base64 из ответа (OpenAI формат: data[0].b64_json)
-    const base64Image = data?.data?.[0]?.b64_json;
-
-    if (!base64Image) {
-        throw new Error("Pollinations не вернул данные изображения.");
-    }
-
-    // Конвертируем в ArrayBuffer (используем твой метод)
-    const uint8Array = base64ToUint8Array(base64Image);
-    return uint8Array.buffer;
 }
 
 // ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ: callVoiceRSSTextToAudio
