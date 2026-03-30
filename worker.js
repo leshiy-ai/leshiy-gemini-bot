@@ -6795,6 +6795,7 @@ async function callPollinationsImg2Img(config, prompt, imageUrl, envData, width 
     const body = {
         prompt: prompt,
         model: MODEL,
+        image: imageUrl, // Ссылка на оригинальное фото
         n: 1,
         size: `${width}x${height}`,
         quality: "medium",
