@@ -543,8 +543,7 @@ const AI_MODELS = {
     TEXT_TO_TEXT_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
         FUNCTION: callPollinationsChat, 
-        //MODEL: 'gemini-fast', 
-        MODEL: 'polly',       
+        MODEL: 'gemini-fast', 
         API_KEY: 'POLLINATIONS_API_KEY', 
         //BASE_URL: 'https://gen.pollinations.ai/v1/chat/completions'
         BASE_URL: 'https://gen.pollinations.ai'
