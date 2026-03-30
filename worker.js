@@ -6798,6 +6798,7 @@ async function callPollinationsImg2Img(config, prompt, imageUrl, envData, width 
         n: 1,
         size: `${width}x${height}`,
         quality: "medium",
+        strength: 0.15, // <--- ВАЖНО: Значение от 0.05 до 0.3. Чем меньше, тем строже соблюдение исходника.
         response_format: "b64_json" // Получаем сразу base64, чтобы не качать по ссылке
     };
 
