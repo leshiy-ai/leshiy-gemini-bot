@@ -3165,13 +3165,12 @@ async function downloadAndSaveBase64(fileId, chatId, envData, mediaObject, rotat
 }
 
 // ✅ logDebug (КОМПЛЕКСНЫЙ ЛОГГЕР: KV + TELEGRAM) - ФИНАЛЬНАЯ ВЕРСИЯ
-async function logDebug(type, message, envData, ctx) {
-    const debugSetting = envData[GLOBAL_DEBUG_KEY];
-    const isDebugEnabled = debugSetting === "true" || debugSetting === true;
-
+async function logDebug(type, message, envData) {
+    // 1. ДОСТАЕМ CTX ИЗ ENVDATA
+    const ctx = envData.ctx;
     // 1. КОНТРОЛЬ TELEGRAM-ЛОГОВ
     // Отправляем сообщение только если флаг включен
-    if (isDebugEnabled) {
+    if (envData.DEBUG_ENABLED) {
         // Мы предполагаем, что вы хотите отправлять эти логи в админ-чат,
         // используя глобальный ADMIN_CHAT_ID.
         const messageText = `🪲 **[DEBUG]-[${type}]** ${message}`;
