@@ -539,16 +539,16 @@ const AI_MODELS = {
     
     // ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ ---
 
-    // [FUSIONBRAIN Kandinsky - /create] (Тестовый, ПЛАТНЫЙ попытки 88/100 до 01.01.2026)
-    TEXT_TO_IMAGE_KANDINSKY: { 
-        SERVICE: 'FUSIONBRAIN', 
-        FUNCTION: callKandinskyText2Img, // <-- ОБРАБОТЧИК ДЛЯ FUSIONBRAIN
-        MODEL: 'kandinsky', 
-        API_KEY: 'FUSIONBRAIN_API_KEY', // Имя переменной окружения
-        BASE_URL: 'https://api-key.fusionbrain.ai',
-        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
+    // [Pollinations.ai: Qwen для чата] (0.01 /M pollen)
+    TEXT_TO_TEXT_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsChat, 
+        //MODEL: 'gemini-fast', 
+        MODEL: 'qwen-safety',       
+        API_KEY: 'POLLINATIONS_API_KEY', 
+        //BASE_URL: 'https://gen.pollinations.ai/v1/chat/completions'
+        BASE_URL: 'https://gen.pollinations.ai'
     },
-
     // [Pollinations.ai: Flux - /create] (0.010 pollen)
     TEXT_TO_IMAGE_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
@@ -556,6 +556,16 @@ const AI_MODELS = {
         MODEL: 'flux', 
         API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
         BASE_URL: 'https://gen.pollinations.ai',
+        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
+    },
+
+    // [FUSIONBRAIN Kandinsky - /create] (Тестовый, ПЛАТНЫЙ попытки 88/100 до 01.01.2026)
+    TEXT_TO_IMAGE_KANDINSKY: { 
+        SERVICE: 'FUSIONBRAIN', 
+        FUNCTION: callKandinskyText2Img, // <-- ОБРАБОТЧИК ДЛЯ FUSIONBRAIN
+        MODEL: 'kandinsky', 
+        API_KEY: 'FUSIONBRAIN_API_KEY', // Имя переменной окружения
+        BASE_URL: 'https://api-key.fusionbrain.ai',
         pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
     },
 
@@ -6468,7 +6478,74 @@ async function callKandinskyText2Img(config, prompt, envData) {
     throw new Error("FusionBrain: Таймаут ожидания изображения (более 150 секунд).");
 }
 
-// ✅ *** 2.30. callPollinationsText2Img (Pollinations.ai: Flux) ***
+// ✅ *** 2.30. callPollinationsChat (Pollinations.ai: Qwen/LLM) ***
+/**
+ * Генерирует текстовый ответ через Pollinations.ai (OpenAI-compatible).
+ * Поддерживает системный промпт и унифицированный контракт.
+ */
+async function callPollinationsChat(config, history, messageText, envData) {
+    
+    const API_KEY_ENV_NAME = config.API_KEY; 
+    const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const BASE_URL = config.BASE_URL; // Ожидается https://gen.pollinations.ai
+    
+    if (!API_KEY) { 
+        throw new Error(`Pollinations API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
+    }
+
+    // 1. ПОДГОТОВКА ИСТОРИИ (OpenAI формат)
+    const messages = [];
+
+    // Добавляем твой SYSTEM_PROMPT первым элементом
+    // (Я предполагаю, что SYSTEM_PROMPT объявлен глобально или доступен в области видимости)
+    messages.push({ role: "system", content: SYSTEM_PROMPT });
+
+    // Мапим историю: твоё {role: 'model'} -> их {role: 'assistant'}
+    history.forEach(msg => {
+        messages.push({
+            role: msg.role === 'model' ? 'assistant' : 'user',
+            content: msg.text
+        });
+    });
+
+    // Добавляем текущее сообщение пользователя
+    messages.push({ role: "user", content: messageText });
+
+    // 2. ФОРМИРОВАНИЕ ЗАПРОСА
+    const url = `${BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/'}v1/chat/completions`;
+
+    const body = {
+        model: config.MODEL,
+        messages: messages,
+        temperature: config.TEMPERATURE || 0.7,
+        max_tokens: config.MAX_TOKENS || 2048
+    };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations Chat Error: ${response.status} - ${errorText.substring(0, 150)}`);
+    }
+
+    const result = await response.json();
+
+    // 3. ВОЗВРАТ ЧИСТОЙ СТРОКИ
+    if (result.choices && result.choices[0] && result.choices[0].message) {
+        return result.choices[0].message.content;
+    }
+
+    throw new Error("Pollinations API: Empty choices in response");
+}
+
+// ✅ *** 2.31. callPollinationsText2Img (Pollinations.ai: Flux) ***
 /**
  * Генерирует изображение по промпту через Pollinations.ai: Flux (T2I).
  * @param {Object} config - Объект активной конфигурации (BASE_URL: https://gen.pollinations.ai).
@@ -7424,7 +7501,7 @@ async function kieAiApiPolling(taskId, apiKey, baseUrl, isNonBlocking = false) {
     throw new Error("KIE.ai Polling Timeout: Maximum number of retries exceeded.");
 }
 
-// ✅ *** 2.31. startStabilityTextToImage (Stability AI: Stable Image Core) ***
+// ✅ *** 2.32. startStabilityTextToImage (Stability AI: Stable Image Core) ***
 /**
  * Генерирует изображение по промпту через Stability AI (T2I).
  * Соответствует унифицированному контракту T2I.
@@ -7475,7 +7552,7 @@ async function startStabilityTextToImage(config, prompt, envData, settings = {})
     return response.arrayBuffer();
 }
 
-// ✅ *** 2.32. startStabilityImageToImage (I2I) - ИСПРАВЛЕННЫЙ КОНТРАКТ И BUFFER/ENV DATA ***
+// ✅ *** 2.33. startStabilityImageToImage (I2I) - ИСПРАВЛЕННЫЙ КОНТРАКТ И BUFFER/ENV DATA ***
 /**
  * Генерирует изображение из изображения + промпта через Stability AI (I2I).
  * * Строго соответствует унифицированному контракту (принимает 7 аргументов).
@@ -7548,7 +7625,7 @@ async function startStabilityImageToImage(config, prompt, imageBase64, envData, 
     return response.arrayBuffer();
 }
 
-// ✅ *** startStabilityImageUpscale (Fast Upscaler) ***
+// ✅ *** 2.34. startStabilityImageUpscale (Fast Upscaler) ***
 /**
  * Увеличивает разрешение изображения в 4 раза (4x) через Fast Upscaler.
  * * Строго соответствует унифицированному контракту (принимает 7 аргументов).
