@@ -726,6 +726,8 @@ function generateModelMenuConfig(AI_MODELS) {
 }
 
 async function syncS3Chat(userId, content, role, env) {
+    const chatTitle = "Чат в Телеграм";
+    const encodedTitle = encodeURIComponent(chatTitle);
     // Инициализация S3 клиента внутри функции, используя твои новые ключи
     const s3 = new AWS.S3({
         accessKeyId: env.YANDEX_S3_KEY_ID, 
@@ -737,8 +739,9 @@ async function syncS3Chat(userId, content, role, env) {
     });
 
     const key = `users/${userId}/chats/chat_Telegram.json`;
+    
     let chatData = {
-        title: "Чат в Телеграм",
+        title: chatTitle,
         messages: [],
         lastUpdate: Date.now()
     };
@@ -770,7 +773,10 @@ async function syncS3Chat(userId, content, role, env) {
         Bucket: S3_CONFIG.bucket,
         Key: key,
         Body: JSON.stringify(chatData, null, 2),
-        ContentType: 'application/json'
+        ContentType: 'application/json',
+        Metadata: {
+            'chat-title': encodedTitle 
+        }
     }).promise();
 
     return chatData.messages;
