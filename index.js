@@ -137,7 +137,6 @@ module.exports.handler = async (event, context) => {
     const env = {
         ...process.env,
         LAST_PHOTO_STORAGE: USER_DB_ADAPTER, 
-        CHAT_HISTORY_STORAGE: USER_DB_ADAPTER,
         BOT_LOGS_STORAGE: USER_DB_ADAPTER,
         FILES_DB: FILES_DB_ADAPTER,
         TypedValues,

@@ -153,6 +153,13 @@ const ROTATE_VIDEO_LEFT_CALLBACK = 'rot_V_L_';
 const ROTATE_VIDEO_RIGHT_CALLBACK = 'rot_V_R_';
 const ROTATE_VIDEO_180_CALLBACK = 'rot_V_180_';
 const CALLBACK_EXPIRATION_TTL = 3600; // 1 час
+// --- S3 CONFIGURATION ---
+const AWS = require('aws-sdk');
+const S3_CONFIG = {
+    region: 'ru-central1',
+    endpoint: 'https://storage.yandexcloud.net',
+    bucket: 'leshiy-storage-history'
+};
 // ------------------------------------
 
 // --- ГЛОБАЛЬНАЯ КОНФИГУРАЦИЯ AI-СЕРВИСОВ (AI_MODELS) ---
@@ -716,6 +723,57 @@ function generateModelMenuConfig(AI_MODELS) {
         config[serviceType].models[modelKey] = friendlyName;
     }
     return config;
+}
+
+async function syncS3Chat(userId, content, role, env) {
+    // Инициализация S3 клиента внутри функции, используя твои новые ключи
+    const s3 = new AWS.S3({
+        accessKeyId: env.YANDEX_S3_KEY_ID, 
+        secretAccessKey: env.YANDEX_S3_SECRET,
+        endpoint: S3_CONFIG.endpoint,
+        s3ForcePathStyle: true,
+        region: S3_CONFIG.region,
+        apiVersion: 'latest',
+    });
+
+    const key = `users/${userId}/chats/chat_Telegram.json`;
+    let chatData = {
+        title: "Чат в Телеграм",
+        messages: [],
+        lastUpdate: Date.now()
+    };
+
+    // 1. Загрузка существующей истории
+    try {
+        const data = await s3.getObject({ Bucket: S3_CONFIG.bucket, Key: key }).promise();
+        chatData = JSON.parse(data.Body.toString());
+    } catch (e) {
+        console.log(`[S3] Новый чат для пользователя ${userId}, создаем файл.`);
+    }
+
+    // 2. Добавление сообщения (формат: ai / user)
+    chatData.messages.push({
+        role: role === 'assistant' ? 'ai' : 'user',
+        content: content,
+        id: Date.now()
+    });
+
+    // 3. Лимит (оптимально 40-50 сообщений для Gemini)
+    if (chatData.messages.length > 50) {
+        chatData.messages = chatData.messages.slice(-50);
+    }
+
+    chatData.lastUpdate = Date.now();
+
+    // 4. Сохранение в бакет
+    await s3.putObject({
+        Bucket: S3_CONFIG.bucket,
+        Key: key,
+        Body: JSON.stringify(chatData, null, 2),
+        ContentType: 'application/json'
+    }).promise();
+
+    return chatData.messages;
 }
 
 // ----------------------------------------------------
@@ -11938,7 +11996,7 @@ async function processAudioMessageAsync(chatId, fileId, envData, mediaObject) {
 
 // ✅ processTextMessage (Текстовый чат с историей + Логика редактирования/создания промпта)
 async function processTextMessage(chatId, messageText, envData) {
-    const { TELEGRAM_BOT_TOKEN, CHAT_HISTORY_STORAGE, LAST_PHOTO_STORAGE } = envData; 
+    const { TELEGRAM_BOT_TOKEN, LAST_PHOTO_STORAGE } = envData; 
     const chatKey = chatId.toString();
     
     // --- Константы ---
@@ -11972,10 +12030,38 @@ async function processTextMessage(chatId, messageText, envData) {
     
     // 2. ПЕРЕХВАТ: Сброс истории чата по команде /reset ---
     if (text.toLowerCase() === '/reset') {
-        await CHAT_HISTORY_STORAGE.delete(chatKey);
-        await sendMessageMarkdown(chatId, "✅ **История чата сброшена.** Можете начать новую беседу.", TELEGRAM_BOT_TOKEN);
+        // Обнуляем файл в S3 (Экосистема Leshiy-AI)
+        const s3 = new AWS.S3({
+            accessKeyId: envData.YANDEX_S3_KEY_ID, 
+            secretAccessKey: envData.YANDEX_S3_SECRET,
+            endpoint: S3_CONFIG.endpoint,
+            s3ForcePathStyle: true,
+            region: S3_CONFIG.region,
+            apiVersion: 'latest',
+        });
+
+        const key = `users/${chatId}/chats/chat_Telegram.json`;
+        const resetData = {
+            title: "Чат в Телеграм",
+            messages: [], // Пустой массив сообщений
+            lastUpdate: Date.now()
+        };
+
+        try {
+            await s3.putObject({
+                Bucket: S3_CONFIG.bucket,
+                Key: key,
+                Body: JSON.stringify(resetData, null, 2),
+                ContentType: 'application/json'
+            }).promise();
+        } catch (e) {
+            console.error("Ошибка при сбросе S3 чата:", e);
+        }
+
+        await sendMessageMarkdown(chatId, "✅ **История чата в S3 и Telegram сброшена.** Можете начать новую беседу.", TELEGRAM_BOT_TOKEN);
         return true;
     }
+
     // 3. ДОПОЛНИТЕЛЬНЫЙ ПЕРЕХВАТ: Ответы, не требующие LLM
     const userMsgLower = text.toLowerCase();
     let directAnswer = null;
@@ -12012,17 +12098,27 @@ async function processTextMessage(chatId, messageText, envData) {
     // ЕСЛИ НАЙДЕН ПРЯМОЙ ОТВЕТ:
     if (directAnswer) {
         await sendMessageMarkdown(chatId, directAnswer, TELEGRAM_BOT_TOKEN);
-        // Обновляем историю с прямым ответом (если нужно)
-        // НЕ ОТПРАВЛЯЕМ workingMessageResponse, НЕ ВЫЗЫВАЕМ AI.run
+        // Синхронизируем прямой ответ в S3, чтобы он тоже был в экосистеме
+        await syncS3Chat(chatId, text, 'user', envData);
+        await syncS3Chat(chatId, directAnswer, 'assistant', envData);
         return true; 
     }
-    // 3. ОБЫЧНЫЙ ЧАТ
+
+    // 3. ОБЫЧНЫЙ ЧАТ (Адаптировано под S3 Экосистему Leshiy-AI)
     let history;
     try {
-        const historyData = await CHAT_HISTORY_STORAGE.get(chatKey, { type: 'json' });
-        history = Array.isArray(historyData) ? historyData : [];
+        // ШАГ 1: Синхронизируем ввод и получаем актуальную историю из S3
+        const s3History = await syncS3Chat(chatId, text, 'user', envData);
+        
+        // ШАГ 2: Конвертируем формат S3 (ai/user) в формат для твоих функций (model/user)
+        // Твои функции LLM ожидают массив объектов с полями {role, text} (или content)
+        history = s3History.map(m => ({
+            role: m.role === 'ai' ? 'model' : 'user',
+            text: m.content
+        }));
+
     } catch (e) {
-        console.error("Error retrieving chat history:", e);
+        console.error("Error retrieving S3 chat history:", e);
         history = [];
     }
     
@@ -12031,24 +12127,8 @@ async function processTextMessage(chatId, messageText, envData) {
     if (!workingMessageResponse.ok || !workingMessageResponse.result) return false;
     
     const workingMessageId = workingMessageResponse.result.message_id;
-
-    // --- НОВОЕ: ПРОСТАЯ И НАДЕЖНАЯ ОБРЕЗКА ИСТОРИИ (БЕЗ СУММАРИЗАЦИИ) ---
-    // Наша цель: гарантировать, что в модель Workers AI попадет безопасное количество сообщений.
-    const HARD_CUT_MESSAGES = 6; // Оставляем 6 последних сообщений (3 пары user/model)
-
-    if (history.length > HARD_CUT_MESSAGES) {
-         history = history.slice(history.length - HARD_CUT_MESSAGES);
-         
-         // Опционально: Можно уведомить пользователя, что контекст потерян, 
-         // вставив сообщение в начало истории (Gemma 2B это увидит)
-         const cutWarning = `[СИСТЕМА: Контекст разговора автоматически обрезан до ${HARD_CUT_MESSAGES} последних сообщений для экономии токенов.]\n`;
-         // Проверяем, что history[0] существует, и добавляем предупреждение
-         if (history.length > 0) {
-             history[0].text = cutWarning + history[0].text;
-         }
-    }
-    // --------------------------------------------------------------------
     
+    // --- ОБРЕЗКА ИСТОРИИ ТЕПЕРЬ ПРОИСХОДИТ ВНУТРИ syncS3Chat ---
     try {
         // УНИВЕРСАЛЬНЫЙ ВЫЗОВ зависит от настроенной в KV модели
         // 1. Определение сервиса и ключа KV - Обязательно
@@ -12122,18 +12202,8 @@ async function processTextMessage(chatId, messageText, envData) {
         // 2. Редактируем заглушку на "Готово!"
         await editMessage(chatId, workingMessageId, "✅ Готово!", TELEGRAM_BOT_TOKEN);
     
-        // 3. Обновляем историю и сохраняем
-        const MAX_HISTORY_LENGTH = 50;
-    
-        history.push({ role: 'user', text: messageText });
-        history.push({ role: 'model', text: modelResponse });
-    
-        if (history.length > MAX_HISTORY_LENGTH) {
-            history = history.slice(history.length - MAX_HISTORY_LENGTH); 
-        }
-    
-        // Запускаем сохранение истории в фоне
-        envData.ctx.waitUntil(CHAT_HISTORY_STORAGE.put(chatKey, JSON.stringify(history), { expirationTtl: 3600 * 24 }));
+        // 3. ОБНОВЛЯЕМ ИСТОРИЮ В S3 (ДЛЯ ЭКОСИСТЕМЫ)
+        await syncS3Chat(chatId, finalResponse, 'assistant', envData);
     
     } catch (e) {
         console.error("Critical error in chat processing:", e.message);
@@ -16600,13 +16670,14 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         BOTHUB_API_KEY: env.BOTHUB_API_KEY,
         KIEAI_API_KEY: env.KIEAI_API_KEY,
         LAST_PHOTO_STORAGE: env.LAST_PHOTO_STORAGE,
-        CHAT_HISTORY_STORAGE: env.CHAT_HISTORY_STORAGE,
         DEBUG_CHAT_ID: env.DEBUG_CHAT_ID,
         ADMIN_CHAT_ID: env.ADMIN_CHAT_ID,
         BOT_LOGS_STORAGE: env.BOT_LOGS_STORAGE, 
         AI_MODELS: AI_MODELS,
         AI: env.AI,
         ctx: ctx, 
+        YANDEX_S3_KEY_ID: env.YANDEX_S3_KEY_ID,
+        YANDEX_S3_SECRET: env.YANDEX_S3_SECRET,
         CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, 
         CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN, 
         FUSIONBRAIN_API_KEY: env.FUSIONBRAIN_API_KEY, 
@@ -18552,10 +18623,6 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                         // ✅ ИСПРАВЛЕНИЕ: Добавлен пятый аргумент envData в processStopCommand
                         ctx.waitUntil(processStopCommand(chatId, storage, token, envData));
                         break;
-                    case 'reset':
-                        await envData.CHAT_HISTORY_STORAGE.delete(chatKey);
-                        await sendMessageMarkdown(chatId, "✅ **История чата сброшена.** Можете начать новую беседу.", token);
-                        return true;
                     case 'setkey':
                         // --- ЛОГИКА /setkey (Запрос ключа + Reply Keyboard) ---
                         const setKeyPromise = (async () => {
