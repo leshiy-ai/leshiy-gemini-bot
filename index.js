@@ -1,5 +1,7 @@
 const { USER_DB_ADAPTER, FILES_DB_ADAPTER, TypedValues, runQuery, filesDriver } = require('./db_adapter');
 const nodeCrypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 // ВАЖНО: Удаляем FormData из зависимостей, берем нативную или фиксим через глобал
 // Если в Node 18+ есть глобальный FormData, используем его.
@@ -93,6 +95,48 @@ require.cache[require.resolve('node-fetch')] = {
 const worker = require('./worker');
 
 module.exports.handler = async (event, context) => {
+    // ==========================================
+    // 1. РАЗДАЧА ФРОНТЕНДА (HTML/CSS/JS)
+    // ==========================================
+    const requestPath = event.path || event.url || '/';
+    
+    // Если зашли в корень сайта — отдаем HTML
+    if (event.httpMethod === 'GET' && (requestPath === '/' || requestPath === '/index.html')) {
+        try {
+            const htmlPath = path.join(__dirname, 'public', 'index.html');
+            const html = fs.readFileSync(htmlPath, 'utf8');
+            return {
+                statusCode: 200,
+                headers: { 
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Cache-Control': 'no-cache' 
+                },
+                body: html
+            };
+        } catch (err) {
+            console.error("HTML read error:", err);
+            return { statusCode: 500, body: 'Frontend not found' };
+        }
+    }
+
+    // ==========================================
+    // 2. ОБРАБОТКА CORS (Для API запросов с фронтенда)
+    // ==========================================
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            },
+            body: ''
+        };
+    }
+
+    // ==========================================
+    // 3. ТВОЙ СУЩЕСТВУЮЩИЙ КОД (без изменений)
+    // ==========================================
     let body = {};
     try {
         body = typeof event.body === 'string' ? JSON.parse(event.body) : (event.body || {});
@@ -199,6 +243,7 @@ module.exports.handler = async (event, context) => {
         
         const responseHeaders = {};
         response.headers.forEach((v, k) => { responseHeaders[k] = v; });
+        responseHeaders['Access-Control-Allow-Origin'] = '*';
     
         // Ждем все остальные фоновые задачи воркера (логи, дебаги), 
         // которые он мог накидать в waitUntil
