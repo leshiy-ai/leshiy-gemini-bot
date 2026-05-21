@@ -16287,47 +16287,6 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // 1. Извлекаем URL и Path
     const url = new URL(request.url);
     const path = url.pathname;
-
-    // ==========================================
-    // НОВЫЕ ЭНДПОИНТЫ ДЛЯ ВЕБ-ФРОНТЕНДА
-    // ==========================================
-    
-    // 1. Эндпоинт текстового чата
-    if (url.pathname === '/api/chat' && request.method === 'POST') {
-        try {
-            const body = await request.json();
-            const userPrompt = body.messages ? body.messages[body.messages.length - 1].content : 'Пустое сообщение';
-            
-            // ТУТ ТЫ ВЫЗЫВАЕШЬ СВОЮ СУЩЕСТВУЮЩУЮ ЛОГИКУ GEMINI!
-            // Например, если у тебя есть функция generateText():
-            // const geminiReply = await processTextMessage(userPrompt, env);
-            
-            // Пока вернем заглушку для теста связи:
-            const geminiReply = `Ты написал: ${userPrompt}. Я Gemini, я жив!`;
-            
-            return new Response(JSON.stringify({ reply: geminiReply }), {
-                headers: { 'Content-Type': 'application/json' }
-            });
-        } catch (err) {
-            return new Response(JSON.stringify({ error: err.message }), {
-                status: 500,
-                headers: { 'Content-Type': 'application/json' }
-            });
-        }
-    }
-
-    // 2. Эндпоинт генерации картинок
-    if (url.pathname === '/api/image' && request.method === 'POST') {
-        // Твоя логика генерации картинок (SDXL/Gemini)
-        return new Response(JSON.stringify({ error: 'Image generation not implemented yet' }), {
-            status: 501,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
-
-    // ==========================================
-    // СТАРАЯ ЛОГИКА TELEGRAM-БОТА (идёт как обычно)
-    // ==========================================
     const workerDomain = url.origin || env.WORKER_DOMAIN;
     if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
         return handleKieAiCallback(request, env, ctx);
@@ -16389,6 +16348,274 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         }
         return new Response('Audio not found or invalid request.', { status: 404 });
     }
+
+// ==========================================
+    // 🌐 ВЕБ-API ЭНДПОИНТЫ ДЛЯ ФРОНТЕНДА
+    // ==========================================
+    // envData для веб-запросов: env + ctx + отключённый дебаг
+    const webEnvData = { ...env, ctx, DEBUG_ENABLED: false };
+
+    // ---- 1. POST /api/chat — Текстовый чат с Gemini ----
+    if (url.pathname === '/api/chat' && request.method === 'POST') {
+        try {
+            const body = await request.json();
+            const userMessage = body.message || '';
+            const chatHistory = body.history || []; // [{role: 'user'|'model', text: '...'}]
+
+            if (!userMessage.trim()) {
+                return new Response(JSON.stringify({ error: 'Пустое сообщение' }), {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            // Загружаем активную модель TEXT_TO_TEXT (из KV или дефолтную)
+            const { config } = await loadActiveConfig('TEXT_TO_TEXT', webEnvData, 'web');
+
+            // Вызываем AI-функцию: callGeminiChat(config, chatHistory, userMessageText, envData)
+            const reply = await config.FUNCTION(config, chatHistory, userMessage, webEnvData);
+
+            return new Response(JSON.stringify({ reply }), {
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        } catch (err) {
+            console.error('[WEB /api/chat] Error:', err.message);
+            return new Response(JSON.stringify({ error: 'Ошибка ИИ: ' + err.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        }
+    }
+
+    // ---- 2. POST /api/image — Генерация изображения ----
+    if (url.pathname === '/api/image' && request.method === 'POST') {
+        try {
+            const body = await request.json();
+            const prompt = body.prompt || '';
+            const size = body.size || '1024x1024'; // пока не используется, но на будущее
+
+            if (!prompt.trim()) {
+                return new Response(JSON.stringify({ error: 'Пустой промпт' }), {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            // Пробуем активную модель TEXT_TO_IMAGE
+            const { config: imageConfig } = await loadActiveConfig('TEXT_TO_IMAGE', webEnvData, 'web');
+            const imageResult = await imageConfig.FUNCTION(imageConfig, prompt, webEnvData);
+
+            // Результат может быть ArrayBuffer (Pollinations/Gemini/Stability) или string (BotHub URL/base64)
+            if (imageResult instanceof ArrayBuffer || (imageResult && imageResult.constructor?.name === 'ArrayBuffer')) {
+                // Бинарное изображение — конвертируем в base64
+                const base64 = Buffer.from(imageResult).toString('base64');
+                return new Response(JSON.stringify({ image: base64 }), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            } else if (typeof imageResult === 'string') {
+                // Строка — может быть URL или base64
+                if (imageResult.startsWith('http')) {
+                    return new Response(JSON.stringify({ url: imageResult }), {
+                        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                    });
+                } else {
+                    // Уже base64
+                    return new Response(JSON.stringify({ image: imageResult }), {
+                        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                    });
+                }
+            } else if (imageResult && imageResult.url) {
+                return new Response(JSON.stringify({ url: imageResult.url }), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            return new Response(JSON.stringify({ error: 'Неожиданный формат ответа' }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        } catch (err) {
+            console.error('[WEB /api/image] Error:', err.message);
+            return new Response(JSON.stringify({ error: 'Ошибка генерации: ' + err.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        }
+    }
+
+    // ---- 3. POST /api/video — Генерация видео (KIE.AI, асинхронно) ----
+    if (url.pathname === '/api/video' && request.method === 'POST') {
+        try {
+            const body = await request.json();
+            const prompt = body.prompt || '';
+
+            if (!prompt.trim()) {
+                return new Response(JSON.stringify({ error: 'Пустой промпт' }), {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            // KIE.AI генерация — используем упрощённый вызов без Telegram-зависимостей
+            const { config: videoConfig } = await loadActiveConfig('TEXT_TO_VIDEO', webEnvData, 'web');
+            const apiKey = webEnvData[videoConfig.API_KEY];
+
+            if (!apiKey) {
+                return new Response(JSON.stringify({ error: 'API ключ для видео не настроен' }), {
+                    status: 503,
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            // Создаём задачу через KIE.AI
+            const callbackUrl = `${workerDomain}/api/kieai-callback?chatId=web`;
+            const input = {
+                prompt: prompt,
+                aspect_ratio: '16:9',
+                duration: '5',
+                quality: '480p',
+                mode: 'normal'
+            };
+
+            const taskId = await createTaskKieAi('web', videoConfig, input, webEnvData, callbackUrl);
+
+            if (!taskId) {
+                return new Response(JSON.stringify({ error: 'Не удалось создать задачу генерации видео' }), {
+                    status: 502,
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            return new Response(JSON.stringify({ taskId: taskId, status: 'processing' }), {
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        } catch (err) {
+            console.error('[WEB /api/video] Error:', err.message);
+            return new Response(JSON.stringify({ error: 'Ошибка генерации видео: ' + err.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        }
+    }
+
+    // ---- 3.1 GET /api/video/status — Проверка статуса видео-задачи ----
+    if (url.pathname === '/api/video/status' && request.method === 'GET') {
+        try {
+            const taskId = url.searchParams.get('taskId');
+
+            if (!taskId) {
+                return new Response(JSON.stringify({ error: 'Missing taskId' }), {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            // Запрашиваем статус у KIE.AI
+            const apiKey = webEnvData.KIEAI_API_KEY;
+            const statusUrl = `https://api.kie.ai/v1/task/${taskId}`;
+
+            const statusResponse = await fetch(statusUrl, {
+                headers: { 'Authorization': `Bearer ${apiKey}` }
+            });
+
+            const statusData = await statusResponse.json();
+
+            if (statusData.status === 'completed' && statusData.output) {
+                // Ищем URL видео в ответе
+                const videoUrl = statusData.output.video_url || statusData.output.url || null;
+                return new Response(JSON.stringify({ status: 'completed', url: videoUrl }), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            } else if (statusData.status === 'failed') {
+                return new Response(JSON.stringify({ status: 'failed', error: statusData.error || 'Генерация не удалась' }), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            } else {
+                return new Response(JSON.stringify({ status: 'processing', progress: statusData.progress || 0 }), {
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+        } catch (err) {
+            console.error('[WEB /api/video/status] Error:', err.message);
+            return new Response(JSON.stringify({ error: err.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        }
+    }
+
+    // ---- 4. POST /api/audio — TTS озвучка текста ----
+    if (url.pathname === '/api/audio' && request.method === 'POST') {
+        try {
+            const body = await request.json();
+            const text = body.text || '';
+            const voice = body.voice || 'Female'; // Male или Female
+
+            if (!text.trim()) {
+                return new Response(JSON.stringify({ error: 'Пустой текст' }), {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                });
+            }
+
+            // Загружаем активную модель TEXT_TO_AUDIO
+            const { config: audioConfig } = await loadActiveConfig('TEXT_TO_AUDIO', webEnvData, 'web');
+
+            // Вызываем TTS-функцию
+            let audioBuffer;
+            if (audioConfig.FUNCTION.name === 'callGeminiTextToAudio' || audioConfig.SERVICE === 'GEMINI') {
+                audioBuffer = await audioConfig.FUNCTION(audioConfig, text, webEnvData, voice);
+            } else {
+                audioBuffer = await audioConfig.FUNCTION(audioConfig, text, webEnvData);
+            }
+
+            // Возвращаем как binary audio/mpeg
+            if (Buffer.isBuffer(audioBuffer)) {
+                return new Response(audioBuffer, {
+                    headers: {
+                        'Content-Type': 'audio/mpeg',
+                        'Content-Length': audioBuffer.length.toString(),
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'public, max-age=3600'
+                    }
+                });
+            } else if (audioBuffer instanceof ArrayBuffer || (audioBuffer && audioBuffer.constructor?.name === 'ArrayBuffer')) {
+                return new Response(audioBuffer, {
+                    headers: {
+                        'Content-Type': 'audio/mpeg',
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'public, max-age=3600'
+                    }
+                });
+            } else if (typeof audioBuffer === 'string') {
+                // base64 строка
+                const binary = base64ToArrayBuffer(audioBuffer);
+                return new Response(binary, {
+                    headers: {
+                        'Content-Type': 'audio/mpeg',
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'public, max-age=3600'
+                    }
+                });
+            }
+
+            return new Response(JSON.stringify({ error: 'Неожиданный формат аудио' }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        } catch (err) {
+            console.error('[WEB /api/audio] Error:', err.message);
+            return new Response(JSON.stringify({ error: 'Ошибка TTS: ' + err.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+        }
+    }
+
+    // ==========================================
+    // КОНЕЦ ВЕБ-API ЭНДПОИНТОВ
+    // ==========================================
+
     // -----------------------------
     // ✅ ВНЕШНЯЯ СТРАНИЦА WEBHOOKA
     // -----------------------------
