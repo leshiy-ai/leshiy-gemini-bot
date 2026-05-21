@@ -4,119 +4,1285 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gemini-AI</title>
+    <meta name="description" content="Gemini-AI — чат с ИИ, генерация изображений, видео и аудио">
+    <meta name="theme-color" content="#1a1a2e">
+    <link rel="manifest" href="/manifest.json">
+
+    <!-- VK Mini App -->
+    <meta property="vk:app_id" content="">
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+
     <style>
+        /* ===== RESET & BASE ===== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        
         :root {
-            --bg-main: #1a1a2e;
-            --bg-header: #16213e;
-            --bg-input: #0f3460;
-            --bg-msg-bot: #2d2d44;
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --bg-input: #0d1b36;
             --accent: #a855f7;
-            --text: #ffffff;
+            --accent-hover: #9333ea;
+            --accent-light: rgba(168, 85, 247, 0.15);
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: rgba(168, 85, 247, 0.2);
+            --danger: #ef4444;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --user-bubble: #0f3460;
+            --bot-bubble: #2d2d44;
+            --shadow: 0 4px 20px rgba(0,0,0,0.3);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --transition: 0.2s ease;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg-main); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; justify-content: center; }
-        .container { width: 100%; max-width: 800px; display: flex; flex-direction: column; }
-        
-        /* Header */
-        .header { padding: 15px; background: var(--bg-header); text-align: center; font-size: 20px; font-weight: bold; color: var(--accent); border-bottom: 1px solid #2d2d44; }
-        
-        /* Tabs */
-        .tabs { display: flex; background: var(--bg-header); border-bottom: 1px solid #2d2d44; }
-        .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; color: #aaa; transition: 0.3s; font-size: 14px; }
-        .tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
-        
-        /* Chat Area */
-        .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-        .msg { max-width: 80%; padding: 12px 16px; border-radius: 16px; line-height: 1.4; word-wrap: break-word; }
-        .msg.user { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
-        .msg.bot { align-self: flex-start; background: var(--bg-msg-bot); border-bottom-left-radius: 4px; }
-        
-        /* Input Area */
-        .input-area { padding: 15px; background: var(--bg-header); display: flex; gap: 10px; border-top: 1px solid #2d2d44; }
-        input { flex: 1; padding: 12px 16px; border-radius: 24px; border: none; background: var(--bg-input); color: white; font-size: 16px; outline: none; }
-        input::placeholder { color: #888; }
-        button { width: 48px; height: 48px; border-radius: 50%; border: none; background: var(--accent); color: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
-        button:active { transform: scale(0.9); }
-        button:disabled { background: #555; cursor: not-allowed; }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ===== LAYOUT ===== */
+        .app {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
+            position: relative;
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            z-index: 10;
+            flex-shrink: 0;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: -0.5px;
+        }
+
+        .header-logo span {
+            color: var(--text-primary);
+            font-weight: 400;
+        }
+
+        .header-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .credits-display {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 4px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background var(--transition);
+        }
+
+        .credits-display:hover { background: var(--accent-light); }
+
+        .credits-display .amount {
+            color: var(--warning);
+            font-weight: 600;
+        }
+
+        .auth-btn {
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .auth-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .auth-btn.logged-in { border-color: var(--success); color: var(--success); }
+
+        /* ===== MODE TABS ===== */
+        .mode-tabs {
+            display: flex;
+            padding: 8px 12px;
+            gap: 6px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+
+        .mode-tab {
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all var(--transition);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .mode-tab:hover { border-color: var(--accent); color: var(--text-primary); }
+
+        .mode-tab.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .mode-tab .cost {
+            font-size: 10px;
+            opacity: 0.7;
+        }
+
+        /* ===== CHAT AREA ===== */
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scroll-behavior: smooth;
+        }
+
+        .chat-area::-webkit-scrollbar { width: 4px; }
+        .chat-area::-webkit-scrollbar-track { background: transparent; }
+        .chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* Welcome screen */
+        .welcome {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            gap: 16px;
+            padding: 20px;
+        }
+
+        .welcome-icon {
+            font-size: 48px;
+            opacity: 0.5;
+        }
+
+        .welcome h2 {
+            font-size: 22px;
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .welcome p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            max-width: 320px;
+            line-height: 1.5;
+        }
+
+        .welcome-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 8px;
+        }
+
+        .suggestion {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .suggestion:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+            background: var(--accent-light);
+        }
+
+        /* Message bubbles */
+        .message {
+            max-width: 85%;
+            padding: 10px 14px;
+            border-radius: var(--radius);
+            line-height: 1.5;
+            font-size: 14px;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: var(--user-bubble);
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+            background: var(--bot-bubble);
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--danger);
+        }
+
+        .message.bot code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: 'Fira Code', 'Consolas', monospace;
+        }
+
+        .message.bot pre {
+            background: rgba(0,0,0,0.3);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            overflow-x: auto;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+
+        .message.bot pre code {
+            background: none;
+            padding: 0;
+        }
+
+        /* Typing indicator */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 10px 14px;
+            align-self: flex-start;
+            background: var(--bot-bubble);
+            border-radius: var(--radius);
+            border-bottom-left-radius: 4px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            animation: typingBounce 1.4s ease-in-out infinite;
+        }
+
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-6px); }
+        }
+
+        /* Generated image */
+        .message img.generated-image {
+            max-width: 100%;
+            border-radius: var(--radius-sm);
+            margin-top: 8px;
+            cursor: pointer;
+        }
+
+        /* ===== MEDIA PANELS ===== */
+        .media-panel {
+            padding: 16px;
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .media-panel h3 {
+            font-size: 16px;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+
+        .media-panel p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--transition);
+            color: var(--text-secondary);
+        }
+
+        .upload-zone:hover {
+            border-color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .upload-zone .icon { font-size: 32px; margin-bottom: 8px; }
+        .upload-zone .label { font-size: 14px; }
+        .upload-zone .hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+        .size-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .size-option {
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .size-option:hover { border-color: var(--accent); }
+        .size-option.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+        .generate-btn {
+            padding: 12px 24px;
+            border-radius: var(--radius-sm);
+            border: none;
+            background: var(--accent);
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .generate-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .result-area {
+            min-height: 200px;
+            border-radius: var(--radius);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .result-area img, .result-area video {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: var(--radius-sm);
+        }
+
+        .result-placeholder {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* ===== INPUT AREA ===== */
+        .input-area {
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .input-wrapper textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-input);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            resize: none;
+            max-height: 120px;
+            line-height: 1.4;
+            transition: border-color var(--transition);
+        }
+
+        .input-wrapper textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .input-wrapper textarea::placeholder { color: var(--text-muted); }
+
+        .send-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: var(--radius-sm);
+            border: none;
+            background: var(--accent);
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover { background: var(--accent-hover); transform: scale(1.05); }
+        .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        .input-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-align: center;
+        }
+
+        /* ===== PURCHASE DIALOG ===== */
+        .dialog-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .dialog-overlay.open { display: flex; }
+
+        .dialog {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            max-width: 400px;
+            width: 100%;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .dialog h3 {
+            font-size: 18px;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+
+        .dialog p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        .plan-card {
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .plan-card:hover { border-color: var(--accent); background: var(--accent-light); }
+        .plan-card.selected { border-color: var(--accent); background: var(--accent-light); }
+
+        .plan-card .plan-name { font-weight: 600; font-size: 15px; }
+        .plan-card .plan-price { color: var(--accent); font-size: 14px; margin-top: 4px; }
+        .plan-card .plan-desc { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+        .dialog-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .btn-secondary {
+            flex: 1;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            flex: 1;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            border: none;
+            background: var(--accent);
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* ===== AUTH DIALOG ===== */
+        .auth-providers {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .auth-provider-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .auth-provider-btn:hover { border-color: var(--accent); background: var(--accent-light); }
+
+        .auth-provider-btn.vk { border-color: #0077ff; }
+        .auth-provider-btn.vk:hover { background: rgba(0,119,255,0.15); }
+
+        .auth-provider-btn.tg { border-color: #26a5e4; }
+        .auth-provider-btn.tg:hover { background: rgba(38,165,228,0.15); }
+
+        /* ===== TOAST ===== */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toast {
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            animation: slideDown 0.3s ease, fadeOut 0.3s ease 2.7s;
+            max-width: 350px;
+            text-align: center;
+        }
+
+        .toast.error { background: rgba(239,68,68,0.9); color: white; }
+        .toast.success { background: rgba(34,197,94,0.9); color: white; }
+        .toast.info { background: rgba(168,85,247,0.9); color: white; }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 400px) {
+            .mode-tab { padding: 5px 10px; font-size: 12px; }
+            .header-logo { font-size: 17px; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">✨ Gemini-AI</div>
-        
-        <div class="tabs">
-            <div class="tab active" onclick="setMode('chat')">Чат</div>
-            <div class="tab" onclick="setMode('image')">Изображение</div>
-            <div class="tab" onclick="setMode('video')">Видео</div>
+    <div class="app">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="header-left">
+                <div class="header-logo">Gemini<span>-AI</span></div>
+                <div class="header-badge">Beta</div>
+            </div>
+            <div class="header-right">
+                <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()" title="Купить кредиты">
+                    <span>&#9733;</span>
+                    <span class="amount" id="creditsAmount">80</span>&#162;
+                </div>
+                <button class="auth-btn" id="authBtn" onclick="openAuthDialog()">Войти</button>
+            </div>
         </div>
 
-        <div class="messages" id="chatBox">
-            <div class="msg bot">Привет! Я Gemini-AI. Напиши мне что-нибудь, и я отвечу.</div>
+        <!-- MODE TABS -->
+        <div class="mode-tabs" id="modeTabs">
+            <button class="mode-tab active" data-mode="chat" onclick="switchMode('chat')">
+                Чат
+            </button>
+            <button class="mode-tab" data-mode="image" onclick="switchMode('image')">
+                Изображение <span class="cost">4&#162;</span>
+            </button>
+            <button class="mode-tab" data-mode="video" onclick="switchMode('video')">
+                Видео <span class="cost">20&#162;</span>
+            </button>
+            <button class="mode-tab" data-mode="audio" onclick="switchMode('audio')">
+                Аудио <span class="cost">2&#162;</span>
+            </button>
         </div>
 
+        <!-- CHAT AREA -->
+        <div class="chat-area" id="chatArea">
+            <div class="welcome" id="welcomeScreen">
+                <div class="welcome-icon">&#10024;</div>
+                <h2>Привет! Я Gemini-AI</h2>
+                <p>Я могу отвечать на вопросы, генерировать изображения, видео и аудио. Выбери режим выше и начни общение!</p>
+                <div class="welcome-suggestions">
+                    <button class="suggestion" onclick="useSuggestion('Расскажи о себе')">Расскажи о себе</button>
+                    <button class="suggestion" onclick="useSuggestion('Напиши стихотворение о космосе')">Стих о космосе</button>
+                    <button class="suggestion" onclick="useSuggestion('Объясни квантовую механику простыми словами')">Квантовая механика</button>
+                    <button class="suggestion" onclick="useSuggestion('Придумай рецепт ужина из того что есть в холодильнике')">Рецепт ужина</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- IMAGE PANEL (hidden by default) -->
+        <div class="media-panel" id="imagePanel" style="display:none">
+            <div>
+                <h3>&#127912; Генерация изображения</h3>
+                <p>Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ. Стоимость: 4&#162; за генерацию.</p>
+            </div>
+            <div>
+                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер:</label>
+                <div class="size-selector" id="imageSizeSelector">
+                    <button class="size-option active" data-size="1024x1024" onclick="selectImageSize(this)">1024x1024</button>
+                    <button class="size-option" data-size="1344x768" onclick="selectImageSize(this)">1344x768</button>
+                    <button class="size-option" data-size="768x1344" onclick="selectImageSize(this)">768x1344</button>
+                    <button class="size-option" data-size="1440x720" onclick="selectImageSize(this)">1440x720</button>
+                </div>
+            </div>
+            <div class="result-area" id="imageResult">
+                <span class="result-placeholder">Здесь появится изображение</span>
+            </div>
+        </div>
+
+        <!-- VIDEO PANEL (hidden by default) -->
+        <div class="media-panel" id="videoPanel" style="display:none">
+            <div>
+                <h3>&#127916; Генерация видео</h3>
+                <p>Опиши сцену, и я создам короткое видео с помощью ИИ. Стоимость: 20&#162; за генерацию.</p>
+            </div>
+            <div class="result-area" id="videoResult">
+                <span class="result-placeholder">Здесь появится видео</span>
+            </div>
+        </div>
+
+        <!-- AUDIO PANEL (hidden by default) -->
+        <div class="media-panel" id="audioPanel" style="display:none">
+            <div>
+                <h3>&#127925; Генерация аудио</h3>
+                <p>Напиши текст, и я озвучу его с помощью ИИ. Стоимость: 2&#162; за генерацию.</p>
+            </div>
+            <div class="result-area" id="audioResult">
+                <span class="result-placeholder">Здесь появится аудиоплеер</span>
+            </div>
+        </div>
+
+        <!-- INPUT AREA -->
         <div class="input-area">
-            <input type="text" id="userInput" placeholder="Написать сообщение..." autocomplete="off">
-            <button id="sendBtn" onclick="sendMessage()">➤</button>
+            <div class="input-row">
+                <div class="input-wrapper">
+                    <textarea id="userInput" rows="1" 
+                        placeholder="Напишите сообщение..." 
+                        onkeydown="handleKeyDown(event)"
+                        oninput="autoResize(this)"></textarea>
+                </div>
+                <button class="send-btn" id="sendBtn" onclick="sendOrGenerate()" title="Отправить">
+                    &#10148;
+                </button>
+            </div>
+            <div class="input-hint" id="inputHint">Enter — отправить, Shift+Enter — новая строка</div>
         </div>
     </div>
 
-    <script>
-        let currentMode = 'chat';
-        const API_URL = '/api/chat'; // Запрос пойдет на тот же домен!
-
-        function setMode(mode) {
-            currentMode = mode;
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
+    <!-- PURCHASE DIALOG -->
+    <div class="dialog-overlay" id="purchaseDialog">
+        <div class="dialog">
+            <h3>&#9733; Купить кредиты</h3>
+            <p>Кредиты нужны для генерации медиа. 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
             
-            const input = document.getElementById('userInput');
-            if (mode === 'image') input.placeholder = 'Опиши изображение...';
-            else if (mode === 'video') input.placeholder = 'Опиши видео...';
-            else input.placeholder = 'Написать сообщение...';
-        }
+            <div class="plan-card selected" onclick="selectPlan(this, 200)">
+                <div class="plan-name">200 &#162;</div>
+                <div class="plan-price">1 000 &#8381;</div>
+                <div class="plan-desc">~50 изображений или 10 видео</div>
+            </div>
+            <div class="plan-card" onclick="selectPlan(this, 500)">
+                <div class="plan-name">500 &#162;</div>
+                <div class="plan-price">2 500 &#8381;</div>
+                <div class="plan-desc">~125 изображений или 25 видео</div>
+            </div>
+            <div class="plan-card" onclick="selectPlan(this, 1000)">
+                <div class="plan-name">1 000 &#162;</div>
+                <div class="plan-price">5 000 &#8381;</div>
+                <div class="plan-desc">~250 изображений или 50 видео</div>
+            </div>
 
-        // Отправка по Enter
-        document.getElementById('userInput').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') sendMessage();
+            <div style="margin-top:12px">
+                <div class="plan-card" onclick="selectPlan(this, 'vip')">
+                    <div class="plan-name">&#128081; VIP — 30 дней</div>
+                    <div class="plan-price">1 000 &#8381;/мес</div>
+                    <div class="plan-desc">Безлимитный чат + 100&#162;/день на медиа</div>
+                </div>
+            </div>
+
+            <div class="dialog-actions">
+                <button class="btn-secondary" onclick="closePurchaseDialog()">Отмена</button>
+                <button class="btn-primary" onclick="purchaseCredits()">Оплатить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUTH DIALOG -->
+    <div class="dialog-overlay" id="authDialog">
+        <div class="dialog">
+            <h3>&#128274; Войти в аккаунт</h3>
+            <p>Войдите, чтобы сохранять историю чата и покупать кредиты.</p>
+            <div class="auth-providers">
+                <button class="auth-provider-btn vk" onclick="authVK()">
+                    &#9670; Войти через VK
+                </button>
+                <button class="auth-provider-btn tg" onclick="authTG()">
+                    &#9993; Войти через Telegram
+                </button>
+            </div>
+            <div class="dialog-actions" style="margin-top:16px">
+                <button class="btn-secondary" onclick="closeAuthDialog()">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+    // ============================================
+    //  Gemini-AI Frontend — Pure JS, no frameworks
+    // ============================================
+
+    const API_URL = '';  // Requests go to same origin (Yandex Cloud Function)
+
+    // ---- STATE ----
+    let currentMode = 'chat';
+    let credits = 80;
+    let isProcessing = false;
+    let selectedImageSize = '1024x1024';
+    let selectedPlan = 200;
+    let user = null;
+    let chatHistory = [];
+
+    // ---- DOM REFS ----
+    const chatArea = document.getElementById('chatArea');
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const inputHint = document.getElementById('inputHint');
+    const creditsAmount = document.getElementById('creditsAmount');
+    const authBtn = document.getElementById('authBtn');
+
+    // ---- MODE SWITCHING ----
+    function switchMode(mode) {
+        currentMode = mode;
+
+        // Update tabs
+        document.querySelectorAll('.mode-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.mode === mode);
         });
 
-        async function sendMessage() {
-            const input = document.getElementById('userInput');
-            const text = input.value.trim();
-            if (!text) return;
+        // Show/hide panels
+        const chatArea = document.getElementById('chatArea');
+        const imagePanel = document.getElementById('imagePanel');
+        const videoPanel = document.getElementById('videoPanel');
+        const audioPanel = document.getElementById('audioPanel');
 
-            addMessage(text, 'user');
-            input.value = '';
-            
-            const btn = document.getElementById('sendBtn');
-            btn.disabled = true;
-            btn.innerText = '⏳';
+        chatArea.style.display = (mode === 'chat') ? 'flex' : 'none';
+        imagePanel.style.display = (mode === 'image') ? 'flex' : 'none';
+        videoPanel.style.display = (mode === 'video') ? 'flex' : 'none';
+        audioPanel.style.display = (mode === 'audio') ? 'flex' : 'none';
 
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: text, mode: currentMode })
-                });
-                
-                const data = await response.json();
-                addMessage(data.reply || data.error || 'Пустой ответ', 'bot');
-            } catch (err) {
-                addMessage('Ошибка сети: ' + err.message, 'bot');
-            } finally {
-                btn.disabled = false;
-                btn.innerText = '➤';
+        // Update input placeholder and hint
+        const placeholders = {
+            chat: 'Напишите сообщение...',
+            image: 'Опишите изображение...',
+            video: 'Опишите видео-сцену...',
+            audio: 'Введите текст для озвучки...'
+        };
+        const hints = {
+            chat: 'Enter — отправить, Shift+Enter — новая строка',
+            image: 'Стоимость генерации: 4\u00A2',
+            video: 'Стоимость генерации: 20\u00A2',
+            audio: 'Стоимость генерации: 2\u00A2'
+        };
+        userInput.placeholder = placeholders[mode];
+        inputHint.textContent = hints[mode];
+    }
+
+    // ---- CHAT LOGIC ----
+    function useSuggestion(text) {
+        userInput.value = text;
+        autoResize(userInput);
+        sendOrGenerate();
+    }
+
+    function handleKeyDown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendOrGenerate();
+        }
+    }
+
+    function autoResize(el) {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
+
+    async function sendOrGenerate() {
+        const text = userInput.value.trim();
+        if (!text || isProcessing) return;
+
+        if (currentMode === 'chat') {
+            await sendChat(text);
+        } else if (currentMode === 'image') {
+            await generateImage(text);
+        } else if (currentMode === 'video') {
+            await generateVideo(text);
+        } else if (currentMode === 'audio') {
+            await generateAudio(text);
+        }
+    }
+
+    async function sendChat(text) {
+        isProcessing = true;
+        sendBtn.disabled = true;
+        userInput.value = '';
+        autoResize(userInput);
+
+        // Hide welcome
+        if (welcomeScreen) welcomeScreen.style.display = 'none';
+
+        // Add user message
+        addMessage(text, 'user');
+        chatHistory.push({ role: 'user', content: text });
+
+        // Show typing
+        const typingEl = showTyping();
+
+        try {
+            const response = await fetch(API_URL + '/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: chatHistory,
+                    mode: 'chat'
+                })
+            });
+
+            removeTyping(typingEl);
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Ошибка сервера: ' + response.status);
             }
+
+            const data = await response.json();
+            const reply = data.reply || data.content || '(пустой ответ)';
+            addMessage(reply, 'bot');
+            chatHistory.push({ role: 'assistant', content: reply });
+
+        } catch (err) {
+            removeTyping(typingEl);
+            addMessage('Ошибка: ' + err.message, 'error');
+            // Remove last user message from history on error
+            chatHistory.pop();
         }
 
-        function addMessage(text, sender) {
-            const chatBox = document.getElementById('chatBox');
-            const div = document.createElement('div');
-            div.className = `msg ${sender}`;
-            div.textContent = text;
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight;
+        isProcessing = false;
+        sendBtn.disabled = false;
+        userInput.focus();
+    }
+
+    async function generateImage(prompt) {
+        if (credits < 4) {
+            showToast('Недостаточно кредитов! Нужно 4\u00A2', 'error');
+            openPurchaseDialog();
+            return;
         }
+
+        isProcessing = true;
+        sendBtn.disabled = true;
+        userInput.value = '';
+        autoResize(userInput);
+
+        const resultArea = document.getElementById('imageResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую изображение...</span>';
+
+        try {
+            const response = await fetch(API_URL + '/api/image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, size: selectedImageSize })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Ошибка генерации');
+            }
+
+            // Response can be JSON with base64 or URL
+            const contentType = response.headers.get('Content-Type') || '';
+            
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                if (data.image) {
+                    // base64 image
+                    resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.image + '" alt="' + prompt + '">';
+                    credits -= 4;
+                    updateCreditsDisplay();
+                    showToast('Изображение создано! -4\u00A2', 'success');
+                } else if (data.url) {
+                    resultArea.innerHTML = '<img class="generated-image" src="' + data.url + '" alt="' + prompt + '">';
+                    credits -= 4;
+                    updateCreditsDisplay();
+                    showToast('Изображение создано! -4\u00A2', 'success');
+                } else {
+                    throw new Error('Сервер не вернул изображение');
+                }
+            } else {
+                // Binary image response
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">';
+                credits -= 4;
+                updateCreditsDisplay();
+                showToast('Изображение создано! -4\u00A2', 'success');
+            }
+
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка генерации: ' + err.message, 'error');
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
+    }
+
+    async function generateVideo(prompt) {
+        if (credits < 20) {
+            showToast('Недостаточно кредитов! Нужно 20\u00A2', 'error');
+            openPurchaseDialog();
+            return;
+        }
+
+        isProcessing = true;
+        sendBtn.disabled = true;
+        userInput.value = '';
+        autoResize(userInput);
+
+        const resultArea = document.getElementById('videoResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую видео (может занять до минуты)...</span>';
+
+        try {
+            const response = await fetch(API_URL + '/api/video', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Ошибка генерации');
+            }
+
+            const data = await response.json();
+            if (data.url) {
+                resultArea.innerHTML = '<video controls autoplay loop><source src="' + data.url + '" type="video/mp4"></video>';
+                credits -= 20;
+                updateCreditsDisplay();
+                showToast('Видео создано! -20\u00A2', 'success');
+            } else {
+                throw new Error('Сервер не вернул видео');
+            }
+
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка генерации: ' + err.message, 'error');
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
+    }
+
+    async function generateAudio(text) {
+        if (credits < 2) {
+            showToast('Недостаточно кредитов! Нужно 2\u00A2', 'error');
+            openPurchaseDialog();
+            return;
+        }
+
+        isProcessing = true;
+        sendBtn.disabled = true;
+        userInput.value = '';
+        autoResize(userInput);
+
+        const resultArea = document.getElementById('audioResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую аудио...</span>';
+
+        try {
+            const response = await fetch(API_URL + '/api/audio/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Ошибка генерации');
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio>';
+            credits -= 2;
+            updateCreditsDisplay();
+            showToast('Аудио создано! -2\u00A2', 'success');
+
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка генерации: ' + err.message, 'error');
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
+    }
+
+    // ---- UI HELPERS ----
+    function addMessage(text, sender) {
+        const div = document.createElement('div');
+        div.className = 'message ' + sender;
+        
+        // Simple markdown-like rendering for bot messages
+        if (sender === 'bot') {
+            div.innerHTML = formatBotMessage(text);
+        } else {
+            div.textContent = text;
+        }
+
+        chatArea.appendChild(div);
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function formatBotMessage(text) {
+        // Escape HTML first
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // Code blocks: ```...```
+        html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+        // Inline code: `...`
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        // Bold: **...**
+        html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+        // Italic: *...*
+        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>');
+        // Line breaks
+        html = html.replace(/\n/g, '<br>');
+
+        return html;
+    }
+
+    function showTyping() {
+        const div = document.createElement('div');
+        div.className = 'typing-indicator';
+        div.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+        chatArea.appendChild(div);
+        chatArea.scrollTop = chatArea.scrollHeight;
+        return div;
+    }
+
+    function removeTyping(el) {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+
+    function updateCreditsDisplay() {
+        creditsAmount.textContent = credits;
+    }
+
+    // ---- IMAGE SIZE ----
+    function selectImageSize(btn) {
+        document.querySelectorAll('#imageSizeSelector .size-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedImageSize = btn.dataset.size;
+    }
+
+    // ---- PURCHASE DIALOG ----
+    function openPurchaseDialog() {
+        document.getElementById('purchaseDialog').classList.add('open');
+    }
+
+    function closePurchaseDialog() {
+        document.getElementById('purchaseDialog').classList.remove('open');
+    }
+
+    function selectPlan(el, plan) {
+        document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+        el.classList.add('selected');
+        selectedPlan = plan;
+    }
+
+    function purchaseCredits() {
+        showToast('Оплата через Telegram-бота (скоро!)', 'info');
+        closePurchaseDialog();
+    }
+
+    // ---- AUTH DIALOG ----
+    function openAuthDialog() {
+        if (user) {
+            // Already logged in — logout
+            user = null;
+            authBtn.textContent = 'Войти';
+            authBtn.classList.remove('logged-in');
+            showToast('Вы вышли из аккаунта', 'info');
+            return;
+        }
+        document.getElementById('authDialog').classList.add('open');
+    }
+
+    function closeAuthDialog() {
+        document.getElementById('authDialog').classList.remove('open');
+    }
+
+    function authVK() {
+        // VK Mini App auth or OAuth
+        if (window.vkBridge) {
+            vkBridge.send('VKWebAppGetUserInfo').then(info => {
+                user = { id: info.id, name: info.first_name + ' ' + info.last_name, provider: 'vk' };
+                authBtn.textContent = info.first_name;
+                authBtn.classList.add('logged-in');
+                closeAuthDialog();
+                showToast('Добро пожаловать, ' + info.first_name + '!', 'success');
+            }).catch(() => {
+                showToast('Ошибка авторизации VK', 'error');
+            });
+        } else {
+            showToast('VK авторизация доступна только внутри VK Mini App', 'info');
+            closeAuthDialog();
+        }
+    }
+
+    function authTG() {
+        // Telegram Login Widget
+        showToast('Telegram авторизация (скоро!)', 'info');
+        closeAuthDialog();
+    }
+
+    // ---- TOAST ----
+    function showToast(message, type) {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + (type || 'info');
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
+    }
+
+    // ---- VK MINI APP INIT ----
+    if (window.vkBridge) {
+        vkBridge.send('VKWebAppInit').then(() => {
+            console.log('VK Mini App initialized');
+        }).catch(err => {
+            console.log('Not in VK context:', err);
+        });
+    }
+
+    // ---- KEYBOARD FOCUS ----
+    userInput.focus();
+
+    // ---- CLICK OUTSIDE DIALOGS ----
+    document.getElementById('purchaseDialog').addEventListener('click', function(e) {
+        if (e.target === this) closePurchaseDialog();
+    });
+    document.getElementById('authDialog').addEventListener('click', function(e) {
+        if (e.target === this) closeAuthDialog();
+    });
     </script>
 </body>
 </html>
