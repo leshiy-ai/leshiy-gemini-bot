@@ -16349,7 +16349,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         return new Response('Audio not found or invalid request.', { status: 404 });
     }
 
-// ==========================================
+    // ==========================================
     // 🌐 ВЕБ-API ЭНДПОИНТЫ ДЛЯ ФРОНТЕНДА
     // ==========================================
     // envData для веб-запросов: env + ctx + отключённый дебаг
