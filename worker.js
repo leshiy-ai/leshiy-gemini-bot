@@ -16287,7 +16287,47 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // 1. Извлекаем URL и Path
     const url = new URL(request.url);
     const path = url.pathname;
-    // 2. Определяем домен
+
+    // ==========================================
+    // НОВЫЕ ЭНДПОИНТЫ ДЛЯ ВЕБ-ФРОНТЕНДА
+    // ==========================================
+    
+    // 1. Эндпоинт текстового чата
+    if (url.pathname === '/api/chat' && request.method === 'POST') {
+        try {
+            const body = await request.json();
+            const userPrompt = body.messages ? body.messages[body.messages.length - 1].content : 'Пустое сообщение';
+            
+            // ТУТ ТЫ ВЫЗЫВАЕШЬ СВОЮ СУЩЕСТВУЮЩУЮ ЛОГИКУ GEMINI!
+            // Например, если у тебя есть функция generateText():
+            // const geminiReply = await processTextMessage(userPrompt, env);
+            
+            // Пока вернем заглушку для теста связи:
+            const geminiReply = `Ты написал: ${userPrompt}. Я Gemini, я жив!`;
+            
+            return new Response(JSON.stringify({ reply: geminiReply }), {
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (err) {
+            return new Response(JSON.stringify({ error: err.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+    }
+
+    // 2. Эндпоинт генерации картинок
+    if (url.pathname === '/api/image' && request.method === 'POST') {
+        // Твоя логика генерации картинок (SDXL/Gemini)
+        return new Response(JSON.stringify({ error: 'Image generation not implemented yet' }), {
+            status: 501,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
+    // ==========================================
+    // СТАРАЯ ЛОГИКА TELEGRAM-БОТА (идёт как обычно)
+    // ==========================================
     const workerDomain = url.origin || env.WORKER_DOMAIN;
     if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
         return handleKieAiCallback(request, env, ctx);
