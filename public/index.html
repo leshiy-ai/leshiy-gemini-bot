@@ -208,6 +208,20 @@
             padding: 20px;
         }
 
+        .icon-container {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .app-icon {
+            max-width: 100%;
+            max-height: 100%;
+        }
+        
         .welcome-icon {
             font-size: 48px;
             opacity: 0.5;
@@ -702,7 +716,9 @@
         <!-- CHAT AREA -->
         <div class="chat-area" id="chatArea">
             <div class="welcome" id="welcomeScreen">
-                <div class="welcome-icon">&#10024;</div>
+                <div class="icon-container">
+                    <img src="/Gemini.png" alt="Leshiy AI Icon" class="app-icon">
+                </div>
                 <h2>Привет! Я Gemini-AI</h2>
                 <p>Я могу отвечать на вопросы, генерировать изображения, видео и аудио. Выбери режим выше и начни общение!</p>
                 <div class="welcome-suggestions">
