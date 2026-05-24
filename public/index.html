@@ -1479,10 +1479,14 @@
             let reply = '(пустой ответ)';
             if (contentType && contentType.includes("application/json")) {
                 const data = await response.json();
+                // webHandler контракт: { success, error, credits_left, data: {type, content} }
+                if (data.success === false) {
+                    throw new Error(data.error || 'Ошибка сервера');
+                }
                 reply = data.data?.content || data.reply || data.content || reply;
                 // Обновляем баланс если вернулся
-                if (data.credits_left !== undefined) {
-                    credits = data.credits_left;
+                if (data.credits_left !== undefined && data.credits_left !== null) {
+                    credits = typeof data.credits_left === 'number' ? data.credits_left : credits;
                     updateCreditsDisplay();
                 }
             } else {
@@ -1991,5 +1995,6 @@
         if (e.target === this) closeAuthDialog();
     });
     </script>
+	
 </body>
 </html>
