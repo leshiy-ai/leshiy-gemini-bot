@@ -6,9 +6,14 @@
     <title>Gemini-AI</title>
     <meta name="description" content="Gemini-AI — чат с ИИ, генерация изображений, видео и аудио">
     <meta name="theme-color" content="#1a1a2e">
+    <link rel="icon" href="Gemini.png" type="image/png">
 
+    <!-- VK Bridge для авторизации через VK Mini App -->
     <meta property="vk:app_id" content="">
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+
+    <!-- Telegram Login Widget -->
+    <script src="https://telegram.org/js/telegram-widget.js?22" async></script>
 
     <style>
         /* ===== RESET & BASE ===== */
@@ -29,6 +34,7 @@
             --danger: #ef4444;
             --success: #22c55e;
             --warning: #f59e0b;
+            --free: #22c55e;
             --user-bubble: #0f3460;
             --bot-bubble: #2d2d44;
             --shadow: 0 4px 20px rgba(0,0,0,0.3);
@@ -126,6 +132,10 @@
             font-weight: 600;
         }
 
+        .credits-display.vip .amount {
+            color: var(--accent);
+        }
+
         .auth-btn {
             padding: 5px 12px;
             border-radius: 20px;
@@ -178,6 +188,45 @@
             font-size: 10px;
             opacity: 0.7;
         }
+
+        .mode-tab .free-badge {
+            font-size: 10px;
+            color: var(--free);
+        }
+
+        /* ===== SUB-HEADER (настройки каждого режима) ===== */
+        .sub-header {
+            display: none;
+            padding: 6px 12px;
+            gap: 6px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            overflow-x: auto;
+            align-items: center;
+            flex-wrap: nowrap;
+        }
+        .sub-header.active { display: flex; }
+
+        .sub-option {
+            padding: 4px 10px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all var(--transition);
+            white-space: nowrap;
+        }
+        .sub-option:hover { border-color: var(--accent); }
+        .sub-option.active { background: var(--accent); border-color: var(--accent); color: white; }
+        .sub-option.free { border-color: rgba(34,197,94,0.4); color: var(--free); }
+        .sub-option.free.active { background: var(--free); color: white; }
+        .sub-option .price { font-size: 10px; opacity: 0.7; }
+
+        .sub-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+        .sub-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
         /* ===== CHAT AREA ===== */
         .chat-area {
@@ -359,10 +408,12 @@
             padding: 16px;
             flex: 1;
             overflow-y: auto;
-            display: flex;
+            display: none;
             flex-direction: column;
             gap: 16px;
         }
+
+        .media-panel.active { display: flex; }
 
         .media-panel h3 {
             font-size: 16px;
@@ -443,6 +494,7 @@
             align-items: center;
             justify-content: center;
             overflow: hidden;
+            flex-direction: column;
         }
 
         .result-area img, .result-area video {
@@ -671,15 +723,30 @@
             to { opacity: 0; }
         }
 
+        /* ===== LOADING SKELETON ===== */
+        .skeleton {
+            background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-secondary) 50%, var(--bg-tertiary) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 400px) {
             .mode-tab { padding: 5px 10px; font-size: 12px; }
             .header-logo { font-size: 17px; }
+            .sub-option { font-size: 11px; padding: 3px 8px; }
         }
     </style>
 </head>
 <body>
     <div class="app">
+        <!-- HEADER -->
         <div class="header">
             <div class="header-left">
                 <div class="header-logo">Gemini<span>-AI</span></div>
@@ -688,27 +755,55 @@
             <div class="header-right">
                 <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()" title="Купить кредиты">
                     <span>&#9733;</span>
-                    <span class="amount" id="creditsAmount">80</span>&#162;
+                    <span class="amount" id="creditsAmount">--</span>&#162;
                 </div>
                 <button class="auth-btn" id="authBtn" onclick="openAuthDialog()">Войти</button>
             </div>
         </div>
 
+        <!-- MODE TABS -->
         <div class="mode-tabs" id="modeTabs">
             <button class="mode-tab active" data-mode="chat" onclick="switchMode('chat')">
-                Чат
+                Чат <span class="free-badge">&#10003;</span>
             </button>
             <button class="mode-tab" data-mode="image" onclick="switchMode('image')">
-                Изображение <span class="cost">4&#162;</span>
+                Изображение
             </button>
             <button class="mode-tab" data-mode="video" onclick="switchMode('video')">
-                Видео <span class="cost">20&#162;</span>
+                Видео <span class="cost">20&#162;+</span>
             </button>
             <button class="mode-tab" data-mode="audio" onclick="switchMode('audio')">
-                Аудио <span class="cost">2&#162;</span>
+                Аудио
             </button>
         </div>
 
+        <!-- SUB-HEADERS — настройки каждого режима, заполняются динамически из /api/models -->
+        <div class="sub-header active" id="subChat">
+            <span class="sub-label" style="color:var(--free)">&#10003; Бесплатно</span>
+            <div class="sub-divider"></div>
+            <div id="chatModels" class="skeleton" style="height:24px;width:200px"></div>
+        </div>
+        <div class="sub-header" id="subImage">
+            <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
+            <div class="sub-divider"></div>
+            <div id="imageRatio"></div>
+        </div>
+        <div class="sub-header" id="subVideo">
+            <div id="videoModels" class="skeleton" style="height:24px;width:200px"></div>
+            <div class="sub-divider"></div>
+            <div id="videoRatio"></div>
+            <div class="sub-divider"></div>
+            <div id="videoQuality"></div>
+        </div>
+        <div class="sub-header" id="subAudio">
+            <div id="audioModeSelect"></div>
+            <div class="sub-divider"></div>
+            <div id="audioModels" class="skeleton" style="height:24px;width:200px"></div>
+            <div class="sub-divider"></div>
+            <div id="audioVoice"></div>
+        </div>
+
+        <!-- CHAT AREA -->
         <div class="chat-area" id="chatArea">
             <div class="welcome" id="welcomeScreen">
                 <div class="icon-container">
@@ -725,10 +820,11 @@
             </div>
         </div>
 
-        <div class="media-panel" id="imagePanel" style="display:none">
+        <!-- IMAGE PANEL -->
+        <div class="media-panel" id="imagePanel">
             <div>
                 <h3>&#127912; Генерация изображения</h3>
-                <p>Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ. Стоимость: 4&#162; за генерацию.</p>
+                <p id="imageDesc">Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ. Выберите модель в настройках выше.</p>
             </div>
             <div>
                 <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер:</label>
@@ -744,26 +840,35 @@
             </div>
         </div>
 
-        <div class="media-panel" id="videoPanel" style="display:none">
+        <!-- VIDEO PANEL -->
+        <div class="media-panel" id="videoPanel">
             <div>
                 <h3>&#127916; Генерация видео</h3>
-                <p>Опиши сцену, и я создам короткое видео с помощью ИИ. Стоимость: 20&#162; за генерацию.</p>
+                <p>Опиши сцену, и я создам короткое видео с помощью ИИ. Стоимость зависит от длительности и качества.</p>
             </div>
             <div class="result-area" id="videoResult">
                 <span class="result-placeholder">Здесь появится видео</span>
             </div>
         </div>
 
-        <div class="media-panel" id="audioPanel" style="display:none">
+        <!-- AUDIO PANEL -->
+        <div class="media-panel" id="audioPanel">
             <div>
                 <h3>&#127925; Генерация аудио</h3>
-                <p>Напиши текст, и я озвучу его с помощью ИИ. Стоимость: 2&#162; за генерацию.</p>
+                <p id="audioDesc">Озвучка текста или распознавание речи.</p>
+            </div>
+            <div class="upload-zone" id="audioUploadZone" onclick="document.getElementById('audioFileInput').click()">
+                <div class="icon">&#127925;</div>
+                <div class="label">Загрузить аудиофайл для распознавания</div>
+                <div class="hint">MP3, WAV, OGG — до 20 МБ</div>
+                <input type="file" id="audioFileInput" accept="audio/*" style="display:none" onchange="handleAudioUpload(this)">
             </div>
             <div class="result-area" id="audioResult">
                 <span class="result-placeholder">Здесь появится аудиоплеер</span>
             </div>
         </div>
 
+        <!-- INPUT AREA -->
         <div class="input-area">
             <div class="input-row">
                 <div class="input-wrapper">
@@ -780,6 +885,7 @@
         </div>
     </div>
 
+    <!-- PURCHASE DIALOG -->
     <div class="dialog-overlay" id="purchaseDialog">
         <div class="dialog">
             <h3>&#9733; Купить кредиты</h3>
@@ -816,10 +922,11 @@
         </div>
     </div>
 
+    <!-- AUTH DIALOG -->
     <div class="dialog-overlay" id="authDialog">
         <div class="dialog">
             <h3>&#128274; Войти в аккаунт</h3>
-            <p>Войдите, чтобы сохранять историю чата и покупать кредиты.</p>
+            <p>Войдите, чтобы сохранять историю чата и покупать кредиты. При регистрации даётся 80&#162; бесплатно.</p>
             <div class="auth-providers">
                 <button class="auth-provider-btn vk" onclick="authVK()">
                     &#9670; Войти через VK
@@ -834,6 +941,7 @@
         </div>
     </div>
 
+    <!-- TOAST CONTAINER -->
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
@@ -849,8 +957,23 @@
     let isProcessing = false;
     let selectedImageSize = '1024x1024';
     let selectedPlan = 200;
-    let user = null; // Хранит { id: '...', name: '...', provider: 'vk'|'tg' }
+    let user = null; // Хранит { id: '...', name: '...', provider: 'vk'|'tg', hash: '...' }
     let chatHistory = [];
+
+    // ---- Динамические модели (загружаются с бэкенда) ----
+    let availableModels = { chat: [], image: [], video: [], audio_tts: [], audio_stt: [] };
+    let selected = {
+        chat: null,
+        image: null,
+        video: null,
+        audio_tts: null,
+        audio_stt: null,
+        audioMode: 'tts',  // 'tts' или 'stt'
+        ratio: '1:1',
+        voice: 'Female',
+        videoQuality: '480p',
+        videoDuration: '6'
+    };
 
     // ---- DOM REFS ----
     const chatArea = document.getElementById('chatArea');
@@ -864,11 +987,11 @@
 
     // ---- ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ----
     document.addEventListener('DOMContentLoaded', () => {
-        // Проверяем, была ли сессия авторизации ранее (как в Хранилке)
+        // Проверяем, была ли сессия авторизации ранее
         const savedUser = localStorage.getItem('gemini_user');
         if (savedUser) {
             user = JSON.parse(savedUser);
-            authBtn.textContent = 'Выйти';
+            authBtn.textContent = user.name || 'Выйти';
             authBtn.classList.add('logged-in');
             loadServerData();
         } else {
@@ -877,7 +1000,15 @@
             creditsAmount.textContent = '--';
             loadLocalHistory();
         }
+
+        // Загружаем сохранённые настройки моделей
+        try {
+            const savedSelected = localStorage.getItem('gemini_selected');
+            if (savedSelected) selected = { ...selected, ...JSON.parse(savedSelected) };
+        } catch(e) {}
+
         autoResize(userInput);
+        loadModels(); // Загрузка списка моделей с бэкенда
     });
 
     // ---- ПОДДЕРЖКА ЛОКАЛЬНОЙ ИСТОРИИ (АНОНИМ) ----
@@ -887,7 +1018,7 @@
             chatHistory = JSON.parse(localHist);
             if (chatHistory.length > 0) {
                 welcomeScreen.style.display = 'none';
-                chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text));
+                chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text || msg.content));
             }
         }
     }
@@ -898,22 +1029,45 @@
         }
     }
 
+    function saveHistory() {
+        if (user) {
+            // Авторизованные — история на сервере (S3)
+        } else {
+            saveLocalHistory();
+        }
+    }
+
+    function saveSelected() {
+        try { localStorage.setItem('gemini_selected', JSON.stringify(selected)); } catch(e) {}
+    }
+
     // ---- ЗАГРУЗКА ДАННЫХ ДЛЯ АВТОРИЗОВАННОГО ЮЗЕРА ----
     async function loadServerData() {
         try {
-            // Запрос баланса у YDB через воркер
-            const response = await fetch(`${API_URL}/api/user/profile`, {
-                headers: { 'X-Chat-Id': user.id }
+            // Запрос баланса через единый API
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'balance', auth: getAuth(), payload: {} })
             });
-
-            // Безопасно проверяем тип контента, чтобы избежать Unexpected token 'O' / 'O' is not valid JSON
-            const contentType = response.headers.get("content-type");
-            if (response.ok && contentType && contentType.includes("application/json")) {
-                const data = await response.json();
-                credits = data.credits ?? 80;
-                creditsAmount.textContent = credits;
+            const contentType = resp.headers.get("content-type");
+            if (resp.ok && contentType && contentType.includes("application/json")) {
+                const data = await resp.json();
+                if (data.success && data.data) {
+                    const display = document.getElementById('creditsDisplay');
+                    if (data.data.isVip) {
+                        creditsAmount.textContent = 'VIP';
+                        display.classList.add('vip');
+                    } else {
+                        credits = data.data.balance ?? 80;
+                        creditsAmount.textContent = credits;
+                        display.classList.remove('vip');
+                    }
+                } else {
+                    credits = 80;
+                    creditsAmount.textContent = credits;
+                }
             } else {
-                // Если бэкенд отдал обычный текст/ошибку, используем безопасный фолбэк
                 credits = 80;
                 creditsAmount.textContent = credits;
             }
@@ -923,7 +1077,7 @@
         }
     }
 
-    // ---- ПРОВЕРКА АВТОРИЗАЦИИ (БЕЗОПАСНОСТЬ БАЛАНСА) ----
+    // ---- ПРОВЕРКА АВТОРИЗАЦИИ ----
     function checkAuth(requiredCost = 0) {
         if (!user) {
             showToast('Для этого действия необходимо авторизоваться!', 'info');
@@ -938,6 +1092,273 @@
         return true;
     }
 
+    // ---- AUTH HELPER для унифицированного API ----
+    function getAuth() {
+        if (user) return { provider: user.provider, id: String(user.id), hash: user.hash || null };
+        return { provider: null, id: null, hash: null };
+    }
+
+    // ============================================================
+    //  ЗАГРУЗКА МОДЕЛЕЙ ИЗ /api/models
+    // ============================================================
+    async function loadModels() {
+        try {
+            const resp = await fetch(API_URL + '/api/models');
+            const data = await resp.json();
+            if (data.success && data.data) {
+                availableModels = data.data;
+
+                // Устанавливаем дефолты если ещё не выбраны
+                if (!selected.chat && availableModels.chat.length > 0)
+                    selected.chat = availableModels.chat.find(m => m.isFree)?.key || availableModels.chat[0]?.key;
+                if (!selected.image && availableModels.image.length > 0)
+                    selected.image = availableModels.image.find(m => m.isFree)?.key || availableModels.image[0]?.key;
+                if (!selected.video && availableModels.video.length > 0)
+                    selected.video = availableModels.video[0]?.key;
+                if (!selected.audio_tts && availableModels.audio_tts.length > 0)
+                    selected.audio_tts = availableModels.audio_tts.find(m => m.isFree)?.key || availableModels.audio_tts[0]?.key;
+                if (!selected.audio_stt && availableModels.audio_stt.length > 0)
+                    selected.audio_stt = availableModels.audio_stt[0]?.key;
+
+                saveSelected();
+                renderSubHeaders();
+                updateModeTabBadges();
+            }
+        } catch(e) {
+            console.error('Failed to load models:', e);
+        }
+    }
+
+    // ============================================================
+    //  РЕНДЕР SUB-HEADERS (динамически из availableModels)
+    // ============================================================
+    function renderSubHeaders() {
+        renderChatSubHeader();
+        renderImageSubHeader();
+        renderVideoSubHeader();
+        renderAudioSubHeader();
+    }
+
+    function renderChatSubHeader() {
+        const container = document.getElementById('chatModels');
+        container.classList.remove('skeleton');
+        container.innerHTML = '';
+        if (availableModels.chat.length === 0) {
+            container.innerHTML = '<span class="sub-label">Загрузка моделей...</span>';
+            return;
+        }
+        availableModels.chat.forEach(m => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (m.isFree ? ' free' : '') + (selected.chat === m.key ? ' active' : '');
+            btn.dataset.model = m.key;
+            btn.onclick = () => { selected.chat = m.key; saveSelected(); renderChatSubHeader(); };
+            const label = m.model ? m.model.split('/').pop().split('-').slice(0, 3).join('-') : m.key;
+            btn.innerHTML = label + (m.isFree ? ' &#10003;' : ' <span class="price">' + (m.cost || '') + '&#162;</span>');
+            container.appendChild(btn);
+        });
+    }
+
+    function renderImageSubHeader() {
+        const modelsContainer = document.getElementById('imageModels');
+        modelsContainer.classList.remove('skeleton');
+        modelsContainer.innerHTML = '';
+        if (availableModels.image.length === 0) {
+            modelsContainer.innerHTML = '<span class="sub-label">Нет доступных моделей</span>';
+            return;
+        }
+        availableModels.image.forEach(m => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (m.isFree ? ' free' : '') + (selected.image === m.key ? ' active' : '');
+            btn.dataset.model = m.key;
+            btn.onclick = () => { selected.image = m.key; saveSelected(); renderImageSubHeader(); updateImageDesc(); };
+            const shortName = getShortModelName(m);
+            btn.innerHTML = shortName + (m.isFree ? ' &#10003;' : ' <span class="price">' + m.cost + '&#162;</span>');
+            modelsContainer.appendChild(btn);
+        });
+
+        // Aspect ratio кнопки
+        const ratioContainer = document.getElementById('imageRatio');
+        ratioContainer.innerHTML = '';
+        ['1:1', '4:3', '16:9', '9:16'].forEach(r => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
+            btn.dataset.ratio = r;
+            btn.onclick = () => { selected.ratio = r; saveSelected(); renderImageSubHeader(); };
+            btn.textContent = r;
+            ratioContainer.appendChild(btn);
+        });
+        updateImageDesc();
+    }
+
+    function renderVideoSubHeader() {
+        const modelsContainer = document.getElementById('videoModels');
+        modelsContainer.classList.remove('skeleton');
+        modelsContainer.innerHTML = '';
+        if (availableModels.video.length === 0) {
+            modelsContainer.innerHTML = '<span class="sub-label">Нет доступных моделей</span>';
+            return;
+        }
+        availableModels.video.forEach(m => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (selected.video === m.key ? ' active' : '');
+            btn.dataset.model = m.key;
+            btn.onclick = () => { selected.video = m.key; saveSelected(); renderVideoSubHeader(); };
+            const shortName = getShortModelName(m);
+            const costLabel = m.isDynamicPricing ? 'дин.' : m.cost + '&#162;';
+            btn.innerHTML = shortName + ' <span class="price">' + costLabel + '</span>';
+            modelsContainer.appendChild(btn);
+        });
+
+        // Aspect ratio
+        const ratioContainer = document.getElementById('videoRatio');
+        ratioContainer.innerHTML = '';
+        ['16:9', '9:16', '1:1'].forEach(r => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
+            btn.dataset.ratio = r;
+            btn.onclick = () => { selected.ratio = r; saveSelected(); renderVideoSubHeader(); };
+            btn.textContent = r;
+            ratioContainer.appendChild(btn);
+        });
+
+        // Качество
+        const qualityContainer = document.getElementById('videoQuality');
+        qualityContainer.innerHTML = '';
+        ['480p', '580p', '720p', '1080p'].forEach(q => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (selected.videoQuality === q ? ' active' : '');
+            btn.dataset.quality = q;
+            btn.onclick = () => { selected.videoQuality = q; saveSelected(); renderVideoSubHeader(); };
+            btn.textContent = q;
+            qualityContainer.appendChild(btn);
+        });
+    }
+
+    function renderAudioSubHeader() {
+        // Режим аудио: TTS / STT
+        const modeContainer = document.getElementById('audioModeSelect');
+        modeContainer.innerHTML = '';
+        [{ key: 'tts', label: '&#127908; Озвучка' }, { key: 'stt', label: '&#127909; Распознавание' }].forEach(am => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (selected.audioMode === am.key ? ' active' : '');
+            btn.dataset.audioMode = am.key;
+            btn.onclick = () => {
+                selected.audioMode = am.key;
+                saveSelected();
+                renderAudioSubHeader();
+                updateAudioDesc();
+                updateAudioUploadVisibility();
+            };
+            btn.innerHTML = am.label;
+            modeContainer.appendChild(btn);
+        });
+
+        // Модели (TTS или STT)
+        const modelsContainer = document.getElementById('audioModels');
+        modelsContainer.classList.remove('skeleton');
+        modelsContainer.innerHTML = '';
+        const modelList = selected.audioMode === 'tts' ? availableModels.audio_tts : availableModels.audio_stt;
+        const selectedKey = selected.audioMode === 'tts' ? selected.audio_tts : selected.audio_stt;
+        if (modelList.length === 0) {
+            modelsContainer.innerHTML = '<span class="sub-label">Нет моделей</span>';
+        } else {
+            modelList.forEach(m => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-option' + (m.isFree ? ' free' : '') + (selectedKey === m.key ? ' active' : '');
+                btn.dataset.model = m.key;
+                btn.onclick = () => {
+                    if (selected.audioMode === 'tts') selected.audio_tts = m.key;
+                    else selected.audio_stt = m.key;
+                    saveSelected(); renderAudioSubHeader(); updateAudioDesc();
+                };
+                const shortName = getShortModelName(m);
+                btn.innerHTML = shortName + (m.isFree ? ' &#10003;' : ' <span class="price">' + m.cost + '&#162;</span>');
+                modelsContainer.appendChild(btn);
+            });
+        }
+
+        // Выбор голоса (только для TTS)
+        const voiceContainer = document.getElementById('audioVoice');
+        voiceContainer.innerHTML = '';
+        if (selected.audioMode === 'tts') {
+            [{ key: 'Female', label: '&#9792; Женский' }, { key: 'Male', label: '&#9794; Мужской' }].forEach(v => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-option' + (selected.voice === v.key ? ' active' : '');
+                btn.dataset.voice = v.key;
+                btn.onclick = () => { selected.voice = v.key; saveSelected(); renderAudioSubHeader(); };
+                btn.innerHTML = v.label;
+                voiceContainer.appendChild(btn);
+            });
+        }
+        updateAudioDesc();
+        updateAudioUploadVisibility();
+    }
+
+    function getShortModelName(m) {
+        const serviceNames = {
+            'WORKERS_AI': 'CF',
+            'GEMINI': 'Gemini',
+            'KIEAI': 'KIE.AI',
+            'BOTHUB': 'BotHub',
+            'POLLINATIONS': 'Pollin.',
+            'FUSIONBRAIN': 'Kandinsky',
+            'STABILITY': 'Stability',
+            'VOICERSS': 'VoiceRSS'
+        };
+        return serviceNames[m.service] || m.service || m.key;
+    }
+
+    function updateModeTabBadges() {
+        const imageFree = availableModels.image.some(m => m.isFree);
+        document.querySelector('[data-mode="image"]').innerHTML = 'Изображение' +
+            (imageFree ? ' <span class="free-badge">&#10003;</span>' : ' <span class="cost">4&#162;</span>');
+
+        const allVideoPaid = availableModels.video.length > 0 && !availableModels.video.some(m => m.isFree);
+        document.querySelector('[data-mode="video"]').innerHTML = 'Видео' +
+            (allVideoPaid ? ' <span class="cost">20&#162;+</span>' : '');
+
+        const hasFreeAudio = availableModels.audio_tts.some(m => m.isFree) || availableModels.audio_stt.some(m => m.isFree);
+        document.querySelector('[data-mode="audio"]').innerHTML = 'Аудио' +
+            (hasFreeAudio ? ' <span class="free-badge">&#10003;</span>' : ' <span class="cost">2&#162;</span>');
+    }
+
+    function updateImageDesc() {
+        const model = availableModels.image.find(m => m.key === selected.image);
+        const desc = document.getElementById('imageDesc');
+        if (!model) return;
+        if (model.isFree) {
+            desc.textContent = 'Бесплатная генерация через ' + getShortModelName(model) + '. Опиши что ты хочешь увидеть.';
+        } else {
+            desc.textContent = 'Генерация через ' + getShortModelName(model) + ' — ' + model.cost + '¢ за изображение.';
+        }
+    }
+
+    function updateAudioDesc() {
+        const desc = document.getElementById('audioDesc');
+        const uploadZone = document.getElementById('audioUploadZone');
+        if (selected.audioMode === 'stt') {
+            desc.textContent = 'Распознавание речи — бесплатно. Загрузите аудиофайл или запишите голос.';
+            if (uploadZone) uploadZone.style.display = 'block';
+        } else {
+            const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
+            if (model) {
+                desc.textContent = model.isFree
+                    ? 'Озвучка через ' + getShortModelName(model) + ' — бесплатно.'
+                    : 'Озвучка через ' + getShortModelName(model) + ' — ' + model.cost + '¢ за генерацию.';
+            } else {
+                desc.textContent = 'Напиши текст, и я озвучу его с помощью ИИ.';
+            }
+            if (uploadZone) uploadZone.style.display = 'none';
+        }
+    }
+
+    function updateAudioUploadVisibility() {
+        const uploadZone = document.getElementById('audioUploadZone');
+        if (uploadZone) {
+            uploadZone.style.display = (selected.audioMode === 'stt') ? 'block' : 'none';
+        }
+    }
+
     // ---- MODE SWITCHING ----
     function switchMode(mode) {
         currentMode = mode;
@@ -949,22 +1370,27 @@
 
         // Показываем/скрываем панели
         document.getElementById('chatArea').style.display = (mode === 'chat') ? 'flex' : 'none';
-        document.getElementById('imagePanel').style.display = (mode === 'image') ? 'flex' : 'none';
-        document.getElementById('videoPanel').style.display = (mode === 'video') ? 'flex' : 'none';
-        document.getElementById('audioPanel').style.display = (mode === 'audio') ? 'flex' : 'none';
+        document.getElementById('imagePanel').classList.toggle('active', mode === 'image');
+        document.getElementById('videoPanel').classList.toggle('active', mode === 'video');
+        document.getElementById('audioPanel').classList.toggle('active', mode === 'audio');
 
-        // Плейсхолдеры и подсказки стоимости
+        // Sub-headers
+        document.querySelectorAll('.sub-header').forEach(sh => sh.classList.remove('active'));
+        const subMap = { chat: 'subChat', image: 'subImage', video: 'subVideo', audio: 'subAudio' };
+        if (subMap[mode]) document.getElementById(subMap[mode]).classList.add('active');
+
+        // Плейсхолдеры и подсказки
         const placeholders = {
             chat: 'Напишите сообщение...',
             image: 'Опишите изображение на английском или русском...',
             video: 'Опишите видео-сцену для ИИ...',
-            audio: 'Введите текст для озвучки...'
+            audio: selected.audioMode === 'stt' ? 'Введите текст или загрузите аудиофайл...' : 'Введите текст для озвучки...'
         };
         const hints = {
-            chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат (История не сохраняется в S3)',
-            image: 'Стоимость генерации: 4\u00A2',
-            video: 'Стоимость генерации: 20\u00A2',
-            audio: 'Стоимость генерации: 2\u00A2'
+            chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат (история в localStorage)',
+            image: 'Стоимость зависит от модели (см. настройки выше)',
+            video: 'Стоимость: от 20\u00A2',
+            audio: selected.audioMode === 'stt' ? 'Распознавание речи — бесплатно' : 'Стоимость озвучки зависит от модели'
         };
         userInput.placeholder = placeholders[mode];
         inputHint.textContent = hints[mode];
@@ -1016,18 +1442,22 @@
         // Add user message
         addMessage(text, 'user');
         chatHistory.push({ role: 'user', content: text });
-        saveLocalHistory();
+        saveHistory();
 
         // Show typing
         const typingEl = showTyping();
 
         try {
-            const response = await fetch(API_URL + '/api/chat', {
+            const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    messages: chatHistory,
-                    mode: 'chat'
+                    mode: 'chat',
+                    auth: getAuth(),
+                    payload: {
+                        messages: chatHistory,
+                        model: selected.chat
+                    }
                 })
             });
 
@@ -1049,22 +1479,26 @@
             let reply = '(пустой ответ)';
             if (contentType && contentType.includes("application/json")) {
                 const data = await response.json();
-                reply = data.reply || data.content || reply;
+                reply = data.data?.content || data.reply || data.content || reply;
+                // Обновляем баланс если вернулся
+                if (data.credits_left !== undefined) {
+                    credits = data.credits_left;
+                    updateCreditsDisplay();
+                }
             } else {
-                // Если вернулся чистый текст, берем его напрямую (защита от "Unexpected token")
                 const rawText = await response.text();
                 reply = rawText || reply;
             }
 
             addMessage(reply, 'bot');
             chatHistory.push({ role: 'assistant', content: reply });
-            saveLocalHistory();
+            saveHistory();
 
         } catch (err) {
             removeTyping(typingEl);
             addMessage('Ошибка: ' + err.message, 'error');
             chatHistory.pop();
-            saveLocalHistory();
+            saveHistory();
             userInput.value = text;
             autoResize(userInput);
         }
@@ -1075,8 +1509,11 @@
     }
 
     async function generateImage(prompt) {
-        if (credits < 4) {
-            showToast('Недостаточно кредитов! Нужно 4\u00A2', 'error');
+        // Проверяем стоимость для платных моделей
+        const model = availableModels.image.find(m => m.key === selected.image);
+        const cost = model?.cost || 4;
+        if (!model?.isFree && credits < cost) {
+            showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
             openPurchaseDialog();
             return;
         }
@@ -1090,10 +1527,14 @@
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую изображение...</span>';
 
         try {
-            const response = await fetch(API_URL + '/api/image', {
+            const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt, size: selectedImageSize })
+                body: JSON.stringify({
+                    mode: 'image',
+                    auth: getAuth(),
+                    payload: { prompt, size: selectedImageSize, model: selected.image, ratio: selected.ratio }
+                })
             });
 
             const contentType = response.headers.get('Content-Type') || '';
@@ -1113,30 +1554,41 @@
             if (contentType.includes('application/json')) {
                 const data = await response.json();
                 
-                if (data.userCredits !== undefined) {
-                    credits = data.userCredits;
-                } else {
-                    credits -= 4;
+                if (data.credits_left !== undefined) {
+                    credits = data.credits_left;
+                } else if (!model?.isFree) {
+                    credits -= cost;
                 }
 
-                if (data.image) {
+                if (data.data?.content) {
+                    // Новый формат: data.data.content = URL или base64
+                    const content = data.data.content;
+                    if (content.startsWith('data:')) {
+                        resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
+                    } else {
+                        resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
+                    }
+                } else if (data.data?.image) {
+                    resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.data.image + '" alt="' + prompt + '">';
+                } else if (data.data?.url) {
+                    resultArea.innerHTML = '<img class="generated-image" src="' + data.data.url + '" alt="' + prompt + '">';
+                } else if (data.image) {
+                    // Старый формат
                     resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.image + '" alt="' + prompt + '">';
-                    updateCreditsDisplay();
-                    showToast('Изображение создано!', 'success');
                 } else if (data.url) {
                     resultArea.innerHTML = '<img class="generated-image" src="' + data.url + '" alt="' + prompt + '">';
-                    updateCreditsDisplay();
-                    showToast('Изображение создано!', 'success');
                 } else {
                     throw new Error('Сервер не вернул изображение');
                 }
+                updateCreditsDisplay();
+                showToast('Изображение создано!', 'success');
             } else {
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
                 resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">';
-                credits -= 4; 
+                if (!model?.isFree) credits -= cost;
                 updateCreditsDisplay();
-                showToast('Изображение создано! -4\u00A2', 'success');
+                showToast('Изображение создано! -' + cost + '\u00A2', 'success');
             }
 
         } catch (err) {
@@ -1166,10 +1618,14 @@
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую видео (может занять до минуты)...</span>';
 
         try {
-            const response = await fetch(API_URL + '/api/video', {
+            const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt })
+                body: JSON.stringify({
+                    mode: 'video',
+                    auth: getAuth(),
+                    payload: { prompt, model: selected.video, ratio: selected.ratio, quality: selected.videoQuality, duration: selected.videoDuration }
+                })
             });
 
             const contentType = response.headers.get('Content-Type') || '';
@@ -1187,9 +1643,10 @@
 
             if (contentType.includes('application/json')) {
                 const data = await response.json();
-                if (data.url) {
-                    resultArea.innerHTML = '<video controls autoplay loop><source src="' + data.url + '" type="video/mp4"></video>';
-                    credits = data.userCredits !== undefined ? data.userCredits : credits - 20;
+                const videoUrl = data.data?.content || data.data?.url || data.url;
+                if (videoUrl) {
+                    resultArea.innerHTML = '<video controls autoplay loop><source src="' + videoUrl + '" type="video/mp4"></video>';
+                    credits = data.credits_left !== undefined ? data.credits_left : credits - 20;
                     updateCreditsDisplay();
                     showToast('Видео создано!', 'success');
                 } else {
@@ -1219,8 +1676,17 @@
     }
 
     async function generateAudio(text) {
-        if (credits < 2) {
-            showToast('Недостаточно кредитов! Нужно 2\u00A2', 'error');
+        if (selected.audioMode === 'stt') {
+            // STT — распознавание речи, только через загрузку файла
+            showToast('Для распознавания речи загрузите аудиофайл', 'info');
+            return;
+        }
+
+        // TTS — озвучка текста
+        const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
+        const cost = model?.cost || 2;
+        if (!model?.isFree && credits < cost) {
+            showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
             openPurchaseDialog();
             return;
         }
@@ -1234,10 +1700,14 @@
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую audio...</span>';
 
         try {
-            const response = await fetch(API_URL + '/api/audio/tts', {
+            const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text })
+                body: JSON.stringify({
+                    mode: 'audio',
+                    auth: getAuth(),
+                    payload: { text, model: selected.audio_tts, voice: selected.voice, audioMode: 'tts' }
+                })
             });
 
             if (!response.ok) {
@@ -1253,15 +1723,28 @@
                 throw new Error(errMsg);
             }
 
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio>';
-            
-            const serverCredits = response.headers.get('X-User-Credits');
-            credits = serverCredits ? parseInt(serverCredits, 10) : credits - 2;
-            
-            updateCreditsDisplay();
-            showToast('Аудио создано!', 'success');
+            const contentType = response.headers.get('Content-Type') || '';
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                const audioUrl = data.data?.content || data.data?.url;
+                if (audioUrl) {
+                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '"></audio>';
+                } else {
+                    throw new Error('Сервер не вернул аудио');
+                }
+                if (data.credits_left !== undefined) credits = data.credits_left;
+                else if (!model?.isFree) credits -= cost;
+                updateCreditsDisplay();
+                showToast('Аудио создано!', 'success');
+            } else {
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio>';
+                const serverCredits = response.headers.get('X-User-Credits');
+                credits = serverCredits ? parseInt(serverCredits, 10) : (model?.isFree ? credits : credits - cost);
+                updateCreditsDisplay();
+                showToast('Аудио создано!', 'success');
+            }
 
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
@@ -1272,6 +1755,39 @@
 
         isProcessing = false;
         sendBtn.disabled = false;
+    }
+
+    // ---- AUDIO FILE UPLOAD (STT) ----
+    async function handleAudioUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const resultArea = document.getElementById('audioResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Распознаю речь...</span>';
+
+        try {
+            const formData = new FormData();
+            formData.append('audio', file);
+            formData.append('model', selected.audio_stt || '');
+
+            // Для STT используем multipart/form-data
+            const response = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'X-Auth-Provider': user?.provider || '', 'X-Auth-Id': user?.id || '' },
+                body: formData
+            });
+
+            if (!response.ok) throw new Error('Ошибка распознавания');
+            const data = await response.json();
+            const transcript = data.data?.content || data.text || 'Не удалось распознать';
+            resultArea.innerHTML = '<div class="message bot" style="align-self:stretch">' + formatBotMessage(transcript) + '</div>';
+            showToast('Речь распознана!', 'success');
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка распознавания: ' + err.message, 'error');
+        }
+
+        input.value = '';
     }
 
     // ---- UI HELPERS ----
@@ -1302,13 +1818,13 @@
         const codeBlocks = [];
         
         html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
-            codeBlocks.push(`<pre class="code-block ${lang}"><code>${code}</code></pre>`);
-            return `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length - 1}__`;
+            codeBlocks.push('<pre class="code-block ' + lang + '"><code>' + code + '</code></pre>');
+            return '__CODE_BLOCK_PLACEHOLDER_' + (codeBlocks.length - 1) + '__';
         });
 
         html = html.replace(/`([^`\n]+)`/g, function(match, code) {
-            codeBlocks.push(`<code>${code}</code>`);
-            return `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length - 1}__`;
+            codeBlocks.push('<code>' + code + '</code>');
+            return '__CODE_BLOCK_PLACEHOLDER_' + (codeBlocks.length - 1) + '__';
         });
 
         html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
@@ -1316,7 +1832,7 @@
         html = html.replace(/\n/g, '<br>');
 
         codeBlocks.forEach((block, index) => {
-            html = html.replace(`__CODE_BLOCK_PLACEHOLDER_${index}__`, block);
+            html = html.replace('__CODE_BLOCK_PLACEHOLDER_' + index + '__', block);
         });
 
         return html;
@@ -1364,7 +1880,11 @@
     }
 
     function purchaseCredits() {
-        showToast('Оплата через Telegram-бота (скоро!)', 'info');
+        if (selectedPlan === 'vip') {
+            showToast('VIP-подписка — оплата через Telegram-бота (скоро!)', 'info');
+        } else {
+            showToast('Оплата ' + selectedPlan + '\u00A2 через Telegram-бота (скоро!)', 'info');
+        }
         closePurchaseDialog();
     }
 
@@ -1376,6 +1896,7 @@
             authBtn.textContent = 'Войти';
             authBtn.classList.remove('logged-in');
             creditsAmount.textContent = '--';
+            document.getElementById('creditsDisplay').classList.remove('vip');
             showToast('Вы вышли из аккаунта', 'info');
             return;
         }
@@ -1405,10 +1926,32 @@
         }
     }
 
-    // Восстановленный функционал входа Telegram
     function authTG() {
-        showToast('Telegram авторизация (скоро!)', 'info');
-        closeAuthDialog();
+        // Telegram Login Widget — пробуем через Telegram.WebApp
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+            const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+            if (tgUser) {
+                user = { id: tgUser.id, name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''), provider: 'tg', hash: window.Telegram.WebApp.initData };
+                localStorage.setItem('gemini_user', JSON.stringify(user));
+                authBtn.textContent = tgUser.first_name;
+                authBtn.classList.add('logged-in');
+                closeAuthDialog();
+                showToast('Добро пожаловать, ' + tgUser.first_name + '!', 'success');
+                loadServerData();
+                return;
+            }
+        }
+        // Фоллбэк — ввод ID вручную
+        const tgId = prompt('Введите ваш Telegram ID (из @userinfobot):');
+        if (tgId && tgId.trim()) {
+            user = { provider: 'tg', id: tgId.trim(), name: 'TG User', hash: null };
+            localStorage.setItem('gemini_user', JSON.stringify(user));
+            authBtn.textContent = 'TG User';
+            authBtn.classList.add('logged-in');
+            closeAuthDialog();
+            showToast('Вы вошли через Telegram! Загружаю баланс...', 'success');
+            loadServerData();
+        }
     }
 
     // ---- TOAST ----
@@ -1429,6 +1972,12 @@
         }).catch(err => {
             console.log('Not in VK context:', err);
         });
+    }
+
+    // ---- Telegram WebApp Init ----
+    if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
     }
 
     // ---- KEYBOARD FOCUS ----
