@@ -93,6 +93,7 @@ require.cache[require.resolve('node-fetch')] = {
 
 // Только ПОСЛЕ этого подключаем воркер
 const worker = require('./worker');
+const webHandler = require('./webHandler');
 
 module.exports.handler = async (event, context) => {
     // ==========================================
@@ -145,6 +146,45 @@ module.exports.handler = async (event, context) => {
     }
 
     let uri = event.url || event.headers['x-envoy-original-path'] || '/';
+
+    // 🌟 --- ПЕРЕХВАТ WEB API ШЛЮЗА ДЛЯ ФРОНТЕНДА --- 🌟
+    if (event.httpMethod === 'POST' && (uri === '/api' || uri === '/api/')) {
+        try {
+            // Собираем env точно так же, как вы делаете ниже для воркера
+            const webEnv = {
+                ...process.env,
+                LAST_PHOTO_STORAGE: USER_DB_ADAPTER, 
+                BOT_LOGS_STORAGE: USER_DB_ADAPTER,
+                FILES_DB: FILES_DB_ADAPTER,
+                TypedValues,
+                runQuery,
+                filesDriver,
+                nodeCrypto
+            };
+
+            // Передаем управление в webHandler, прокидывая body, наш env и объект воркера
+            const result = await webHandler.handleWebRequest(body, webEnv, worker);
+
+            // Возвращаем ответ в формате Яндекс.Облака
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*' // Разрешаем CORS
+                },
+                body: JSON.stringify(result)
+            };
+        } catch (webErr) {
+            console.error("🖲️ [WEB API CRITICAL ERROR]:", webErr);
+            return {
+                statusCode: 500,
+                headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ success: false, error: "Web Gateway Error: " + webErr.message })
+            };
+        }
+    }
+    // 🌟 --- КОНЕЦ ПЕРЕХВАТА --- 🌟
+    
     const domain = process.env.WORKER_DOMAIN || "https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net";
     const origin = domain.startsWith('http') ? domain : `https://${domain}`;
 
