@@ -905,15 +905,15 @@
             const response = await fetch(`${API_URL}/api/user/profile`, {
                 headers: { 'X-Chat-Id': user.id }
             });
-            
-            // Безопасно проверяем JSON, чтобы избежать Unexpected token 'O' / 'O' is not valid JSON
+
+            // Безопасно проверяем тип контента, чтобы избежать Unexpected token 'O' / 'O' is not valid JSON
             const contentType = response.headers.get("content-type");
             if (response.ok && contentType && contentType.includes("application/json")) {
                 const data = await response.json();
                 credits = data.credits ?? 80;
                 creditsAmount.textContent = credits;
             } else {
-                // Если пришел не JSON, берем фолбэк-значение и не падаем по синтаксической ошибке
+                // Если бэкенд отдал обычный текст/ошибку, используем безопасный фолбэк
                 credits = 80;
                 creditsAmount.textContent = credits;
             }
@@ -1022,7 +1022,6 @@
         const typingEl = showTyping();
 
         try {
-            // Исправлен контракт: бэкенд ожидает messages во внешнем свойстве, обрабатываем возможный текстовый ответ
             const response = await fetch(API_URL + '/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1052,7 +1051,7 @@
                 const data = await response.json();
                 reply = data.reply || data.content || reply;
             } else {
-                // Защита от Unexpected token 'O' — если вернулась чистая строка, читаем как text
+                // Если вернулся чистый текст, берем его напрямую (защита от "Unexpected token")
                 const rawText = await response.text();
                 reply = rawText || reply;
             }
@@ -1192,12 +1191,11 @@
                     resultArea.innerHTML = '<video controls autoplay loop><source src="' + data.url + '" type="video/mp4"></video>';
                     credits = data.userCredits !== undefined ? data.userCredits : credits - 20;
                     updateCreditsDisplay();
-                    showToast('Video created!', 'success');
+                    showToast('Видео создано!', 'success');
                 } else {
                     throw new Error('Сервер не вернул видео');
                 }
             } else {
-                // Если бэкенд возвращает чистую текстовую ссылку, обрабатываем её без падения JSON
                 const rawUrl = await response.text();
                 if (rawUrl && rawUrl.startsWith('http')) {
                     resultArea.innerHTML = '<video controls autoplay loop><source src="' + rawUrl.trim() + '" type="video/mp4"></video>';
@@ -1233,7 +1231,7 @@
         autoResize(userInput);
 
         const resultArea = document.getElementById('audioResult');
-        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую аудио...</span>';
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую audio...</span>';
 
         try {
             const response = await fetch(API_URL + '/api/audio/tts', {
@@ -1337,7 +1335,6 @@
         if (el && el.parentNode) el.parentNode.removeChild(el);
     }
 
-    // Изменение отображения баланса кредитов
     function updateCreditsDisplay() {
         if (typeof creditsAmount !== 'undefined' && creditsAmount) {
             creditsAmount.textContent = credits;
@@ -1360,7 +1357,6 @@
         document.getElementById('purchaseDialog').classList.remove('open');
     }
 
-    // Выбор тарифного плана в меню кредитов
     function selectPlan(el, plan) {
         document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
         el.classList.add('selected');
@@ -1409,6 +1405,7 @@
         }
     }
 
+    // Восстановленный функционал входа Telegram
     function authTG() {
         showToast('Telegram авторизация (скоро!)', 'info');
         closeAuthDialog();
