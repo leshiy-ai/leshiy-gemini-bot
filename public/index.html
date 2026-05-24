@@ -6,7 +6,6 @@
     <title>Gemini-AI</title>
     <meta name="description" content="Gemini-AI — чат с ИИ, генерация изображений, видео и аудио">
     <meta name="theme-color" content="#1a1a2e">
-    <link rel="manifest" href="/manifest.json">
 
     <!-- VK Mini App -->
     <meta property="vk:app_id" content="">
@@ -853,15 +852,15 @@
     //  Gemini-AI Frontend — Pure JS, no frameworks
     // ============================================
 
-    const API_URL = '';  // Requests go to same origin (Yandex Cloud Function)
+    const API_URL = '';  // Запросы идут на тот же домен (Yandex Cloud Function / Worker)
 
     // ---- STATE ----
     let currentMode = 'chat';
-    let credits = 80;
+    let credits = 0;
     let isProcessing = false;
     let selectedImageSize = '1024x1024';
     let selectedPlan = 200;
-    let user = null;
+    let user = null; // Хранит { id: '...', name: '...', provider: 'vk'|'tg' }
     let chatHistory = [];
 
     // ---- DOM REFS ----
@@ -872,36 +871,100 @@
     const inputHint = document.getElementById('inputHint');
     const creditsAmount = document.getElementById('creditsAmount');
     const authBtn = document.getElementById('authBtn');
+    const toastContainer = document.getElementById('toastContainer');
+
+    // ---- ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ----
+    document.addEventListener('DOMContentLoaded', () => {
+        // Проверяем, была ли сессия авторизации ранее (как в Хранилке)
+        const savedUser = localStorage.getItem('gemini_user');
+        if (savedUser) {
+            user = JSON.parse(savedUser);
+            authBtn.textContent = 'Выйти';
+            authBtn.classList.add('logged-in');
+            loadServerData();
+        } else {
+            // Анонимный режим
+            authBtn.textContent = 'Войти';
+            creditsAmount.textContent = '--';
+            loadLocalHistory();
+        }
+        autoResize(userInput);
+    });
+
+    // ---- ПОДДЕРЖКА ЛОКАЛЬНОЙ ИСТОРИИ (АНОНИМ) ----
+    function loadLocalHistory() {
+        const localHist = localStorage.getItem('gemini_local_history');
+        if (localHist) {
+            chatHistory = JSON.parse(localHist);
+            if (chatHistory.length > 0) {
+                welcomeScreen.style.display = 'none';
+                chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text));
+            }
+        }
+    }
+
+    function saveLocalHistory() {
+        if (!user) {
+            localStorage.setItem('gemini_local_history', JSON.stringify(chatHistory));
+        }
+    }
+
+    // ---- ЗАГРУЗКА ДАННЫХ ДЛЯ АВТОРИЗОВАННОГО ЮЗЕРА ----
+    async function loadServerData() {
+        try {
+            // Запрос баланса у YDB через воркер
+            const response = await fetch(`${API_URL}/api/user/profile`, {
+                headers: { 'X-Chat-Id': user.id }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                credits = data.credits ?? 80;
+                creditsAmount.textContent = credits;
+            }
+        } catch (err) {
+            showToast('Ошибка обновления баланса', 'error');
+        }
+    }
+
+    // ---- ПРОВЕРКА АВТОРИЗАЦИИ (БЕЗОПАСНОСТЬ БАЛАНСА) ----
+    function checkAuth(requiredCost = 0) {
+        if (!user) {
+            showToast('Для этого действия необходимо авторизоваться!', 'info');
+            openAuthDialog();
+            return false;
+        }
+        if (credits < requiredCost) {
+            showToast('Недостаточно кредитов для генерации!', 'error');
+            openPurchaseDialog();
+            return false;
+        }
+        return true;
+    }
 
     // ---- MODE SWITCHING ----
     function switchMode(mode) {
         currentMode = mode;
 
-        // Update tabs
+        // Обновляем вкладки
         document.querySelectorAll('.mode-tab').forEach(tab => {
             tab.classList.toggle('active', tab.dataset.mode === mode);
         });
 
-        // Show/hide panels
-        const chatArea = document.getElementById('chatArea');
-        const imagePanel = document.getElementById('imagePanel');
-        const videoPanel = document.getElementById('videoPanel');
-        const audioPanel = document.getElementById('audioPanel');
+        // Показываем/скрываем панели
+        document.getElementById('chatArea').style.display = (mode === 'chat') ? 'flex' : 'none';
+        document.getElementById('imagePanel').style.display = (mode === 'image') ? 'flex' : 'none';
+        document.getElementById('videoPanel').style.display = (mode === 'video') ? 'flex' : 'none';
+        document.getElementById('audioPanel').style.display = (mode === 'audio') ? 'flex' : 'none';
 
-        chatArea.style.display = (mode === 'chat') ? 'flex' : 'none';
-        imagePanel.style.display = (mode === 'image') ? 'flex' : 'none';
-        videoPanel.style.display = (mode === 'video') ? 'flex' : 'none';
-        audioPanel.style.display = (mode === 'audio') ? 'flex' : 'none';
-
-        // Update input placeholder and hint
+        // Плейсхолдеры и подсказки стоимости
         const placeholders = {
             chat: 'Напишите сообщение...',
-            image: 'Опишите изображение...',
-            video: 'Опишите видео-сцену...',
+            image: 'Опишите изображение на английском или русском...',
+            video: 'Опишите видео-сцену для ИИ...',
             audio: 'Введите текст для озвучки...'
         };
         const hints = {
-            chat: 'Enter — отправить, Shift+Enter — новая строка',
+            chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат (История не сохраняется в S3)',
             image: 'Стоимость генерации: 4\u00A2',
             video: 'Стоимость генерации: 20\u00A2',
             audio: 'Стоимость генерации: 2\u00A2'
@@ -987,6 +1050,9 @@
             addMessage('Ошибка: ' + err.message, 'error');
             // Remove last user message from history on error
             chatHistory.pop();
+            // Возвращаем текст в инпут, чтобы пользователь не потерял промпт
+            userInput.value = text;
+            autoResize(userInput);
         }
 
         isProcessing = false;
@@ -1021,31 +1087,34 @@
                 throw new Error(err.error || 'Ошибка генерации');
             }
 
-            // Response can be JSON with base64 or URL
             const contentType = response.headers.get('Content-Type') || '';
             
             if (contentType.includes('application/json')) {
                 const data = await response.json();
+                
+                // Идеально, если бэкенд возвращает data.userCredits
+                if (data.userCredits !== undefined) {
+                    credits = data.userCredits;
+                } else {
+                    credits -= 4; // Фолбэк, если бэк не синхронизирует баланс
+                }
+
                 if (data.image) {
-                    // base64 image
                     resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.image + '" alt="' + prompt + '">';
-                    credits -= 4;
                     updateCreditsDisplay();
-                    showToast('Изображение создано! -4\u00A2', 'success');
+                    showToast('Изображение создано!', 'success');
                 } else if (data.url) {
                     resultArea.innerHTML = '<img class="generated-image" src="' + data.url + '" alt="' + prompt + '">';
-                    credits -= 4;
                     updateCreditsDisplay();
-                    showToast('Изображение создано! -4\u00A2', 'success');
+                    showToast('Изображение создано!', 'success');
                 } else {
                     throw new Error('Сервер не вернул изображение');
                 }
             } else {
-                // Binary image response
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
                 resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">';
-                credits -= 4;
+                credits -= 4; 
                 updateCreditsDisplay();
                 showToast('Изображение создано! -4\u00A2', 'success');
             }
@@ -1053,6 +1122,8 @@
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка генерации: ' + err.message, 'error');
+            userInput.value = prompt; // Возвращаем промпт при ошибке
+            autoResize(userInput);
         }
 
         isProcessing = false;
@@ -1089,9 +1160,9 @@
             const data = await response.json();
             if (data.url) {
                 resultArea.innerHTML = '<video controls autoplay loop><source src="' + data.url + '" type="video/mp4"></video>';
-                credits -= 20;
+                credits = data.userCredits !== undefined ? data.userCredits : credits - 20;
                 updateCreditsDisplay();
-                showToast('Видео создано! -20\u00A2', 'success');
+                showToast('Видео создано!', 'success');
             } else {
                 throw new Error('Сервер не вернул видео');
             }
@@ -1099,6 +1170,8 @@
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка генерации: ' + err.message, 'error');
+            userInput.value = prompt;
+            autoResize(userInput);
         }
 
         isProcessing = false;
@@ -1135,13 +1208,19 @@
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio>';
-            credits -= 2;
+            
+            // Пытаемся вытащить баланс из кастомного заголовка, если бэк отдал бинарник
+            const serverCredits = response.headers.get('X-User-Credits');
+            credits = serverCredits ? parseInt(serverCredits, 10) : credits - 2;
+            
             updateCreditsDisplay();
-            showToast('Аудио создано! -2\u00A2', 'success');
+            showToast('Аудио создано!', 'success');
 
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка генерации: ' + err.message, 'error');
+            userInput.value = text;
+            autoResize(userInput);
         }
 
         isProcessing = false;
@@ -1153,7 +1232,6 @@
         const div = document.createElement('div');
         div.className = 'message ' + sender;
         
-        // Simple markdown-like rendering for bot messages
         if (sender === 'bot') {
             div.innerHTML = formatBotMessage(text);
         } else {
@@ -1164,23 +1242,38 @@
         chatArea.scrollTop = chatArea.scrollHeight;
     }
 
+    // Безопасный парсер Markdown, защищенный от XSS и конфликтов стилей внутри <code>
     function formatBotMessage(text) {
-        // Escape HTML first
+        // 1. Экранируем HTML
         let html = text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
-        // Code blocks: ```...```
-        html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-        // Inline code: `...`
-        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-        // Bold: **...**
+        // Временный массив для хранения блоков кода, чтобы не применять к ним форматирование
+        const codeBlocks = [];
+        
+        // 2. Изолируем многострочные блоки кода ```...```
+        html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+            codeBlocks.push(`<pre class="code-block ${lang}"><code>${code}</code></pre>`);
+            return `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length - 1}__`;
+        });
+
+        // 3. Изолируем инлайн код `...`
+        html = html.replace(/`([^`\n]+)`/g, function(match, code) {
+            codeBlocks.push(`<code>${code}</code>`);
+            return `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length - 1}__`;
+        });
+
+        // 4. Применяем остальную разметку к обычному тексту
         html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-        // Italic: *...*
         html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>');
-        // Line breaks
         html = html.replace(/\n/g, '<br>');
+
+        // 5. Возвращаем блоки кода на свои места
+        codeBlocks.forEach((block, index) => {
+            html = html.replace(`__CODE_BLOCK_PLACEHOLDER_${index}__`, block);
+        });
 
         return html;
     }
@@ -1199,7 +1292,9 @@
     }
 
     function updateCreditsDisplay() {
-        creditsAmount.textContent = credits;
+        if (typeof creditsAmount !== 'undefined' && creditsAmount) {
+            creditsAmount.textContent = credits;
+        }
     }
 
     // ---- IMAGE SIZE ----
@@ -1232,7 +1327,6 @@
     // ---- AUTH DIALOG ----
     function openAuthDialog() {
         if (user) {
-            // Already logged in — logout
             user = null;
             authBtn.textContent = 'Войти';
             authBtn.classList.remove('logged-in');
@@ -1247,7 +1341,6 @@
     }
 
     function authVK() {
-        // VK Mini App auth or OAuth
         if (window.vkBridge) {
             vkBridge.send('VKWebAppGetUserInfo').then(info => {
                 user = { id: info.id, name: info.first_name + ' ' + info.last_name, provider: 'vk' };
@@ -1265,7 +1358,6 @@
     }
 
     function authTG() {
-        // Telegram Login Widget
         showToast('Telegram авторизация (скоро!)', 'info');
         closeAuthDialog();
     }
@@ -1273,6 +1365,7 @@
     // ---- TOAST ----
     function showToast(message, type) {
         const container = document.getElementById('toastContainer');
+        if (!container) return;
         const toast = document.createElement('div');
         toast.className = 'toast ' + (type || 'info');
         toast.textContent = message;
@@ -1290,7 +1383,7 @@
     }
 
     // ---- KEYBOARD FOCUS ----
-    userInput.focus();
+    if (userInput) userInput.focus();
 
     // ---- CLICK OUTSIDE DIALOGS ----
     document.getElementById('purchaseDialog').addEventListener('click', function(e) {
