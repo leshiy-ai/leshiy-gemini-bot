@@ -15,33 +15,32 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         
         :root {
-            --bg-primary: #0a0a14;
-            --bg-secondary: #111122;
-            --bg-tertiary: #161630;
-            --bg-input: #0d0d1f;
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --bg-input: #0d1b36;
             --accent: #a855f7;
             --accent-hover: #9333ea;
             --accent-light: rgba(168, 85, 247, 0.15);
-            --text-primary: #f1f5f9;
+            --text-primary: #e2e8f0;
             --text-secondary: #94a3b8;
-            --text-muted: #475569;
-            --border: rgba(168, 85, 247, 0.15);
-            --border-heavy: rgba(168, 85, 247, 0.3);
+            --text-muted: #64748b;
+            --border: rgba(168, 85, 247, 0.2);
             --danger: #ef4444;
             --success: #22c55e;
-            --warning: #eab308;
-            --user-bubble: #1e1b4b;
-            --bot-bubble: #111122;
-            --shadow: 0 10px 30px rgba(0,0,0,0.5);
-            --radius: 16px;
-            --radius-sm: 10px;
-            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            --warning: #f59e0b;
+            --user-bubble: #0f3460;
+            --bot-bubble: #2d2d44;
+            --shadow: 0 4px 20px rgba(0,0,0,0.3);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --transition: 0.2s ease;
         }
 
         body {
             background: var(--bg-primary);
             color: var(--text-primary);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
             height: 100vh;
             height: 100dvh;
             overflow: hidden;
@@ -53,7 +52,7 @@
         /* ===== LAYOUT ===== */
         .app {
             width: 100%;
-            max-width: 100%;
+            max-width: 600px;
             display: flex;
             flex-direction: column;
             height: 100vh;
@@ -63,13 +62,13 @@
 
         /* ===== HEADER ===== */
         .header {
-            padding: 16px 24px;
+            padding: 12px 16px;
             background: var(--bg-secondary);
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 15px;
+            gap: 10px;
             z-index: 10;
             flex-shrink: 0;
         }
@@ -77,376 +76,268 @@
         .header-left {
             display: flex;
             align-items: center;
-            gap: 12px;
-        }
-
-        .header-logo-container {
-            display: flex;
-            align-items: center;
             gap: 10px;
         }
 
-        .header-icon {
-            width: 28px;
-            height: 28px;
-            background: linear-gradient(135deg, var(--accent), #6366f1);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 14px;
-            color: white;
-            box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
-        }
-
         .header-logo {
-            font-size: 19px;
+            font-size: 20px;
             font-weight: 700;
-            background: linear-gradient(to right, #fff, #c084fc);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: -0.3px;
+            color: var(--accent);
+            letter-spacing: -0.5px;
         }
 
-        .header-author {
+        .header-logo span {
+            color: var(--text-primary);
+            font-weight: 400;
+        }
+
+        .header-badge {
             font-size: 11px;
-            color: var(--text-muted);
-            margin-top: -2px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600;
         }
 
         .header-right {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
         }
 
         .credits-display {
             display: flex;
             align-items: center;
-            gap: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-primary);
+            gap: 4px;
+            font-size: 13px;
+            color: var(--text-secondary);
             background: var(--bg-tertiary);
-            padding: 6px 14px;
+            padding: 4px 10px;
             border-radius: 20px;
-            border: 1px solid var(--border);
             cursor: pointer;
-            transition: all var(--transition);
+            transition: background var(--transition);
         }
 
-        .credits-display:hover { 
-            background: var(--accent-light);
-            border-color: var(--border-heavy);
-        }
+        .credits-display:hover { background: var(--accent-light); }
 
         .credits-display .amount {
-            color: #c084fc;
-            font-weight: 700;
-        }
-
-        .action-icon-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            border: 1px solid var(--border);
-            background: var(--bg-tertiary);
-            color: var(--text-secondary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all var(--transition);
-        }
-
-        .action-icon-btn:hover {
-            color: var(--text-primary);
-            border-color: var(--accent);
-            background: var(--accent-light);
+            color: var(--warning);
+            font-weight: 600;
         }
 
         .auth-btn {
-            padding: 6px 16px;
+            padding: 5px 12px;
             border-radius: 20px;
             border: 1px solid var(--border);
             background: transparent;
             color: var(--text-secondary);
-            font-size: 13px;
-            font-weight: 500;
+            font-size: 12px;
             cursor: pointer;
             transition: all var(--transition);
         }
 
-        .auth-btn:hover { border-color: var(--accent); color: var(--text-primary); }
-        .auth-btn.logged-in { border-color: var(--success); color: var(--success); background: rgba(34, 197, 94, 0.05); }
+        .auth-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .auth-btn.logged-in { border-color: var(--success); color: var(--success); }
 
-        /* ===== SUBHEADER MODE TABS (В точности по дизайну) ===== */
+        /* ===== MODE TABS ===== */
         .mode-tabs {
             display: flex;
-            padding: 10px 24px;
-            gap: 8px;
+            padding: 8px 12px;
+            gap: 6px;
             background: var(--bg-secondary);
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
             overflow-x: auto;
         }
 
-        .mode-tabs::-webkit-scrollbar { display: none; }
-
         .mode-tab {
-            padding: 8px 16px;
-            border-radius: var(--radius-sm);
-            border: 1px solid transparent;
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
             background: transparent;
             color: var(--text-secondary);
-            font-size: 14px;
-            font-weight: 500;
+            font-size: 13px;
             cursor: pointer;
             transition: all var(--transition);
             white-space: nowrap;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
         }
 
-        .mode-tab:hover { color: var(--text-primary); }
+        .mode-tab:hover { border-color: var(--accent); color: var(--text-primary); }
 
         .mode-tab.active {
-            background: var(--bg-tertiary);
-            border-color: var(--border);
-            color: #c084fc;
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
         }
 
         .mode-tab .cost {
-            font-size: 11px;
-            color: var(--text-muted);
-            background: rgba(0,0,0,0.2);
-            padding: 1px 6px;
-            border-radius: 6px;
-        }
-        
-        .mode-tab.active .cost {
-            color: #a855f7;
-            background: var(--accent-light);
-        }
-
-        /* ===== OPTIONS SUB-BAR ===== */
-        .options-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 24px;
-            background: #0f0f1d;
-            border-bottom: 1px solid rgba(255,255,255,0.03);
-            font-size: 13px;
-            color: var(--text-secondary);
-            flex-shrink: 0;
-        }
-
-        .options-left { display: flex; align-items: center; gap: 8px; }
-        
-        .ratio-btn-group { display: flex; gap: 4px; background: rgba(0,0,0,0.2); padding: 3px; border-radius: 8px; }
-        
-        .ratio-btn {
-            padding: 4px 10px;
-            border-radius: 6px;
-            background: transparent;
-            border: none;
-            color: var(--text-secondary);
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all var(--transition);
-        }
-        .ratio-btn.active {
-            background: var(--bg-tertiary);
-            color: white;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        }
-
-        .options-right { display: flex; align-items: center; gap: 12px; font-size: 12px; }
-        .quality-badge { background: #eab308; color: #000; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
-        .attach-hint { color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 4px; }
-        .attach-hint:hover { color: var(--text-secondary); }
-
-        /* ===== MAIN CONTENT CONTAINER ===== */
-        .main-container {
-            flex: 1;
-            overflow: hidden;
-            position: relative;
-            display: flex;
-            flex-direction: column;
+            font-size: 10px;
+            opacity: 0.7;
         }
 
         /* ===== CHAT AREA ===== */
         .chat-area {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 12px;
             scroll-behavior: smooth;
         }
 
-        .chat-area::-webkit-scrollbar { width: 6px; }
+        .chat-area::-webkit-scrollbar { width: 4px; }
         .chat-area::-webkit-scrollbar-track { background: transparent; }
-        .chat-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+        .chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-        /* Welcome screen (Grid Dashboard) */
+        /* Welcome screen */
         .welcome {
-            margin: auto;
-            max-width: 800px;
-            width: 100%;
+            flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             text-align: center;
-            gap: 12px;
-            padding: 40px 20px;
+            gap: 16px;
+            padding: 20px;
         }
 
-        .welcome-logo-wrapper {
-            width: 72px;
-            height: 72px;
-            background: linear-gradient(135deg, var(--accent), #6366f1);
-            border-radius: 20px;
+        .icon-container {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 20px;
             display: flex;
             justify-content: center;
             align-items: center;
-            margin-bottom: 12px;
-            box-shadow: 0 0 30px rgba(168, 85, 247, 0.3);
         }
 
-        .welcome-logo-wrapper span { font-size: 36px; color: white; }
+        .app-icon {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .welcome-icon {
+            font-size: 48px;
+            opacity: 0.5;
+        }
 
         .welcome h2 {
-            font-size: 28px;
-            font-weight: 700;
-            color: white;
+            font-size: 22px;
+            color: var(--accent);
+            font-weight: 600;
         }
-        
-        .welcome .subtitle {
+
+        .welcome p {
             color: var(--text-secondary);
-            font-size: 15px;
-            margin-bottom: 30px;
+            font-size: 14px;
+            max-width: 320px;
+            line-height: 1.5;
         }
 
-        .welcome-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            width: 100%;
+        .welcome-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 8px;
         }
 
-        .grid-card {
-            background: var(--bg-secondary);
+        .suggestion {
+            padding: 8px 16px;
+            border-radius: 20px;
             border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px;
-            text-align: left;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-size: 13px;
             cursor: pointer;
             transition: all var(--transition);
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
         }
 
-        .grid-card:hover {
-            border-color: var(--border-heavy);
-            background: var(--bg-tertiary);
-            transform: translateY(-2px);
+        .suggestion:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+            background: var(--accent-light);
         }
-
-        .grid-card .card-title { font-weight: 600; font-size: 15px; color: white; display: flex; align-items: center; gap: 8px; }
-        .grid-card .card-desc { font-size: 13px; color: var(--text-secondary); }
-        .grid-card .card-price { font-size: 11px; color: var(--accent); margin-top: auto; padding-top: 8px; font-weight: 600; }
 
         /* Message bubbles */
         .message {
-            max-width: 80%;
-            padding: 12px 18px;
+            max-width: 85%;
+            padding: 10px 14px;
             border-radius: var(--radius);
-            line-height: 1.6;
-            font-size: 15px;
+            line-height: 1.5;
+            font-size: 14px;
             word-wrap: break-word;
-            animation: fadeIn 0.25s ease-out;
+            animation: fadeIn 0.3s ease;
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
+            from { opacity: 0; transform: translateY(8px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
         .message.user {
             align-self: flex-end;
             background: var(--user-bubble);
-            color: white;
             border-bottom-right-radius: 4px;
-            border: 1px solid rgba(168, 85, 247, 0.2);
         }
 
         .message.bot {
             align-self: flex-start;
             background: var(--bot-bubble);
-            color: var(--text-primary);
             border-bottom-left-radius: 4px;
-            border: 1px solid var(--border);
         }
 
         .message.error {
-            align-self: center;
-            width: 100%;
-            max-width: 100%;
-            background: rgba(239, 68, 68, 0.08);
-            border: 1px solid rgba(239, 68, 68, 0.2);
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
             color: var(--danger);
-            border-radius: var(--radius-sm);
-            font-size: 14px;
         }
 
-        .message code {
-            background: rgba(0, 0, 0, 0.4);
-            padding: 3px 6px;
-            border-radius: 6px;
-            font-size: 13.5px;
-            font-family: 'Fira Code', Consolas, monospace;
-            color: #f472b6;
+        .message.bot code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: 'Fira Code', 'Consolas', monospace;
         }
 
-        .message pre {
-            background: rgba(0, 0, 0, 0.5);
-            padding: 16px;
+        .message.bot pre {
+            background: rgba(0,0,0,0.3);
+            padding: 12px;
             border-radius: var(--radius-sm);
             overflow-x: auto;
-            margin: 12px 0;
-            border: 1px solid rgba(255,255,255,0.05);
+            margin: 8px 0;
+            font-size: 13px;
         }
 
-        .message pre code { background: none; padding: 0; color: #e2e8f0; }
+        .message.bot pre code {
+            background: none;
+            padding: 0;
+        }
 
         /* Typing indicator */
         .typing-indicator {
             display: flex;
-            gap: 5px;
-            padding: 14px 20px;
+            gap: 4px;
+            padding: 10px 14px;
             align-self: flex-start;
             background: var(--bot-bubble);
             border-radius: var(--radius);
             border-bottom-left-radius: 4px;
-            border: 1px solid var(--border);
         }
 
         .typing-dot {
-            width: 7px;
-            height: 7px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
-            background: var(--accent);
-            animation: typingBounce 1.4s infinite ease-in-out;
-            opacity: 0.6;
+            background: var(--text-muted);
+            animation: typingBounce 1.4s ease-in-out infinite;
         }
+
         .typing-dot:nth-child(2) { animation-delay: 0.2s; }
         .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
@@ -455,130 +346,188 @@
             30% { transform: translateY(-6px); }
         }
 
+        /* Generated image */
+        .message img.generated-image {
+            max-width: 100%;
+            border-radius: var(--radius-sm);
+            margin-top: 8px;
+            cursor: pointer;
+        }
+
         /* ===== MEDIA PANELS ===== */
         .media-panel {
-            padding: 24px;
+            padding: 16px;
             flex: 1;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 20px;
-            background: #090911;
+            gap: 16px;
         }
 
+        .media-panel h3 {
+            font-size: 16px;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+
+        .media-panel p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--transition);
+            color: var(--text-secondary);
+        }
+
+        .upload-zone:hover {
+            border-color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .upload-zone .icon { font-size: 32px; margin-bottom: 8px; }
+        .upload-zone .label { font-size: 14px; }
+        .upload-zone .hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+        .size-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .size-option {
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .size-option:hover { border-color: var(--accent); }
+        .size-option.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+        .generate-btn {
+            padding: 12px 24px;
+            border-radius: var(--radius-sm);
+            border: none;
+            background: var(--accent);
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .generate-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
         .result-area {
-            width: 100%;
-            max-width: 500px;
-            aspect-ratio: 1;
+            min-height: 200px;
             border-radius: var(--radius);
             background: var(--bg-secondary);
-            border: 2px dashed var(--border);
+            border: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
-            position: relative;
-            transition: all var(--transition);
         }
-        
-        .result-area.has-content { border-style: solid; }
 
         .result-area img, .result-area video {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
+            max-width: 100%;
+            max-height: 400px;
             border-radius: var(--radius-sm);
         }
 
         .result-placeholder {
-            color: var(--text-secondary);
+            color: var(--text-muted);
             font-size: 14px;
-            text-align: center;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            align-items: center;
         }
-        .result-placeholder .icon { font-size: 32px; opacity: 0.4; color: var(--accent); }
 
         /* ===== INPUT AREA ===== */
         .input-area {
-            padding: 16px 24px 20px;
+            padding: 12px;
             background: var(--bg-secondary);
             border-top: 1px solid var(--border);
             flex-shrink: 0;
         }
 
         .input-row {
-            max-width: 800px;
-            margin: 0 auto;
             display: flex;
-            gap: 12px;
+            gap: 8px;
             align-items: flex-end;
         }
 
         .input-wrapper {
             flex: 1;
             position: relative;
-            background: var(--bg-input);
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-            transition: border-color var(--transition);
         }
-
-        .input-wrapper:focus-within { border-color: var(--accent); }
 
         .input-wrapper textarea {
             width: 100%;
-            padding: 12px 16px;
-            border: none;
-            background: transparent;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-input);
             color: var(--text-primary);
-            font-size: 15px;
+            font-size: 14px;
             font-family: inherit;
             resize: none;
-            max-height: 140px;
-            line-height: 1.5;
+            max-height: 120px;
+            line-height: 1.4;
+            transition: border-color var(--transition);
         }
 
-        .input-wrapper textarea:focus { outline: none; }
-        .input-wrapper textarea::placeholder { color: #475569; }
+        .input-wrapper textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .input-wrapper textarea::placeholder { color: var(--text-muted); }
 
         .send-btn {
-            width: 45px;
-            height: 45px;
+            width: 42px;
+            height: 42px;
             border-radius: var(--radius-sm);
             border: none;
             background: var(--accent);
             color: white;
-            font-size: 16px;
+            font-size: 18px;
             cursor: pointer;
             transition: all var(--transition);
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
         }
 
-        .send-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
-        .send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+        .send-btn:hover { background: var(--accent-hover); transform: scale(1.05); }
+        .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
         .input-hint {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-muted);
-            margin-top: 8px;
+            margin-top: 4px;
             text-align: center;
         }
 
-        /* ===== MODAL DIALOGS ===== */
+        /* ===== PURCHASE DIALOG ===== */
         .dialog-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.75);
-            backdrop-filter: blur(4px);
+            background: rgba(0,0,0,0.6);
             z-index: 100;
             display: none;
             align-items: center;
@@ -590,72 +539,142 @@
 
         .dialog {
             background: var(--bg-secondary);
-            border: 1px solid var(--border-heavy);
+            border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 28px;
-            max-width: 420px;
+            padding: 24px;
+            max-width: 400px;
             width: 100%;
-            box-shadow: var(--shadow);
-            animation: modalIn 0.2s cubic-bezier(0, 0, 0.2, 1);
+            animation: fadeIn 0.2s ease;
         }
 
-        @keyframes modalIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
+        .dialog h3 {
+            font-size: 18px;
+            color: var(--accent);
+            margin-bottom: 16px;
         }
 
-        .dialog h3 { font-size: 20px; color: white; margin-bottom: 12px; font-weight: 600; }
-        .dialog p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px; }
+        .dialog p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
 
         .plan-card {
-            padding: 16px;
+            padding: 14px;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             cursor: pointer;
             transition: all var(--transition);
-            background: rgba(0,0,0,0.15);
         }
 
-        .plan-card:hover { border-color: var(--accent); background: rgba(168, 85, 247, 0.04); }
+        .plan-card:hover { border-color: var(--accent); background: var(--accent-light); }
         .plan-card.selected { border-color: var(--accent); background: var(--accent-light); }
 
-        .plan-card .plan-flex { display: flex; justify-content: space-between; align-items: center; }
-        .plan-card .plan-name { font-weight: 600; font-size: 16px; color: white; }
-        .plan-card .plan-price { color: #c084fc; font-weight: 700; font-size: 15px; }
-        .plan-card .plan-desc { color: var(--text-secondary); font-size: 12px; margin-top: 4px; }
+        .plan-card .plan-name { font-weight: 600; font-size: 15px; }
+        .plan-card .plan-price { color: var(--accent); font-size: 14px; margin-top: 4px; }
+        .plan-card .plan-desc { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
 
-        .dialog-actions { display: flex; gap: 10px; margin-top: 24px; }
-        .btn-secondary { flex: 1; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 14px; font-weight: 500; }
-        .btn-secondary:hover { color: white; border-color: var(--text-secondary); }
-        .btn-primary { flex: 1; padding: 12px; border-radius: var(--radius-sm); border: none; background: var(--accent); color: white; cursor: pointer; font-size: 14px; font-weight: 600; }
-        .btn-primary:hover { background: var(--accent-hover); }
-
-        .auth-providers { display: flex; flex-direction: column; gap: 12px; }
-        .auth-provider-btn {
-            display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: white; font-size: 14px; font-weight: 500; cursor: pointer; transition: all var(--transition);
+        .dialog-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
         }
+
+        .btn-secondary {
+            flex: 1;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            flex: 1;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            border: none;
+            background: var(--accent);
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* ===== AUTH DIALOG ===== */
+        .auth-providers {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .auth-provider-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
         .auth-provider-btn:hover { border-color: var(--accent); background: var(--accent-light); }
+
         .auth-provider-btn.vk { border-color: #0077ff; }
-        .auth-provider-btn.vk:hover { background: rgba(0,119,255,0.1); }
+        .auth-provider-btn.vk:hover { background: rgba(0,119,255,0.15); }
+
+        .auth-provider-btn.tg { border-color: #26a5e4; }
+        .auth-provider-btn.tg:hover { background: rgba(38,165,228,0.15); }
 
         /* ===== TOAST ===== */
-        .toast-container { position: fixed; top: 24px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 10px; }
-        .toast { padding: 12px 24px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; box-shadow: var(--shadow); animation: slideDown 0.25s ease-out; max-width: 380px; text-align: center; color: white; }
-        .toast.error { background: #dc2626; }
-        .toast.success { background: #16a34a; }
-        .toast.info { background: #4f46e5; }
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
 
-        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .toast {
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            animation: slideDown 0.3s ease, fadeOut 0.3s ease 2.7s;
+            max-width: 350px;
+            text-align: center;
+        }
+
+        .toast.error { background: rgba(239,68,68,0.9); color: white; }
+        .toast.success { background: rgba(34,197,94,0.9); color: white; }
+        .toast.info { background: rgba(168,85,247,0.9); color: white; }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
 
         /* ===== RESPONSIVE ===== */
-        @media (max-width: 640px) {
-            .welcome-grid { grid-template-columns: 1fr; gap: 10px; }
-            .header { padding: 12px 16px; }
-            .mode-tabs { padding: 8px 16px; }
-            .options-bar { padding: 8px 16px; }
-            .chat-area, .media-panel { padding: 16px; }
-            .input-area { padding: 12px 16px 16px; }
+        @media (max-width: 400px) {
+            .mode-tab { padding: 5px 10px; font-size: 12px; }
+            .header-logo { font-size: 17px; }
         }
     </style>
 </head>
@@ -663,113 +682,85 @@
     <div class="app">
         <div class="header">
             <div class="header-left">
-                <div class="header-logo-container">
-                    <div class="header-icon">G</div>
-                    <div>
-                        <div class="header-logo">Gemini-AI</div>
-                        <div class="header-author">by Leshiy-AI</div>
-                    </div>
-                </div>
+                <div class="header-logo">Gemini<span>-AI</span></div>
+                <div class="header-badge">Beta</div>
             </div>
             <div class="header-right">
-                <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()">
-                    <span class="amount" id="creditsAmount">80</span>&cent;
+                <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()" title="Купить кредиты">
+                    <span>&#9733;</span>
+                    <span class="amount" id="creditsAmount">80</span>&#162;
                 </div>
-                <div class="action-icon-btn" onclick="openPurchaseDialog()">➕</div>
                 <button class="auth-btn" id="authBtn" onclick="openAuthDialog()">Войти</button>
             </div>
         </div>
 
         <div class="mode-tabs" id="modeTabs">
             <button class="mode-tab active" data-mode="chat" onclick="switchMode('chat')">
-                💬 Чат
+                Чат
             </button>
             <button class="mode-tab" data-mode="image" onclick="switchMode('image')">
-                🖼️ Изображение <span class="cost">4&cent;</span>
+                Изображение <span class="cost">4&#162;</span>
             </button>
             <button class="mode-tab" data-mode="video" onclick="switchMode('video')">
-                📹 Видео <span class="cost">20&cent;</span>
+                Видео <span class="cost">20&#162;</span>
             </button>
             <button class="mode-tab" data-mode="audio" onclick="switchMode('audio')">
-                🎙️ Аудио <span class="cost">2&cent;</span>
+                Аудио <span class="cost">2&#162;</span>
             </button>
         </div>
 
-        <div class="options-bar">
-            <div class="options-left">
-                <div class="ratio-btn-group" id="imageSizeSelector">
-                    <button class="ratio-btn active" data-size="1024x1024" onclick="selectImageSize(this)">1:1</button>
-                    <button class="ratio-btn" data-size="1344x768" onclick="selectImageSize(this)">4:3</button>
-                    <button class="ratio-btn" data-size="768x1344" onclick="selectImageSize(this)">3:4</button>
-                    <button class="ratio-btn" data-size="1440x720" onclick="selectImageSize(this)">16:9</button>
-                    <button class="ratio-btn" data-size="768x1280" onclick="selectImageSize(this)">9:16</button>
+        <div class="chat-area" id="chatArea">
+            <div class="welcome" id="welcomeScreen">
+                <div class="icon-container">
+                    <img src="/images/Gemini.png" alt="Leshiy AI Icon" class="app-icon">
                 </div>
-            </div>
-            <div class="options-right">
-                <div>Качество: <span class="quality-badge">SDXL</span></div>
-                <div class="attach-hint">📎 <span style="text-decoration: underline;">Прикрепить изображение для I2I</span></div>
+                <h2>Привет! Я Gemini-AI</h2>
+                <p>Я могу отвечать на вопросы, генерировать изображения, видео и аудио. Выбери режим выше и начни общение!</p>
+                <div class="welcome-suggestions">
+                    <button class="suggestion" onclick="useSuggestion('Расскажи о себе')">Расскажи о себе</button>
+                    <button class="suggestion" onclick="useSuggestion('Напиши стихотворение о космосе')">Стих о космосе</button>
+                    <button class="suggestion" onclick="useSuggestion('Объясни квантовую механику простыми словами')">Квантовая механика</button>
+                    <button class="suggestion" onclick="useSuggestion('Придумай рецепт ужина из того что есть в холодильнике')">Рецепт ужина</button>
+                </div>
             </div>
         </div>
 
-        <div class="main-container">
-            <div class="chat-area" id="chatArea">
-                <div class="welcome" id="welcomeScreen">
-                    <div class="welcome-logo-wrapper">
-                        <span>✦</span>
-                    </div>
-                    <h2>Привет! Я Gemini-AI</h2>
-                    <p class="subtitle">Мультимодальный ИИ-ассистент от Leshiy-AI</p>
-                    
-                    <div class="welcome-grid">
-                        <div class="grid-card" onclick="useSuggestion('Общение с ИИ')">
-                            <div class="card-title">💬 Чат</div>
-                            <div class="card-desc">Общение с умным текстовым ассистентом</div>
-                            <div class="card-price">Бесплатно</div>
-                        </div>
-                        <div class="grid-card" onclick="switchMode('image')">
-                            <div class="card-title">🎨 Изображения</div>
-                            <div class="card-desc">Генерация картинок по текстовому описанию</div>
-                            <div class="card-price">4&cent;</div>
-                        </div>
-                        <div class="grid-card" onclick="switchMode('video')">
-                            <div class="card-title">🎬 Видео</div>
-                            <div class="card-desc">Создание кинематографичных видео</div>
-                            <div class="card-price">20&cent;</div>
-                        </div>
-                        <div class="grid-card" onclick="switchMode('audio')">
-                            <div class="card-title">🔊 Аудио</div>
-                            <div class="card-desc">Озвучка и распознавание речи</div>
-                            <div class="card-price">2&cent;</div>
-                        </div>
-                    </div>
+        <div class="media-panel" id="imagePanel" style="display:none">
+            <div>
+                <h3>&#127912; Генерация изображения</h3>
+                <p>Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ. Стоимость: 4&#162; за генерацию.</p>
+            </div>
+            <div>
+                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер:</label>
+                <div class="size-selector" id="imageSizeSelector">
+                    <button class="size-option active" data-size="1024x1024" onclick="selectImageSize(this)">1024x1024</button>
+                    <button class="size-option" data-size="1344x768" onclick="selectImageSize(this)">1344x768</button>
+                    <button class="size-option" data-size="768x1344" onclick="selectImageSize(this)">768x1344</button>
+                    <button class="size-option" data-size="1440x720" onclick="selectImageSize(this)">1440x720</button>
                 </div>
             </div>
-
-            <div class="media-panel" id="imagePanel" style="display:none">
-                <div class="result-area" id="imageResult">
-                    <div class="result-placeholder">
-                        <span class="icon">🖼️</span>
-                        <span>Здесь появится готовое изображение</span>
-                    </div>
-                </div>
+            <div class="result-area" id="imageResult">
+                <span class="result-placeholder">Здесь появится изображение</span>
             </div>
+        </div>
 
-            <div class="media-panel" id="videoPanel" style="display:none">
-                <div class="result-area" id="videoResult">
-                    <div class="result-placeholder">
-                        <span class="icon">📹</span>
-                        <span>Здесь появится готовое видео</span>
-                    </div>
-                </div>
+        <div class="media-panel" id="videoPanel" style="display:none">
+            <div>
+                <h3>&#127916; Генерация видео</h3>
+                <p>Опиши сцену, и я создам короткое видео с помощью ИИ. Стоимость: 20&#162; за генерацию.</p>
             </div>
+            <div class="result-area" id="videoResult">
+                <span class="result-placeholder">Здесь появится видео</span>
+            </div>
+        </div>
 
-            <div class="media-panel" id="audioPanel" style="display:none">
-                <div class="result-area" id="audioResult" style="aspect-ratio: auto; height: 120px;">
-                    <div class="result-placeholder">
-                        <span class="icon">🎙️</span>
-                        <span>Здесь появится аудио-плеер</span>
-                    </div>
-                </div>
+        <div class="media-panel" id="audioPanel" style="display:none">
+            <div>
+                <h3>&#127925; Генерация аудио</h3>
+                <p>Напиши текст, и я озвучу его с помощью ИИ. Стоимость: 2&#162; за генерацию.</p>
+            </div>
+            <div class="result-area" id="audioResult">
+                <span class="result-placeholder">Здесь появится аудиоплеер</span>
             </div>
         </div>
 
@@ -781,8 +772,8 @@
                         onkeydown="handleKeyDown(event)"
                         oninput="autoResize(this)"></textarea>
                 </div>
-                <button class="send-btn" id="sendBtn" onclick="sendOrGenerate()">
-                    ➔
+                <button class="send-btn" id="sendBtn" onclick="sendOrGenerate()" title="Отправить">
+                    &#10148;
                 </button>
             </div>
             <div class="input-hint" id="inputHint">Enter — отправить, Shift+Enter — новая строка</div>
@@ -791,29 +782,31 @@
 
     <div class="dialog-overlay" id="purchaseDialog">
         <div class="dialog">
-            <h3>⭐ Купить кредиты</h3>
-            <p>Кредиты необходимы для использования ИИ-генераторов. 1&cent; = 5₽. При регистрации даётся 80&cent;.</p>
+            <h3>&#9733; Купить кредиты</h3>
+            <p>Кредиты нужны для генерации медиа. 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
             
             <div class="plan-card selected" onclick="selectPlan(this, 200)">
-                <div class="plan-flex">
-                    <div class="plan-name">200 &cent;</div>
-                    <div class="plan-price">1 000 ₽</div>
-                </div>
-                <div class="plan-desc">~50 изображений или 10 видеороликов</div>
+                <div class="plan-name">200 &#162;</div>
+                <div class="plan-price">1 000 &#8381;</div>
+                <div class="plan-desc">~50 изображений или 10 видео</div>
             </div>
             <div class="plan-card" onclick="selectPlan(this, 500)">
-                <div class="plan-flex">
-                    <div class="plan-name">500 &cent;</div>
-                    <div class="plan-price">2 500 ₽</div>
-                </div>
-                <div class="plan-desc">~125 изображений или 25 видеороликов</div>
+                <div class="plan-name">500 &#162;</div>
+                <div class="plan-price">2 500 &#8381;</div>
+                <div class="plan-desc">~125 изображений или 25 видео</div>
             </div>
             <div class="plan-card" onclick="selectPlan(this, 1000)">
-                <div class="plan-flex">
-                    <div class="plan-name">1 000 &cent;</div>
-                    <div class="plan-price">5 000 ₽</div>
+                <div class="plan-name">1 000 &#162;</div>
+                <div class="plan-price">5 000 &#8381;</div>
+                <div class="plan-desc">~250 изображений или 50 видео</div>
+            </div>
+
+            <div style="margin-top:12px">
+                <div class="plan-card" onclick="selectPlan(this, 'vip')">
+                    <div class="plan-name">&#128081; VIP — 30 дней</div>
+                    <div class="plan-price">1 000 &#8381;/мес</div>
+                    <div class="plan-desc">Безлимитный чат + 100&#162;/день на медиа</div>
                 </div>
-                <div class="plan-desc">~250 изображений или 50 видеороликов</div>
             </div>
 
             <div class="dialog-actions">
@@ -825,14 +818,17 @@
 
     <div class="dialog-overlay" id="authDialog">
         <div class="dialog">
-            <h3>🔐 Войти в аккаунт</h3>
-            <p>Авторизуйтесь, чтобы синхронизировать баланс кредитов и сохранять свои генерации.</p>
+            <h3>&#128274; Войти в аккаунт</h3>
+            <p>Войдите, чтобы сохранять историю чата и покупать кредиты.</p>
             <div class="auth-providers">
                 <button class="auth-provider-btn vk" onclick="authVK()">
-                    🔵 Войти через VK ID
+                    &#9670; Войти через VK
+                </button>
+                <button class="auth-provider-btn tg" onclick="authTG()">
+                    &#9993; Войти через Telegram
                 </button>
             </div>
-            <div class="dialog-actions">
+            <div class="dialog-actions" style="margin-top:16px">
                 <button class="btn-secondary" onclick="closeAuthDialog()">Отмена</button>
             </div>
         </div>
@@ -841,22 +837,22 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
-    // ============================================================
-    // ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ СВЯЗКА: LOCALSTORAGE + КОНТРАКТ API
-    // ============================================================
+    // ============================================
+    //  Gemini-AI Frontend — Pure JS, no frameworks
+    // ============================================
 
-    const API_URL = ''; // Единый корень приложения
+    const API_URL = '';  // Запросы идут на тот же домен (Yandex Cloud Function / Worker)
 
     // ---- STATE ----
     let currentMode = 'chat';
-    let credits = 80;
+    let credits = 0;
     let isProcessing = false;
     let selectedImageSize = '1024x1024';
     let selectedPlan = 200;
-    let user = null; 
+    let user = null; // Хранит { id: '...', name: '...', provider: 'vk'|'tg' }
     let chatHistory = [];
 
-    // ---- DOM ELEMENTS ----
+    // ---- DOM REFS ----
     const chatArea = document.getElementById('chatArea');
     const welcomeScreen = document.getElementById('welcomeScreen');
     const userInput = document.getElementById('userInput');
@@ -866,115 +862,222 @@
     const authBtn = document.getElementById('authBtn');
     const toastContainer = document.getElementById('toastContainer');
 
-    // ---- ИНИЦИАЛИЗАЦИЯ И РАБОТА С LOCALSTORAGE ----
+    // ---- ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ----
     document.addEventListener('DOMContentLoaded', () => {
-        // 1. Извлекаем выбранные настройки размеров ИИ
-        const savedSize = localStorage.getItem('gemini_selected_size');
-        if (savedSize) {
-            selectedImageSize = savedSize;
-            const targetBtn = document.querySelector(`#imageSizeSelector .ratio-btn[data-size="${savedSize}"]`);
-            if (targetBtn) {
-                document.querySelectorAll('#imageSizeSelector .ratio-btn').forEach(b => b.classList.remove('active'));
-                targetBtn.classList.add('active');
-            }
-        }
-
-        // 2. Восстановление сессии/аккаунта
+        // Проверяем, была ли сессия авторизации ранее (как в Хранилке)
         const savedUser = localStorage.getItem('gemini_user');
         if (savedUser) {
             user = JSON.parse(savedUser);
-            authBtn.textContent = user.name.split(' ')[0] || 'Выйти';
+            authBtn.textContent = 'Выйти';
             authBtn.classList.add('logged-in');
             loadServerData();
         } else {
+            // Анонимный режим
             authBtn.textContent = 'Войти';
-            creditsAmount.textContent = credits;
-            loadLocalHistory(); 
+            creditsAmount.textContent = '--';
+            loadLocalHistory();
         }
         autoResize(userInput);
     });
 
-    // Загрузка локальной истории (для анонимов)
+    // ---- ПОДДЕРЖКА ЛОКАЛЬНОЙ ИСТОРИИ (АНОНИМ) ----
     function loadLocalHistory() {
-        const localHist = localStorage.getItem('gemini_chat_history');
+        const localHist = localStorage.getItem('gemini_local_history');
         if (localHist) {
-            try {
-                chatHistory = JSON.parse(localHist);
-                if (chatHistory.length > 0) {
-                    if (welcomeScreen) welcomeScreen.style.display = 'none';
-                    chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.content));
-                }
-            } catch (e) {
-                console.error("Ошибка чтения истории из LocalStorage", e);
+            chatHistory = JSON.parse(localHist);
+            if (chatHistory.length > 0) {
+                welcomeScreen.style.display = 'none';
+                chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text));
             }
         }
     }
 
-    // Сохранение истории в LocalStorage
-    function saveChatHistory() {
-        if (chatHistory.length > 40) chatHistory = chatHistory.slice(-40);
-        localStorage.setItem('gemini_chat_history', JSON.stringify(chatHistory));
+    function saveLocalHistory() {
+        if (!user) {
+            localStorage.setItem('gemini_local_history', JSON.stringify(chatHistory));
+        }
     }
 
+    // ---- ЗАГРУЗКА ДАННЫХ ДЛЯ АВТОРИЗОВАННОГО ЮЗЕРА ----
     async function loadServerData() {
-        if (!user) return;
         try {
+            // Запрос баланса у YDB через воркер
             const response = await fetch(`${API_URL}/api/user/profile`, {
                 headers: { 'X-Chat-Id': user.id }
             });
-            if (response.ok) {
+            
+            // Безопасно проверяем JSON, чтобы избежать Unexpected token 'O' / 'O' is not valid JSON
+            const contentType = response.headers.get("content-type");
+            if (response.ok && contentType && contentType.includes("application/json")) {
                 const data = await response.json();
                 credits = data.credits ?? 80;
                 creditsAmount.textContent = credits;
+            } else {
+                // Если пришел не JSON, берем фолбэк-значение и не падаем по синтаксической ошибке
+                credits = 80;
+                creditsAmount.textContent = credits;
             }
         } catch (err) {
-            console.error('Ошибка синхронизации баланса');
+            showToast('Ошибка обновления баланса', 'error');
+            creditsAmount.textContent = '80';
         }
     }
 
-    // ---- ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ (UI И КОНТЕКСТ) ----
-    function switchMode(mode) {
-        if (isProcessing) {
-            showToast('Пожалуйста, дождитесь завершения генерации', 'info');
-            return;
+    // ---- ПРОВЕРКА АВТОРИЗАЦИИ (БЕЗОПАСНОСТЬ БАЛАНСА) ----
+    function checkAuth(requiredCost = 0) {
+        if (!user) {
+            showToast('Для этого действия необходимо авторизоваться!', 'info');
+            openAuthDialog();
+            return false;
         }
+        if (credits < requiredCost) {
+            showToast('Недостаточно кредитов для генерации!', 'error');
+            openPurchaseDialog();
+            return false;
+        }
+        return true;
+    }
+
+    // ---- MODE SWITCHING ----
+    function switchMode(mode) {
         currentMode = mode;
 
+        // Обновляем вкладки
         document.querySelectorAll('.mode-tab').forEach(tab => {
             tab.classList.toggle('active', tab.dataset.mode === mode);
         });
 
+        // Показываем/скрываем панели
         document.getElementById('chatArea').style.display = (mode === 'chat') ? 'flex' : 'none';
         document.getElementById('imagePanel').style.display = (mode === 'image') ? 'flex' : 'none';
         document.getElementById('videoPanel').style.display = (mode === 'video') ? 'flex' : 'none';
         document.getElementById('audioPanel').style.display = (mode === 'audio') ? 'flex' : 'none';
 
+        // Плейсхолдеры и подсказки стоимости
         const placeholders = {
             chat: 'Напишите сообщение...',
-            image: 'Опишите изображение для ИИ-генератора...',
+            image: 'Опишите изображение на английском или русском...',
             video: 'Опишите видео-сцену для ИИ...',
-            audio: 'Введите текст, который нужно озвучить...'
+            audio: 'Введите текст для озвучки...'
         };
-        
+        const hints = {
+            chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат (История не сохраняется в S3)',
+            image: 'Стоимость генерации: 4\u00A2',
+            video: 'Стоимость генерации: 20\u00A2',
+            audio: 'Стоимость генерации: 2\u00A2'
+        };
         userInput.placeholder = placeholders[mode];
-        userInput.focus();
+        inputHint.textContent = hints[mode];
     }
 
-    function selectImageSize(btn) {
-        document.querySelectorAll('#imageSizeSelector .ratio-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        selectedImageSize = btn.dataset.size;
-        localStorage.setItem('gemini_selected_size', selectedImageSize); // Сохраняем выбор
+    // ---- CHAT LOGIC ----
+    function useSuggestion(text) {
+        userInput.value = text;
+        autoResize(userInput);
+        sendOrGenerate();
     }
 
-    // ---- ОТПРАВКА ЗАПРОСОВ (НА ЕДИНЫЙ /api) ----
+    function handleKeyDown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendOrGenerate();
+        }
+    }
+
+    function autoResize(el) {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
+
     async function sendOrGenerate() {
         const text = userInput.value.trim();
         if (!text || isProcessing) return;
 
-        const costs = { chat: 0, image: 4, video: 20, audio: 2 };
-        if (credits < costs[currentMode]) {
-            showToast(`Недостаточно кредитов! Требуется ${costs[currentMode]}&cent;`, 'error');
+        if (currentMode === 'chat') {
+            await sendChat(text);
+        } else if (currentMode === 'image') {
+            await generateImage(text);
+        } else if (currentMode === 'video') {
+            await generateVideo(text);
+        } else if (currentMode === 'audio') {
+            await generateAudio(text);
+        }
+    }
+
+    async function sendChat(text) {
+        isProcessing = true;
+        sendBtn.disabled = true;
+        userInput.value = '';
+        autoResize(userInput);
+
+        // Hide welcome
+        if (welcomeScreen) welcomeScreen.style.display = 'none';
+
+        // Add user message
+        addMessage(text, 'user');
+        chatHistory.push({ role: 'user', content: text });
+        saveLocalHistory();
+
+        // Show typing
+        const typingEl = showTyping();
+
+        try {
+            // Исправлен контракт: бэкенд ожидает messages во внешнем свойстве, обрабатываем возможный текстовый ответ
+            const response = await fetch(API_URL + '/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: chatHistory,
+                    mode: 'chat'
+                })
+            });
+
+            removeTyping(typingEl);
+
+            const contentType = response.headers.get("content-type");
+            if (!response.ok) {
+                let errMsg = 'Ошибка сервера: ' + response.status;
+                if (contentType && contentType.includes("application/json")) {
+                    const errData = await response.json().catch(() => ({}));
+                    errMsg = errData.error || errMsg;
+                } else {
+                    const txtErr = await response.text().catch(() => "");
+                    errMsg = txtErr || errMsg;
+                }
+                throw new Error(errMsg);
+            }
+
+            let reply = '(пустой ответ)';
+            if (contentType && contentType.includes("application/json")) {
+                const data = await response.json();
+                reply = data.reply || data.content || reply;
+            } else {
+                // Защита от Unexpected token 'O' — если вернулась чистая строка, читаем как text
+                const rawText = await response.text();
+                reply = rawText || reply;
+            }
+
+            addMessage(reply, 'bot');
+            chatHistory.push({ role: 'assistant', content: reply });
+            saveLocalHistory();
+
+        } catch (err) {
+            removeTyping(typingEl);
+            addMessage('Ошибка: ' + err.message, 'error');
+            chatHistory.pop();
+            saveLocalHistory();
+            userInput.value = text;
+            autoResize(userInput);
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
+        userInput.focus();
+    }
+
+    async function generateImage(prompt) {
+        if (credits < 4) {
+            showToast('Недостаточно кредитов! Нужно 4\u00A2', 'error');
             openPurchaseDialog();
             return;
         }
@@ -984,115 +1087,206 @@
         userInput.value = '';
         autoResize(userInput);
 
-        // Интерфейсные изменения под тип генерации
-        let typingEl = null;
-        if (currentMode === 'chat') {
-            if (welcomeScreen) welcomeScreen.style.display = 'none';
-            appendMessageToDOM('user', text);
-            chatHistory.push({ role: 'user', content: text });
-            saveChatHistory();
-            typingEl = showTyping();
-        } else {
-            const container = document.getElementById(`${currentMode}Result`);
-            container.parentElement.classList.add('has-content');
-            container.innerHTML = `<span class="result-placeholder" style="color:var(--accent)">⏳ ИИ обрабатывает запрос, подождите...</span>`;
-        }
+        const resultArea = document.getElementById('imageResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую изображение...</span>';
 
         try {
-            // Исправленный универсальный контракт запроса на /api
-            const response = await fetch(`${API_URL}/api`, {
+            const response = await fetch(API_URL + '/api/image', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    mode: currentMode,
-                    auth: user ? { provider: user.provider, id: user.id } : { provider: null, id: null },
-                    payload: {
-                        prompt: text,
-                        history: currentMode === 'chat' ? chatHistory : [],
-                        options: currentMode === 'image' ? { size: selectedImageSize } : {}
-                    }
-                })
+                body: JSON.stringify({ prompt, size: selectedImageSize })
             });
 
-            if (typingEl) removeTyping(typingEl);
-
-            // Решаем проблему "Unexpected token O" (проверяем, JSON ли пришел)
-            const contentType = response.headers.get("content-type");
-            if (!response.ok || !contentType || !contentType.includes("application/json")) {
-                const textErr = await response.text();
-                throw new Error(textErr || `Ошибка сервера: ${response.status}`);
-            }
-
-            const resData = await response.json();
-
-            if (resData.success) {
-                // Обновление баланса
-                if (resData.credits !== undefined) {
-                    credits = resData.credits;
+            const contentType = response.headers.get('Content-Type') || '';
+            
+            if (!response.ok) {
+                let errMsg = 'Ошибка генерации';
+                if (contentType.includes("application/json")) {
+                    const errData = await response.json().catch(() => ({}));
+                    errMsg = errData.error || errMsg;
                 } else {
-                    credits -= costs[currentMode];
+                    const txtErr = await response.text().catch(() => "");
+                    errMsg = txtErr || errMsg;
                 }
-                creditsAmount.textContent = credits;
+                throw new Error(errMsg);
+            }
+            
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                
+                if (data.userCredits !== undefined) {
+                    credits = data.userCredits;
+                } else {
+                    credits -= 4;
+                }
 
-                // Отрисовка результатов
-                handleBackendSuccess(resData.data);
+                if (data.image) {
+                    resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.image + '" alt="' + prompt + '">';
+                    updateCreditsDisplay();
+                    showToast('Изображение создано!', 'success');
+                } else if (data.url) {
+                    resultArea.innerHTML = '<img class="generated-image" src="' + data.url + '" alt="' + prompt + '">';
+                    updateCreditsDisplay();
+                    showToast('Изображение создано!', 'success');
+                } else {
+                    throw new Error('Сервер не вернул изображение');
+                }
             } else {
-                throw new Error(resData.error || 'Произошла непредвиденная ошибка ИИ');
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">';
+                credits -= 4; 
+                updateCreditsDisplay();
+                showToast('Изображение создано! -4\u00A2', 'success');
             }
 
         } catch (err) {
-            if (typingEl) removeTyping(typingEl);
-            
-            if (currentMode === 'chat') {
-                appendMessageToDOM('error', `Ошибка: ${err.message}`);
-                chatHistory.pop();
-                saveChatHistory();
-            } else {
-                document.getElementById(`${currentMode}Result`).innerHTML = `<span class="result-placeholder" style="color:var(--danger)">❌ Ошибка: ${err.message}</span>`;
-            }
-            showToast(err.message, 'error');
-            userInput.value = text; // сохраняем текст в поле
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка генерации: ' + err.message, 'error');
+            userInput.value = prompt;
             autoResize(userInput);
-        } finally {
-            isProcessing = false;
-            sendBtn.disabled = false;
         }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
     }
 
-    function handleBackendSuccess(data) {
-        if (currentMode === 'chat') {
-            const reply = data.content || '';
-            appendMessageToDOM('bot', reply);
-            chatHistory.push({ role: 'assistant', content: reply });
-            saveChatHistory();
-        } 
-        else if (currentMode === 'image') {
-            const url = data.url || (data.image ? `data:image/png;base64,${data.image}` : '');
-            document.getElementById('imageResult').innerHTML = `<img src="${url}" alt="Generated Code" onclick="window.open('${url}', '_blank')">`;
-            showToast('Изображение успешно создано!', 'success');
-        } 
-        else if (currentMode === 'video') {
-            document.getElementById('videoResult').innerHTML = `<video controls autoplay loop playsinline><source src="${data.url}" type="video/mp4"></video>`;
-            showToast('Видео сгенерировано!', 'success');
-        } 
-        else if (currentMode === 'audio') {
-            document.getElementById('audioResult').innerHTML = `<audio controls autoplay style="width:100%;"><source src="${data.url}"></audio>`;
-            showToast('Аудио-файл готов!', 'success');
+    async function generateVideo(prompt) {
+        if (credits < 20) {
+            showToast('Недостаточно кредитов! Нужно 20\u00A2', 'error');
+            openPurchaseDialog();
+            return;
         }
+
+        isProcessing = true;
+        sendBtn.disabled = true;
+        userInput.value = '';
+        autoResize(userInput);
+
+        const resultArea = document.getElementById('videoResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую видео (может занять до минуты)...</span>';
+
+        try {
+            const response = await fetch(API_URL + '/api/video', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt })
+            });
+
+            const contentType = response.headers.get('Content-Type') || '';
+            if (!response.ok) {
+                let errMsg = 'Ошибка генерации';
+                if (contentType.includes("application/json")) {
+                    const errData = await response.json().catch(() => ({}));
+                    errMsg = errData.error || errMsg;
+                } else {
+                    const txtErr = await response.text().catch(() => "");
+                    errMsg = txtErr || errMsg;
+                }
+                throw new Error(errMsg);
+            }
+
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                if (data.url) {
+                    resultArea.innerHTML = '<video controls autoplay loop><source src="' + data.url + '" type="video/mp4"></video>';
+                    credits = data.userCredits !== undefined ? data.userCredits : credits - 20;
+                    updateCreditsDisplay();
+                    showToast('Video created!', 'success');
+                } else {
+                    throw new Error('Сервер не вернул видео');
+                }
+            } else {
+                // Если бэкенд возвращает чистую текстовую ссылку, обрабатываем её без падения JSON
+                const rawUrl = await response.text();
+                if (rawUrl && rawUrl.startsWith('http')) {
+                    resultArea.innerHTML = '<video controls autoplay loop><source src="' + rawUrl.trim() + '" type="video/mp4"></video>';
+                    credits -= 20;
+                    updateCreditsDisplay();
+                    showToast('Видео создано!', 'success');
+                } else {
+                    throw new Error('Некорректный формат ответа видео');
+                }
+            }
+
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка генерации: ' + err.message, 'error');
+            userInput.value = prompt;
+            autoResize(userInput);
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
     }
 
-    // ---- ПОМОЩНИКИ UI И ОТРИСОВКИ ----
+    async function generateAudio(text) {
+        if (credits < 2) {
+            showToast('Недостаточно кредитов! Нужно 2\u00A2', 'error');
+            openPurchaseDialog();
+            return;
+        }
+
+        isProcessing = true;
+        sendBtn.disabled = true;
+        userInput.value = '';
+        autoResize(userInput);
+
+        const resultArea = document.getElementById('audioResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую аудио...</span>';
+
+        try {
+            const response = await fetch(API_URL + '/api/audio/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            });
+
+            if (!response.ok) {
+                const contentType = response.headers.get('Content-Type') || '';
+                let errMsg = 'Ошибка генерации';
+                if (contentType.includes("application/json")) {
+                    const errData = await response.json().catch(() => ({}));
+                    errMsg = errData.error || errMsg;
+                } else {
+                    const txtErr = await response.text().catch(() => "");
+                    errMsg = txtErr || errMsg;
+                }
+                throw new Error(errMsg);
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio>';
+            
+            const serverCredits = response.headers.get('X-User-Credits');
+            credits = serverCredits ? parseInt(serverCredits, 10) : credits - 2;
+            
+            updateCreditsDisplay();
+            showToast('Аудио создано!', 'success');
+
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка генерации: ' + err.message, 'error');
+            userInput.value = text;
+            autoResize(userInput);
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
+    }
+
+    // ---- UI HELPERS ----
     function appendMessageToDOM(sender, text) {
+        addMessage(text, sender);
+    }
+
+    function addMessage(text, sender) {
         const div = document.createElement('div');
         div.className = 'message ' + sender;
         
         if (sender === 'bot') {
-            let html = text
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/```([\s\S]+?)```/g, '<pre><code>$1</code></pre>')
-                .replace(/`([^`\n]+?)`/g, '<code>$1</code>')
-                .replace(/\n/g, '<br>');
-            div.innerHTML = html;
+            div.innerHTML = formatBotMessage(text);
         } else {
             div.textContent = text;
         }
@@ -1101,10 +1295,33 @@
         chatArea.scrollTop = chatArea.scrollHeight;
     }
 
-    function useSuggestion(text) {
-        userInput.value = text;
-        switchMode('chat');
-        sendOrGenerate();
+    function formatBotMessage(text) {
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        const codeBlocks = [];
+        
+        html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+            codeBlocks.push(`<pre class="code-block ${lang}"><code>${code}</code></pre>`);
+            return `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length - 1}__`;
+        });
+
+        html = html.replace(/`([^`\n]+)`/g, function(match, code) {
+            codeBlocks.push(`<code>${code}</code>`);
+            return `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length - 1}__`;
+        });
+
+        html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>');
+        html = html.replace(/\n/g, '<br>');
+
+        codeBlocks.forEach((block, index) => {
+            html = html.replace(`__CODE_BLOCK_PLACEHOLDER_${index}__`, block);
+        });
+
+        return html;
     }
 
     function showTyping() {
@@ -1116,66 +1333,117 @@
         return div;
     }
 
-    function removeTyping(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
-    function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; }
-    function handleKeyDown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendOrGenerate(); } }
+    function removeTyping(el) {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
 
-    // ---- ОКНА ДИАЛОГОВ И АВТОРИЗАЦИЯ VK ----
-    function openPurchaseDialog() { document.getElementById('purchaseDialog').classList.add('open'); }
-    function closePurchaseDialog() { document.getElementById('purchaseDialog').classList.remove('open'); }
+    // Изменение отображения баланса кредитов
+    function updateCreditsDisplay() {
+        if (typeof creditsAmount !== 'undefined' && creditsAmount) {
+            creditsAmount.textContent = credits;
+        }
+    }
+
+    // ---- IMAGE SIZE ----
+    function selectImageSize(btn) {
+        document.querySelectorAll('#imageSizeSelector .size-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedImageSize = btn.dataset.size;
+    }
+
+    // ---- PURCHASE DIALOG ----
+    function openPurchaseDialog() {
+        document.getElementById('purchaseDialog').classList.add('open');
+    }
+
+    function closePurchaseDialog() {
+        document.getElementById('purchaseDialog').classList.remove('open');
+    }
+
+    // Выбор тарифного плана в меню кредитов
+    function selectPlan(el, plan) {
+        document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+        el.classList.add('selected');
+        selectedPlan = plan;
+    }
+
+    function purchaseCredits() {
+        showToast('Оплата через Telegram-бота (скоро!)', 'info');
+        closePurchaseDialog();
+    }
+
+    // ---- AUTH DIALOG ----
     function openAuthDialog() {
         if (user) {
             user = null;
             localStorage.removeItem('gemini_user');
             authBtn.textContent = 'Войти';
             authBtn.classList.remove('logged-in');
-            credits = 80;
-            creditsAmount.textContent = credits;
+            creditsAmount.textContent = '--';
             showToast('Вы вышли из аккаунта', 'info');
             return;
         }
         document.getElementById('authDialog').classList.add('open');
     }
-    function closeAuthDialog() { document.getElementById('authDialog').classList.remove('open'); }
-    function selectPlan(el, plan) {
-        document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
-        el.classList.add('selected');
-        selectedPlan = plan;
+
+    function closeAuthDialog() {
+        document.getElementById('authDialog').classList.remove('open');
     }
-    function purchaseCredits() { showToast('Интеграция платёжного шлюза...', 'info'); closePurchaseDialog(); }
 
     function authVK() {
         if (window.vkBridge) {
             vkBridge.send('VKWebAppGetUserInfo').then(info => {
-                user = { id: info.id, name: `${info.first_name} ${info.last_name}`, provider: 'vk' };
+                user = { id: info.id, name: info.first_name + ' ' + info.last_name, provider: 'vk' };
                 localStorage.setItem('gemini_user', JSON.stringify(user));
                 authBtn.textContent = info.first_name;
                 authBtn.classList.add('logged-in');
                 closeAuthDialog();
-                showToast(`С возвращением, ${info.first_name}!`, 'success');
+                showToast('Добро пожаловать, ' + info.first_name + '!', 'success');
                 loadServerData();
-            }).catch(() => { showToast('Ошибка интеграции VK ID', 'error'); });
+            }).catch(() => {
+                showToast('Ошибка авторизации VK', 'error');
+            });
         } else {
-            // Тестовый мок для браузера вне VK
-            user = { id: 'test_vk_user', name: 'Иван Иванов', provider: 'vk' };
-            localStorage.setItem('gemini_user', JSON.stringify(user));
-            authBtn.textContent = 'Иван';
-            authBtn.classList.add('logged-in');
+            showToast('VK авторизация доступна только внутри VK Mini App', 'info');
             closeAuthDialog();
-            showToast('Вход (эмуляция браузера)', 'success');
         }
     }
 
-    function showToast(message, type = 'info') {
+    function authTG() {
+        showToast('Telegram авторизация (скоро!)', 'info');
+        closeAuthDialog();
+    }
+
+    // ---- TOAST ----
+    function showToast(message, type) {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
         const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
+        toast.className = 'toast ' + (type || 'info');
         toast.textContent = message;
-        toastContainer.appendChild(toast);
+        container.appendChild(toast);
         setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
     }
 
-    document.getElementById('purchaseDialog').addEventListener('click', function(e) { if (e.target === this) closePurchaseDialog(); });
-    document.getElementById('authDialog').addEventListener('click', function(e) { if (e.target === this) closeAuthDialog(); });
+    // ---- VK MINI APP INIT ----
+    if (window.vkBridge) {
+        vkBridge.send('VKWebAppInit').then(() => {
+            console.log('VK Mini App initialized');
+        }).catch(err => {
+            console.log('Not in VK context:', err);
+        });
+    }
+
+    // ---- KEYBOARD FOCUS ----
+    if (userInput) userInput.focus();
+
+    // ---- CLICK OUTSIDE DIALOGS ----
+    document.getElementById('purchaseDialog').addEventListener('click', function(e) {
+        if (e.target === this) closePurchaseDialog();
+    });
+    document.getElementById('authDialog').addEventListener('click', function(e) {
+        if (e.target === this) closeAuthDialog();
+    });
     </script>
 </body>
 </html>
