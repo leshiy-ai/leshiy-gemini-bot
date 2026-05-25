@@ -16290,6 +16290,13 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     const workerDomain = url.origin || env.WORKER_DOMAIN;
 
     // ============================================
+    // 🌟 ПЕРЕХВАТ /api/kieai-callback через POST
+    // ============================================
+    if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
+        return handleKieAiCallback(request, env, ctx);
+    }
+
+    // ============================================
     // 🌟 ПЕРЕХВАТ /api ДЛЯ ВЕБ-ФРОНТЕНДА (webHandler)
     // ============================================
     if (path.startsWith('/api')) {
@@ -16334,10 +16341,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         }
     }
     // 🌟 --- КОНЕЦ ПЕРЕХВАТА --- 🌟
-    
-    if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
-        return handleKieAiCallback(request, env, ctx);
-    }
+
     // ----------------------------
     // --- KV-IMAGES Public Url ---
     // ----------------------------
