@@ -16288,6 +16288,53 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     const url = new URL(request.url);
     const path = url.pathname;
     const workerDomain = url.origin || env.WORKER_DOMAIN;
+
+    // ============================================
+    // 🌟 ПЕРЕХВАТ /api ДЛЯ ВЕБ-ФРОНТЕНДА (webHandler)
+    // ============================================
+    if (path.startsWith('/api')) {
+        try {
+            const webHandler = require('./webHandler');
+            let webBody = {};
+            if (request.method === 'GET') {
+                // /api/models → mode='models', /api/balance → mode='balance'
+                const urlMode = path.replace(/^\/api\/?/, '') || null;
+                webBody = { mode: urlMode, auth: null, payload: {} };
+                // Пробуем извлечь auth из заголовков
+                const authProvider = request.headers.get('x-auth-provider') || null;
+                const authId = request.headers.get('x-auth-id') || null;
+                const authHash = request.headers.get('x-auth-hash') || null;
+                if (authId) webBody.auth = { provider: authProvider, id: authId, hash: authHash };
+            } else {
+                // POST — парсим JSON body
+                const rawBody = await request.text();
+                try { webBody = JSON.parse(rawBody); } catch(e) { webBody = { mode: null }; }
+                // Если mode не указан в body, берём из URL
+                if (!webBody.mode) {
+                    const urlMode = path.replace(/^\/api\/?/, '') || null;
+                    if (urlMode) webBody.mode = urlMode;
+                }
+            }
+            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse, syncS3Chat, uploadBase64ImageToPublicUrl, createTaskKieAi });
+            return new Response(JSON.stringify(result), {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Provider, X-Auth-Id, X-Auth-Hash'
+                }
+            });
+        } catch (webErr) {
+            console.error("🖲️ [WEB API ERROR in worker]:", webErr);
+            return new Response(JSON.stringify({ success: false, error: "Web Gateway Error: " + webErr.message }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' }
+            });
+        }
+    }
+    // 🌟 --- КОНЕЦ ПЕРЕХВАТА --- 🌟
+    
     if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
         return handleKieAiCallback(request, env, ctx);
     }

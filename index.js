@@ -145,66 +145,7 @@ module.exports.handler = async (event, context) => {
         body = event.body;
     }
 
-    //let uri = event.url || event.headers['x-envoy-original-path'] || '/';
-    let uri = event.path || event.headers['x-envoy-original-path'] || event.url || '/';
-    // Если uri — полный URL (Яндекс Cloud Functions), извлекаем pathname
-    if (uri.startsWith('http')) {
-        try { uri = new URL(uri).pathname; } catch(e) {}
-    }
-
-    // 🌟 --- ПЕРЕХВАТ WEB API ШЛЮЗА ДЛЯ ФРОНТЕНДА --- 🌟
-    // Ловим все /api и /api/* запросы (GET и POST)
-    const apiMatch = uri.match(/^\/api\/?([a-z_-]*)$/i);
-    if (apiMatch) {
-        try {
-            // Собираем env точно так же, как ниже для воркера
-            const webEnv = {
-                ...process.env,
-                LAST_PHOTO_STORAGE: USER_DB_ADAPTER, 
-                BOT_LOGS_STORAGE: USER_DB_ADAPTER,
-                FILES_DB: FILES_DB_ADAPTER,
-                TypedValues,
-                runQuery,
-                filesDriver,
-                nodeCrypto
-            };
-
-            // Извлекаем режим из URL (/api/models → mode='models') или из body.mode
-            const urlMode = apiMatch[1] || null;
-
-            // Для GET-запросов — формируем body из URL-параметров
-            let webBody = body;
-            if (event.httpMethod === 'GET') {
-                webBody = { mode: urlMode, auth: null, payload: {} };
-            } else {
-                // Для POST — если mode не указан в body, берём из URL
-                if (!webBody.mode && urlMode) {
-                    webBody.mode = urlMode;
-                }
-            }
-
-            // Передаем управление в webHandler
-            const result = await webHandler.handleWebRequest(webBody, webEnv, worker);
-
-            return {
-                statusCode: 200,
-                headers: {
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                body: JSON.stringify(result)
-            };
-        } catch (webErr) {
-            console.error("🖲️ [WEB API CRITICAL ERROR]:", webErr);
-            return {
-                statusCode: 500,
-                headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' },
-                body: JSON.stringify({ success: false, error: "Web Gateway Error: " + webErr.message })
-            };
-        }
-    }
-    // 🌟 --- КОНЕЦ ПЕРЕХВАТА --- 🌟
-    
+    let uri = event.url || event.headers['x-envoy-original-path'] || '/';    
     const domain = process.env.WORKER_DOMAIN || "https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net";
     const origin = domain.startsWith('http') ? domain : `https://${domain}`;
 
