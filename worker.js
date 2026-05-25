@@ -584,7 +584,7 @@ const AI_MODELS = {
 
     // ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ ---
 
-    // [FUSIONBRAIN Kandinsky - /create] (Тестовый, ПЛАТНЫЙ попытки 88/100 до 01.01.2026)
+    /*/ [FUSIONBRAIN Kandinsky - /create] (Тестовый, ПЛАТНЫЙ попытки 88/100 до 01.01.2026)
     TEXT_TO_IMAGE_KANDINSKY: { 
         SERVICE: 'FUSIONBRAIN', 
         FUNCTION: callKandinskyText2Img, // <-- ОБРАБОТЧИК ДЛЯ FUSIONBRAIN
@@ -592,7 +592,7 @@ const AI_MODELS = {
         API_KEY: 'FUSIONBRAIN_API_KEY', // Имя переменной окружения
         BASE_URL: 'https://api-key.fusionbrain.ai',
         pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
-    },
+    },*/
 
     // Текст в голос - говорилка для /say
     TEXT_TO_AUDIO_VOICERSS: { 
@@ -16423,7 +16423,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         const authParam = path === '/vk.html' ? 'vk' : 'tg';
         return Response.redirect(url.origin + '/?auth=' + authParam, 302);
     }
-    
+
     // -----------------------------
     // ✅ ВНЕШНЯЯ СТРАНИЦА WEBHOOKA
     // -----------------------------
