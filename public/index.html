@@ -287,6 +287,7 @@
             border: 1px solid rgba(168, 85, 247, 0.3);
         }
 
+
         /* ===== CHAT AREA ===== */
         .chat-area {
             flex: 1;
@@ -964,6 +965,26 @@
             .header-logo { font-size: 17px; }
             .sub-option { font-size: 11px; padding: 3px 8px; }
         }
+
+        /* Аудио-панель: переключатель подрежимов на маленьких экранах */
+        #audioPanel .panel-section-toggle {
+            flex-wrap: wrap;
+        }
+        #audioPanel .panel-section-btn {
+            min-width: 0;
+            font-size: 12px;
+            padding: 7px 8px;
+        }
+
+        /* Результат-область для аудио — вертикальная компоновка */
+        .result-area audio {
+            width: 100%;
+            max-width: 400px;
+        }
+        .result-area a {
+            display: inline-block;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -979,7 +1000,7 @@
                     <span>&#9733;</span>
                     <span class="amount" id="creditsAmount">--</span>&#162;
                 </div>
-                <button class="auth-btn" id="authBtn" onclick="openAuthDialog()">Войти</button>
+                <button class="auth-btn" id="authBtn" onclick="handleAuthBtnClick()">Войти</button>
             </div>
         </div>
 
@@ -1340,6 +1361,29 @@
         </div>
     </div>
 
+    <!-- PROFILE DIALOG -->
+    <div class="dialog-overlay" id="profileDialog">
+        <div class="dialog">
+            <h3>&#128100; Профиль</h3>
+            <div style="display:flex;align-items:center;gap:12px;margin:16px 0">
+                <img id="profilePhoto" src="" alt="" style="width:48px;height:48px;border-radius:50%;display:none;object-fit:cover">
+                <div style="flex:1">
+                    <div id="profileName" style="font-weight:600;font-size:15px;color:var(--text-primary)"></div>
+                    <div id="profileProvider" style="font-size:12px;color:var(--text-secondary);margin-top:2px"></div>
+                </div>
+            </div>
+            <div id="profileCredits" style="padding:10px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:12px">
+                <div style="font-size:12px;color:var(--text-secondary)">Баланс</div>
+                <div style="font-size:18px;font-weight:700;color:var(--warning)" id="profileCreditsAmount">--&#162;</div>
+            </div>
+            <div class="dialog-actions" style="flex-direction:column;gap:8px">
+                <button class="btn-primary" onclick="openPurchaseDialog();closeProfileDialog()" style="width:100%">&#9733; Купить кредиты</button>
+                <button class="btn-secondary" onclick="doLogout()" style="width:100%;color:var(--danger);border-color:rgba(239,68,68,0.3)">&#128682; Выйти</button>
+                <button class="btn-secondary" onclick="closeProfileDialog()" style="width:100%">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
     <!-- TOAST CONTAINER -->
     <div class="toast-container" id="toastContainer"></div>
 
@@ -1396,12 +1440,20 @@
         // Проверяем авторизацию из URL (возврат из vk.html/tg.html)
         initAuthFromURL();
 
+        // Если вернулись с авторизации (фоллбэк редирект с ?auth=vk или ?auth=tg)
+        const urlParams = new URLSearchParams(window.location.search);
+        const authParam = urlParams.get('auth');
+        if (authParam && !user) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            openAuthDialog();
+        }
+
         // Проверяем, была ли сессия авторизации ранее
         const savedUser = localStorage.getItem('gemini_user');
         if (savedUser) {
             try {
                 user = JSON.parse(savedUser);
-                authBtn.textContent = user.name || 'Выйти';
+                authBtn.textContent = user.name || (user.provider === 'vk' ? 'VK' : user.provider === 'tg' ? 'TG' : 'Аккаунт');
                 authBtn.classList.add('logged-in');
                 loadServerData();
             } catch(e) {
@@ -2960,22 +3012,69 @@
     let vkSdkLoaded = false;
     let tgWidgetLoaded = false;
 
-    function openAuthDialog() {
+    // ---- Обработчик клика на кнопку авторизации ----
+    function handleAuthBtnClick() {
         if (user) {
-            user = null;
-            localStorage.removeItem('gemini_user');
-            authBtn.textContent = 'Войти';
-            authBtn.classList.remove('logged-in');
-            creditsAmount.textContent = '--';
-            document.getElementById('creditsDisplay').classList.remove('vip');
-            showToast('Вы вышли из аккаунта', 'info');
-            return;
+            showProfileDialog();
+        } else {
+            openAuthDialog();
         }
+    }
+
+    function openAuthDialog() {
         document.getElementById('authDialog').classList.add('open');
         // Подгружаем VK ID SDK в контейнер
         initVKAuthInline();
         // Подгружаем TG Login Widget в контейнер
         initTGAuthInline();
+    }
+
+    function showProfileDialog() {
+        // Показываем диалог профиля с кнопкой выхода
+        const profileDialog = document.getElementById('profileDialog');
+        const profileName = document.getElementById('profileName');
+        const profileProvider = document.getElementById('profileProvider');
+        const profilePhoto = document.getElementById('profilePhoto');
+        const profileCreditsAmount = document.getElementById('profileCreditsAmount');
+
+        if (profileName) profileName.textContent = user.name || 'Пользователь';
+        if (profileProvider) {
+            const providerNames = { vk: 'ВКонтакте', tg: 'Telegram' };
+            profileProvider.textContent = providerNames[user.provider] || user.provider;
+        }
+        if (profilePhoto) {
+            if (user.photo) {
+                profilePhoto.src = user.photo;
+                profilePhoto.style.display = 'block';
+            } else {
+                profilePhoto.style.display = 'none';
+            }
+        }
+        if (profileCreditsAmount) {
+            const display = document.getElementById('creditsDisplay');
+            if (display.classList.contains('vip')) {
+                profileCreditsAmount.textContent = 'VIP';
+                profileCreditsAmount.style.color = 'var(--accent)';
+            } else {
+                profileCreditsAmount.textContent = credits + '\u00A2';
+            }
+        }
+        profileDialog.classList.add('open');
+    }
+
+    function closeProfileDialog() {
+        document.getElementById('profileDialog').classList.remove('open');
+    }
+
+    function doLogout() {
+        user = null;
+        localStorage.removeItem('gemini_user');
+        authBtn.textContent = 'Войти';
+        authBtn.classList.remove('logged-in');
+        creditsAmount.textContent = '--';
+        document.getElementById('creditsDisplay').classList.remove('vip');
+        closeProfileDialog();
+        showToast('Вы вышли из аккаунта', 'info');
     }
 
     function closeAuthDialog() {
@@ -3169,6 +3268,9 @@
     });
     document.getElementById('authDialog').addEventListener('click', function(e) {
         if (e.target === this) closeAuthDialog();
+    });
+    document.getElementById('profileDialog').addEventListener('click', function(e) {
+        if (e.target === this) closeProfileDialog();
     });
 
     // ---- DRAG-AND-DROP для upload-zone ----
