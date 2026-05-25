@@ -286,11 +286,33 @@
             flex-direction: column;
             gap: 12px;
             scroll-behavior: smooth;
+            position: relative;
         }
 
         .chat-area::-webkit-scrollbar { width: 4px; }
         .chat-area::-webkit-scrollbar-track { background: transparent; }
         .chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* Chat drop overlay */
+        .chat-drop-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: rgba(139, 92, 246, 0.15);
+            border: 2px dashed var(--accent);
+            border-radius: var(--radius);
+            z-index: 50;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 16px;
+            color: var(--accent);
+            font-weight: 600;
+            pointer-events: none;
+        }
+        .chat-drop-overlay.visible { display: flex; }
+        .chat-drop-overlay .drop-icon { font-size: 48px; opacity: 0.6; }
 
         /* Welcome screen */
         .welcome {
@@ -303,21 +325,6 @@
             gap: 16px;
             padding: 20px;
         }
-
-        .icon-container {
-            width: 120px;
-            height: 120px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .app-icon {
-            max-width: 100%;
-            max-height: 100%;
-        }
-
 
         /* Пульсирующий логотип */
         .logo-container {
@@ -452,6 +459,47 @@
             padding: 0;
         }
 
+        /* Chat attachments */
+        .chat-attachments {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            padding: 0 0 4px 0;
+        }
+        .file-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--text-secondary);
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .file-badge .file-icon { font-size: 12px; flex-shrink: 0; }
+        .file-badge .file-name { overflow: hidden; text-overflow: ellipsis; }
+        .file-badge .file-remove {
+            cursor: pointer;
+            color: var(--danger);
+            font-size: 14px;
+            flex-shrink: 0;
+            line-height: 1;
+            margin-left: 2px;
+        }
+        .file-badge .file-remove:hover { color: #ff6666; }
+        .file-badge img.file-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
         /* Typing indicator */
         .typing-indicator {
             display: flex;
@@ -510,6 +558,48 @@
             color: var(--text-secondary);
             line-height: 1.5;
         }
+
+        /* Section toggle inside panels */
+        .panel-section-toggle {
+            display: flex;
+            gap: 0;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .panel-section-btn {
+            flex: 1;
+            padding: 8px 12px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition);
+            text-align: center;
+        }
+        .panel-section-btn:hover { background: var(--accent-light); }
+        .panel-section-btn.active { background: var(--accent); color: white; }
+        .panel-section-btn .badge-free {
+            font-size: 10px;
+            color: var(--free);
+            margin-left: 4px;
+        }
+        .panel-section-btn.active .badge-free { color: #a5f3c4; }
+        .panel-section-btn .badge-cost {
+            font-size: 10px;
+            color: var(--warning);
+            margin-left: 4px;
+        }
+        .panel-section-btn.active .badge-cost { color: #fde68a; }
+
+        .panel-subsection {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .panel-subsection.active { display: flex; }
 
         .upload-zone {
             border: 2px dashed var(--border);
@@ -672,6 +762,23 @@
 
         .send-btn:hover { background: var(--accent-hover); transform: scale(1.05); }
         .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        .attach-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 18px;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .attach-btn:hover { border-color: var(--accent); color: var(--accent); }
 
         .input-hint {
             font-size: 11px;
@@ -875,7 +982,7 @@
                 Изображение
             </button>
             <button class="mode-tab" data-mode="video" onclick="switchMode('video')">
-                Видео <span class="cost">20&#162;+</span>
+                Видео
             </button>
             <button class="mode-tab" data-mode="audio" onclick="switchMode('audio')">
                 Аудио
@@ -888,24 +995,24 @@
             <div class="sub-divider"></div>
             <div id="chatModels" class="skeleton" style="height:24px;width:200px"></div>
         </div>
-        <div class="sub-header" id="subImage">
-            <div id="imageModeTag"></div>
+        <div class="sub-header wrap-allowed" id="subImage">
+            <div id="imageModeTag" class="mode-tag txt-to-img">txt&#8594;img</div>
             <div class="sub-divider"></div>
             <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
             <div class="sub-divider"></div>
             <div id="imageRatio"></div>
         </div>
-        <div class="sub-header" id="subVideo">
+        <div class="sub-header wrap-allowed" id="subVideo">
+            <div id="videoSubMode"></div>
+            <div class="sub-divider"></div>
             <div id="videoModels" class="skeleton" style="height:24px;width:200px"></div>
             <div class="sub-divider"></div>
             <div id="videoRatio"></div>
             <div class="sub-divider"></div>
-            <div id="videoMode"></div>
-            <div class="sub-divider"></div>
             <div id="videoQuality"></div>
         </div>
         <div class="sub-header wrap-allowed" id="subAudio">
-            <div id="audioModeSelect"></div>
+            <div id="audioSubMode"></div>
             <div class="sub-divider"></div>
             <div id="audioModels" class="skeleton" style="height:24px;width:200px"></div>
             <div class="sub-divider"></div>
@@ -914,6 +1021,11 @@
 
         <!-- CHAT AREA -->
         <div class="chat-area" id="chatArea">
+            <div class="chat-drop-overlay" id="chatDropOverlay">
+                <div class="drop-icon">&#128206;</div>
+                <div>Перетащите файлы сюда</div>
+                <div style="font-size:12px;color:var(--text-muted)">Изображения, аудио, видео, документы</div>
+            </div>
             <div class="welcome" id="welcomeScreen">
                 <div class="logo-container">
                     <div class="logo-box">
@@ -931,7 +1043,7 @@
                     <div class="logo-pulse"></div>
                 </div>
                 <h2>Привет! Я Gemini-AI</h2>
-                <p>Я могу отвечать на вопросы, генерировать изображения, видео и аудио. Выбери режим выше и начни общение!</p>
+                <p>Я могу отвечать на вопросы, анализировать файлы, генерировать изображения, видео и аудио. Выбери режим выше!</p>
                 <div class="welcome-suggestions">
                     <button class="suggestion" onclick="useSuggestion('Расскажи о себе')">Расскажи о себе</button>
                     <button class="suggestion" onclick="useSuggestion('Напиши стихотворение о космосе')">Стих о космосе</button>
@@ -945,7 +1057,7 @@
         <div class="media-panel" id="imagePanel">
             <div>
                 <h3>&#127912; Генерация изображения</h3>
-                <p id="imageDesc">Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ. Выберите модель в настройках выше.</p>
+                <p id="imageDesc">Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ.</p>
             </div>
             <div>
                 <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер:</label>
@@ -956,7 +1068,7 @@
                     <button class="size-option" data-size="1440x720" onclick="selectImageSize(this)">1440x720</button>
                 </div>
             </div>
-            <!-- Реактивные изображения (до 4 референсов) -->
+            <!-- Референсные изображения (до 4 референсов) -->
             <div>
                 <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсные изображения (до 4):</label>
                 <div id="imageRefSlots" style="display:flex;gap:8px;flex-wrap:wrap">
@@ -965,17 +1077,17 @@
                         <div class="hint" style="margin:0;font-size:10px">Реф. 1</div>
                         <input type="file" id="imageRefInput0" accept="image/*" style="display:none" onchange="handleImageRef(0,this)">
                     </div>
-                    <div class="upload-zone" id="imageRef1" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;display:none" onclick="document.getElementById('imageRefInput1').click()">
+                    <div class="upload-zone" id="imageRef1" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput1').click()">
                         <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
                         <div class="hint" style="margin:0;font-size:10px">Реф. 2</div>
                         <input type="file" id="imageRefInput1" accept="image/*" style="display:none" onchange="handleImageRef(1,this)">
                     </div>
-                    <div class="upload-zone" id="imageRef2" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;display:none" onclick="document.getElementById('imageRefInput2').click()">
+                    <div class="upload-zone" id="imageRef2" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput2').click()">
                         <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
                         <div class="hint" style="margin:0;font-size:10px">Реф. 3</div>
                         <input type="file" id="imageRefInput2" accept="image/*" style="display:none" onchange="handleImageRef(2,this)">
                     </div>
-                    <div class="upload-zone" id="imageRef3" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;display:none" onclick="document.getElementById('imageRefInput3').click()">
+                    <div class="upload-zone" id="imageRef3" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput3').click()">
                         <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
                         <div class="hint" style="margin:0;font-size:10px">Реф. 4</div>
                         <input type="file" id="imageRefInput3" accept="image/*" style="display:none" onchange="handleImageRef(3,this)">
@@ -989,56 +1101,161 @@
 
         <!-- VIDEO PANEL -->
         <div class="media-panel" id="videoPanel">
-            <div>
-                <h3>&#127916; Генерация видео</h3>
-                <p>Опиши сцену, и я создам короткое видео с помощью ИИ. Стоимость зависит от длительности и качества.</p>
+            <!-- Переключатель: Генерация / Конвертация -->
+            <div class="panel-section-toggle">
+                <button class="panel-section-btn active" id="videoGenBtn" onclick="switchVideoSubMode('generate')">
+                    &#127916; Генерация <span class="badge-cost">20&#162;+</span>
+                </button>
+                <button class="panel-section-btn" id="videoConvertBtn" onclick="switchVideoSubMode('convert')">
+                    &#128260; Конвертация <span class="badge-free">&#10003;</span>
+                </button>
             </div>
-            <!-- Референсы для видео -->
-            <div>
-                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсы (необязательно):</label>
-                <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <div class="upload-zone" id="videoRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefImgInput').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:10px">Картинка</div>
-                        <input type="file" id="videoRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRef('image',this)">
-                    </div>
-                    <div class="upload-zone" id="videoRefAudio" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefAudioInput').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#127925;</div>
-                        <div class="hint" style="margin:0;font-size:10px">Аудио</div>
-                        <input type="file" id="videoRefAudioInput" accept="audio/*" style="display:none" onchange="handleVideoRef('audio',this)">
-                    </div>
-                    <div class="upload-zone" id="videoRefVideo" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefVideoInput').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#127916;</div>
-                        <div class="hint" style="margin:0;font-size:10px">Видео</div>
-                        <input type="file" id="videoRefVideoInput" accept="video/*" style="display:none" onchange="handleVideoRef('video',this)">
+
+            <!-- Генерация видео -->
+            <div class="panel-subsection active" id="videoGenSection">
+                <div>
+                    <h3>&#127916; Генерация видео</h3>
+                    <p>Опиши сцену, и я создам короткое видео с помощью ИИ. Стоимость от 20&#162;.</p>
+                </div>
+                <div>
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсы (необязательно):</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <div class="upload-zone" id="videoRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefImgInput').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                            <div class="hint" style="margin:0;font-size:10px">Картинка</div>
+                            <input type="file" id="videoRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRef('image',this)">
+                        </div>
+                        <div class="upload-zone" id="videoRefAudio" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefAudioInput').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#127925;</div>
+                            <div class="hint" style="margin:0;font-size:10px">Аудио</div>
+                            <input type="file" id="videoRefAudioInput" accept="audio/*" style="display:none" onchange="handleVideoRef('audio',this)">
+                        </div>
+                        <div class="upload-zone" id="videoRefVideo" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefVideoInput').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#127916;</div>
+                            <div class="hint" style="margin:0;font-size:10px">Видео</div>
+                            <input type="file" id="videoRefVideoInput" accept="video/*" style="display:none" onchange="handleVideoRef('video',this)">
+                        </div>
                     </div>
                 </div>
+                <div class="result-area" id="videoResult">
+                    <span class="result-placeholder">Здесь появится видео</span>
+                </div>
             </div>
-            <div class="result-area" id="videoResult">
-                <span class="result-placeholder">Здесь появится видео</span>
+
+            <!-- Конвертация/распознавание видео (бесплатно) -->
+            <div class="panel-subsection" id="videoConvertSection">
+                <div>
+                    <h3>&#128260; Конвертация и анализ видео</h3>
+                    <p>Загрузите видеофайл для распознавания контента, анализа или конвертации. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="videoConvertZone" onclick="document.getElementById('videoConvertInput').click()">
+                    <div class="icon">&#127916;</div>
+                    <div class="label">Загрузить видеофайл</div>
+                    <div class="hint">MP4, AVI, MOV, WebM — до 50 МБ</div>
+                    <input type="file" id="videoConvertInput" accept="video/*" style="display:none" onchange="handleVideoConvert(this)">
+                </div>
+                <div class="result-area" id="videoConvertResult">
+                    <span class="result-placeholder">Здесь появится результат анализа</span>
+                </div>
             </div>
         </div>
 
         <!-- AUDIO PANEL -->
         <div class="media-panel" id="audioPanel">
-            <div>
-                <h3>&#127925; Генерация аудио</h3>
-                <p id="audioDesc">Озвучка текста или распознавание речи.</p>
+            <!-- Переключатель: Озвучка / Распознавание / Конвертация / Свой голос -->
+            <div class="panel-section-toggle">
+                <button class="panel-section-btn active" id="audioTTSBtn" onclick="switchAudioSubMode('tts')">
+                    &#127925; Озвучка
+                </button>
+                <button class="panel-section-btn" id="audioSTTBtn" onclick="switchAudioSubMode('stt')">
+                    &#127908; Распознавание <span class="badge-free">&#10003;</span>
+                </button>
+                <button class="panel-section-btn" id="audioConvertBtn" onclick="switchAudioSubMode('convert')">
+                    &#128260; Конвертация <span class="badge-free">&#10003;</span>
+                </button>
+                <button class="panel-section-btn" id="audioVoiceBtn" onclick="switchAudioSubMode('voice_clone')">
+                    &#127909; Свой голос
+                </button>
             </div>
-            <div class="upload-zone" id="audioUploadZone" onclick="document.getElementById('audioFileInput').click()">
-                <div class="icon">&#127925;</div>
-                <div class="label">Загрузить аудиофайл для распознавания</div>
-                <div class="hint">MP3, WAV, OGG — до 20 МБ</div>
-                <input type="file" id="audioFileInput" accept="audio/*" style="display:none" onchange="handleAudioUpload(this)">
+
+            <!-- TTS озвучка -->
+            <div class="panel-subsection active" id="audioTTSSection">
+                <div>
+                    <h3>&#127925; Озвучка текста</h3>
+                    <p id="audioTTSDesc">Напиши текст, и я озвучу его с помощью ИИ.</p>
+                </div>
+                <div class="result-area" id="audioTTSResult">
+                    <span class="result-placeholder">Здесь появится аудиоплеер</span>
+                </div>
             </div>
-            <div class="result-area" id="audioResult">
-                <span class="result-placeholder">Здесь появится аудиоплеер</span>
+
+            <!-- STT распознавание -->
+            <div class="panel-subsection" id="audioSTTSection">
+                <div>
+                    <h3>&#127908; Распознавание речи</h3>
+                    <p>Загрузите аудиофайл — я распознаю текст. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="audioUploadZone" onclick="document.getElementById('audioFileInput').click()">
+                    <div class="icon">&#127925;</div>
+                    <div class="label">Загрузить аудиофайл для распознавания</div>
+                    <div class="hint">MP3, WAV, OGG — до 20 МБ</div>
+                    <input type="file" id="audioFileInput" accept="audio/*" style="display:none" onchange="handleAudioUpload(this)">
+                </div>
+                <div class="result-area" id="audioSTTResult">
+                    <span class="result-placeholder">Здесь появится распознанный текст</span>
+                </div>
+            </div>
+
+            <!-- Аудио конвертация (бесплатно) -->
+            <div class="panel-subsection" id="audioConvertSection">
+                <div>
+                    <h3>&#128260; Конвертация аудио</h3>
+                    <p>Загрузите аудиофайл и выберите формат. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="audioConvertZone" onclick="document.getElementById('audioConvertInput').click()">
+                    <div class="icon">&#128260;</div>
+                    <div class="label">Загрузить аудиофайл для конвертации</div>
+                    <div class="hint">Любой формат — MP3, WAV, OGG, FLAC</div>
+                    <input type="file" id="audioConvertInput" accept="audio/*" style="display:none" onchange="handleAudioConvert(this)">
+                </div>
+                <div id="audioConvertFormat" style="display:none">
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Формат:</label>
+                    <div class="size-selector">
+                        <button class="size-option active" onclick="selectedAudioConvertFormat='mp3';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">MP3</button>
+                        <button class="size-option" onclick="selectedAudioConvertFormat='wav';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">WAV</button>
+                        <button class="size-option" onclick="selectedAudioConvertFormat='ogg';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">OGG</button>
+                        <button class="size-option" onclick="selectedAudioConvertFormat='flac';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">FLAC</button>
+                    </div>
+                </div>
+                <div class="result-area" id="audioConvertResult">
+                    <span class="result-placeholder">Здесь появится сконвертированный файл</span>
+                </div>
+            </div>
+
+            <!-- Свой голос (клонирование) -->
+            <div class="panel-subsection" id="audioVoiceCloneSection">
+                <div>
+                    <h3>&#127909; Создание своего голоса</h3>
+                    <p>Загрузите образец голоса (от 10 сек), и я озвучу любой текст вашим голосом.</p>
+                </div>
+                <div class="upload-zone" id="voiceCloneZone" onclick="document.getElementById('voiceCloneInput').click()">
+                    <div class="icon">&#127909;</div>
+                    <div class="label">Загрузить образец голоса</div>
+                    <div class="hint">MP3, WAV — от 10 секунд, до 5 МБ</div>
+                    <input type="file" id="voiceCloneInput" accept="audio/*" style="display:none" onchange="handleVoiceClone(this)">
+                </div>
+                <div class="result-area" id="voiceCloneResult">
+                    <span class="result-placeholder">Сначала загрузите образец голоса</span>
+                </div>
             </div>
         </div>
 
         <!-- INPUT AREA -->
         <div class="input-area">
+            <div class="chat-attachments" id="chatAttachments"></div>
+            <input type="file" id="chatFileInput" multiple accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt,.csv" style="display:none" onchange="handleChatFileUpload(this)">
             <div class="input-row">
+                <button class="attach-btn" id="chatFileBtn" onclick="document.getElementById('chatFileInput').click()" title="Прикрепить файл">&#128206;</button>
                 <div class="input-wrapper">
                     <textarea id="userInput" rows="1" 
                         placeholder="Напишите сообщение..." 
@@ -1078,7 +1295,7 @@
             <div style="margin-top:12px">
                 <div class="plan-card" onclick="selectPlan(this, 'vip')">
                     <div class="plan-name">&#128081; VIP — 30 дней</div>
-                    <div class="plan-price">1 000 &#8381;/мес</div>
+                    <div class="plan-price">1 000 &#8385;/мес</div>
                     <div class="plan-desc">Безлимитный чат + 100&#162;/день на медиа</div>
                 </div>
             </div>
@@ -1125,18 +1342,24 @@
     let isProcessing = false;
     let selectedImageSize = '1024x1024';
     let selectedPlan = 200;
-    let user = null; // Хранит { id: '...', name: '...', provider: 'vk'|'tg', hash: '...' }
+    let user = null; // { id, name, provider, hash, photo }
     let chatHistory = [];
+    let chatAttachments = []; // [{name, type, base64, previewUrl}] — файлы для чата
+    let selectedAudioConvertFormat = 'mp3';
+    let voiceCloneSample = null; // {base64, name} — образец голоса
 
     // ---- Динамические модели (загружаются с бэкенда) ----
-    let availableModels = { chat: [], image: [], video: [], audio_tts: [], audio_stt: [] };
+    let availableModels = { chat: [], image: [], image_i2i: [], video: [], audio_tts: [], audio_stt: [] };
     let selected = {
         chat: null,
         image: null,
+        image_i2i: null,
+        imageSubMode: 't2i',  // 't2i' или 'i2i'
         video: null,
+        videoSubMode: 'generate',  // 'generate' или 'convert'
         audio_tts: null,
         audio_stt: null,
-        audioMode: 'tts',  // 'tts' или 'stt'
+        audioSubMode: 'tts',  // 'tts', 'stt', 'convert', 'voice_clone'
         ratio: '1:1',
         voice: 'Female',
         videoQuality: '480p',
@@ -1156,15 +1379,21 @@
 
     // ---- ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ----
     document.addEventListener('DOMContentLoaded', () => {
+        // Проверяем авторизацию из URL (возврат из vk.html/tg.html)
+        initAuthFromURL();
+
         // Проверяем, была ли сессия авторизации ранее
         const savedUser = localStorage.getItem('gemini_user');
         if (savedUser) {
-            user = JSON.parse(savedUser);
-            authBtn.textContent = user.name || 'Выйти';
-            authBtn.classList.add('logged-in');
-            loadServerData();
+            try {
+                user = JSON.parse(savedUser);
+                authBtn.textContent = user.name || 'Выйти';
+                authBtn.classList.add('logged-in');
+                loadServerData();
+            } catch(e) {
+                localStorage.removeItem('gemini_user');
+            }
         } else {
-            // Анонимный режим
             authBtn.textContent = 'Войти';
             creditsAmount.textContent = '--';
             loadLocalHistory();
@@ -1177,8 +1406,60 @@
         } catch(e) {}
 
         autoResize(userInput);
-        loadModels(); // Загрузка списка моделей с бэкенда
+        loadModels();
+        initChatDragDrop();
     });
+
+    // ---- АВТОРИЗАЦИЯ ИЗ URL (после возврата из vk.html/tg.html) ----
+    function initAuthFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        const vkUserId = params.get('vk_user_id');
+        const tgUserId = params.get('tg_user_id');
+
+        if (vkUserId) {
+            const name = params.get('vk_user_name') || 'VK User';
+            const photo = params.get('vk_user_photo') || null;
+            user = { id: vkUserId, name: name, provider: 'vk', hash: null, photo: photo };
+            localStorage.setItem('gemini_user', JSON.stringify(user));
+            // Очищаем URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+            showToast('Добро пожаловать, ' + name + '!', 'success');
+        }
+
+        if (tgUserId) {
+            const name = params.get('tg_user_name') || params.get('tg_username') || 'TG User';
+            const hash = params.get('tg_hash') || null;
+            user = { id: tgUserId, name: name, provider: 'tg', hash: hash, photo: null };
+            localStorage.setItem('gemini_user', JSON.stringify(user));
+            window.history.replaceState({}, document.title, window.location.pathname);
+            showToast('Добро пожаловать, ' + name + '!', 'success');
+        }
+
+        // Также проверяем VK Mini App контекст
+        if (window.vkBridge) {
+            vkBridge.send('VKWebAppGetUserInfo').then(info => {
+                if (!user) {
+                    user = { id: String(info.id), name: info.first_name + ' ' + info.last_name, provider: 'vk', photo: info.photo_100 };
+                    localStorage.setItem('gemini_user', JSON.stringify(user));
+                    authBtn.textContent = info.first_name;
+                    authBtn.classList.add('logged-in');
+                    loadServerData();
+                }
+            }).catch(() => {});
+        }
+
+        // Проверяем Telegram WebApp контекст
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) {
+            const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+            if (tgUser && !user) {
+                user = { id: String(tgUser.id), name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''), provider: 'tg', hash: window.Telegram.WebApp.initData };
+                localStorage.setItem('gemini_user', JSON.stringify(user));
+                authBtn.textContent = tgUser.first_name;
+                authBtn.classList.add('logged-in');
+                loadServerData();
+            }
+        }
+    }
 
     // ---- ПОДДЕРЖКА ЛОКАЛЬНОЙ ИСТОРИИ (АНОНИМ) ----
     function loadLocalHistory() {
@@ -1213,7 +1494,6 @@
     // ---- ЗАГРУЗКА ДАННЫХ ДЛЯ АВТОРИЗОВАННОГО ЮЗЕРА ----
     async function loadServerData() {
         try {
-            // Запрос баланса через единый API
             const resp = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1280,12 +1560,18 @@
             const data = await resp.json();
             if (data.success && data.data) {
                 availableModels = data.data;
+                // Поддержка image_i2i если бэкенд их не даёт отдельно
+                if (!availableModels.image_i2i) availableModels.image_i2i = [];
+                if (!availableModels.audio_tts) availableModels.audio_tts = [];
+                if (!availableModels.audio_stt) availableModels.audio_stt = [];
 
                 // Устанавливаем дефолты если ещё не выбраны
                 if (!selected.chat && availableModels.chat.length > 0)
                     selected.chat = availableModels.chat.find(m => m.isFree)?.key || availableModels.chat[0]?.key;
                 if (!selected.image && availableModels.image.length > 0)
                     selected.image = availableModels.image.find(m => m.isFree)?.key || availableModels.image[0]?.key;
+                if (!selected.image_i2i && availableModels.image_i2i.length > 0)
+                    selected.image_i2i = availableModels.image_i2i[0]?.key;
                 if (!selected.video && availableModels.video.length > 0)
                     selected.video = availableModels.video[0]?.key;
                 if (!selected.audio_tts && availableModels.audio_tts.length > 0)
@@ -1303,7 +1589,7 @@
     }
 
     // ============================================================
-    //  РЕНДЕР SUB-HEADERS (динамически из availableModels)
+    //  РЕНДЕР SUB-HEADERS
     // ============================================================
     function renderSubHeaders() {
         renderChatSubHeader();
@@ -1324,7 +1610,6 @@
         sel.className = 'model-select' + (availableModels.chat.find(m => m.key === selected.chat)?.isFree ? ' model-free' : '');
         sel.value = selected.chat;
         sel.onchange = () => { selected.chat = sel.value; saveSelected(); renderChatSubHeader(); };
-        // Группируем по сервису
         const groups = {};
         availableModels.chat.forEach(m => {
             const lbl = m.serviceLabel || m.service || 'Другие';
@@ -1349,41 +1634,72 @@
     }
 
     function renderImageSubHeader() {
+        const modeTag = document.getElementById('imageModeTag');
+        const hasRefs = imageRefs.some(r => r !== null);
+
+        // Обновляем тег режима
+        if (hasRefs || selected.imageSubMode === 'i2i') {
+            modeTag.className = 'mode-tag img-to-img';
+            modeTag.textContent = 'img\u2192img';
+            modeTag.style.cursor = 'pointer';
+            modeTag.title = 'Нажмите для переключения в txt\u2192img';
+            modeTag.onclick = () => { selected.imageSubMode = 't2i'; saveSelected(); renderImageSubHeader(); updateImageDesc(); };
+        } else {
+            modeTag.className = 'mode-tag txt-to-img';
+            modeTag.textContent = 'txt\u2192img';
+            if (hasRefs || availableModels.image_i2i.length > 0) {
+                modeTag.style.cursor = 'pointer';
+                modeTag.title = 'Нажмите для переключения в img\u2192img';
+                modeTag.onclick = () => { selected.imageSubMode = 'i2i'; saveSelected(); renderImageSubHeader(); updateImageDesc(); };
+            } else {
+                modeTag.style.cursor = 'default';
+                modeTag.onclick = null;
+            }
+        }
+
+        // Модели — t2i или i2i
+        const modelList = selected.imageSubMode === 'i2i' ? availableModels.image_i2i : availableModels.image;
+        const currentModelKey = selected.imageSubMode === 'i2i' ? selected.image_i2i : selected.image;
+
         const modelsContainer = document.getElementById('imageModels');
         modelsContainer.classList.remove('skeleton');
         modelsContainer.innerHTML = '';
-        if (availableModels.image.length === 0) {
-            modelsContainer.innerHTML = '<span class="sub-label">Нет доступных моделей</span>';
-            return;
-        }
-        const sel = document.createElement('select');
-        sel.className = 'model-select' + (availableModels.image.find(m => m.key === selected.image)?.isFree ? ' model-free' : '');
-        sel.value = selected.image;
-        sel.onchange = () => { selected.image = sel.value; saveSelected(); renderImageSubHeader(); updateImageDesc(); };
-        // Группируем по сервису
-        const groups = {};
-        availableModels.image.forEach(m => {
-            const lbl = m.serviceLabel || m.service || 'Другие';
-            if (!groups[lbl]) groups[lbl] = [];
-            groups[lbl].push(m);
-        });
-        for (const [grp, models] of Object.entries(groups)) {
-            const optgroup = document.createElement('optgroup');
-            optgroup.label = grp;
-            models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.key;
-                opt.selected = selected.image === m.key;
-                opt.textContent = m.modelShort || m.displayName || m.key;
-                if (m.isFree) opt.textContent += ' \u2713';
-                else if (m.cost) opt.textContent += ' ' + m.cost + '\u00A2';
-                optgroup.appendChild(opt);
-            });
-            sel.appendChild(optgroup);
-        }
-        modelsContainer.appendChild(sel);
 
-        // Aspect ratio кнопки
+        if (modelList.length === 0) {
+            modelsContainer.innerHTML = '<span class="sub-label">' + (selected.imageSubMode === 'i2i' ? 'Нет i2i моделей' : 'Нет моделей') + '</span>';
+        } else {
+            const sel = document.createElement('select');
+            sel.className = 'model-select' + (modelList.find(m => m.key === currentModelKey)?.isFree ? ' model-free' : '');
+            sel.value = currentModelKey || '';
+            sel.onchange = () => {
+                if (selected.imageSubMode === 'i2i') selected.image_i2i = sel.value;
+                else selected.image = sel.value;
+                saveSelected(); renderImageSubHeader(); updateImageDesc();
+            };
+            const groups = {};
+            modelList.forEach(m => {
+                const lbl = m.serviceLabel || m.service || 'Другие';
+                if (!groups[lbl]) groups[lbl] = [];
+                groups[lbl].push(m);
+            });
+            for (const [grp, models] of Object.entries(groups)) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = grp;
+                models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.key;
+                    opt.selected = currentModelKey === m.key;
+                    opt.textContent = m.modelShort || m.displayName || m.key;
+                    if (m.isFree) opt.textContent += ' \u2713';
+                    else if (m.cost) opt.textContent += ' ' + m.cost + '\u00A2';
+                    optgroup.appendChild(opt);
+                });
+                sel.appendChild(optgroup);
+            }
+            modelsContainer.appendChild(sel);
+        }
+
+        // Aspect ratio
         const ratioContainer = document.getElementById('imageRatio');
         ratioContainer.innerHTML = '';
         ['1:1', '4:3', '16:9', '9:16'].forEach(r => {
@@ -1398,116 +1714,33 @@
     }
 
     function renderVideoSubHeader() {
-        const modelsContainer = document.getElementById('videoModels');
-        modelsContainer.classList.remove('skeleton');
-        modelsContainer.innerHTML = '';
-        if (availableModels.video.length === 0) {
-            modelsContainer.innerHTML = '<span class="sub-label">Нет доступных моделей</span>';
-            return;
-        }
-        const sel = document.createElement('select');
-        sel.className = 'model-select';
-        sel.value = selected.video;
-        sel.onchange = () => { selected.video = sel.value; saveSelected(); renderVideoSubHeader(); };
-        // Группируем по сервису
-        const groups = {};
-        availableModels.video.forEach(m => {
-            const lbl = m.serviceLabel || m.service || 'Другие';
-            if (!groups[lbl]) groups[lbl] = [];
-            groups[lbl].push(m);
-        });
-        for (const [grp, models] of Object.entries(groups)) {
-            const optgroup = document.createElement('optgroup');
-            optgroup.label = grp;
-            models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.key;
-                opt.selected = selected.video === m.key;
-                opt.textContent = m.modelShort || m.displayName || m.key;
-                const costLabel = m.isDynamicPricing ? 'дин.' : m.cost + '\u00A2';
-                opt.textContent += ' ' + costLabel;
-                optgroup.appendChild(opt);
-            });
-            sel.appendChild(optgroup);
-        }
-        modelsContainer.appendChild(sel);
-
-        // Aspect ratio
-        const ratioContainer = document.getElementById('videoRatio');
-        ratioContainer.innerHTML = '';
-        ['16:9', '9:16', '1:1'].forEach(r => {
+        // Sub-mode toggle (generate / convert)
+        const subModeContainer = document.getElementById('videoSubMode');
+        subModeContainer.innerHTML = '';
+        [{ key: 'generate', label: '\uD83C\uDFB5 Генерация', cls: '' }, { key: 'convert', label: '\uD83D\uDD04 Анализ', cls: 'free' }].forEach(vm => {
             const btn = document.createElement('button');
-            btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
-            btn.dataset.ratio = r;
-            btn.onclick = () => { selected.ratio = r; saveSelected(); renderVideoSubHeader(); };
-            btn.textContent = r;
-            ratioContainer.appendChild(btn);
-        });
-
-        // Video mode (normal / loop / etc)
-        const modeContainer = document.getElementById('videoMode');
-        modeContainer.innerHTML = '';
-        [{ key: 'normal', label: 'Обычное' }, { key: 'loop', label: 'Зацикленное' }].forEach(vm => {
-            const btn = document.createElement('button');
-            btn.className = 'sub-option' + (selected.videoMode === vm.key ? ' active' : '');
-            btn.dataset.videoMode = vm.key;
-            btn.onclick = () => { selected.videoMode = vm.key; saveSelected(); renderVideoSubHeader(); };
-            btn.textContent = vm.label;
-            modeContainer.appendChild(btn);
-        });
-
-        // Качество
-        const qualityContainer = document.getElementById('videoQuality');
-        qualityContainer.innerHTML = '';
-        ['480p', '580p', '720p', '1080p'].forEach(q => {
-            const btn = document.createElement('button');
-            btn.className = 'sub-option' + (selected.videoQuality === q ? ' active' : '');
-            btn.dataset.quality = q;
-            btn.onclick = () => { selected.videoQuality = q; saveSelected(); renderVideoSubHeader(); };
-            btn.textContent = q;
-            qualityContainer.appendChild(btn);
-        });
-    }
-
-    function renderAudioSubHeader() {
-        // Режим аудио: TTS / STT
-        const modeContainer = document.getElementById('audioModeSelect');
-        modeContainer.innerHTML = '';
-        [{ key: 'tts', label: '\uD83C\uDFB5 Озвучка' }, { key: 'stt', label: '\uD83C\uDF99 Распознавание' }].forEach(am => {
-            const btn = document.createElement('button');
-            btn.className = 'sub-option' + (selected.audioMode === am.key ? ' active' : '');
-            btn.dataset.audioMode = am.key;
+            btn.className = 'sub-option' + (selected.videoSubMode === vm.key ? ' active' : '') + (vm.cls ? ' ' + vm.cls : '');
+            btn.dataset.videoSubMode = vm.key;
             btn.onclick = () => {
-                selected.audioMode = am.key;
+                selected.videoSubMode = vm.key;
                 saveSelected();
-                renderAudioSubHeader();
-                updateAudioDesc();
-                updateAudioUploadVisibility();
+                renderVideoSubHeader();
+                switchVideoSubMode(vm.key);
             };
-            btn.innerHTML = am.label;
-            modeContainer.appendChild(btn);
+            btn.innerHTML = vm.label;
+            subModeContainer.appendChild(btn);
         });
 
-        // Модели (TTS или STT) — dropdown
-        const modelsContainer = document.getElementById('audioModels');
-        modelsContainer.classList.remove('skeleton');
+        // Модели — показываем только для генерации
+        const modelsContainer = document.getElementById('videoModels');
         modelsContainer.innerHTML = '';
-        const modelList = selected.audioMode === 'tts' ? availableModels.audio_tts : availableModels.audio_stt;
-        const selectedKey = selected.audioMode === 'tts' ? selected.audio_tts : selected.audio_stt;
-        if (modelList.length === 0) {
-            modelsContainer.innerHTML = '<span class="sub-label">Нет моделей</span>';
-        } else {
+        if (selected.videoSubMode === 'generate' && availableModels.video.length > 0) {
             const sel = document.createElement('select');
-            sel.className = 'model-select' + (modelList.find(m => m.key === selectedKey)?.isFree ? ' model-free' : '');
-            sel.value = selectedKey;
-            sel.onchange = () => {
-                if (selected.audioMode === 'tts') selected.audio_tts = sel.value;
-                else selected.audio_stt = sel.value;
-                saveSelected(); renderAudioSubHeader(); updateAudioDesc();
-            };
-            // Группируем по сервису
+            sel.className = 'model-select';
+            sel.value = selected.video;
+            sel.onchange = () => { selected.video = sel.value; saveSelected(); renderVideoSubHeader(); };
             const groups = {};
-            modelList.forEach(m => {
+            availableModels.video.forEach(m => {
                 const lbl = m.serviceLabel || m.service || 'Другие';
                 if (!groups[lbl]) groups[lbl] = [];
                 groups[lbl].push(m);
@@ -1518,21 +1751,114 @@
                 models.forEach(m => {
                     const opt = document.createElement('option');
                     opt.value = m.key;
-                    opt.selected = selectedKey === m.key;
+                    opt.selected = selected.video === m.key;
                     opt.textContent = m.modelShort || m.displayName || m.key;
-                    if (m.isFree) opt.textContent += ' \u2713';
-                    else if (m.cost) opt.textContent += ' ' + m.cost + '\u00A2';
+                    const costLabel = m.isDynamicPricing ? 'дин.' : m.cost + '\u00A2';
+                    opt.textContent += ' ' + costLabel;
                     optgroup.appendChild(opt);
                 });
                 sel.appendChild(optgroup);
             }
             modelsContainer.appendChild(sel);
+        } else if (selected.videoSubMode === 'convert') {
+            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         }
 
-        // Выбор голоса (только для TTS)
+        // Ratio — только для генерации
+        const ratioContainer = document.getElementById('videoRatio');
+        ratioContainer.innerHTML = '';
+        if (selected.videoSubMode === 'generate') {
+            ['16:9', '9:16', '1:1'].forEach(r => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
+                btn.dataset.ratio = r;
+                btn.onclick = () => { selected.ratio = r; saveSelected(); renderVideoSubHeader(); };
+                btn.textContent = r;
+                ratioContainer.appendChild(btn);
+            });
+        }
+
+        // Качество — только для генерации
+        const qualityContainer = document.getElementById('videoQuality');
+        qualityContainer.innerHTML = '';
+        if (selected.videoSubMode === 'generate') {
+            ['480p', '580p', '720p', '1080p'].forEach(q => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-option' + (selected.videoQuality === q ? ' active' : '');
+                btn.dataset.quality = q;
+                btn.onclick = () => { selected.videoQuality = q; saveSelected(); renderVideoSubHeader(); };
+                btn.textContent = q;
+                qualityContainer.appendChild(btn);
+            });
+        }
+    }
+
+    function renderAudioSubHeader() {
+        // Sub-mode toggle
+        const subModeContainer = document.getElementById('audioSubMode');
+        subModeContainer.innerHTML = '';
+        [
+            { key: 'tts', label: '\uD83C\uDFB5 Озвучка' },
+            { key: 'stt', label: '\uD83C\uDF99 Распознавание', cls: 'free' },
+            { key: 'convert', label: '\uD83D\uDD04 Конвертация', cls: 'free' },
+            { key: 'voice_clone', label: '\uD83C\uDFA4 Голос' }
+        ].forEach(am => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (selected.audioSubMode === am.key ? ' active' : '') + (am.cls ? ' ' + am.cls : '');
+            btn.dataset.audioSubMode = am.key;
+            btn.onclick = () => {
+                selected.audioSubMode = am.key;
+                saveSelected();
+                renderAudioSubHeader();
+                switchAudioSubMode(am.key);
+            };
+            btn.innerHTML = am.label;
+            subModeContainer.appendChild(btn);
+        });
+
+        // Модели — для TTS/STT
+        const modelsContainer = document.getElementById('audioModels');
+        modelsContainer.classList.remove('skeleton');
+        modelsContainer.innerHTML = '';
+
+        if (selected.audioSubMode === 'tts') {
+            const modelList = availableModels.audio_tts;
+            if (modelList.length > 0) {
+                const sel = document.createElement('select');
+                sel.className = 'model-select' + (modelList.find(m => m.key === selected.audio_tts)?.isFree ? ' model-free' : '');
+                sel.value = selected.audio_tts;
+                sel.onchange = () => { selected.audio_tts = sel.value; saveSelected(); renderAudioSubHeader(); };
+                const groups = {};
+                modelList.forEach(m => { const lbl = m.serviceLabel || m.service || 'Другие'; if (!groups[lbl]) groups[lbl] = []; groups[lbl].push(m); });
+                for (const [grp, models] of Object.entries(groups)) {
+                    const optgroup = document.createElement('optgroup'); optgroup.label = grp;
+                    models.forEach(m => { const opt = document.createElement('option'); opt.value = m.key; opt.selected = selected.audio_tts === m.key; opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : m.cost ? ' ' + m.cost + '\u00A2' : ''); optgroup.appendChild(opt); });
+                    sel.appendChild(optgroup);
+                }
+                modelsContainer.appendChild(sel);
+            }
+        } else if (selected.audioSubMode === 'stt') {
+            const modelList = availableModels.audio_stt;
+            if (modelList.length > 0) {
+                const sel = document.createElement('select');
+                sel.className = 'model-select model-free';
+                sel.value = selected.audio_stt;
+                sel.onchange = () => { selected.audio_stt = sel.value; saveSelected(); renderAudioSubHeader(); };
+                modelList.forEach(m => { const opt = document.createElement('option'); opt.value = m.key; opt.selected = selected.audio_stt === m.key; opt.textContent = (m.modelShort || m.displayName || m.key) + ' \u2713'; sel.appendChild(opt); });
+                modelsContainer.appendChild(sel);
+            } else {
+                modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
+            }
+        } else if (selected.audioSubMode === 'convert') {
+            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
+        } else if (selected.audioSubMode === 'voice_clone') {
+            modelsContainer.innerHTML = '<span class="sub-label">Клонирование голоса</span>';
+        }
+
+        // Голос — только для TTS
         const voiceContainer = document.getElementById('audioVoice');
         voiceContainer.innerHTML = '';
-        if (selected.audioMode === 'tts') {
+        if (selected.audioSubMode === 'tts') {
             [{ key: 'Female', label: '\u2640 Женский' }, { key: 'Male', label: '\u2642 Мужской' }].forEach(v => {
                 const btn = document.createElement('button');
                 btn.className = 'sub-option' + (selected.voice === v.key ? ' active' : '');
@@ -1542,25 +1868,60 @@
                 voiceContainer.appendChild(btn);
             });
         }
-        updateAudioDesc();
-        updateAudioUploadVisibility();
+    }
+
+    // ---- PANEL SUB-MODE SWITCHING ----
+    function switchVideoSubMode(mode) {
+        selected.videoSubMode = mode;
+        saveSelected();
+        document.getElementById('videoGenBtn').classList.toggle('active', mode === 'generate');
+        document.getElementById('videoConvertBtn').classList.toggle('active', mode === 'convert');
+        document.getElementById('videoGenSection').classList.toggle('active', mode === 'generate');
+        document.getElementById('videoConvertSection').classList.toggle('active', mode === 'convert');
+        renderVideoSubHeader();
+        updateVideoPlaceholder();
+    }
+
+    function switchAudioSubMode(mode) {
+        selected.audioSubMode = mode;
+        saveSelected();
+        document.getElementById('audioTTSBtn').classList.toggle('active', mode === 'tts');
+        document.getElementById('audioSTTBtn').classList.toggle('active', mode === 'stt');
+        document.getElementById('audioConvertBtn').classList.toggle('active', mode === 'convert');
+        document.getElementById('audioVoiceBtn').classList.toggle('active', mode === 'voice_clone');
+        document.getElementById('audioTTSSection').classList.toggle('active', mode === 'tts');
+        document.getElementById('audioSTTSection').classList.toggle('active', mode === 'stt');
+        document.getElementById('audioConvertSection').classList.toggle('active', mode === 'convert');
+        document.getElementById('audioVoiceCloneSection').classList.toggle('active', mode === 'voice_clone');
+        renderAudioSubHeader();
+        updateAudioPlaceholder();
+    }
+
+    function updateVideoPlaceholder() {
+        const placeholder = userInput.placeholder;
+        if (currentMode === 'video') {
+            userInput.placeholder = selected.videoSubMode === 'generate'
+                ? 'Опишите видео-сцену для ИИ...'
+                : 'Что сделать с видео? (анализ, описание, субтитры...)';
+            inputHint.textContent = selected.videoSubMode === 'generate'
+                ? 'Стоимость: от 20\u00A2'
+                : 'Анализ видео — бесплатно';
+        }
+    }
+
+    function updateAudioPlaceholder() {
+        if (currentMode === 'audio') {
+            const ph = { tts: 'Введите текст для озвучки...', stt: 'Загрузите аудиофайл выше', convert: 'Загрузите аудиофайл выше', voice_clone: 'Введите текст для озвучки вашим голосом...' };
+            const hints = { tts: 'Стоимость озвучки зависит от модели', stt: 'Распознавание речи — бесплатно', convert: 'Конвертация — бесплатно', voice_clone: 'Клонирование голоса' };
+            userInput.placeholder = ph[selected.audioSubMode] || 'Введите текст...';
+            inputHint.textContent = hints[selected.audioSubMode] || '';
+        }
     }
 
     function getShortModelName(m) {
-        // Сначала используем новые поля от webHandler, потом фоллбэк
         if (m.displayName) return m.displayName;
         if (m.serviceLabel && m.modelShort) return m.serviceLabel + ': ' + m.modelShort;
-        const serviceNames = {
-            'WORKERS_AI': 'Cloudflare',
-            'GEMINI': 'Gemini',
-            'KIEAI': 'KIE.AI',
-            'BOTHUB': 'BotHub',
-            'POLLINATIONS': 'Pollinations',
-            'FUSIONBRAIN': 'Kandinsky',
-            'STABILITY': 'Stability',
-            'VOICERSS': 'VoiceRSS',
-            'DEEPSEEK': 'DeepSeek'
-        };
+        const serviceNames = { 'WORKERS_AI': 'Cloudflare', 'GEMINI': 'Gemini', 'KIEAI': 'KIE.AI', 'BOTHUB': 'BotHub', 'POLLINATIONS': 'Pollinations', 'FUSIONBRAIN': 'Kandinsky', 'STABILITY': 'Stability', 'VOICERSS': 'VoiceRSS', 'DEEPSEEK': 'DeepSeek' };
         return serviceNames[m.service] || m.service || m.key;
     }
 
@@ -1569,49 +1930,29 @@
         document.querySelector('[data-mode="image"]').innerHTML = 'Изображение' +
             (imageFree ? ' <span class="free-badge">&#10003;</span>' : ' <span class="cost">4&#162;</span>');
 
-        const allVideoPaid = availableModels.video.length > 0 && !availableModels.video.some(m => m.isFree);
         document.querySelector('[data-mode="video"]').innerHTML = 'Видео' +
-            (allVideoPaid ? ' <span class="cost">20&#162;+</span>' : '');
+            ' <span class="free-badge">&#10003;</span>';
 
         const hasFreeAudio = availableModels.audio_tts.some(m => m.isFree) || availableModels.audio_stt.some(m => m.isFree);
         document.querySelector('[data-mode="audio"]').innerHTML = 'Аудио' +
-            (hasFreeAudio ? ' <span class="free-badge">&#10003;</span>' : ' <span class="cost">2&#162;</span>');
+            (hasFreeAudio ? ' <span class="free-badge">&#10003;</span>' : '');
     }
 
     function updateImageDesc() {
-        const model = availableModels.image.find(m => m.key === selected.image);
         const desc = document.getElementById('imageDesc');
-        if (!model) return;
-        if (model.isFree) {
-            desc.textContent = 'Бесплатная генерация через ' + getShortModelName(model) + '. Опиши что ты хочешь увидеть.';
-        } else {
-            desc.textContent = 'Генерация через ' + getShortModelName(model) + ' — ' + model.cost + '¢ за изображение.';
-        }
-    }
+        const isI2I = selected.imageSubMode === 'i2i';
+        const modelList = isI2I ? availableModels.image_i2i : availableModels.image;
+        const modelKey = isI2I ? selected.image_i2i : selected.image;
+        const model = modelList.find(m => m.key === modelKey);
 
-    function updateAudioDesc() {
-        const desc = document.getElementById('audioDesc');
-        const uploadZone = document.getElementById('audioUploadZone');
-        if (selected.audioMode === 'stt') {
-            desc.textContent = 'Распознавание речи — бесплатно. Загрузите аудиофайл или запишите голос.';
-            if (uploadZone) uploadZone.style.display = 'block';
+        if (isI2I) {
+            desc.textContent = model
+                ? (model.isFree ? 'Бесплатная генерация img\u2192img через ' + getShortModelName(model) : 'Генерация img\u2192img через ' + getShortModelName(model) + ' — ' + model.cost + '\u00A2')
+                : 'Режим img\u2192img — добавьте референс для генерации на основе изображения.';
         } else {
-            const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
-            if (model) {
-                desc.textContent = model.isFree
-                    ? 'Озвучка через ' + getShortModelName(model) + ' — бесплатно.'
-                    : 'Озвучка через ' + getShortModelName(model) + ' — ' + model.cost + '¢ за генерацию.';
-            } else {
-                desc.textContent = 'Напиши текст, и я озвучу его с помощью ИИ.';
-            }
-            if (uploadZone) uploadZone.style.display = 'none';
-        }
-    }
-
-    function updateAudioUploadVisibility() {
-        const uploadZone = document.getElementById('audioUploadZone');
-        if (uploadZone) {
-            uploadZone.style.display = (selected.audioMode === 'stt') ? 'block' : 'none';
+            desc.textContent = model
+                ? (model.isFree ? 'Бесплатная генерация txt\u2192img через ' + getShortModelName(model) + '. Опиши что хочешь увидеть.' : 'Генерация txt\u2192img через ' + getShortModelName(model) + ' — ' + model.cost + '\u00A2')
+                : 'Опиши что ты хочешь увидеть, и я создам изображение.';
         }
     }
 
@@ -1619,37 +1960,138 @@
     function switchMode(mode) {
         currentMode = mode;
 
-        // Обновляем вкладки
         document.querySelectorAll('.mode-tab').forEach(tab => {
             tab.classList.toggle('active', tab.dataset.mode === mode);
         });
 
-        // Показываем/скрываем панели
         document.getElementById('chatArea').style.display = (mode === 'chat') ? 'flex' : 'none';
         document.getElementById('imagePanel').classList.toggle('active', mode === 'image');
         document.getElementById('videoPanel').classList.toggle('active', mode === 'video');
         document.getElementById('audioPanel').classList.toggle('active', mode === 'audio');
 
-        // Sub-headers
         document.querySelectorAll('.sub-header').forEach(sh => sh.classList.remove('active'));
         const subMap = { chat: 'subChat', image: 'subImage', video: 'subVideo', audio: 'subAudio' };
         if (subMap[mode]) document.getElementById(subMap[mode]).classList.add('active');
 
-        // Плейсхолдеры и подсказки
+        // Плейсхолдеры
         const placeholders = {
-            chat: 'Напишите сообщение...',
+            chat: 'Напишите сообщение или перетащите файл...',
             image: 'Опишите изображение на английском или русском...',
-            video: 'Опишите видео-сцену для ИИ...',
-            audio: selected.audioMode === 'stt' ? 'Введите текст или загрузите аудиофайл...' : 'Введите текст для озвучки...'
+            video: selected.videoSubMode === 'generate' ? 'Опишите видео-сцену для ИИ...' : 'Что сделать с видео?',
+            audio: 'Введите текст для озвучки...'
         };
         const hints = {
-            chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат (история в localStorage)',
-            image: 'Стоимость зависит от модели (см. настройки выше)',
-            video: 'Стоимость: от 20\u00A2',
-            audio: selected.audioMode === 'stt' ? 'Распознавание речи — бесплатно' : 'Стоимость озвучки зависит от модели'
+            chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат',
+            image: 'Стоимость зависит от модели',
+            video: selected.videoSubMode === 'generate' ? 'Стоимость: от 20\u00A2' : 'Анализ видео — бесплатно',
+            audio: selected.audioSubMode === 'tts' ? 'Стоимость озвучки зависит от модели' : 'Бесплатно'
         };
         userInput.placeholder = placeholders[mode];
         inputHint.textContent = hints[mode];
+
+        // Кнопка прикрепления файлов — видна только в чате
+        document.getElementById('chatFileBtn').style.display = (mode === 'chat') ? 'flex' : 'none';
+
+        if (mode === 'video') updateVideoPlaceholder();
+        if (mode === 'audio') updateAudioPlaceholder();
+    }
+
+    // ============================================================
+    //  CHAT DRAG-AND-DROP И ПРИКРЕПЛЕНИЕ ФАЙЛОВ
+    // ============================================================
+    function initChatDragDrop() {
+        const overlay = document.getElementById('chatDropOverlay');
+        let dragCounter = 0;
+
+        // Drag-and-drop на всю область приложения
+        document.querySelector('.app').addEventListener('dragenter', function(e) {
+            if (currentMode !== 'chat') return;
+            e.preventDefault();
+            dragCounter++;
+            if (dragCounter === 1) overlay.classList.add('visible');
+        });
+
+        document.querySelector('.app').addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0) overlay.classList.remove('visible');
+        });
+
+        document.querySelector('.app').addEventListener('dragover', function(e) {
+            e.preventDefault();
+        });
+
+        document.querySelector('.app').addEventListener('drop', function(e) {
+            e.preventDefault();
+            dragCounter = 0;
+            overlay.classList.remove('visible');
+            if (currentMode !== 'chat') return;
+
+            const files = e.dataTransfer.files;
+            if (!files.length) return;
+            processChatFiles(files);
+        });
+    }
+
+    function handleChatFileUpload(input) {
+        const files = input.files;
+        if (!files || !files.length) return;
+        processChatFiles(files);
+        input.value = '';
+    }
+
+    function processChatFiles(files) {
+        Array.from(files).forEach(file => {
+            if (file.size > 50 * 1024 * 1024) {
+                showToast('Файл ' + file.name + ' слишком большой (макс. 50 МБ)', 'error');
+                return;
+            }
+            fileToBase64(file).then(base64 => {
+                const attachment = {
+                    name: file.name,
+                    type: file.type,
+                    base64: base64,
+                    previewUrl: null
+                };
+                // Для изображений — создаем превью
+                if (file.type.startsWith('image/')) {
+                    attachment.previewUrl = URL.createObjectURL(file);
+                }
+                chatAttachments.push(attachment);
+                renderChatAttachments();
+                // Если welcome виден — скрываем
+                if (welcomeScreen) welcomeScreen.style.display = 'none';
+            }).catch(err => {
+                showToast('Ошибка загрузки ' + file.name, 'error');
+            });
+        });
+    }
+
+    function renderChatAttachments() {
+        const container = document.getElementById('chatAttachments');
+        container.innerHTML = '';
+        chatAttachments.forEach((att, i) => {
+            const badge = document.createElement('div');
+            badge.className = 'file-badge';
+
+            let icon = '&#128196;'; // документ
+            if (att.type.startsWith('image/')) icon = '&#128247;';
+            else if (att.type.startsWith('audio/')) icon = '&#127925;';
+            else if (att.type.startsWith('video/')) icon = '&#127916;';
+
+            if (att.previewUrl) {
+                badge.innerHTML = '<img class="file-thumb" src="' + att.previewUrl + '" alt=""><span class="file-name">' + att.name + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+            } else {
+                badge.innerHTML = '<span class="file-icon">' + icon + '</span><span class="file-name">' + att.name + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+            }
+            container.appendChild(badge);
+        });
+    }
+
+    function removeChatAttachment(index) {
+        if (chatAttachments[index]?.previewUrl) URL.revokeObjectURL(chatAttachments[index].previewUrl);
+        chatAttachments.splice(index, 1);
+        renderChatAttachments();
     }
 
     // ---- CHAT LOGIC ----
@@ -1673,16 +2115,22 @@
 
     async function sendOrGenerate() {
         const text = userInput.value.trim();
-        if (!text || isProcessing) return;
+        if ((!text && chatAttachments.length === 0) || isProcessing) return;
 
         if (currentMode === 'chat') {
             await sendChat(text);
         } else if (currentMode === 'image') {
+            if (!text) { showToast('Опишите изображение', 'info'); return; }
             await generateImage(text);
         } else if (currentMode === 'video') {
+            if (selected.videoSubMode === 'convert') {
+                showToast('Для анализа загрузите видеофайл', 'info');
+                return;
+            }
+            if (!text) { showToast('Опишите видео-сцену', 'info'); return; }
             await generateVideo(text);
         } else if (currentMode === 'audio') {
-            await generateAudio(text);
+            await handleAudioSend(text);
         }
     }
 
@@ -1692,29 +2140,53 @@
         userInput.value = '';
         autoResize(userInput);
 
-        // Hide welcome
         if (welcomeScreen) welcomeScreen.style.display = 'none';
 
-        // Add user message
-        addMessage(text, 'user');
-        chatHistory.push({ role: 'user', content: text });
+        // Формируем отображаемое сообщение
+        let displayText = text;
+        if (chatAttachments.length > 0) {
+            const fileNames = chatAttachments.map(a => a.name).join(', ');
+            if (!displayText) displayText = '[Файлы: ' + fileNames + ']';
+        }
+        addMessage(displayText, 'user');
+        chatHistory.push({ role: 'user', content: displayText });
         saveHistory();
 
-        // Show typing
         const typingEl = showTyping();
 
         try {
+            const payload = {
+                prompt: text || 'Опиши прикреплённые файлы подробно',
+                history: chatHistory,
+                model: selected.chat
+            };
+
+            // Прикрепляем файлы
+            if (chatAttachments.length > 0) {
+                payload.attachments = chatAttachments.map(a => ({
+                    name: a.name,
+                    type: a.type,
+                    base64: a.base64
+                }));
+                // Если нет текста — добавляем подсказку для ИИ
+                if (!text) {
+                    const types = chatAttachments.map(a => {
+                        if (a.type.startsWith('image/')) return 'изображение';
+                        if (a.type.startsWith('audio/')) return 'аудио';
+                        if (a.type.startsWith('video/')) return 'видео';
+                        return 'документ';
+                    });
+                    payload.prompt = 'Подробно опиши и проанализируй прикреплённые файлы: ' + types.join(', ');
+                }
+            }
+
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     mode: 'chat',
                     auth: getAuth(),
-                    payload: {
-                        prompt: text,
-                        history: chatHistory,
-                        model: selected.chat
-                    }
+                    payload: payload
                 })
             });
 
@@ -1736,12 +2208,8 @@
             let reply = '(пустой ответ)';
             if (contentType && contentType.includes("application/json")) {
                 const data = await response.json();
-                // webHandler контракт: { success, error, credits_left, data: {type, content} }
-                if (data.success === false) {
-                    throw new Error(data.error || 'Ошибка сервера');
-                }
+                if (data.success === false) throw new Error(data.error || 'Ошибка сервера');
                 reply = data.data?.content || data.reply || data.content || reply;
-                // Обновляем баланс если вернулся
                 if (data.credits_left !== undefined && data.credits_left !== null) {
                     credits = typeof data.credits_left === 'number' ? data.credits_left : credits;
                     updateCreditsDisplay();
@@ -1754,6 +2222,11 @@
             addMessage(reply, 'bot');
             chatHistory.push({ role: 'assistant', content: reply });
             saveHistory();
+
+            // Очищаем вложения после отправки
+            chatAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+            chatAttachments = [];
+            renderChatAttachments();
 
         } catch (err) {
             removeTyping(typingEl);
@@ -1770,8 +2243,10 @@
     }
 
     async function generateImage(prompt) {
-        // Проверяем стоимость для платных моделей
-        const model = availableModels.image.find(m => m.key === selected.image);
+        const isI2I = selected.imageSubMode === 'i2i';
+        const modelKey = isI2I ? selected.image_i2i : selected.image;
+        const modelList = isI2I ? availableModels.image_i2i : availableModels.image;
+        const model = modelList.find(m => m.key === modelKey);
         const cost = model?.cost || 4;
         if (!model?.isFree && credits < cost) {
             showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
@@ -1788,20 +2263,19 @@
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую изображение...</span>';
 
         try {
+            const payload = {
+                prompt,
+                image_size: selectedImageSize,
+                model: modelKey,
+                aspect_ratio: selected.ratio,
+                references: imageRefs.filter(r => r !== null)
+            };
+            if (isI2I) payload.image_mode = 'i2i';
+
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    mode: 'image',
-                    auth: getAuth(),
-                    payload: {
-                        prompt,
-                        image_size: selectedImageSize,
-                        model: selected.image,
-                        aspect_ratio: selected.ratio,
-                        references: imageRefs.filter(r => r !== null)
-                    }
-                })
+                body: JSON.stringify({ mode: 'image', auth: getAuth(), payload })
             });
 
             const contentType = response.headers.get('Content-Type') || '';
@@ -1811,47 +2285,23 @@
                 if (contentType.includes("application/json")) {
                     const errData = await response.json().catch(() => ({}));
                     errMsg = errData.error || errMsg;
-                } else {
-                    const txtErr = await response.text().catch(() => "");
-                    errMsg = txtErr || errMsg;
                 }
                 throw new Error(errMsg);
             }
             
             if (contentType.includes('application/json')) {
                 const data = await response.json();
-                
-                if (data.credits_left !== undefined) {
-                    credits = data.credits_left;
-                } else if (!model?.isFree) {
-                    credits -= cost;
-                }
+                if (data.credits_left !== undefined) credits = data.credits_left;
+                else if (!model?.isFree) credits -= cost;
 
                 if (data.data?.content) {
-                    // Новый формат: data.data.content = URL или base64
-                    let content = data.data.content;
-                    
-                    // МАГИЯ: Если бэкенд вернул объект вместо строки (например {url: '...'})
-                    if (typeof content === 'object' && content !== null) {
-                        if (content.url) content = content.url;         // Вытаскиваем URL
-                        else if (content.image) content = content.image; // Вытаскиваем base64
-                        else content = JSON.stringify(content);          // На крайний случай
-                    }
-                    
-                    // Теперь проверяем строку
-                    if (typeof content === 'string' && content.startsWith('data:')) {
-                        resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
-                    } else if (typeof content === 'string' && content.length > 0) {
-                        resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
-                    } else {
-                        throw new Error('Не удалось распознать формат ответа изображения');
-                    }
+                    const content = data.data.content;
+                    resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
                 } else if (data.data?.image) {
                     resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.data.image + '" alt="' + prompt + '">';
                 } else if (data.data?.url) {
                     resultArea.innerHTML = '<img class="generated-image" src="' + data.data.url + '" alt="' + prompt + '">';
                 } else if (data.image) {
-                    // Старый формат
                     resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.image + '" alt="' + prompt + '">';
                 } else if (data.url) {
                     resultArea.innerHTML = '<img class="generated-image" src="' + data.url + '" alt="' + prompt + '">';
@@ -1866,7 +2316,7 @@
                 resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">';
                 if (!model?.isFree) credits -= cost;
                 updateCreditsDisplay();
-                showToast('Изображение создано! -' + cost + '\u00A2', 'success');
+                showToast('Изображение создано!', 'success');
             }
 
         } catch (err) {
@@ -1922,9 +2372,6 @@
                 if (contentType.includes("application/json")) {
                     const errData = await response.json().catch(() => ({}));
                     errMsg = errData.error || errMsg;
-                } else {
-                    const txtErr = await response.text().catch(() => "");
-                    errMsg = txtErr || errMsg;
                 }
                 throw new Error(errMsg);
             }
@@ -1963,14 +2410,62 @@
         sendBtn.disabled = false;
     }
 
-    async function generateAudio(text) {
-        if (selected.audioMode === 'stt') {
-            // STT — распознавание речи, только через загрузку файла
-            showToast('Для распознавания речи загрузите аудиофайл', 'info');
-            return;
-        }
+    // ---- VIDEO CONVERT (бесплатно) ----
+    async function handleVideoConvert(input) {
+        const file = (input.files && input.files[0]) || null;
+        if (!file) return;
 
-        // TTS — озвучка текста
+        const resultArea = document.getElementById('videoConvertResult');
+        const prompt = userInput.value.trim() || 'Проанализируй это видео подробно: опиши что происходит, кто в кадре, какая атмосфера';
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Анализирую видео...</span>';
+
+        try {
+            const base64 = await fileToBase64(file);
+            const response = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'video',
+                    auth: getAuth(),
+                    payload: {
+                        prompt: prompt,
+                        video_base64: base64,
+                        video_mode: 'convert',
+                        model: selected.chat  // используем чат-модель для анализа
+                    }
+                })
+            });
+
+            if (!response.ok) throw new Error('Ошибка анализа видео');
+            const data = await response.json();
+            if (data.success === false) throw new Error(data.error || 'Ошибка');
+            const result = data.data?.content || data.text || 'Не удалось проанализировать';
+            resultArea.innerHTML = '<div class="message bot" style="align-self:stretch">' + formatBotMessage(result) + '</div>';
+            showToast('Видео проанализировано!', 'success');
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
+        }
+        input.value = '';
+    }
+
+    // ---- AUDIO SEND (роутинг по подрежимам) ----
+    async function handleAudioSend(text) {
+        if (selected.audioSubMode === 'tts') {
+            if (!text) { showToast('Введите текст для озвучки', 'info'); return; }
+            await generateAudioTTS(text);
+        } else if (selected.audioSubMode === 'stt') {
+            showToast('Для распознавания речи загрузите аудиофайл', 'info');
+        } else if (selected.audioSubMode === 'convert') {
+            showToast('Для конвертации загрузите аудиофайл', 'info');
+        } else if (selected.audioSubMode === 'voice_clone') {
+            if (!voiceCloneSample) { showToast('Сначала загрузите образец голоса', 'info'); return; }
+            if (!text) { showToast('Введите текст для озвучки', 'info'); return; }
+            await generateVoiceClone(text);
+        }
+    }
+
+    async function generateAudioTTS(text) {
         const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
         const cost = model?.cost || 2;
         if (!model?.isFree && credits < cost) {
@@ -1984,8 +2479,8 @@
         userInput.value = '';
         autoResize(userInput);
 
-        const resultArea = document.getElementById('audioResult');
-        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую audio...</span>';
+        const resultArea = document.getElementById('audioTTSResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую аудио...</span>';
 
         try {
             const response = await fetch(API_URL + '/api', {
@@ -1998,18 +2493,7 @@
                 })
             });
 
-            if (!response.ok) {
-                const contentType = response.headers.get('Content-Type') || '';
-                let errMsg = 'Ошибка генерации';
-                if (contentType.includes("application/json")) {
-                    const errData = await response.json().catch(() => ({}));
-                    errMsg = errData.error || errMsg;
-                } else {
-                    const txtErr = await response.text().catch(() => "");
-                    errMsg = txtErr || errMsg;
-                }
-                throw new Error(errMsg);
-            }
+            if (!response.ok) throw new Error('Ошибка генерации');
 
             const contentType = response.headers.get('Content-Type') || '';
             if (contentType.includes('application/json')) {
@@ -2017,9 +2501,7 @@
                 const audioUrl = data.data?.content || data.data?.url;
                 if (audioUrl) {
                     resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '"></audio>';
-                } else {
-                    throw new Error('Сервер не вернул аудио');
-                }
+                } else throw new Error('Сервер не вернул аудио');
                 if (data.credits_left !== undefined) credits = data.credits_left;
                 else if (!model?.isFree) credits -= cost;
                 updateCreditsDisplay();
@@ -2028,15 +2510,13 @@
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
                 resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio>';
-                const serverCredits = response.headers.get('X-User-Credits');
-                credits = serverCredits ? parseInt(serverCredits, 10) : (model?.isFree ? credits : credits - cost);
+                if (!model?.isFree) credits -= cost;
                 updateCreditsDisplay();
                 showToast('Аудио создано!', 'success');
             }
-
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-            showToast('Ошибка генерации: ' + err.message, 'error');
+            showToast('Ошибка: ' + err.message, 'error');
             userInput.value = text;
             autoResize(userInput);
         }
@@ -2045,18 +2525,16 @@
         sendBtn.disabled = false;
     }
 
-    // ---- AUDIO FILE UPLOAD (STT) ----
+    // ---- AUDIO STT (распознавание, бесплатно) ----
     async function handleAudioUpload(input) {
         const file = (input.files && input.files[0]) || (input.dataTransfer && input.dataTransfer.files[0]);
         if (!file) return;
 
-        const resultArea = document.getElementById('audioResult');
+        const resultArea = document.getElementById('audioSTTResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Распознаю речь...</span>';
 
         try {
-            // Конвертируем файл в base64
             const audioBase64 = await fileToBase64(file);
-
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2075,10 +2553,146 @@
             showToast('Речь распознана!', 'success');
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-            showToast('Ошибка распознавания: ' + err.message, 'error');
+            showToast('Ошибка: ' + err.message, 'error');
+        }
+        if (input.value !== undefined) input.value = '';
+    }
+
+    // ---- AUDIO CONVERT (конвертация, бесплатно) ----
+    async function handleAudioConvert(input) {
+        const file = (input.files && input.files[0]) || null;
+        if (!file) return;
+
+        document.getElementById('audioConvertFormat').style.display = 'block';
+        const resultArea = document.getElementById('audioConvertResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Конвертирую аудио...</span>';
+
+        try {
+            const audioBase64 = await fileToBase64(file);
+            const response = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'audio',
+                    auth: getAuth(),
+                    payload: {
+                        audio_base64: audioBase64,
+                        audio_mode: 'convert',
+                        target_format: selectedAudioConvertFormat,
+                        source_name: file.name
+                    }
+                })
+            });
+
+            if (!response.ok) throw new Error('Ошибка конвертации');
+            const contentType = response.headers.get('Content-Type') || '';
+
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                const content = data.data?.content || data.data?.url;
+                if (content) {
+                    resultArea.innerHTML = '<audio controls style="width:100%;max-width:400px"><source src="' + content + '"></audio><br><a href="' + content + '" download="converted.' + selectedAudioConvertFormat + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + selectedAudioConvertFormat.toUpperCase() + '</a>';
+                } else throw new Error('Сервер не вернул аудио');
+            } else {
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                resultArea.innerHTML = '<audio controls style="width:100%;max-width:400px"><source src="' + url + '"></audio><br><a href="' + url + '" download="converted.' + selectedAudioConvertFormat + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + selectedAudioConvertFormat.toUpperCase() + '</a>';
+            }
+            showToast('Аудио сконвертировано!', 'success');
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
+        }
+        input.value = '';
+    }
+
+    // ---- VOICE CLONE (клонирование голоса) ----
+    async function handleVoiceClone(input) {
+        const file = (input.files && input.files[0]) || null;
+        if (!file) return;
+
+        const resultArea = document.getElementById('voiceCloneResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Загружаю образец голоса...</span>';
+
+        try {
+            const base64 = await fileToBase64(file);
+            voiceCloneSample = { base64: base64, name: file.name };
+            
+            // Показываем превью загруженного файла
+            const previewUrl = URL.createObjectURL(file);
+            resultArea.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px">' +
+                '<span style="font-size:24px">&#127909;</span>' +
+                '<div><div style="color:var(--success);font-size:13px;font-weight:600">&#10003; Образец голоса загружен</div>' +
+                '<div style="color:var(--text-muted);font-size:11px">' + file.name + '</div></div>' +
+                '<button onclick="removeVoiceClone()" style="margin-left:auto;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3);color:var(--danger);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:11px">Удалить</button>' +
+                '</div>' +
+                '<div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">Теперь введите текст ниже и нажмите отправить — я озвучу его этим голосом.</div>';
+            showToast('Образец голоса загружен!', 'success');
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
+        }
+        input.value = '';
+    }
+
+    function removeVoiceClone() {
+        voiceCloneSample = null;
+        document.getElementById('voiceCloneResult').innerHTML = '<span class="result-placeholder">Сначала загрузите образец голоса</span>';
+    }
+
+    async function generateVoiceClone(text) {
+        isProcessing = true;
+        sendBtn.disabled = true;
+        userInput.value = '';
+        autoResize(userInput);
+
+        const resultArea = document.getElementById('voiceCloneResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Озвучиваю вашим голосом...</span>';
+
+        try {
+            const response = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'audio',
+                    auth: getAuth(),
+                    payload: {
+                        text: text,
+                        audio_mode: 'voice_clone',
+                        voice_sample: voiceCloneSample.base64,
+                        voice_sample_name: voiceCloneSample.name,
+                        model: selected.audio_tts
+                    }
+                })
+            });
+
+            if (!response.ok) throw new Error('Ошибка клонирования голоса');
+            const contentType = response.headers.get('Content-Type') || '';
+
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                const audioUrl = data.data?.content || data.data?.url;
+                if (audioUrl) {
+                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '"></audio><br><span style="color:var(--text-muted);font-size:11px">&#127909; Озвучено вашим голосом</span>';
+                } else throw new Error('Сервер не вернул аудио');
+                if (data.credits_left !== undefined) credits = data.credits_left;
+                updateCreditsDisplay();
+                showToast('Голос клонирован!', 'success');
+            } else {
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio><br><span style="color:var(--text-muted);font-size:11px">&#127909; Озвучено вашим голосом</span>';
+                showToast('Голос клонирован!', 'success');
+            }
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
+            userInput.value = text;
+            autoResize(userInput);
         }
 
-        if (input.value !== undefined) input.value = '';
+        isProcessing = false;
+        sendBtn.disabled = false;
     }
 
     // ---- FILE TO BASE64 UTILITY ----
@@ -2086,7 +2700,6 @@
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
-                // Убираем data:xxx;base64, префикс — оставляем чистый base64
                 const base64 = reader.result.split(',')[1] || reader.result;
                 resolve(base64);
             };
@@ -2096,7 +2709,7 @@
     }
 
     // ---- IMAGE REFERENCE HANDLERS (до 4 слотов) ----
-    let imageRefs = [null, null, null, null]; // base64 строки
+    let imageRefs = [null, null, null, null];
 
     async function handleImageRef(index, input) {
         const file = (input.files && input.files[0]) || null;
@@ -2106,17 +2719,22 @@
             const base64 = await fileToBase64(file);
             imageRefs[index] = base64;
 
-            // Показываем превью в слоте
             const slot = document.getElementById('imageRef' + index);
             const previewUrl = URL.createObjectURL(file);
             slot.innerHTML = '<img src="' + previewUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" alt="Реф. ' + (index+1) + '">' +
                 '<button onclick="event.stopPropagation();removeImageRef(' + index + ')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
 
-            // Показываем следующий слот
             if (index < 3) {
                 const nextSlot = document.getElementById('imageRef' + (index + 1));
                 if (nextSlot) nextSlot.style.display = 'flex';
             }
+
+            // Автоматически переключаемся в i2i если есть референсы
+            if (imageRefs.some(r => r !== null) && selected.imageSubMode !== 'i2i' && availableModels.image_i2i.length > 0) {
+                selected.imageSubMode = 'i2i';
+                saveSelected();
+            }
+            renderImageSubHeader();
         } catch (err) {
             showToast('Ошибка загрузки референса: ' + err.message, 'error');
         }
@@ -2130,17 +2748,23 @@
             '<div class="hint" style="margin:0;font-size:10px">Реф. ' + (index+1) + '</div>' +
             '<input type="file" id="imageRefInput' + index + '" accept="image/*" style="display:none" onchange="handleImageRef(' + index + ',this)">';
 
-        // Скрываем пустые слоты после текущего
         for (let i = index + 1; i < 4; i++) {
             if (!imageRefs[i]) {
                 const s = document.getElementById('imageRef' + i);
                 if (s) s.style.display = 'none';
             }
         }
+
+        // Если все референсы удалены — возвращаемся в t2i
+        if (!imageRefs.some(r => r !== null)) {
+            selected.imageSubMode = 't2i';
+            saveSelected();
+        }
+        renderImageSubHeader();
     }
 
     // ---- VIDEO REFERENCE HANDLERS ----
-    let videoRefs = { image: null, audio: null, video: null }; // base64 строки
+    let videoRefs = { image: null, audio: null, video: null };
 
     async function handleVideoRef(type, input) {
         const file = (input.files && input.files[0]) || null;
@@ -2189,13 +2813,11 @@
     function addMessage(text, sender) {
         const div = document.createElement('div');
         div.className = 'message ' + sender;
-        
         if (sender === 'bot') {
             div.innerHTML = formatBotMessage(text);
         } else {
             div.textContent = text;
         }
-
         chatArea.appendChild(div);
         chatArea.scrollTop = chatArea.scrollHeight;
     }
@@ -2299,50 +2921,17 @@
     }
 
     function authVK() {
-        if (window.vkBridge) {
-            vkBridge.send('VKWebAppGetUserInfo').then(info => {
-                user = { id: info.id, name: info.first_name + ' ' + info.last_name, provider: 'vk' };
-                localStorage.setItem('gemini_user', JSON.stringify(user));
-                authBtn.textContent = info.first_name;
-                authBtn.classList.add('logged-in');
-                closeAuthDialog();
-                showToast('Добро пожаловать, ' + info.first_name + '!', 'success');
-                loadServerData();
-            }).catch(() => {
-                showToast('Ошибка авторизации VK', 'error');
-            });
-        } else {
-            showToast('VK авторизация доступна только внутри VK Mini App', 'info');
-            closeAuthDialog();
-        }
+        closeAuthDialog();
+        // Редирект на vk.html для OAuth через VK ID SDK
+        const returnTo = encodeURIComponent(window.location.origin + '/');
+        window.location.href = '/vk.html?returnTo=' + returnTo;
     }
 
     function authTG() {
-        // Telegram Login Widget — пробуем через Telegram.WebApp
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
-            const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
-            if (tgUser) {
-                user = { id: tgUser.id, name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''), provider: 'tg', hash: window.Telegram.WebApp.initData };
-                localStorage.setItem('gemini_user', JSON.stringify(user));
-                authBtn.textContent = tgUser.first_name;
-                authBtn.classList.add('logged-in');
-                closeAuthDialog();
-                showToast('Добро пожаловать, ' + tgUser.first_name + '!', 'success');
-                loadServerData();
-                return;
-            }
-        }
-        // Фоллбэк — ввод ID вручную
-        const tgId = prompt('Введите ваш Telegram ID (из @userinfobot):');
-        if (tgId && tgId.trim()) {
-            user = { provider: 'tg', id: tgId.trim(), name: 'TG User', hash: null };
-            localStorage.setItem('gemini_user', JSON.stringify(user));
-            authBtn.textContent = 'TG User';
-            authBtn.classList.add('logged-in');
-            closeAuthDialog();
-            showToast('Вы вошли через Telegram! Загружаю баланс...', 'success');
-            loadServerData();
-        }
+        closeAuthDialog();
+        // Редирект на tg.html для OAuth через Telegram Login Widget
+        const returnTo = encodeURIComponent(window.location.origin + '/');
+        window.location.href = '/tg.html?returnTo=' + returnTo;
     }
 
     // ---- TOAST ----
@@ -2382,7 +2971,7 @@
         if (e.target === this) closeAuthDialog();
     });
 
-    // ---- DRAG-AND-DROP для всех upload-zone ----
+    // ---- DRAG-AND-DROP для upload-zone ----
     document.querySelectorAll('.upload-zone').forEach(zone => {
         zone.addEventListener('dragover', function(e) {
             e.preventDefault();
@@ -2402,7 +2991,6 @@
             const files = e.dataTransfer.files;
             if (!files.length) return;
 
-            // Определяем какой это слот по id
             const id = this.id;
             if (id.startsWith('imageRef')) {
                 const index = parseInt(id.replace('imageRef', ''));
@@ -2415,10 +3003,15 @@
                 handleVideoRef('audio', { files: files, value: '' });
             } else if (id === 'videoRefVideo') {
                 handleVideoRef('video', { files: files, value: '' });
+            } else if (id === 'videoConvertZone') {
+                handleVideoConvert({ files: files, value: '' });
+            } else if (id === 'audioConvertZone') {
+                handleAudioConvert({ files: files, value: '' });
+            } else if (id === 'voiceCloneZone') {
+                handleVoiceClone({ files: files, value: '' });
             }
         });
     });
     </script>
-        
 </body>
 </html>
