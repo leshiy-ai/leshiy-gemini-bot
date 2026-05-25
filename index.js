@@ -123,8 +123,8 @@ module.exports.handler = async (event, context) => {
     // Раздача статических файлов: vk.html, tg.html, /images/*
     if (event.httpMethod === 'GET') {
         const staticFiles = {
-            '/vk.html': 'text/html; charset=utf-8',
-            '/tg.html': 'text/html; charset=utf-8',
+            '/vk.html': { mime: 'text/html; charset=utf-8', file: 'vk.html' },
+            '/tg.html': { mime: 'text/html; charset=utf-8', file: 'tg.html' },
         };
         const staticExtensions = {
             '.svg': 'image/svg+xml',
@@ -138,16 +138,26 @@ module.exports.handler = async (event, context) => {
             '.js': 'application/javascript; charset=utf-8',
         };
 
-        // Проверяем точное совпадение (vk.html, tg.html)
-        if (staticFiles[requestPath]) {
+        // Проверяем точное совпадение или совпадение по концу пути (API Gateway может добавлять префикс)
+        let matchedStatic = staticFiles[requestPath] || null;
+        if (!matchedStatic) {
+            for (const [spath, sconf] of Object.entries(staticFiles)) {
+                if (requestPath.endsWith(spath)) {
+                    matchedStatic = sconf;
+                    break;
+                }
+            }
+        }
+
+        if (matchedStatic) {
             try {
-                const filePath = path.join(__dirname, 'public', requestPath);
+                const filePath = path.join(__dirname, 'public', matchedStatic.file);
                 if (fs.existsSync(filePath)) {
                     const content = fs.readFileSync(filePath, 'utf8');
                     return {
                         statusCode: 200,
                         headers: {
-                            'Content-Type': staticFiles[requestPath],
+                            'Content-Type': matchedStatic.mime,
                             'Cache-Control': 'no-cache'
                         },
                         body: content
