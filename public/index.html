@@ -442,9 +442,97 @@
             background: var(--accent-light);
         }
 
+        .upload-zone.drag-over {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            transform: scale(1.02);
+        }
+
         .upload-zone .icon { font-size: 32px; margin-bottom: 8px; }
         .upload-zone .label { font-size: 14px; }
         .upload-zone .hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+        /* ===== REFERENCE UPLOADS ===== */
+        .ref-uploads {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .ref-upload-slot {
+            width: 80px;
+            height: 80px;
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-sm);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all var(--transition);
+            position: relative;
+            overflow: hidden;
+            background: var(--bg-secondary);
+        }
+
+        .ref-upload-slot:hover {
+            border-color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .ref-upload-slot.drag-over {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            transform: scale(1.05);
+        }
+
+        .ref-upload-slot.has-file {
+            border-style: solid;
+            border-color: var(--accent);
+        }
+
+        .ref-upload-slot .ref-icon {
+            font-size: 22px;
+            opacity: 0.6;
+        }
+
+        .ref-upload-slot .ref-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-top: 2px;
+            text-align: center;
+        }
+
+        .ref-upload-slot img,
+        .ref-upload-slot video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+
+        .ref-upload-slot .ref-remove {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: rgba(239,68,68,0.85);
+            color: white;
+            font-size: 11px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 2;
+            border: none;
+            line-height: 1;
+        }
+
+        .ref-upload-slot.has-file .ref-remove { display: flex; }
 
         .size-selector {
             display: flex;
@@ -741,6 +829,7 @@
             .mode-tab { padding: 5px 10px; font-size: 12px; }
             .header-logo { font-size: 17px; }
             .sub-option { font-size: 11px; padding: 3px 8px; }
+            .ref-upload-slot { width: 65px; height: 65px; }
         }
     </style>
 </head>
@@ -777,7 +866,7 @@
             </button>
         </div>
 
-        <!-- SUB-HEADERS — настройки каждого режима, заполняются динамически из /api/models -->
+        <!-- SUB-HEADERS -->
         <div class="sub-header active" id="subChat">
             <span class="sub-label" style="color:var(--free)">&#10003; Бесплатно</span>
             <div class="sub-divider"></div>
@@ -807,7 +896,7 @@
         <div class="chat-area" id="chatArea">
             <div class="welcome" id="welcomeScreen">
                 <div class="icon-container">
-                    <img src="/images/Gemini.png" alt="Leshiy AI Icon" class="app-icon">
+                    <img src="Gemini.png" alt="Gemini-AI Icon" class="app-icon">
                 </div>
                 <h2>Привет! Я Gemini-AI</h2>
                 <p>Я могу отвечать на вопросы, генерировать изображения, видео и аудио. Выбери режим выше и начни общение!</p>
@@ -825,6 +914,36 @@
             <div>
                 <h3>&#127912; Генерация изображения</h3>
                 <p id="imageDesc">Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ. Выберите модель в настройках выше.</p>
+            </div>
+            <!-- 4 референсных изображения (drag-and-drop) -->
+            <div>
+                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсные изображения (необязательно):</label>
+                <div class="ref-uploads" id="imageRefUploads">
+                    <div class="ref-upload-slot" id="imgRef0" onclick="document.getElementById('imgRefInput0').click()">
+                        <span class="ref-icon">&#43;</span>
+                        <span class="ref-label">Реф. 1</span>
+                        <button class="ref-remove" onclick="event.stopPropagation(); removeImageRef(0)">&#10005;</button>
+                        <input type="file" id="imgRefInput0" accept="image/*" style="display:none" onchange="handleImageRefUpload(this, 0)">
+                    </div>
+                    <div class="ref-upload-slot" id="imgRef1" onclick="document.getElementById('imgRefInput1').click()">
+                        <span class="ref-icon">&#43;</span>
+                        <span class="ref-label">Реф. 2</span>
+                        <button class="ref-remove" onclick="event.stopPropagation(); removeImageRef(1)">&#10005;</button>
+                        <input type="file" id="imgRefInput1" accept="image/*" style="display:none" onchange="handleImageRefUpload(this, 1)">
+                    </div>
+                    <div class="ref-upload-slot" id="imgRef2" onclick="document.getElementById('imgRefInput2').click()">
+                        <span class="ref-icon">&#43;</span>
+                        <span class="ref-label">Реф. 3</span>
+                        <button class="ref-remove" onclick="event.stopPropagation(); removeImageRef(2)">&#10005;</button>
+                        <input type="file" id="imgRefInput2" accept="image/*" style="display:none" onchange="handleImageRefUpload(this, 2)">
+                    </div>
+                    <div class="ref-upload-slot" id="imgRef3" onclick="document.getElementById('imgRefInput3').click()">
+                        <span class="ref-icon">&#43;</span>
+                        <span class="ref-label">Реф. 4</span>
+                        <button class="ref-remove" onclick="event.stopPropagation(); removeImageRef(3)">&#10005;</button>
+                        <input type="file" id="imgRefInput3" accept="image/*" style="display:none" onchange="handleImageRefUpload(this, 3)">
+                    </div>
+                </div>
             </div>
             <div>
                 <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер:</label>
@@ -846,6 +965,30 @@
                 <h3>&#127916; Генерация видео</h3>
                 <p>Опиши сцену, и я создам короткое видео с помощью ИИ. Стоимость зависит от длительности и качества.</p>
             </div>
+            <!-- Референсные медиа для видео (drag-and-drop: изображение, аудио, видео) -->
+            <div>
+                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсные медиа (необязательно):</label>
+                <div class="ref-uploads" id="videoRefUploads">
+                    <div class="ref-upload-slot" id="vidRefImg" onclick="document.getElementById('vidRefImgInput').click()">
+                        <span class="ref-icon">&#128247;</span>
+                        <span class="ref-label">Изобр.</span>
+                        <button class="ref-remove" onclick="event.stopPropagation(); removeVideoRef('image')">&#10005;</button>
+                        <input type="file" id="vidRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRefUpload(this, 'image')">
+                    </div>
+                    <div class="ref-upload-slot" id="vidRefAudio" onclick="document.getElementById('vidRefAudioInput').click()">
+                        <span class="ref-icon">&#127925;</span>
+                        <span class="ref-label">Аудио</span>
+                        <button class="ref-remove" onclick="event.stopPropagation(); removeVideoRef('audio')">&#10005;</button>
+                        <input type="file" id="vidRefAudioInput" accept="audio/*" style="display:none" onchange="handleVideoRefUpload(this, 'audio')">
+                    </div>
+                    <div class="ref-upload-slot" id="vidRefVideo" onclick="document.getElementById('vidRefVideoInput').click()">
+                        <span class="ref-icon">&#127916;</span>
+                        <span class="ref-label">Видео</span>
+                        <button class="ref-remove" onclick="event.stopPropagation(); removeVideoRef('video')">&#10005;</button>
+                        <input type="file" id="vidRefVideoInput" accept="video/*" style="display:none" onchange="handleVideoRefUpload(this, 'video')">
+                    </div>
+                </div>
+            </div>
             <div class="result-area" id="videoResult">
                 <span class="result-placeholder">Здесь появится видео</span>
             </div>
@@ -860,7 +1003,7 @@
             <div class="upload-zone" id="audioUploadZone" onclick="document.getElementById('audioFileInput').click()">
                 <div class="icon">&#127925;</div>
                 <div class="label">Загрузить аудиофайл для распознавания</div>
-                <div class="hint">MP3, WAV, OGG — до 20 МБ</div>
+                <div class="hint">MP3, WAV, OGG — до 20 МБ (или перетащите файл сюда)</div>
                 <input type="file" id="audioFileInput" accept="audio/*" style="display:none" onchange="handleAudioUpload(this)">
             </div>
             <div class="result-area" id="audioResult">
@@ -891,7 +1034,12 @@
             <h3>&#9733; Купить кредиты</h3>
             <p>Кредиты нужны для генерации медиа. 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
             
-            <div class="plan-card selected" onclick="selectPlan(this, 200)">
+            <div class="plan-card selected" onclick="selectPlan(this, 100)">
+                <div class="plan-name">100 &#162;</div>
+                <div class="plan-price">500 &#8381;</div>
+                <div class="plan-desc">~25 изображений или 5 видео</div>
+            </div>
+            <div class="plan-card" onclick="selectPlan(this, 200)">
                 <div class="plan-name">200 &#162;</div>
                 <div class="plan-price">1 000 &#8381;</div>
                 <div class="plan-desc">~50 изображений или 10 видео</div>
@@ -956,11 +1104,11 @@
     let credits = 0;
     let isProcessing = false;
     let selectedImageSize = '1024x1024';
-    let selectedPlan = 200;
-    let user = null; // Хранит { id: '...', name: '...', provider: 'vk'|'tg', hash: '...' }
+    let selectedPlan = 100;
+    let user = null; // { id, name, provider: 'vk'|'tg', hash }
     let chatHistory = [];
 
-    // ---- Динамические модели (загружаются с бэкенда) ----
+    // ---- Динамические модели ----
     let availableModels = { chat: [], image: [], video: [], audio_tts: [], audio_stt: [] };
     let selected = {
         chat: null,
@@ -968,12 +1116,16 @@
         video: null,
         audio_tts: null,
         audio_stt: null,
-        audioMode: 'tts',  // 'tts' или 'stt'
+        audioMode: 'tts',
         ratio: '1:1',
         voice: 'Female',
         videoQuality: '480p',
         videoDuration: '6'
     };
+
+    // ---- Референсные файлы (base64) ----
+    let imageReferences = [null, null, null, null]; // до 4 референсных изображений
+    let videoReferences = { image: null, audio: null, video: null }; // референс для видео
 
     // ---- DOM REFS ----
     const chatArea = document.getElementById('chatArea');
@@ -985,9 +1137,8 @@
     const authBtn = document.getElementById('authBtn');
     const toastContainer = document.getElementById('toastContainer');
 
-    // ---- ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ----
+    // ---- ИНИЦИАЛИЗАЦИЯ ----
     document.addEventListener('DOMContentLoaded', () => {
-        // Проверяем, была ли сессия авторизации ранее
         const savedUser = localStorage.getItem('gemini_user');
         if (savedUser) {
             user = JSON.parse(savedUser);
@@ -995,30 +1146,244 @@
             authBtn.classList.add('logged-in');
             loadServerData();
         } else {
-            // Анонимный режим
             authBtn.textContent = 'Войти';
             creditsAmount.textContent = '--';
             loadLocalHistory();
         }
 
-        // Загружаем сохранённые настройки моделей
         try {
             const savedSelected = localStorage.getItem('gemini_selected');
             if (savedSelected) selected = { ...selected, ...JSON.parse(savedSelected) };
         } catch(e) {}
 
         autoResize(userInput);
-        loadModels(); // Загрузка списка моделей с бэкенда
+        loadModels();
+        setupDragAndDrop();
     });
 
-    // ---- ПОДДЕРЖКА ЛОКАЛЬНОЙ ИСТОРИИ (АНОНИМ) ----
+    // ---- DRAG & DROP SETUP ----
+    function setupDragAndDrop() {
+        // Drag-and-drop для референсных изображений (4 слота)
+        for (let i = 0; i < 4; i++) {
+            setupSlotDragDrop('imgRef' + i, function(file) {
+                readImageAsBase64(file, function(base64) {
+                    imageReferences[i] = base64;
+                    renderImageRefSlot(i, base64);
+                });
+            });
+        }
+
+        // Drag-and-drop для видео-референсов
+        setupSlotDragDrop('vidRefImg', function(file) {
+            readMediaAsBase64(file, function(base64) {
+                videoReferences.image = base64;
+                renderVideoRefSlot('image', base64, file.type);
+            });
+        });
+        setupSlotDragDrop('vidRefAudio', function(file) {
+            readMediaAsBase64(file, function(base64) {
+                videoReferences.audio = base64;
+                renderVideoRefSlot('audio', base64, file.type);
+            });
+        });
+        setupSlotDragDrop('vidRefVideo', function(file) {
+            readMediaAsBase64(file, function(base64) {
+                videoReferences.video = base64;
+                renderVideoRefSlot('video', base64, file.type);
+            });
+        });
+
+        // Drag-and-drop для аудио-загрузки (STT)
+        var audioZone = document.getElementById('audioUploadZone');
+        if (audioZone) {
+            audioZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                audioZone.classList.add('drag-over');
+            });
+            audioZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                audioZone.classList.remove('drag-over');
+            });
+            audioZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                audioZone.classList.remove('drag-over');
+                var files = e.dataTransfer.files;
+                if (files.length > 0 && files[0].type.startsWith('audio/')) {
+                    var input = document.getElementById('audioFileInput');
+                    // Создаём DataTransfer чтобы положить файл в input
+                    var dt = new DataTransfer();
+                    dt.items.add(files[0]);
+                    input.files = dt.files;
+                    handleAudioUpload(input);
+                } else {
+                    showToast('Перетащите аудиофайл (MP3, WAV, OGG)', 'error');
+                }
+            });
+        }
+    }
+
+    function setupSlotDragDrop(slotId, onFile) {
+        var slot = document.getElementById(slotId);
+        if (!slot) return;
+        slot.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            slot.classList.add('drag-over');
+        });
+        slot.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            slot.classList.remove('drag-over');
+        });
+        slot.addEventListener('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            slot.classList.remove('drag-over');
+            var files = e.dataTransfer.files;
+            if (files.length > 0) {
+                onFile(files[0]);
+            }
+        });
+    }
+
+    function readImageAsBase64(file, callback) {
+        if (!file.type.startsWith('image/')) {
+            showToast('Пожалуйста, выберите изображение', 'error');
+            return;
+        }
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            // e.target.result = data:image/png;base64,...
+            callback(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function readMediaAsBase64(file, callback) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            callback(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function renderImageRefSlot(index, dataUrl) {
+        var slot = document.getElementById('imgRef' + index);
+        if (!slot) return;
+        // Удаляем старый превью если есть
+        var oldImg = slot.querySelector('img');
+        if (oldImg) oldImg.remove();
+        // Скрываем иконку и лейбл
+        var icon = slot.querySelector('.ref-icon');
+        var label = slot.querySelector('.ref-label');
+        if (icon) icon.style.display = 'none';
+        if (label) label.style.display = 'none';
+        // Показываем превью
+        var img = document.createElement('img');
+        img.src = dataUrl;
+        img.alt = 'Реф. ' + (index + 1);
+        slot.appendChild(img);
+        slot.classList.add('has-file');
+    }
+
+    function renderVideoRefSlot(type, dataUrl, mimeType) {
+        var slotMap = { image: 'vidRefImg', audio: 'vidRefAudio', video: 'vidRefVideo' };
+        var slot = document.getElementById(slotMap[type]);
+        if (!slot) return;
+        // Удаляем старый превью
+        var oldMedia = slot.querySelector('img, video, audio');
+        if (oldMedia) oldMedia.remove();
+        var icon = slot.querySelector('.ref-icon');
+        var label = slot.querySelector('.ref-label');
+        if (icon) icon.style.display = 'none';
+        if (label) label.style.display = 'none';
+
+        if (type === 'image') {
+            var img = document.createElement('img');
+            img.src = dataUrl;
+            img.alt = 'Реф. изобр.';
+            slot.appendChild(img);
+        } else if (type === 'audio') {
+            // Для аудио показываем просто иконку (без визуального превью)
+            if (icon) { icon.style.display = ''; icon.innerHTML = '&#9835;'; }
+            if (label) { label.style.display = ''; label.textContent = 'Аудио ✓'; }
+        } else if (type === 'video') {
+            var vid = document.createElement('video');
+            vid.src = dataUrl;
+            vid.muted = true;
+            vid.alt = 'Реф. видео';
+            slot.appendChild(vid);
+        }
+        slot.classList.add('has-file');
+    }
+
+    // ---- Обработка загрузки файлов через input ----
+    function handleImageRefUpload(input, index) {
+        var file = input.files[0];
+        if (!file) return;
+        readImageAsBase64(file, function(base64) {
+            imageReferences[index] = base64;
+            renderImageRefSlot(index, base64);
+        });
+        input.value = '';
+    }
+
+    function removeImageRef(index) {
+        imageReferences[index] = null;
+        var slot = document.getElementById('imgRef' + index);
+        if (!slot) return;
+        var img = slot.querySelector('img');
+        if (img) img.remove();
+        var icon = slot.querySelector('.ref-icon');
+        var label = slot.querySelector('.ref-label');
+        if (icon) { icon.style.display = ''; icon.innerHTML = '&#43;'; }
+        if (label) label.style.display = '';
+        slot.classList.remove('has-file');
+    }
+
+    function handleVideoRefUpload(input, type) {
+        var file = input.files[0];
+        if (!file) return;
+        readMediaAsBase64(file, function(base64) {
+            videoReferences[type] = base64;
+            renderVideoRefSlot(type, base64, file.type);
+        });
+        input.value = '';
+    }
+
+    function removeVideoRef(type) {
+        videoReferences[type] = null;
+        var slotMap = { image: 'vidRefImg', audio: 'vidRefAudio', video: 'vidRefVideo' };
+        var iconMap = { image: '&#128247;', audio: '&#127925;', video: '&#127916;' };
+        var labelMap = { image: 'Изобр.', audio: 'Аудио', video: 'Видео' };
+        var slot = document.getElementById(slotMap[type]);
+        if (!slot) return;
+        var media = slot.querySelector('img, video, audio');
+        if (media) media.remove();
+        var icon = slot.querySelector('.ref-icon');
+        var label = slot.querySelector('.ref-label');
+        if (icon) { icon.style.display = ''; icon.innerHTML = iconMap[type]; }
+        if (label) { label.style.display = ''; label.textContent = labelMap[type]; }
+        slot.classList.remove('has-file');
+    }
+
+    // ---- ЛОКАЛЬНАЯ ИСТОРИЯ (АНОНИМ) ----
     function loadLocalHistory() {
-        const localHist = localStorage.getItem('gemini_local_history');
+        var localHist = localStorage.getItem('gemini_local_history');
         if (localHist) {
-            chatHistory = JSON.parse(localHist);
+            try {
+                chatHistory = JSON.parse(localHist);
+            } catch(e) {
+                chatHistory = [];
+            }
             if (chatHistory.length > 0) {
                 welcomeScreen.style.display = 'none';
-                chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text || msg.content));
+                chatHistory.forEach(function(msg) {
+                    appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text || msg.content);
+                });
             }
         }
     }
@@ -1041,25 +1406,24 @@
         try { localStorage.setItem('gemini_selected', JSON.stringify(selected)); } catch(e) {}
     }
 
-    // ---- ЗАГРУЗКА ДАННЫХ ДЛЯ АВТОРИЗОВАННОГО ЮЗЕРА ----
+    // ---- ЗАГРУЗКА ДАННЫХ АВТОРИЗОВАННОГО ----
     async function loadServerData() {
         try {
-            // Запрос баланса через единый API
-            const resp = await fetch(API_URL + '/api', {
+            var resp = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mode: 'balance', auth: getAuth(), payload: {} })
             });
-            const contentType = resp.headers.get("content-type");
-            if (resp.ok && contentType && contentType.includes("application/json")) {
-                const data = await resp.json();
+            var contentType = resp.headers.get("content-type");
+            if (resp.ok && contentType && contentType.indexOf("application/json") !== -1) {
+                var data = await resp.json();
                 if (data.success && data.data) {
-                    const display = document.getElementById('creditsDisplay');
+                    var display = document.getElementById('creditsDisplay');
                     if (data.data.isVip) {
                         creditsAmount.textContent = 'VIP';
                         display.classList.add('vip');
                     } else {
-                        credits = data.data.balance ?? 80;
+                        credits = data.data.balance != null ? data.data.balance : 80;
                         creditsAmount.textContent = credits;
                         display.classList.remove('vip');
                     }
@@ -1077,8 +1441,8 @@
         }
     }
 
-    // ---- ПРОВЕРКА АВТОРИЗАЦИИ ----
-    function checkAuth(requiredCost = 0) {
+    // ---- АВТОРИЗАЦИЯ ----
+    function checkAuth(requiredCost) {
         if (!user) {
             showToast('Для этого действия необходимо авторизоваться!', 'info');
             openAuthDialog();
@@ -1092,7 +1456,6 @@
         return true;
     }
 
-    // ---- AUTH HELPER для унифицированного API ----
     function getAuth() {
         if (user) return { provider: user.provider, id: String(user.id), hash: user.hash || null };
         return { provider: null, id: null, hash: null };
@@ -1103,22 +1466,21 @@
     // ============================================================
     async function loadModels() {
         try {
-            const resp = await fetch(API_URL + '/api/models');
-            const data = await resp.json();
+            var resp = await fetch(API_URL + '/api/models');
+            var data = await resp.json();
             if (data.success && data.data) {
                 availableModels = data.data;
 
-                // Устанавливаем дефолты если ещё не выбраны
                 if (!selected.chat && availableModels.chat.length > 0)
-                    selected.chat = availableModels.chat.find(m => m.isFree)?.key || availableModels.chat[0]?.key;
+                    selected.chat = (availableModels.chat.find(function(m){ return m.isFree; }) || availableModels.chat[0]).key;
                 if (!selected.image && availableModels.image.length > 0)
-                    selected.image = availableModels.image.find(m => m.isFree)?.key || availableModels.image[0]?.key;
+                    selected.image = (availableModels.image.find(function(m){ return m.isFree; }) || availableModels.image[0]).key;
                 if (!selected.video && availableModels.video.length > 0)
-                    selected.video = availableModels.video[0]?.key;
+                    selected.video = availableModels.video[0].key;
                 if (!selected.audio_tts && availableModels.audio_tts.length > 0)
-                    selected.audio_tts = availableModels.audio_tts.find(m => m.isFree)?.key || availableModels.audio_tts[0]?.key;
+                    selected.audio_tts = (availableModels.audio_tts.find(function(m){ return m.isFree; }) || availableModels.audio_tts[0]).key;
                 if (!selected.audio_stt && availableModels.audio_stt.length > 0)
-                    selected.audio_stt = availableModels.audio_stt[0]?.key;
+                    selected.audio_stt = availableModels.audio_stt[0].key;
 
                 saveSelected();
                 renderSubHeaders();
@@ -1130,7 +1492,7 @@
     }
 
     // ============================================================
-    //  РЕНДЕР SUB-HEADERS (динамически из availableModels)
+    //  РЕНДЕР SUB-HEADERS
     // ============================================================
     function renderSubHeaders() {
         renderChatSubHeader();
@@ -1140,50 +1502,49 @@
     }
 
     function renderChatSubHeader() {
-        const container = document.getElementById('chatModels');
+        var container = document.getElementById('chatModels');
         container.classList.remove('skeleton');
         container.innerHTML = '';
         if (availableModels.chat.length === 0) {
             container.innerHTML = '<span class="sub-label">Загрузка моделей...</span>';
             return;
         }
-        availableModels.chat.forEach(m => {
-            const btn = document.createElement('button');
+        availableModels.chat.forEach(function(m) {
+            var btn = document.createElement('button');
             btn.className = 'sub-option' + (m.isFree ? ' free' : '') + (selected.chat === m.key ? ' active' : '');
             btn.dataset.model = m.key;
-            btn.onclick = () => { selected.chat = m.key; saveSelected(); renderChatSubHeader(); };
-            const label = m.model ? m.model.split('/').pop().split('-').slice(0, 3).join('-') : m.key;
+            btn.onclick = function() { selected.chat = m.key; saveSelected(); renderChatSubHeader(); };
+            var label = m.model ? m.model.split('/').pop().split('-').slice(0, 3).join('-') : m.key;
             btn.innerHTML = label + (m.isFree ? ' &#10003;' : ' <span class="price">' + (m.cost || '') + '&#162;</span>');
             container.appendChild(btn);
         });
     }
 
     function renderImageSubHeader() {
-        const modelsContainer = document.getElementById('imageModels');
+        var modelsContainer = document.getElementById('imageModels');
         modelsContainer.classList.remove('skeleton');
         modelsContainer.innerHTML = '';
         if (availableModels.image.length === 0) {
             modelsContainer.innerHTML = '<span class="sub-label">Нет доступных моделей</span>';
             return;
         }
-        availableModels.image.forEach(m => {
-            const btn = document.createElement('button');
+        availableModels.image.forEach(function(m) {
+            var btn = document.createElement('button');
             btn.className = 'sub-option' + (m.isFree ? ' free' : '') + (selected.image === m.key ? ' active' : '');
             btn.dataset.model = m.key;
-            btn.onclick = () => { selected.image = m.key; saveSelected(); renderImageSubHeader(); updateImageDesc(); };
-            const shortName = getShortModelName(m);
+            btn.onclick = function() { selected.image = m.key; saveSelected(); renderImageSubHeader(); updateImageDesc(); };
+            var shortName = getShortModelName(m);
             btn.innerHTML = shortName + (m.isFree ? ' &#10003;' : ' <span class="price">' + m.cost + '&#162;</span>');
             modelsContainer.appendChild(btn);
         });
 
-        // Aspect ratio кнопки
-        const ratioContainer = document.getElementById('imageRatio');
+        var ratioContainer = document.getElementById('imageRatio');
         ratioContainer.innerHTML = '';
-        ['1:1', '4:3', '16:9', '9:16'].forEach(r => {
-            const btn = document.createElement('button');
+        ['1:1', '4:3', '16:9', '9:16'].forEach(function(r) {
+            var btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
             btn.dataset.ratio = r;
-            btn.onclick = () => { selected.ratio = r; saveSelected(); renderImageSubHeader(); };
+            btn.onclick = function() { selected.ratio = r; saveSelected(); renderImageSubHeader(); };
             btn.textContent = r;
             ratioContainer.appendChild(btn);
         });
@@ -1191,58 +1552,55 @@
     }
 
     function renderVideoSubHeader() {
-        const modelsContainer = document.getElementById('videoModels');
+        var modelsContainer = document.getElementById('videoModels');
         modelsContainer.classList.remove('skeleton');
         modelsContainer.innerHTML = '';
         if (availableModels.video.length === 0) {
             modelsContainer.innerHTML = '<span class="sub-label">Нет доступных моделей</span>';
             return;
         }
-        availableModels.video.forEach(m => {
-            const btn = document.createElement('button');
+        availableModels.video.forEach(function(m) {
+            var btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.video === m.key ? ' active' : '');
             btn.dataset.model = m.key;
-            btn.onclick = () => { selected.video = m.key; saveSelected(); renderVideoSubHeader(); };
-            const shortName = getShortModelName(m);
-            const costLabel = m.isDynamicPricing ? 'дин.' : m.cost + '&#162;';
+            btn.onclick = function() { selected.video = m.key; saveSelected(); renderVideoSubHeader(); };
+            var shortName = getShortModelName(m);
+            var costLabel = m.isDynamicPricing ? 'дин.' : m.cost + '&#162;';
             btn.innerHTML = shortName + ' <span class="price">' + costLabel + '</span>';
             modelsContainer.appendChild(btn);
         });
 
-        // Aspect ratio
-        const ratioContainer = document.getElementById('videoRatio');
+        var ratioContainer = document.getElementById('videoRatio');
         ratioContainer.innerHTML = '';
-        ['16:9', '9:16', '1:1'].forEach(r => {
-            const btn = document.createElement('button');
+        ['16:9', '9:16', '1:1'].forEach(function(r) {
+            var btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
             btn.dataset.ratio = r;
-            btn.onclick = () => { selected.ratio = r; saveSelected(); renderVideoSubHeader(); };
+            btn.onclick = function() { selected.ratio = r; saveSelected(); renderVideoSubHeader(); };
             btn.textContent = r;
             ratioContainer.appendChild(btn);
         });
 
-        // Качество
-        const qualityContainer = document.getElementById('videoQuality');
+        var qualityContainer = document.getElementById('videoQuality');
         qualityContainer.innerHTML = '';
-        ['480p', '580p', '720p', '1080p'].forEach(q => {
-            const btn = document.createElement('button');
+        ['480p', '580p', '720p', '1080p'].forEach(function(q) {
+            var btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.videoQuality === q ? ' active' : '');
             btn.dataset.quality = q;
-            btn.onclick = () => { selected.videoQuality = q; saveSelected(); renderVideoSubHeader(); };
+            btn.onclick = function() { selected.videoQuality = q; saveSelected(); renderVideoSubHeader(); };
             btn.textContent = q;
             qualityContainer.appendChild(btn);
         });
     }
 
     function renderAudioSubHeader() {
-        // Режим аудио: TTS / STT
-        const modeContainer = document.getElementById('audioModeSelect');
+        var modeContainer = document.getElementById('audioModeSelect');
         modeContainer.innerHTML = '';
-        [{ key: 'tts', label: '&#127908; Озвучка' }, { key: 'stt', label: '&#127909; Распознавание' }].forEach(am => {
-            const btn = document.createElement('button');
+        [{ key: 'tts', label: '&#127908; Озвучка' }, { key: 'stt', label: '&#127909; Распознавание' }].forEach(function(am) {
+            var btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.audioMode === am.key ? ' active' : '');
             btn.dataset.audioMode = am.key;
-            btn.onclick = () => {
+            btn.onclick = function() {
                 selected.audioMode = am.key;
                 saveSelected();
                 renderAudioSubHeader();
@@ -1253,39 +1611,37 @@
             modeContainer.appendChild(btn);
         });
 
-        // Модели (TTS или STT)
-        const modelsContainer = document.getElementById('audioModels');
+        var modelsContainer = document.getElementById('audioModels');
         modelsContainer.classList.remove('skeleton');
         modelsContainer.innerHTML = '';
-        const modelList = selected.audioMode === 'tts' ? availableModels.audio_tts : availableModels.audio_stt;
-        const selectedKey = selected.audioMode === 'tts' ? selected.audio_tts : selected.audio_stt;
+        var modelList = selected.audioMode === 'tts' ? availableModels.audio_tts : availableModels.audio_stt;
+        var selectedKey = selected.audioMode === 'tts' ? selected.audio_tts : selected.audio_stt;
         if (modelList.length === 0) {
             modelsContainer.innerHTML = '<span class="sub-label">Нет моделей</span>';
         } else {
-            modelList.forEach(m => {
-                const btn = document.createElement('button');
+            modelList.forEach(function(m) {
+                var btn = document.createElement('button');
                 btn.className = 'sub-option' + (m.isFree ? ' free' : '') + (selectedKey === m.key ? ' active' : '');
                 btn.dataset.model = m.key;
-                btn.onclick = () => {
+                btn.onclick = function() {
                     if (selected.audioMode === 'tts') selected.audio_tts = m.key;
                     else selected.audio_stt = m.key;
                     saveSelected(); renderAudioSubHeader(); updateAudioDesc();
                 };
-                const shortName = getShortModelName(m);
+                var shortName = getShortModelName(m);
                 btn.innerHTML = shortName + (m.isFree ? ' &#10003;' : ' <span class="price">' + m.cost + '&#162;</span>');
                 modelsContainer.appendChild(btn);
             });
         }
 
-        // Выбор голоса (только для TTS)
-        const voiceContainer = document.getElementById('audioVoice');
+        var voiceContainer = document.getElementById('audioVoice');
         voiceContainer.innerHTML = '';
         if (selected.audioMode === 'tts') {
-            [{ key: 'Female', label: '&#9792; Женский' }, { key: 'Male', label: '&#9794; Мужской' }].forEach(v => {
-                const btn = document.createElement('button');
+            [{ key: 'Female', label: '&#9792; Женский' }, { key: 'Male', label: '&#9794; Мужской' }].forEach(function(v) {
+                var btn = document.createElement('button');
                 btn.className = 'sub-option' + (selected.voice === v.key ? ' active' : '');
                 btn.dataset.voice = v.key;
-                btn.onclick = () => { selected.voice = v.key; saveSelected(); renderAudioSubHeader(); };
+                btn.onclick = function() { selected.voice = v.key; saveSelected(); renderAudioSubHeader(); };
                 btn.innerHTML = v.label;
                 voiceContainer.appendChild(btn);
             });
@@ -1295,7 +1651,7 @@
     }
 
     function getShortModelName(m) {
-        const serviceNames = {
+        var serviceNames = {
             'WORKERS_AI': 'CF',
             'GEMINI': 'Gemini',
             'KIEAI': 'KIE.AI',
@@ -1309,22 +1665,22 @@
     }
 
     function updateModeTabBadges() {
-        const imageFree = availableModels.image.some(m => m.isFree);
+        var imageFree = availableModels.image.some(function(m){ return m.isFree; });
         document.querySelector('[data-mode="image"]').innerHTML = 'Изображение' +
             (imageFree ? ' <span class="free-badge">&#10003;</span>' : ' <span class="cost">4&#162;</span>');
 
-        const allVideoPaid = availableModels.video.length > 0 && !availableModels.video.some(m => m.isFree);
+        var allVideoPaid = availableModels.video.length > 0 && !availableModels.video.some(function(m){ return m.isFree; });
         document.querySelector('[data-mode="video"]').innerHTML = 'Видео' +
             (allVideoPaid ? ' <span class="cost">20&#162;+</span>' : '');
 
-        const hasFreeAudio = availableModels.audio_tts.some(m => m.isFree) || availableModels.audio_stt.some(m => m.isFree);
+        var hasFreeAudio = availableModels.audio_tts.some(function(m){ return m.isFree; }) || availableModels.audio_stt.some(function(m){ return m.isFree; });
         document.querySelector('[data-mode="audio"]').innerHTML = 'Аудио' +
             (hasFreeAudio ? ' <span class="free-badge">&#10003;</span>' : ' <span class="cost">2&#162;</span>');
     }
 
     function updateImageDesc() {
-        const model = availableModels.image.find(m => m.key === selected.image);
-        const desc = document.getElementById('imageDesc');
+        var model = availableModels.image.find(function(m){ return m.key === selected.image; });
+        var desc = document.getElementById('imageDesc');
         if (!model) return;
         if (model.isFree) {
             desc.textContent = 'Бесплатная генерация через ' + getShortModelName(model) + '. Опиши что ты хочешь увидеть.';
@@ -1334,13 +1690,13 @@
     }
 
     function updateAudioDesc() {
-        const desc = document.getElementById('audioDesc');
-        const uploadZone = document.getElementById('audioUploadZone');
+        var desc = document.getElementById('audioDesc');
+        var uploadZone = document.getElementById('audioUploadZone');
         if (selected.audioMode === 'stt') {
-            desc.textContent = 'Распознавание речи — бесплатно. Загрузите аудиофайл или запишите голос.';
+            desc.textContent = 'Распознавание речи — бесплатно. Загрузите аудиофайл или перетащите его в зону.';
             if (uploadZone) uploadZone.style.display = 'block';
         } else {
-            const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
+            var model = availableModels.audio_tts.find(function(m){ return m.key === selected.audio_tts; });
             if (model) {
                 desc.textContent = model.isFree
                     ? 'Озвучка через ' + getShortModelName(model) + ' — бесплатно.'
@@ -1353,7 +1709,7 @@
     }
 
     function updateAudioUploadVisibility() {
-        const uploadZone = document.getElementById('audioUploadZone');
+        var uploadZone = document.getElementById('audioUploadZone');
         if (uploadZone) {
             uploadZone.style.display = (selected.audioMode === 'stt') ? 'block' : 'none';
         }
@@ -1363,30 +1719,26 @@
     function switchMode(mode) {
         currentMode = mode;
 
-        // Обновляем вкладки
-        document.querySelectorAll('.mode-tab').forEach(tab => {
+        document.querySelectorAll('.mode-tab').forEach(function(tab) {
             tab.classList.toggle('active', tab.dataset.mode === mode);
         });
 
-        // Показываем/скрываем панели
         document.getElementById('chatArea').style.display = (mode === 'chat') ? 'flex' : 'none';
         document.getElementById('imagePanel').classList.toggle('active', mode === 'image');
         document.getElementById('videoPanel').classList.toggle('active', mode === 'video');
         document.getElementById('audioPanel').classList.toggle('active', mode === 'audio');
 
-        // Sub-headers
-        document.querySelectorAll('.sub-header').forEach(sh => sh.classList.remove('active'));
-        const subMap = { chat: 'subChat', image: 'subImage', video: 'subVideo', audio: 'subAudio' };
+        document.querySelectorAll('.sub-header').forEach(function(sh) { sh.classList.remove('active'); });
+        var subMap = { chat: 'subChat', image: 'subImage', video: 'subVideo', audio: 'subAudio' };
         if (subMap[mode]) document.getElementById(subMap[mode]).classList.add('active');
 
-        // Плейсхолдеры и подсказки
-        const placeholders = {
+        var placeholders = {
             chat: 'Напишите сообщение...',
             image: 'Опишите изображение на английском или русском...',
             video: 'Опишите видео-сцену для ИИ...',
             audio: selected.audioMode === 'stt' ? 'Введите текст или загрузите аудиофайл...' : 'Введите текст для озвучки...'
         };
-        const hints = {
+        var hints = {
             chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат (история в localStorage)',
             image: 'Стоимость зависит от модели (см. настройки выше)',
             video: 'Стоимость: от 20\u00A2',
@@ -1416,7 +1768,7 @@
     }
 
     async function sendOrGenerate() {
-        const text = userInput.value.trim();
+        var text = userInput.value.trim();
         if (!text || isProcessing) return;
 
         if (currentMode === 'chat') {
@@ -1430,32 +1782,37 @@
         }
     }
 
+    // ============================================================
+    //  ЧАТ — Исправленный payload: prompt + history
+    // ============================================================
     async function sendChat(text) {
         isProcessing = true;
         sendBtn.disabled = true;
         userInput.value = '';
         autoResize(userInput);
 
-        // Hide welcome
         if (welcomeScreen) welcomeScreen.style.display = 'none';
 
-        // Add user message
         addMessage(text, 'user');
         chatHistory.push({ role: 'user', content: text });
         saveHistory();
 
-        // Show typing
-        const typingEl = showTyping();
+        var typingEl = showTyping();
 
         try {
-            const response = await fetch(API_URL + '/api', {
+            // КРИТИЧЕСКАЯ ПРАВКА: отправляем prompt (текущее сообщение) + history (предыдущие)
+            // webHandler.handleChat ожидает payload.prompt и payload.history
+            var historyForAPI = chatHistory.slice(0, -1); // всё кроме последнего сообщения
+
+            var response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     mode: 'chat',
                     auth: getAuth(),
                     payload: {
-                        messages: chatHistory,
+                        prompt: text,
+                        history: historyForAPI,
                         model: selected.chat
                     }
                 })
@@ -1463,34 +1820,33 @@
 
             removeTyping(typingEl);
 
-            const contentType = response.headers.get("content-type");
+            var contentType = response.headers.get("content-type");
             if (!response.ok) {
-                let errMsg = 'Ошибка сервера: ' + response.status;
-                if (contentType && contentType.includes("application/json")) {
-                    const errData = await response.json().catch(() => ({}));
+                var errMsg = 'Ошибка сервера: ' + response.status;
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    var errData = await response.json().catch(function(){ return {}; });
                     errMsg = errData.error || errMsg;
                 } else {
-                    const txtErr = await response.text().catch(() => "");
+                    var txtErr = await response.text().catch(function(){ return ""; });
                     errMsg = txtErr || errMsg;
                 }
                 throw new Error(errMsg);
             }
 
-            let reply = '(пустой ответ)';
-            if (contentType && contentType.includes("application/json")) {
-                const data = await response.json();
+            var reply = '(пустой ответ)';
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                var data = await response.json();
                 // webHandler контракт: { success, error, credits_left, data: {type, content} }
                 if (data.success === false) {
                     throw new Error(data.error || 'Ошибка сервера');
                 }
-                reply = data.data?.content || data.reply || data.content || reply;
-                // Обновляем баланс если вернулся
+                reply = (data.data && data.data.content) || data.reply || data.content || reply;
                 if (data.credits_left !== undefined && data.credits_left !== null) {
                     credits = typeof data.credits_left === 'number' ? data.credits_left : credits;
                     updateCreditsDisplay();
                 }
             } else {
-                const rawText = await response.text();
+                var rawText = await response.text();
                 reply = rawText || reply;
             }
 
@@ -1512,14 +1868,23 @@
         userInput.focus();
     }
 
+    // ============================================================
+    //  ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЯ — с reference_images
+    // ============================================================
     async function generateImage(prompt) {
-        // Проверяем стоимость для платных моделей
-        const model = availableModels.image.find(m => m.key === selected.image);
-        const cost = model?.cost || 4;
-        if (!model?.isFree && credits < cost) {
-            showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
-            openPurchaseDialog();
-            return;
+        var model = availableModels.image.find(function(m){ return m.key === selected.image; });
+        var cost = (model && model.cost) || 4;
+        if (!model || !model.isFree) {
+            if (!user) {
+                showToast('Для платных моделей нужна авторизация!', 'info');
+                openAuthDialog();
+                return;
+            }
+            if (credits < cost) {
+                showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
+                openPurchaseDialog();
+                return;
+            }
         }
 
         isProcessing = true;
@@ -1527,57 +1892,76 @@
         userInput.value = '';
         autoResize(userInput);
 
-        const resultArea = document.getElementById('imageResult');
+        var resultArea = document.getElementById('imageResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую изображение...</span>';
 
         try {
-            const response = await fetch(API_URL + '/api', {
+            // Собираем reference_images (только заполненные)
+            var refImages = imageReferences.filter(function(ref){ return ref !== null; });
+            var sizeToRatio = {
+                '1024x1024': '1:1',
+                '1344x768': '16:9',
+                '768x1344': '9:16',
+                '1440x720': '2:1'
+            };
+
+            var payload = {
+                prompt: prompt,
+                size: selectedImageSize,
+                model: selected.image,
+                ratio: selected.ratio || sizeToRatio[selectedImageSize] || '1:1',
+                aspect_ratio: selected.ratio || sizeToRatio[selectedImageSize] || '1:1'
+            };
+            if (refImages.length > 0) {
+                payload.reference_images = refImages;
+            }
+
+            var response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     mode: 'image',
                     auth: getAuth(),
-                    payload: { prompt, size: selectedImageSize, model: selected.image, ratio: selected.ratio }
+                    payload: payload
                 })
             });
 
-            const contentType = response.headers.get('Content-Type') || '';
-            
+            var contentType = response.headers.get('Content-Type') || '';
+
             if (!response.ok) {
-                let errMsg = 'Ошибка генерации';
-                if (contentType.includes("application/json")) {
-                    const errData = await response.json().catch(() => ({}));
+                var errMsg = 'Ошибка генерации';
+                if (contentType.indexOf("application/json") !== -1) {
+                    var errData = await response.json().catch(function(){ return {}; });
                     errMsg = errData.error || errMsg;
                 } else {
-                    const txtErr = await response.text().catch(() => "");
+                    var txtErr = await response.text().catch(function(){ return ""; });
                     errMsg = txtErr || errMsg;
                 }
                 throw new Error(errMsg);
             }
-            
-            if (contentType.includes('application/json')) {
-                const data = await response.json();
-                
+
+            if (contentType.indexOf('application/json') !== -1) {
+                var data = await response.json();
+
                 if (data.credits_left !== undefined) {
                     credits = data.credits_left;
-                } else if (!model?.isFree) {
+                } else if (model && !model.isFree) {
                     credits -= cost;
                 }
 
-                if (data.data?.content) {
-                    // Новый формат: data.data.content = URL или base64
-                    const content = data.data.content;
-                    if (content.startsWith('data:')) {
+                if (data.data && data.data.content) {
+                    var content = data.data.content;
+                    if (content.startsWith('data:') || content.startsWith('http')) {
                         resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
                     } else {
-                        resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
+                        // base64 без data: prefix
+                        resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + content + '" alt="' + prompt + '">';
                     }
-                } else if (data.data?.image) {
+                } else if (data.data && data.data.image) {
                     resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.data.image + '" alt="' + prompt + '">';
-                } else if (data.data?.url) {
+                } else if (data.data && data.data.url) {
                     resultArea.innerHTML = '<img class="generated-image" src="' + data.data.url + '" alt="' + prompt + '">';
                 } else if (data.image) {
-                    // Старый формат
                     resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.image + '" alt="' + prompt + '">';
                 } else if (data.url) {
                     resultArea.innerHTML = '<img class="generated-image" src="' + data.url + '" alt="' + prompt + '">';
@@ -1587,10 +1971,10 @@
                 updateCreditsDisplay();
                 showToast('Изображение создано!', 'success');
             } else {
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
+                var blob = await response.blob();
+                var url = URL.createObjectURL(blob);
                 resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">';
-                if (!model?.isFree) credits -= cost;
+                if (model && !model.isFree) credits -= cost;
                 updateCreditsDisplay();
                 showToast('Изображение создано! -' + cost + '\u00A2', 'success');
             }
@@ -1606,7 +1990,15 @@
         sendBtn.disabled = false;
     }
 
+    // ============================================================
+    //  ГЕНЕРАЦИЯ ВИДЕО — с reference media
+    // ============================================================
     async function generateVideo(prompt) {
+        if (!user) {
+            showToast('Для генерации видео нужна авторизация!', 'info');
+            openAuthDialog();
+            return;
+        }
         if (credits < 20) {
             showToast('Недостаточно кредитов! Нужно 20\u00A2', 'error');
             openPurchaseDialog();
@@ -1618,36 +2010,49 @@
         userInput.value = '';
         autoResize(userInput);
 
-        const resultArea = document.getElementById('videoResult');
+        var resultArea = document.getElementById('videoResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую видео (может занять до минуты)...</span>';
 
         try {
-            const response = await fetch(API_URL + '/api', {
+            var payload = {
+                prompt: prompt,
+                model: selected.video,
+                ratio: selected.ratio,
+                aspect_ratio: selected.ratio,
+                quality: selected.videoQuality,
+                duration: selected.videoDuration
+            };
+            // Добавляем референсные медиа если загружены
+            if (videoReferences.image) payload.reference_image = videoReferences.image;
+            if (videoReferences.audio) payload.reference_audio = videoReferences.audio;
+            if (videoReferences.video) payload.reference_video = videoReferences.video;
+
+            var response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     mode: 'video',
                     auth: getAuth(),
-                    payload: { prompt, model: selected.video, ratio: selected.ratio, quality: selected.videoQuality, duration: selected.videoDuration }
+                    payload: payload
                 })
             });
 
-            const contentType = response.headers.get('Content-Type') || '';
+            var contentType = response.headers.get('Content-Type') || '';
             if (!response.ok) {
-                let errMsg = 'Ошибка генерации';
-                if (contentType.includes("application/json")) {
-                    const errData = await response.json().catch(() => ({}));
+                var errMsg = 'Ошибка генерации';
+                if (contentType.indexOf("application/json") !== -1) {
+                    var errData = await response.json().catch(function(){ return {}; });
                     errMsg = errData.error || errMsg;
                 } else {
-                    const txtErr = await response.text().catch(() => "");
+                    var txtErr = await response.text().catch(function(){ return ""; });
                     errMsg = txtErr || errMsg;
                 }
                 throw new Error(errMsg);
             }
 
-            if (contentType.includes('application/json')) {
-                const data = await response.json();
-                const videoUrl = data.data?.content || data.data?.url || data.url;
+            if (contentType.indexOf('application/json') !== -1) {
+                var data = await response.json();
+                var videoUrl = (data.data && data.data.content) || (data.data && data.data.url) || data.url;
                 if (videoUrl) {
                     resultArea.innerHTML = '<video controls autoplay loop><source src="' + videoUrl + '" type="video/mp4"></video>';
                     credits = data.credits_left !== undefined ? data.credits_left : credits - 20;
@@ -1657,7 +2062,7 @@
                     throw new Error('Сервер не вернул видео');
                 }
             } else {
-                const rawUrl = await response.text();
+                var rawUrl = await response.text();
                 if (rawUrl && rawUrl.startsWith('http')) {
                     resultArea.innerHTML = '<video controls autoplay loop><source src="' + rawUrl.trim() + '" type="video/mp4"></video>';
                     credits -= 20;
@@ -1679,20 +2084,29 @@
         sendBtn.disabled = false;
     }
 
+    // ============================================================
+    //  ГЕНЕРАЦИЯ АУДИО — TTS и STT
+    // ============================================================
     async function generateAudio(text) {
         if (selected.audioMode === 'stt') {
-            // STT — распознавание речи, только через загрузку файла
             showToast('Для распознавания речи загрузите аудиофайл', 'info');
             return;
         }
 
-        // TTS — озвучка текста
-        const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
-        const cost = model?.cost || 2;
-        if (!model?.isFree && credits < cost) {
-            showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
-            openPurchaseDialog();
-            return;
+        // TTS
+        var model = availableModels.audio_tts.find(function(m){ return m.key === selected.audio_tts; });
+        var cost = (model && model.cost) || 2;
+        if (model && !model.isFree) {
+            if (!user) {
+                showToast('Для платной озвучки нужна авторизация!', 'info');
+                openAuthDialog();
+                return;
+            }
+            if (credits < cost) {
+                showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
+                openPurchaseDialog();
+                return;
+            }
         }
 
         isProcessing = true;
@@ -1700,52 +2114,65 @@
         userInput.value = '';
         autoResize(userInput);
 
-        const resultArea = document.getElementById('audioResult');
-        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую audio...</span>';
+        var resultArea = document.getElementById('audioResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую аудио...</span>';
 
         try {
-            const response = await fetch(API_URL + '/api', {
+            var response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     mode: 'audio',
                     auth: getAuth(),
-                    payload: { text, model: selected.audio_tts, voice: selected.voice, audioMode: 'tts' }
+                    payload: {
+                        text: text,
+                        prompt: text,
+                        model: selected.audio_tts,
+                        voice: selected.voice,
+                        audio_mode: 'tts'
+                    }
                 })
             });
 
             if (!response.ok) {
-                const contentType = response.headers.get('Content-Type') || '';
-                let errMsg = 'Ошибка генерации';
-                if (contentType.includes("application/json")) {
-                    const errData = await response.json().catch(() => ({}));
+                var contentType = response.headers.get('Content-Type') || '';
+                var errMsg = 'Ошибка генерации';
+                if (contentType.indexOf("application/json") !== -1) {
+                    var errData = await response.json().catch(function(){ return {}; });
                     errMsg = errData.error || errMsg;
                 } else {
-                    const txtErr = await response.text().catch(() => "");
+                    var txtErr = await response.text().catch(function(){ return ""; });
                     errMsg = txtErr || errMsg;
                 }
                 throw new Error(errMsg);
             }
 
-            const contentType = response.headers.get('Content-Type') || '';
-            if (contentType.includes('application/json')) {
-                const data = await response.json();
-                const audioUrl = data.data?.content || data.data?.url;
-                if (audioUrl) {
-                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '"></audio>';
+            var contentType2 = response.headers.get('Content-Type') || '';
+            if (contentType2.indexOf('application/json') !== -1) {
+                var data = await response.json();
+                var audioContent = (data.data && data.data.content) || (data.data && data.data.url);
+                if (audioContent) {
+                    if (audioContent.startsWith('data:')) {
+                        // data:audio/mp3;base64,...
+                        resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioContent + '"></audio>';
+                    } else if (audioContent.startsWith('http')) {
+                        resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioContent + '"></audio>';
+                    } else {
+                        // raw base64
+                        resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="data:audio/mp3;base64,' + audioContent + '"></audio>';
+                    }
                 } else {
                     throw new Error('Сервер не вернул аудио');
                 }
                 if (data.credits_left !== undefined) credits = data.credits_left;
-                else if (!model?.isFree) credits -= cost;
+                else if (model && !model.isFree) credits -= cost;
                 updateCreditsDisplay();
                 showToast('Аудио создано!', 'success');
             } else {
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
+                var blob = await response.blob();
+                var url = URL.createObjectURL(blob);
                 resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio>';
-                const serverCredits = response.headers.get('X-User-Credits');
-                credits = serverCredits ? parseInt(serverCredits, 10) : (model?.isFree ? credits : credits - cost);
+                if (model && !model.isFree) credits -= cost;
                 updateCreditsDisplay();
                 showToast('Аудио создано!', 'success');
             }
@@ -1761,29 +2188,46 @@
         sendBtn.disabled = false;
     }
 
-    // ---- AUDIO FILE UPLOAD (STT) ----
+    // ---- AUDIO FILE UPLOAD (STT) — Исправлено: отправляем JSON с audio_base64 ----
     async function handleAudioUpload(input) {
-        const file = input.files[0];
+        var file = input.files[0];
         if (!file) return;
 
-        const resultArea = document.getElementById('audioResult');
+        var resultArea = document.getElementById('audioResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Распознаю речь...</span>';
 
         try {
-            const formData = new FormData();
-            formData.append('audio', file);
-            formData.append('model', selected.audio_stt || '');
+            // Конвертируем аудиофайл в base64
+            var audioBase64 = await new Promise(function(resolve, reject) {
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    // e.target.result = data:audio/mp3;base64,XXXXX
+                    // Убираем data:... prefix, оставляем чистый base64
+                    var base64 = e.target.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = function() { reject(new Error('Ошибка чтения файла')); };
+                reader.readAsDataURL(file);
+            });
 
-            // Для STT используем multipart/form-data
-            const response = await fetch(API_URL + '/api', {
+            var response = await fetch(API_URL + '/api', {
                 method: 'POST',
-                headers: { 'X-Auth-Provider': user?.provider || '', 'X-Auth-Id': user?.id || '' },
-                body: formData
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'audio',
+                    auth: getAuth(),
+                    payload: {
+                        audio_mode: 'stt',
+                        audio_base64: audioBase64,
+                        model: selected.audio_stt || 'AUDIO_TO_TEXT_WORKERS_AI'
+                    }
+                })
             });
 
             if (!response.ok) throw new Error('Ошибка распознавания');
-            const data = await response.json();
-            const transcript = data.data?.content || data.text || 'Не удалось распознать';
+            var data = await response.json();
+            if (data.success === false) throw new Error(data.error || 'Ошибка распознавания');
+            var transcript = (data.data && data.data.content) || data.text || 'Не удалось распознать';
             resultArea.innerHTML = '<div class="message bot" style="align-self:stretch">' + formatBotMessage(transcript) + '</div>';
             showToast('Речь распознана!', 'success');
         } catch (err) {
@@ -1800,7 +2244,7 @@
     }
 
     function addMessage(text, sender) {
-        const div = document.createElement('div');
+        var div = document.createElement('div');
         div.className = 'message ' + sender;
         
         if (sender === 'bot') {
@@ -1814,12 +2258,12 @@
     }
 
     function formatBotMessage(text) {
-        let html = text
+        var html = text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
-        const codeBlocks = [];
+        var codeBlocks = [];
         
         html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
             codeBlocks.push('<pre class="code-block ' + lang + '"><code>' + code + '</code></pre>');
@@ -1835,7 +2279,7 @@
         html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>');
         html = html.replace(/\n/g, '<br>');
 
-        codeBlocks.forEach((block, index) => {
+        codeBlocks.forEach(function(block, index) {
             html = html.replace('__CODE_BLOCK_PLACEHOLDER_' + index + '__', block);
         });
 
@@ -1843,7 +2287,7 @@
     }
 
     function showTyping() {
-        const div = document.createElement('div');
+        var div = document.createElement('div');
         div.className = 'typing-indicator';
         div.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
         chatArea.appendChild(div);
@@ -1863,7 +2307,7 @@
 
     // ---- IMAGE SIZE ----
     function selectImageSize(btn) {
-        document.querySelectorAll('#imageSizeSelector .size-option').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('#imageSizeSelector .size-option').forEach(function(b){ b.classList.remove('active'); });
         btn.classList.add('active');
         selectedImageSize = btn.dataset.size;
     }
@@ -1878,7 +2322,7 @@
     }
 
     function selectPlan(el, plan) {
-        document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+        document.querySelectorAll('.plan-card').forEach(function(c){ c.classList.remove('selected'); });
         el.classList.add('selected');
         selectedPlan = plan;
     }
@@ -1913,7 +2357,7 @@
 
     function authVK() {
         if (window.vkBridge) {
-            vkBridge.send('VKWebAppGetUserInfo').then(info => {
+            vkBridge.send('VKWebAppGetUserInfo').then(function(info) {
                 user = { id: info.id, name: info.first_name + ' ' + info.last_name, provider: 'vk' };
                 localStorage.setItem('gemini_user', JSON.stringify(user));
                 authBtn.textContent = info.first_name;
@@ -1921,7 +2365,7 @@
                 closeAuthDialog();
                 showToast('Добро пожаловать, ' + info.first_name + '!', 'success');
                 loadServerData();
-            }).catch(() => {
+            }).catch(function() {
                 showToast('Ошибка авторизации VK', 'error');
             });
         } else {
@@ -1931,9 +2375,8 @@
     }
 
     function authTG() {
-        // Telegram Login Widget — пробуем через Telegram.WebApp
         if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
-            const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+            var tgUser = window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user;
             if (tgUser) {
                 user = { id: tgUser.id, name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''), provider: 'tg', hash: window.Telegram.WebApp.initData };
                 localStorage.setItem('gemini_user', JSON.stringify(user));
@@ -1945,8 +2388,7 @@
                 return;
             }
         }
-        // Фоллбэк — ввод ID вручную
-        const tgId = prompt('Введите ваш Telegram ID (из @userinfobot):');
+        var tgId = prompt('Введите ваш Telegram ID (из @userinfobot):');
         if (tgId && tgId.trim()) {
             user = { provider: 'tg', id: tgId.trim(), name: 'TG User', hash: null };
             localStorage.setItem('gemini_user', JSON.stringify(user));
@@ -1960,20 +2402,20 @@
 
     // ---- TOAST ----
     function showToast(message, type) {
-        const container = document.getElementById('toastContainer');
+        var container = document.getElementById('toastContainer');
         if (!container) return;
-        const toast = document.createElement('div');
+        var toast = document.createElement('div');
         toast.className = 'toast ' + (type || 'info');
         toast.textContent = message;
         container.appendChild(toast);
-        setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
+        setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
     }
 
     // ---- VK MINI APP INIT ----
     if (window.vkBridge) {
-        vkBridge.send('VKWebAppInit').then(() => {
+        vkBridge.send('VKWebAppInit').then(function() {
             console.log('VK Mini App initialized');
-        }).catch(err => {
+        }).catch(function(err) {
             console.log('Not in VK context:', err);
         });
     }
@@ -1995,6 +2437,6 @@
         if (e.target === this) closeAuthDialog();
     });
     </script>
-	
+        
 </body>
 </html>

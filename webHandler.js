@@ -174,12 +174,22 @@ async function handleImage(auth, payload, env, monolith) {
         }
     }
 
+    // Референсные изображения (до 4 штук, base64)
+    const referenceImages = payload.reference_images || [];
+
     // ---- Синхронные сервисы (Workers AI, Gemini, BotHub, Pollinations, Kandinsky, Stability) ----
     if (!isKieAi) {
         let imageResult;
         try {
-            // Универсальный вызов T2I: config, prompt, envData[, chatId]
-            if (modelConfig.FUNCTION.length >= 4) {
+            // Универсальный вызов T2I: config, prompt, envData[, chatId][, options]
+            const options = {};
+            if (referenceImages.length > 0) {
+                options.reference_images = referenceImages; // передаём как массив base64
+                options.aspect_ratio = payload.aspect_ratio || payload.ratio || '1:1';
+            }
+            if (modelConfig.FUNCTION.length >= 5) {
+                imageResult = await modelConfig.FUNCTION(modelConfig, prompt, env, chatId, options);
+            } else if (modelConfig.FUNCTION.length >= 4) {
                 imageResult = await modelConfig.FUNCTION(modelConfig, prompt, env, chatId);
             } else {
                 imageResult = await modelConfig.FUNCTION(modelConfig, prompt, env);
@@ -217,6 +227,10 @@ async function handleImage(auth, payload, env, monolith) {
             aspect_ratio: payload.aspect_ratio || '1:1',
             image_size: payload.aspect_ratio || '1:1'
         };
+        // Референсные изображения для KIE.AI (img2img)
+        if (referenceImages.length > 0) {
+            input.reference_images = referenceImages;
+        }
 
         taskId = await createTaskKieAi(chatId, modelConfig, input, env, callbackUrl);
     } catch (e) {
@@ -339,6 +353,10 @@ async function handleVideo(auth, payload, env, monolith) {
             quality: payload.quality || '480p',
             mode: payload.video_mode || 'normal'
         };
+        // Референсные медиа для видео (image/video/audio, base64)
+        if (payload.reference_image) input.reference_image = payload.reference_image;
+        if (payload.reference_audio) input.reference_audio = payload.reference_audio;
+        if (payload.reference_video) input.reference_video = payload.reference_video;
 
         taskId = await createTaskKieAi(chatId, modelConfig, input, env, callbackUrl);
     } catch (e) {
