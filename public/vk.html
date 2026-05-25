@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Авторизация ВКонтакте — Gemini-AI</title>
+    <style>
+        body { 
+            background: #212121; 
+            margin: 0; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            font-family: sans-serif; 
+        }
+    </style>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const returnToFromUrl = urlParams.get('returnTo') || urlParams.get('auth_origin') || '';
+        
+        if (returnToFromUrl) localStorage.setItem('vk_return_to', returnToFromUrl);
+        window.authReturnTo = returnToFromUrl || localStorage.getItem('vk_return_to') || '/';
+        
+        if (window.authReturnTo && window.authReturnTo !== '/') {
+            try {
+                window.authCancelTo = new URL(window.authReturnTo).origin + '/';
+            } catch(e) {
+                window.authCancelTo = window.authReturnTo;
+            }
+        } else {
+            window.authCancelTo = '/'; 
+        }
+    </script>
+</head>
+<body>
+    <div id="auth_card" style="
+        background: white; 
+        padding: 32px 24px; 
+        border-radius: 28px; 
+        width: 360px; 
+        text-align: center; 
+        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    ">
+        <div style="width: 100px; height: 100px; margin: 0 auto 20px auto;">
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+                <defs>
+                    <linearGradient id="gemini-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#4285F4"/>
+                        <stop offset="50%" style="stop-color:#9B51E0"/>
+                        <stop offset="100%" style="stop-color:#EA4335"/>
+                    </linearGradient>
+                </defs>
+                <path d="M50 0C50 0 53 47 100 50C100 50 53 53 50 100C50 100 47 53 0 50C0 50 47 47 50 0Z" fill="url(#gemini-grad)"/>
+            </svg>
+        </div>
+        <div style="font: 700 20px sans-serif; margin-bottom: 8px; color: #000;">🔐 Вход в Gemini-AI</div>
+        <div style="font: 400 14px sans-serif; color: #818c99; margin-bottom: 24px; line-height: 1.4;">
+            Используйте VK ID для безопасного доступа
+        </div>
+        
+        <div id="vkid_container"></div>
+        
+        <button onclick="window.location.replace(window.authCancelTo)" style="
+            width: 100%; 
+            margin-top: 15px; 
+            border: none; 
+            background: none; 
+            color: #0077ff; 
+            cursor: pointer; 
+            font-size: 14px;
+        ">Позже</button>
+    </div>
+
+    <script>
+        const returnTo = window.authReturnTo;
+        const code = urlParams.get('code');
+        const deviceId = urlParams.get('device_id');
+
+        const VK_CLIENT_ID = 54467300;
+        const VK_REDIRECT_URL = `${window.location.origin}/vk.html`;
+
+        // Обновленная функция: принимает и ID, и Токен
+        const redirectWithId = (userId, accessToken) => {
+            localStorage.removeItem('vk_return_to');
+            
+            // Функция финального редиректа (вызывается после получения имени или сразу)
+            const doRedirect = (userName, userPhoto) => {
+                let targetUrl = '/';
+                if (returnTo && returnTo !== '/') {
+                    try {
+                        const domainRoot = new URL(returnTo).origin;
+                        // ФОРМИРУЕМ ССЫЛКУ С ИМЕНЕМ И ФОТО В ПАРАМЕТРАХ
+                        let params = new URLSearchParams();
+                        params.set('vk_user_id', userId);
+                        if (userName) params.set('vk_user_name', userName);
+                        if (userPhoto) params.set('vk_user_photo', userPhoto);
+                        targetUrl = `${domainRoot}/?${params.toString()}`;
+                    } catch(e) {
+                        const separator = returnTo.includes('?') ? '&' : '?';
+                        targetUrl = `${returnTo}${separator}vk_user_id=${userId}`;
+                        if (userName) targetUrl += `&vk_user_name=${encodeURIComponent(userName)}`;
+                        if (userPhoto) targetUrl += `&vk_user_photo=${encodeURIComponent(userPhoto)}`;
+                    }
+                } else {
+                    // Если возвращаемся на тот же Гитхаб - пишем сразу в localStorage
+                    localStorage.setItem('vk_user_id', String(userId));
+                    localStorage.setItem('auth_provider', 'VK');
+                    if (userName) localStorage.setItem('vk_user_name', userName);
+                    if (userPhoto) localStorage.setItem('vk_user_photo', userPhoto);
+                    
+                    // 🔥 ЕДИНСТВЕННОЕ ДОБАВЛЕНИЕ: формируем ссылку с ID для Андроида
+                    targetUrl = `${window.location.origin}/?vk_user_id=${userId}`;
+                    if (userName) targetUrl += `&vk_user_name=${encodeURIComponent(userName)}`;
+                    if (userPhoto) targetUrl += `&vk_user_photo=${encodeURIComponent(userPhoto)}`;
+                }
+
+                const card = document.getElementById('auth_card');
+                card.innerHTML = `
+                    <div style="width: 100px; height: 100px; margin: 0 auto 20px auto;">
+                        <img src="/Gemini.png" alt="Leshiy AI" style="max-width: 100%; max-height: 100%; border-radius: 22px;">
+                    </div>
+                    <div style="font: 700 22px sans-serif; margin-bottom: 8px; color: #000;">✅ Авторизация успешна!</div>
+                    <div style="font: 400 14px sans-serif; color: #818c99; margin-bottom: 30px; line-height: 1.4;">
+                        Нажмите кнопку ниже, чтобы вернуться в приложение
+                    </div>
+                    <a href="${targetUrl}" style="
+                        display: block; width: 100%; padding: 14px 0; background: #0077ff;
+                        color: white; text-decoration: none; border-radius: 12px; font-size: 16px;
+                        font-weight: 600; box-sizing: border-box;
+                    ">Вернуться в приложение</a>
+                `;
+            };
+
+            // Если есть токен, запрашиваем имя и фото ПЕРЕД редиректом
+            if (accessToken) {
+                try {
+                    const jsonpScript = document.createElement('script');
+                    jsonpScript.src = `https://api.vk.com/method/users.get?user_ids=${userId}&fields=photo_100&access_token=${accessToken}&v=5.131&callback=vkProfileCallback`;
+                    document.head.appendChild(jsonpScript);
+
+                    window.vkProfileCallback = function(response) {
+                        let userName = null;
+                        let userPhoto = null;
+                        if (response.response && response.response[0]) {
+                            const user = response.response[0];
+                            userName = `${user.first_name} ${user.last_name}`;
+                            userPhoto = user.photo_100;
+                        }
+                        delete window.vkProfileCallback;
+                        jsonpScript.remove();
+                        doRedirect(userName, userPhoto); // Редирект с именем
+                    };
+                } catch(e) {
+                    console.error("JSONP Error:", e);
+                    doRedirect(null, null); // Редирект без имени
+                }
+            } else {
+                doRedirect(null, null); // Редирект без имени
+            }
+        };
+
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js';
+        script.async = true;
+
+        script.onload = () => {
+            if (!window.VKIDSDK) return;
+
+            const VKID = window.VKIDSDK;
+
+            VKID.Config.init({
+                app: VK_CLIENT_ID,
+                redirectUrl: VK_REDIRECT_URL,
+                responseMode: VKID.ConfigResponseMode.Callback,
+                source: VKID.ConfigSource.LOWCODE,
+            });
+
+            const container = document.getElementById('vkid_container');
+            const card = document.getElementById('auth_card');
+
+            if (code) {
+                card.innerHTML = '<p style="text-align:center; color:#000; font-size:16px; margin:0;">Авторизация...</p>';
+                VKID.Auth.exchangeCode(code, deviceId || '')
+                    .then((data) => {
+                        const userId = data.user_id || (data.user && data.user.id);
+                        const accessToken = data.access_token; // ДОБАВЛЕНО: забираем токен
+                        if (userId) redirectWithId(userId, accessToken);
+                        else window.location.replace(window.authCancelTo); 
+                    })
+                    .catch((err) => {
+                        console.error('Exchange error:', err);
+                        window.location.replace(window.authCancelTo);
+                    });
+            } else {
+                const oneTap = new VKID.OneTap();
+                oneTap.render({
+                    container: container,
+                    showAlternativeLogin: true,
+                    oauthList: ['mail_ru', 'ok_ru'],
+                    styles: { height: 44, borderRadius: 8 }
+                })
+                .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, (payload) => {
+                    card.innerHTML = '<p style="text-align:center; color:#000; font-size:16px; margin:0;">Авторизация...</p>';
+                    VKID.Auth.exchangeCode(payload.code, payload.device_id)
+                        .then((data) => {
+                            const userId = data.user_id || (data.user && data.user.id);
+                            const accessToken = data.access_token; // ДОБАВЛЕНО: забираем токен
+                            if (userId) redirectWithId(userId, accessToken);
+                        });
+                });
+            }
+        };
+
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>
