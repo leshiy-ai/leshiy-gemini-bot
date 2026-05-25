@@ -1419,28 +1419,26 @@
     // ---- ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ----
     document.addEventListener('DOMContentLoaded', () => {
         // Проверяем авторизацию из URL (возврат из vk.html/tg.html)
+        // initAuthFromURL сама обновит кнопку и вызовет loadServerData если найдёт параметры
         initAuthFromURL();
 
-        // Если вернулись с авторизации (фоллбэк редирект с ?auth=vk или ?auth=tg)
-        const urlParams = new URLSearchParams(window.location.search);
-        const authParam = urlParams.get('auth');
-        if (authParam && !user) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-            openAuthDialog();
+        // Если авторизация из URL не обнаружена — проверяем сохранённую сессию
+        if (!user) {
+            const savedUser = localStorage.getItem('gemini_user');
+            if (savedUser) {
+                try {
+                    user = JSON.parse(savedUser);
+                    authBtn.textContent = user.name || (user.provider === 'vk' ? 'VK' : user.provider === 'tg' ? 'TG' : 'Аккаунт');
+                    authBtn.classList.add('logged-in');
+                    loadServerData();
+                } catch(e) {
+                    localStorage.removeItem('gemini_user');
+                }
+            }
         }
 
-        // Проверяем, была ли сессия авторизации ранее
-        const savedUser = localStorage.getItem('gemini_user');
-        if (savedUser) {
-            try {
-                user = JSON.parse(savedUser);
-                authBtn.textContent = user.name || (user.provider === 'vk' ? 'VK' : user.provider === 'tg' ? 'TG' : 'Аккаунт');
-                authBtn.classList.add('logged-in');
-                loadServerData();
-            } catch(e) {
-                localStorage.removeItem('gemini_user');
-            }
-        } else {
+        // Если всё ещё не авторизован — загружаем локальную историю
+        if (!user) {
             authBtn.textContent = 'Войти';
             creditsAmount.textContent = '--';
             loadLocalHistory();
