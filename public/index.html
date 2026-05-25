@@ -1829,11 +1829,22 @@
 
                 if (data.data?.content) {
                     // Новый формат: data.data.content = URL или base64
-                    const content = data.data.content;
-                    if (content.startsWith('data:')) {
+                    let content = data.data.content;
+                    
+                    // МАГИЯ: Если бэкенд вернул объект вместо строки (например {url: '...'})
+                    if (typeof content === 'object' && content !== null) {
+                        if (content.url) content = content.url;         // Вытаскиваем URL
+                        else if (content.image) content = content.image; // Вытаскиваем base64
+                        else content = JSON.stringify(content);          // На крайний случай
+                    }
+                    
+                    // Теперь проверяем строку
+                    if (typeof content === 'string' && content.startsWith('data:')) {
+                        resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
+                    } else if (typeof content === 'string' && content.length > 0) {
                         resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
                     } else {
-                        resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
+                        throw new Error('Не удалось распознать формат ответа изображения');
                     }
                 } else if (data.data?.image) {
                     resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.data.image + '" alt="' + prompt + '">';
