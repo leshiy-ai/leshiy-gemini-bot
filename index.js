@@ -99,7 +99,20 @@ module.exports.handler = async (event, context) => {
     // ==========================================
     // 1. РАЗДАЧА ФРОНТЕНДА (HTML/CSS/JS)
     // ==========================================
-    const requestPath = event.path || event.url || '/';
+    // Надёжное извлечение пути: API Gateway может передавать полный URL в event.url
+    let requestPath = event.path || '/';
+    if (requestPath.startsWith('http')) {
+        try { requestPath = new URL(requestPath).pathname; } catch(e) {}
+    }
+    // Также проверяем заголовок оригинального пути
+    if ((!requestPath || requestPath === '/') && event.headers) {
+        const origPath = event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'];
+        if (origPath) requestPath = origPath;
+    }
+    // Если event.url содержит путь — извлекаем
+    if (event.url && (!requestPath || requestPath === '/')) {
+        try { requestPath = new URL(event.url).pathname; } catch(e) {}
+    }
     
     // Если зашли в корень сайта — отдаем HTML
     if (event.httpMethod === 'GET' && (requestPath === '/' || requestPath === '/index.html')) {
