@@ -1941,22 +1941,20 @@
     function switchVideoSubMode(mode) {
         selected.videoSubMode = mode;
         saveSelected();
-        // Кнопки переключения — в sub-header, управляются через renderVideoSubHeader()
+        renderVideoSubHeader();
         document.getElementById('videoGenSection').classList.toggle('active', mode === 'generate');
         document.getElementById('videoConvertSection').classList.toggle('active', mode === 'convert');
-        renderVideoSubHeader();
         updateVideoPlaceholder();
     }
 
     function switchAudioSubMode(mode) {
         selected.audioSubMode = mode;
         saveSelected();
-        // Кнопки переключения — в sub-header, управляются через renderAudioSubHeader()
+        renderAudioSubHeader();
         document.getElementById('audioTTSSection').classList.toggle('active', mode === 'tts');
         document.getElementById('audioSTTSection').classList.toggle('active', mode === 'stt');
         document.getElementById('audioConvertSection').classList.toggle('active', mode === 'convert');
         document.getElementById('audioVoiceCloneSection').classList.toggle('active', mode === 'voice_clone');
-        renderAudioSubHeader();
         updateAudioPlaceholder();
     }
 
@@ -3058,16 +3056,18 @@
     }
 
     // ---- VK / TG AUTH — редирект на vk.html / tg.html ----
+    const BASE_URL = window.location.origin;
+
     function authVK() {
         closeAuthDialog();
-        const returnTo = encodeURIComponent(window.location.origin + '/');
-        window.location.href = '/vk.html?returnTo=' + returnTo;
+        const returnTo = encodeURIComponent(BASE_URL + '/');
+        window.location.href = BASE_URL + '/vk.html?returnTo=' + returnTo;
     }
 
     function authTG() {
         closeAuthDialog();
-        const returnTo = encodeURIComponent(window.location.origin + '/');
-        window.location.href = '/tg.html?returnTo=' + returnTo;
+        const returnTo = encodeURIComponent(BASE_URL + '/');
+        window.location.href = BASE_URL + '/tg.html?returnTo=' + returnTo;
     }
 
     // Алиасы для обратной совместимости
