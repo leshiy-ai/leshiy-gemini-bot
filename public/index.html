@@ -608,9 +608,22 @@
         .panel-subsection {
             display: none;
             flex-direction: column;
-            gap: 12px;
+            gap: 14px;
         }
         .panel-subsection.active { display: flex; }
+        /* Отступы между блоками внутри аудио/видео панелей */
+        #audioPanel .panel-subsection.active,
+        #videoPanel .panel-subsection.active {
+            padding: 4px 0;
+        }
+        #audioPanel .panel-subsection.active h3,
+        #videoPanel .panel-subsection.active h3 {
+            margin-bottom: 2px;
+        }
+        #audioPanel .panel-subsection.active .result-area,
+        #videoPanel .panel-subsection.active .result-area {
+            margin-top: 4px;
+        }
 
         .upload-zone {
             border: 2px dashed var(--border);
@@ -1783,8 +1796,9 @@
             subModeContainer.appendChild(btn);
         });
 
-        // Модели — показываем только для генерации
+        // Модели — показываем только для генерации видео
         const modelsContainer = document.getElementById('videoModels');
+        modelsContainer.classList.remove('skeleton');
         modelsContainer.innerHTML = '';
         if (selected.videoSubMode === 'generate' && availableModels.video.length > 0) {
             const sel = document.createElement('select');
@@ -1849,9 +1863,10 @@
         // Sub-mode toggle
         const subModeContainer = document.getElementById('audioSubMode');
         subModeContainer.innerHTML = '';
+        subModeContainer.innerHTML = '';
         [
-            { key: 'tts', label: '\uD83C\uDFB5 Озвучка' },
             { key: 'stt', label: '\uD83C\uDF99 Распознавание', cls: 'free' },
+            { key: 'tts', label: '\uD83C\uDFB5 Озвучка' },
             { key: 'convert', label: '\uD83D\uDD04 Конвертация', cls: 'free' },
             { key: 'voice_clone', label: '\uD83C\uDFA4 Голос' }
         ].forEach(am => {

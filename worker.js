@@ -16400,6 +16400,30 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         return new Response('Audio not found or invalid request.', { status: 404 });
     }
 
+     // -----------------------------
+    // ✅ РАЗДАЧА vk.html / tg.html
+    // -----------------------------
+    if (request.method === 'GET' && (path === '/vk.html' || path === '/tg.html')) {
+        try {
+            const fsModule = typeof __non_webpack_require__ !== 'undefined' ? __non_webpack_require__ : (typeof require !== 'undefined' ? require : null);
+            if (fsModule) {
+                const fs = fsModule('fs');
+                const pathModule = fsModule('path');
+                const fileName = path === '/vk.html' ? 'vk.html' : 'tg.html';
+                const filePath = pathModule.join(__dirname || '.', 'public', fileName);
+                const content = fs.readFileSync(filePath, 'utf8');
+                return new Response(content, {
+                    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }
+                });
+            }
+        } catch(e) {
+            console.error('Static file serve error:', e);
+        }
+        // Фоллбэк — редирект на главную с параметром авторизации
+        const authParam = path === '/vk.html' ? 'vk' : 'tg';
+        return Response.redirect(url.origin + '/?auth=' + authParam, 302);
+    }
+    
     // -----------------------------
     // ✅ ВНЕШНЯЯ СТРАНИЦА WEBHOOKA
     // -----------------------------
