@@ -276,6 +276,16 @@
             color: var(--free);
             border: 1px solid rgba(34, 197, 94, 0.3);
         }
+        .mode-tag.by-photo {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--free);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        .mode-tag.by-text {
+            background: rgba(168, 85, 247, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
 
         /* ===== CHAT AREA ===== */
         .chat-area {
@@ -996,7 +1006,7 @@
             <div id="chatModels" class="skeleton" style="height:24px;width:200px"></div>
         </div>
         <div class="sub-header wrap-allowed" id="subImage">
-            <div id="imageModeTag" class="mode-tag txt-to-img">txt&#8594;img</div>
+            <div id="imageModeTag" class="mode-tag txt-to-img">по тексту</div>
             <div class="sub-divider"></div>
             <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
             <div class="sub-divider"></div>
@@ -1056,7 +1066,7 @@
         <!-- IMAGE PANEL -->
         <div class="media-panel" id="imagePanel">
             <div>
-                <h3>&#127912; Генерация изображения</h3>
+                <h3 id="imageTitle">&#127912; Генерация изображения</h3>
                 <p id="imageDesc">Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ.</p>
             </div>
             <div>
@@ -1639,17 +1649,17 @@
 
         // Обновляем тег режима
         if (hasRefs || selected.imageSubMode === 'i2i') {
-            modeTag.className = 'mode-tag img-to-img';
-            modeTag.textContent = 'img\u2192img';
+            modeTag.className = 'mode-tag by-photo';
+            modeTag.textContent = 'По фото';
             modeTag.style.cursor = 'pointer';
-            modeTag.title = 'Нажмите для переключения в txt\u2192img';
+            modeTag.title = 'Нажмите для переключения: По тексту';
             modeTag.onclick = () => { selected.imageSubMode = 't2i'; saveSelected(); renderImageSubHeader(); updateImageDesc(); };
         } else {
-            modeTag.className = 'mode-tag txt-to-img';
-            modeTag.textContent = 'txt\u2192img';
+            modeTag.className = 'mode-tag by-text';
+            modeTag.textContent = 'По тексту';
             if (hasRefs || availableModels.image_i2i.length > 0) {
                 modeTag.style.cursor = 'pointer';
-                modeTag.title = 'Нажмите для переключения в img\u2192img';
+                modeTag.title = 'Нажмите для переключения: По фото';
                 modeTag.onclick = () => { selected.imageSubMode = 'i2i'; saveSelected(); renderImageSubHeader(); updateImageDesc(); };
             } else {
                 modeTag.style.cursor = 'default';
@@ -1940,18 +1950,24 @@
 
     function updateImageDesc() {
         const desc = document.getElementById('imageDesc');
+        const title = document.getElementById('imageTitle');
         const isI2I = selected.imageSubMode === 'i2i';
         const modelList = isI2I ? availableModels.image_i2i : availableModels.image;
         const modelKey = isI2I ? selected.image_i2i : selected.image;
         const model = modelList.find(m => m.key === modelKey);
 
+        // Обновляем заголовок панели
+        if (title) {
+            title.textContent = isI2I ? '\uD83C\uDFA8 Генерация по фото' : '\uD83C\uDFA8 Генерация по тексту';
+        }
+
         if (isI2I) {
             desc.textContent = model
-                ? (model.isFree ? 'Бесплатная генерация img\u2192img через ' + getShortModelName(model) : 'Генерация img\u2192img через ' + getShortModelName(model) + ' — ' + model.cost + '\u00A2')
-                : 'Режим img\u2192img — добавьте референс для генерации на основе изображения.';
+                ? (model.isFree ? 'Бесплатная генерация по фото через ' + getShortModelName(model) + '. Добавь референс и опиши результат.' : 'Генерация по фото через ' + getShortModelName(model) + ' — ' + model.cost + '\u00A2')
+                : 'Режим «по фото» — добавьте референс для генерации на основе изображения.';
         } else {
             desc.textContent = model
-                ? (model.isFree ? 'Бесплатная генерация txt\u2192img через ' + getShortModelName(model) + '. Опиши что хочешь увидеть.' : 'Генерация txt\u2192img через ' + getShortModelName(model) + ' — ' + model.cost + '\u00A2')
+                ? (model.isFree ? 'Бесплатная генерация по тексту через ' + getShortModelName(model) + '. Опиши что хочешь увидеть.' : 'Генерация по тексту через ' + getShortModelName(model) + ' — ' + model.cost + '\u00A2')
                 : 'Опиши что ты хочешь увидеть, и я создам изображение.';
         }
     }
@@ -1976,13 +1992,13 @@
         // Плейсхолдеры
         const placeholders = {
             chat: 'Напишите сообщение или перетащите файл...',
-            image: 'Опишите изображение на английском или русском...',
+            image: selected.imageSubMode === 'i2i' ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
             video: selected.videoSubMode === 'generate' ? 'Опишите видео-сцену для ИИ...' : 'Что сделать с видео?',
             audio: 'Введите текст для озвучки...'
         };
         const hints = {
             chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат',
-            image: 'Стоимость зависит от модели',
+            image: selected.imageSubMode === 'i2i' ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
             video: selected.videoSubMode === 'generate' ? 'Стоимость: от 20\u00A2' : 'Анализ видео — бесплатно',
             audio: selected.audioSubMode === 'tts' ? 'Стоимость озвучки зависит от модели' : 'Бесплатно'
         };
@@ -2268,7 +2284,7 @@
                 image_size: selectedImageSize,
                 model: modelKey,
                 aspect_ratio: selected.ratio,
-                references: imageRefs.filter(r => r !== null)
+                reference_images: imageRefs.filter(r => r !== null)
             };
             if (isI2I) payload.image_mode = 'i2i';
 
@@ -2359,9 +2375,9 @@
                         quality: selected.videoQuality,
                         duration: selected.videoDuration,
                         video_mode: selected.videoMode || 'normal',
-                        ref_image: videoRefs.image,
-                        ref_audio: videoRefs.audio,
-                        ref_video: videoRefs.video
+                        reference_image: videoRefs.image,
+                        reference_audio: videoRefs.audio,
+                        reference_video: videoRefs.video
                     }
                 })
             });

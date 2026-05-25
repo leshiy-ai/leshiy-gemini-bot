@@ -120,6 +120,75 @@ module.exports.handler = async (event, context) => {
         }
     }
 
+    // Раздача статических файлов: vk.html, tg.html, /images/*
+    if (event.httpMethod === 'GET') {
+        const staticFiles = {
+            '/vk.html': 'text/html; charset=utf-8',
+            '/tg.html': 'text/html; charset=utf-8',
+        };
+        const staticExtensions = {
+            '.svg': 'image/svg+xml',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.ico': 'image/x-icon',
+            '.webp': 'image/webp',
+            '.css': 'text/css; charset=utf-8',
+            '.js': 'application/javascript; charset=utf-8',
+        };
+
+        // Проверяем точное совпадение (vk.html, tg.html)
+        if (staticFiles[requestPath]) {
+            try {
+                const filePath = path.join(__dirname, 'public', requestPath);
+                if (fs.existsSync(filePath)) {
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    return {
+                        statusCode: 200,
+                        headers: {
+                            'Content-Type': staticFiles[requestPath],
+                            'Cache-Control': 'no-cache'
+                        },
+                        body: content
+                    };
+                }
+            } catch (err) {
+                console.error("Static file error:", requestPath, err);
+            }
+        }
+
+        // Проверяем /images/* и другие подпапки public/
+        if (requestPath.startsWith('/images/') || requestPath.startsWith('/css/') || requestPath.startsWith('/js/')) {
+            const ext = path.extname(requestPath).toLowerCase();
+            if (staticExtensions[ext]) {
+                try {
+                    // Защита от path traversal
+                    const safePath = requestPath.replace(/\.\./g, '').replace(/\/\/+/g, '/');
+                    const filePath = path.join(__dirname, 'public', safePath);
+                    if (fs.existsSync(filePath)) {
+                        const content = fs.readFileSync(filePath);
+                        const isBinary = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp'].includes(ext);
+                        return {
+                            statusCode: 200,
+                            headers: {
+                                'Content-Type': staticExtensions[ext],
+                                'Cache-Control': 'public, max-age=3600',
+                                'Access-Control-Allow-Origin': '*'
+                            },
+                            body: isBinary ? content.toString('base64') : content.toString('utf8'),
+                            isBase64Encoded: isBinary
+                        };
+                    }
+                } catch (err) {
+                    console.error("Static file error:", requestPath, err);
+                }
+            }
+            // Файл не найден
+            return { statusCode: 404, body: 'Not Found' };
+        }
+    }
+
     // ==========================================
     // 2. ОБРАБОТКА CORS (Для API запросов с фронтенда)
     // ==========================================

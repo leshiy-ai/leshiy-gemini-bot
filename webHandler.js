@@ -36,15 +36,16 @@ module.exports.handleWebRequest = async function(body, env, monolith) {
 function handleModels(monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
     if (!AI_MODELS || !AI_MODEL_MENU_CONFIG) {
-        return { success: true, data: { chat: [], image: [], video: [], audio_tts: [], audio_stt: [] } };
+        return { success: true, data: { chat: [], image: [], image_i2i: [], video: [], audio_tts: [], audio_stt: [] } };
     }
 
-    const result = { chat: [], image: [], video: [], audio_tts: [], audio_stt: [] };
+    const result = { chat: [], image: [], image_i2i: [], video: [], audio_tts: [], audio_stt: [] };
 
     // Маппинг типов сервисов монолита → режимы веба
     const serviceToMode = {
         'TEXT_TO_TEXT':  'chat',
         'TEXT_TO_IMAGE': 'image',
+        'IMAGE_TO_IMAGE': 'image_i2i',
         'TEXT_TO_VIDEO': 'video',
         'TEXT_TO_AUDIO': 'audio_tts',
         'AUDIO_TO_TEXT': 'audio_stt',
@@ -64,9 +65,17 @@ function handleModels(monolith) {
             const isDynamicPricing = typeof pricing === 'object' && pricing !== null;
             const isAsync = modelConfig.SERVICE === 'KIEAI';
 
+            const serviceNames = { 'WORKERS_AI': 'Cloudflare', 'GEMINI': 'Gemini', 'KIEAI': 'KIE.AI', 'BOTHUB': 'BotHub', 'POLLINATIONS': 'Pollinations', 'FUSIONBRAIN': 'Kandinsky', 'STABILITY': 'Stability', 'VOICERSS': 'VoiceRSS', 'DEEPSEEK': 'DeepSeek', 'FREEPIK': 'Freepik' };
+            const serviceLabel = serviceNames[modelConfig.SERVICE] || modelConfig.SERVICE || 'Другие';
+            // Короткое имя модели
+            const modelShort = modelConfig.MODEL ? modelConfig.MODEL.split('/').pop().replace(/^gemini-/, '').substring(0, 30) : modelKey;
+
             result[webMode].push({
                 key: modelKey,
                 name: friendlyName,
+                displayName: serviceLabel + ': ' + (friendlyName || modelShort),
+                modelShort: modelShort,
+                serviceLabel: serviceLabel,
                 service: modelConfig.SERVICE,
                 model: modelConfig.MODEL,
                 isFree,
