@@ -966,16 +966,6 @@
             .sub-option { font-size: 11px; padding: 3px 8px; }
         }
 
-        /* Аудио-панель: переключатель подрежимов на маленьких экранах */
-        #audioPanel .panel-section-toggle {
-            flex-wrap: wrap;
-        }
-        #audioPanel .panel-section-btn {
-            min-width: 0;
-            font-size: 12px;
-            padding: 7px 8px;
-        }
-
         /* Результат-область для аудио — вертикальная компоновка */
         .result-area audio {
             width: 100%;
@@ -1132,15 +1122,7 @@
 
         <!-- VIDEO PANEL -->
         <div class="media-panel" id="videoPanel">
-            <!-- Переключатель: Генерация / Конвертация -->
-            <div class="panel-section-toggle">
-                <button class="panel-section-btn active" id="videoGenBtn" onclick="switchVideoSubMode('generate')">
-                    &#127916; Генерация <span class="badge-cost">20&#162;+</span>
-                </button>
-                <button class="panel-section-btn" id="videoConvertBtn" onclick="switchVideoSubMode('convert')">
-                    &#128260; Конвертация <span class="badge-free">&#10003;</span>
-                </button>
-            </div>
+            <!-- Переключатель подрежимов — в sub-header (#subVideo), здесь только контент -->
 
             <!-- Генерация видео -->
             <div class="panel-subsection active" id="videoGenSection">
@@ -1193,21 +1175,7 @@
 
         <!-- AUDIO PANEL -->
         <div class="media-panel" id="audioPanel">
-            <!-- Переключатель: Озвучка / Распознавание / Конвертация / Свой голос -->
-            <div class="panel-section-toggle">
-                <button class="panel-section-btn active" id="audioTTSBtn" onclick="switchAudioSubMode('tts')">
-                    &#127925; Озвучка
-                </button>
-                <button class="panel-section-btn" id="audioSTTBtn" onclick="switchAudioSubMode('stt')">
-                    &#127908; Распознавание <span class="badge-free">&#10003;</span>
-                </button>
-                <button class="panel-section-btn" id="audioConvertBtn" onclick="switchAudioSubMode('convert')">
-                    &#128260; Конвертация <span class="badge-free">&#10003;</span>
-                </button>
-                <button class="panel-section-btn" id="audioVoiceBtn" onclick="switchAudioSubMode('voice_clone')">
-                    &#127909; Свой голос
-                </button>
-            </div>
+            <!-- Переключатель подрежимов — в sub-header (#subAudio), здесь только контент -->
 
             <!-- TTS озвучка -->
             <div class="panel-subsection active" id="audioTTSSection">
@@ -1345,12 +1313,12 @@
             <p>Войдите, чтобы сохранять историю чата и покупать кредиты. При регистрации даётся 80&#162; бесплатно.</p>
             <div class="auth-providers">
                 <div id="vkAuthContainer" style="width:100%;min-height:44px;display:flex;align-items:center;justify-content:center">
-                    <button class="auth-provider-btn vk" onclick="authVK()" style="width:100%">
+                    <button class="auth-provider-btn vk" onclick="authVKFallback()" style="width:100%">
                         &#9670; Войти через VK
                     </button>
                 </div>
                 <div id="tgAuthContainer" style="width:100%;min-height:44px;display:flex;align-items:center;justify-content:center">
-                    <button class="auth-provider-btn tg" onclick="authTG()" style="width:100%">
+                    <button class="auth-provider-btn tg" onclick="authTGFallback()" style="width:100%">
                         &#9993; Войти через Telegram
                     </button>
                 </div>
@@ -1719,15 +1687,21 @@
         const modeTag = document.getElementById('imageModeTag');
         const hasRefs = imageRefs.some(r => r !== null);
 
-        // Обновляем тег режима
+        // Модели — t2i или i2i
+        const modelList = selected.imageSubMode === 'i2i' ? availableModels.image_i2i : availableModels.image;
+        const currentModelKey = selected.imageSubMode === 'i2i' ? selected.image_i2i : selected.image;
+        const currentModel = modelList.find(m => m.key === currentModelKey);
+
+        // Обновляем тег режима — цвет зависит от стоимости выбранной модели
+        const isFreeModel = currentModel?.isFree;
         if (hasRefs || selected.imageSubMode === 'i2i') {
-            modeTag.className = 'mode-tag by-photo';
+            modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'txt-to-img');
             modeTag.textContent = 'по фото';
             modeTag.style.cursor = 'pointer';
             modeTag.title = 'Нажмите для переключения: по тексту';
             modeTag.onclick = () => { selected.imageSubMode = 't2i'; saveSelected(); renderImageSubHeader(); updateImageDesc(); updateImagePlaceholder(); };
         } else {
-            modeTag.className = 'mode-tag by-text';
+            modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'by-text');
             modeTag.textContent = 'по тексту';
             if (hasRefs || availableModels.image_i2i.length > 0) {
                 modeTag.style.cursor = 'pointer';
@@ -1738,10 +1712,6 @@
                 modeTag.onclick = null;
             }
         }
-
-        // Модели — t2i или i2i
-        const modelList = selected.imageSubMode === 'i2i' ? availableModels.image_i2i : availableModels.image;
-        const currentModelKey = selected.imageSubMode === 'i2i' ? selected.image_i2i : selected.image;
 
         const modelsContainer = document.getElementById('imageModels');
         modelsContainer.classList.remove('skeleton');
@@ -1956,8 +1926,7 @@
     function switchVideoSubMode(mode) {
         selected.videoSubMode = mode;
         saveSelected();
-        document.getElementById('videoGenBtn').classList.toggle('active', mode === 'generate');
-        document.getElementById('videoConvertBtn').classList.toggle('active', mode === 'convert');
+        // Кнопки переключения — в sub-header, управляются через renderVideoSubHeader()
         document.getElementById('videoGenSection').classList.toggle('active', mode === 'generate');
         document.getElementById('videoConvertSection').classList.toggle('active', mode === 'convert');
         renderVideoSubHeader();
@@ -1967,10 +1936,7 @@
     function switchAudioSubMode(mode) {
         selected.audioSubMode = mode;
         saveSelected();
-        document.getElementById('audioTTSBtn').classList.toggle('active', mode === 'tts');
-        document.getElementById('audioSTTBtn').classList.toggle('active', mode === 'stt');
-        document.getElementById('audioConvertBtn').classList.toggle('active', mode === 'convert');
-        document.getElementById('audioVoiceBtn').classList.toggle('active', mode === 'voice_clone');
+        // Кнопки переключения — в sub-header, управляются через renderAudioSubHeader()
         document.getElementById('audioTTSSection').classList.toggle('active', mode === 'tts');
         document.getElementById('audioSTTSection').classList.toggle('active', mode === 'stt');
         document.getElementById('audioConvertSection').classList.toggle('active', mode === 'convert');
@@ -3009,8 +2975,6 @@
     }
 
     // ---- AUTH DIALOG ----
-    let vkSdkLoaded = false;
-    let tgWidgetLoaded = false;
 
     // ---- Обработчик клика на кнопку авторизации ----
     function handleAuthBtnClick() {
@@ -3023,10 +2987,7 @@
 
     function openAuthDialog() {
         document.getElementById('authDialog').classList.add('open');
-        // Подгружаем VK ID SDK в контейнер
-        initVKAuthInline();
-        // Подгружаем TG Login Widget в контейнер
-        initTGAuthInline();
+        // VK и TG авторизация — через редирект на vk.html/tg.html (надёжнее инлайн-SDK)
     }
 
     function showProfileDialog() {
@@ -3081,157 +3042,22 @@
         document.getElementById('authDialog').classList.remove('open');
     }
 
-    // ---- VK INLINE AUTH ----
-    function initVKAuthInline() {
-        const container = document.getElementById('vkAuthContainer');
-        if (!container || vkSdkLoaded) return;
-
-        // Показываем загрузку
-        container.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;padding:8px">Загрузка VK ID...</div>';
-
-        const VK_CLIENT_ID = 54467300;
-        const VK_REDIRECT_URL = window.location.origin + '/vk.html';
-
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js';
-        script.async = true;
-        script.onload = () => {
-            if (!window.VKIDSDK) {
-                container.innerHTML = '<button class="auth-provider-btn vk" onclick="authVKFallback()" style="width:100%">&#9670; Войти через VK</button>';
-                return;
-            }
-            vkSdkLoaded = true;
-
-            const VKID = window.VKIDSDK;
-            VKID.Config.init({
-                app: VK_CLIENT_ID,
-                redirectUrl: VK_REDIRECT_URL,
-                responseMode: VKID.ConfigResponseMode.Callback,
-                source: VKID.ConfigSource.LOWCODE,
-            });
-
-            // Создаём контейнер для виджета
-            container.innerHTML = '<div id="vkOneTapContainer"></div>';
-            const oneTap = new VKID.OneTap();
-            oneTap.render({
-                container: document.getElementById('vkOneTapContainer'),
-                showAlternativeLogin: true,
-                oauthList: ['mail_ru', 'ok_ru'],
-                styles: { height: 44, borderRadius: 8 }
-            })
-            .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, (payload) => {
-                VKID.Auth.exchangeCode(payload.code, payload.device_id)
-                    .then((data) => {
-                        const userId = data.user_id || (data.user && data.user.id);
-                        const accessToken = data.access_token;
-                        if (userId) {
-                            handleVKAuthSuccess(userId, accessToken);
-                        }
-                    })
-                    .catch((err) => {
-                        console.error('VK exchange error:', err);
-                        showToast('Ошибка авторизации VK', 'error');
-                    });
-            });
-        };
-        script.onerror = () => {
-            container.innerHTML = '<button class="auth-provider-btn vk" onclick="authVKFallback()" style="width:100%">&#9670; Войти через VK</button>';
-        };
-        document.head.appendChild(script);
-    }
-
-    function handleVKAuthSuccess(userId, accessToken) {
-        let userName = null;
-        let userPhoto = null;
-
-        if (accessToken) {
-            // Запрашиваем имя и фото через JSONP
-            const jsonpScript = document.createElement('script');
-            jsonpScript.src = 'https://api.vk.com/method/users.get?user_ids=' + userId + '&fields=photo_100&access_token=' + accessToken + '&v=5.131&callback=vkProfileCallback';
-            document.head.appendChild(jsonpScript);
-
-            window.vkProfileCallback = function(response) {
-                if (response.response && response.response[0]) {
-                    const vkUser = response.response[0];
-                    userName = vkUser.first_name + ' ' + vkUser.last_name;
-                    userPhoto = vkUser.photo_100;
-                }
-                delete window.vkProfileCallback;
-                jsonpScript.remove();
-                finishVKAuth(userId, userName, userPhoto);
-            };
-        } else {
-            finishVKAuth(userId, userName, userPhoto);
-        }
-    }
-
-    function finishVKAuth(userId, userName, userPhoto) {
-        user = {
-            id: String(userId),
-            name: userName || 'VK User',
-            provider: 'vk',
-            hash: null,
-            photo: userPhoto || null
-        };
-        localStorage.setItem('gemini_user', JSON.stringify(user));
-        authBtn.textContent = user.name;
-        authBtn.classList.add('logged-in');
-        closeAuthDialog();
-        loadServerData();
-        showToast('Добро пожаловать, ' + user.name + '!', 'success');
-    }
-
-    // Фоллбэк: редирект на vk.html если SDK не загрузился
-    function authVKFallback() {
+    // ---- VK / TG AUTH — редирект на vk.html / tg.html ----
+    function authVK() {
         closeAuthDialog();
         const returnTo = encodeURIComponent(window.location.origin + '/');
         window.location.href = '/vk.html?returnTo=' + returnTo;
     }
 
-    // ---- TG INLINE AUTH ----
-    function initTGAuthInline() {
-        const container = document.getElementById('tgAuthContainer');
-        if (!container || tgWidgetLoaded) return;
-
-        container.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;padding:8px">Загрузка Telegram...</div>';
-
-        // Создаём виджет Telegram Login
-        const widgetContainer = document.createElement('div');
-        widgetContainer.id = 'tgWidgetInner';
-        widgetContainer.style.display = 'flex';
-        widgetContainer.style.justifyContent = 'center';
-
-        const widgetScript = document.createElement('script');
-        widgetScript.src = 'https://telegram.org/js/telegram-widget.js?22';
-        widgetScript.setAttribute('data-telegram-login', 'leshiy_gemini_bot');
-        widgetScript.setAttribute('data-size', 'large');
-        widgetScript.setAttribute('data-auth-url', window.location.origin + '/');
-        widgetScript.setAttribute('data-request-access', 'write');
-        widgetScript.async = true;
-
-        widgetScript.onload = () => {
-            tgWidgetLoaded = true;
-        };
-
-        widgetScript.onerror = () => {
-            container.innerHTML = '<button class="auth-provider-btn tg" onclick="authTGFallback()" style="width:100%">&#9993; Войти через Telegram</button>';
-        };
-
-        container.innerHTML = '';
-        container.appendChild(widgetContainer);
-        widgetContainer.appendChild(widgetScript);
-    }
-
-    // Фоллбэк: редирект на tg.html если виджет не загрузился
-    function authTGFallback() {
+    function authTG() {
         closeAuthDialog();
         const returnTo = encodeURIComponent(window.location.origin + '/');
         window.location.href = '/tg.html?returnTo=' + returnTo;
     }
 
-    // Устаревшие функции-заглушки (для обратной совместимости)
-    function authVK() { authVKFallback(); }
-    function authTG() { authTGFallback(); }
+    // Алиасы для обратной совместимости
+    function authVKFallback() { authVK(); }
+    function authTGFallback() { authTG(); }
 
     // ---- TOAST ----
     function showToast(message, type) {
