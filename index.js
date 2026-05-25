@@ -148,9 +148,11 @@ module.exports.handler = async (event, context) => {
     let uri = event.url || event.headers['x-envoy-original-path'] || '/';
 
     // 🌟 --- ПЕРЕХВАТ WEB API ШЛЮЗА ДЛЯ ФРОНТЕНДА --- 🌟
-    if (event.httpMethod === 'POST' && (uri === '/api' || uri === '/api/')) {
+    // Ловим все /api и /api/* запросы (GET и POST)
+    const apiMatch = uri.match(/^\/api\/?([a-z_-]*)$/i);
+    if (apiMatch) {
         try {
-            // Собираем env точно так же, как вы делаете ниже для воркера
+            // Собираем env точно так же, как ниже для воркера
             const webEnv = {
                 ...process.env,
                 LAST_PHOTO_STORAGE: USER_DB_ADAPTER, 
@@ -162,15 +164,28 @@ module.exports.handler = async (event, context) => {
                 nodeCrypto
             };
 
-            // Передаем управление в webHandler, прокидывая body, наш env и объект воркера
-            const result = await webHandler.handleWebRequest(body, webEnv, worker);
+            // Извлекаем режим из URL (/api/models → mode='models') или из body.mode
+            const urlMode = apiMatch[1] || null;
 
-            // Возвращаем ответ в формате Яндекс.Облака
+            // Для GET-запросов — формируем body из URL-параметров
+            let webBody = body;
+            if (event.httpMethod === 'GET') {
+                webBody = { mode: urlMode, auth: null, payload: {} };
+            } else {
+                // Для POST — если mode не указан в body, берём из URL
+                if (!webBody.mode && urlMode) {
+                    webBody.mode = urlMode;
+                }
+            }
+
+            // Передаем управление в webHandler
+            const result = await webHandler.handleWebRequest(webBody, webEnv, worker);
+
             return {
                 statusCode: 200,
                 headers: {
                     'Content-Type': 'application/json; charset=utf-8',
-                    'Access-Control-Allow-Origin': '*' // Разрешаем CORS
+                    'Access-Control-Allow-Origin': '*'
                 },
                 body: JSON.stringify(result)
             };
