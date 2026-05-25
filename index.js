@@ -145,7 +145,12 @@ module.exports.handler = async (event, context) => {
         body = event.body;
     }
 
-    let uri = event.url || event.headers['x-envoy-original-path'] || '/';
+    //let uri = event.url || event.headers['x-envoy-original-path'] || '/';
+    let uri = event.path || event.headers['x-envoy-original-path'] || event.url || '/';
+    // Если uri — полный URL (Яндекс Cloud Functions), извлекаем pathname
+    if (uri.startsWith('http')) {
+        try { uri = new URL(uri).pathname; } catch(e) {}
+    }
 
     // 🌟 --- ПЕРЕХВАТ WEB API ШЛЮЗА ДЛЯ ФРОНТЕНДА --- 🌟
     // Ловим все /api и /api/* запросы (GET и POST)
