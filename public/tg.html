@@ -14,6 +14,28 @@
             height: 100vh; 
             font-family: sans-serif; 
         }
+        .auth-card {
+            background: white; 
+            padding: 32px 24px; 
+            border-radius: 28px; 
+            width: 360px; 
+            text-align: center; 
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+        .auth-card .logo { width: 100px; height: 100px; margin: 0 auto 20px auto; }
+        .auth-card .title { font: 700 20px sans-serif; margin-bottom: 8px; color: #000; }
+        .auth-card .subtitle { font: 400 14px sans-serif; color: #818c99; margin-bottom: 24px; line-height: 1.4; }
+        .tg-btn {
+            display: block; width: 100%; padding: 14px 0; background: #0088cc;
+            color: white; text-decoration: none; border-radius: 12px; font-size: 16px;
+            font-weight: 600; box-sizing: border-box; border: none; cursor: pointer;
+            text-align: center;
+        }
+        .tg-btn:hover { background: #0077b3; }
+        .later-btn {
+            width: 100%; margin-top: 15px; border: none; background: none; 
+            color: #0088cc; cursor: pointer; font-size: 14px;
+        }
     </style>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
@@ -34,15 +56,8 @@
     </script>
 </head>
 <body>
-    <div id="auth_card" style="
-        background: white; 
-        padding: 32px 24px; 
-        border-radius: 28px; 
-        width: 360px; 
-        text-align: center; 
-        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-    ">
-        <div style="width: 100px; height: 100px; margin: 0 auto 20px auto;">
+    <div id="auth_card" class="auth-card">
+        <div class="logo">
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
                 <defs>
                     <linearGradient id="gemini-grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -54,117 +69,117 @@
                 <path d="M50 0C50 0 53 47 100 50C100 50 53 53 50 100C50 100 47 53 0 50C0 50 47 47 50 0Z" fill="url(#gemini-grad)"/>
             </svg>
         </div>
-        <div style="font: 700 20px sans-serif; margin-bottom: 8px; color: #000;">🔐 Вход в Gemini-AI</div>
-        <div style="font: 400 14px sans-serif; color: #818c99; margin-bottom: 24px; line-height: 1.4;">
-            Используйте Telegram для безопасного доступа
-        </div>
+        <div class="title">🔐 Вход в Gemini-AI</div>
+        <div class="subtitle">Используйте Telegram для безопасного доступа</div>
         
         <div id="tg_widget_container" style="display: flex; justify-content: center; margin-bottom: 8px;"></div>
         
-        <button onclick="window.location.replace(window.authCancelTo)" style="
-            width: 100%; 
-            margin-top: 15px; 
-            border: none; 
-            background: none; 
-            color: #0088cc; 
-            cursor: pointer; 
-            font-size: 14px;
-        ">Позже</button>
+        <button onclick="window.location.replace(window.authCancelTo)" class="later-btn">Позже</button>
     </div>
 
     <script>
-        const GEMINI_LOGO_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
-            <defs>
-                <linearGradient id="gemini-grad-ok" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#7c3aed"/>
-                    <stop offset="50%" style="stop-color:#a855f7"/>
-                    <stop offset="100%" style="stop-color:#c084fc"/>
-                </linearGradient>
-            </defs>
-            <path d="M50 0C50 0 53 47 100 50C100 50 53 53 50 100C50 100 47 53 0 50C0 50 47 47 50 0Z" fill="url(#gemini-grad-ok)"/>
-        </svg>`;
-
-        // Check if we have Telegram auth callback params
+        const returnTo = window.authReturnTo;
         const tgId = urlParams.get('id');
+        const tgUserId = urlParams.get('tg_user_id');
         const tgFirstName = urlParams.get('first_name');
         const tgLastName = urlParams.get('last_name') || '';
         const tgUsername = urlParams.get('username') || '';
         const tgHash = urlParams.get('hash');
         const tgPhotoUrl = urlParams.get('photo_url');
 
-        if (tgId && tgHash) {
-            // We have a successful Telegram auth callback
-            const returnTo = window.authReturnTo;
+        const GEMINI_LOGO_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+            <defs><linearGradient id="gemini-grad-ok" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#7c3aed"/><stop offset="50%" style="stop-color:#a855f7"/><stop offset="100%" style="stop-color:#c084fc"/>
+            </linearGradient></defs>
+            <path d="M50 0C50 0 53 47 100 50C100 50 53 53 50 100C50 100 47 53 0 50C0 50 47 47 50 0Z" fill="url(#gemini-grad-ok)"/>
+        </svg>`;
+
+        // ============================================================
+        //  КЛЮЧЕВАЯ ФУНКЦИЯ (как в Хранилке):
+        //  - Записываем юзера в localStorage
+        //  - Конструируем URL возврата с параметрами авторизации
+        //  - Показываем кнопку «Вернуться в приложение»
+        //  - НИКАКОГО авторедиректа — только кнопка!
+        // ============================================================
+        function redirectWithTgId(userId, userName, userPhoto, hash) {
             localStorage.removeItem('tg_return_to');
 
-            const userName = [tgFirstName, tgLastName].filter(Boolean).join(' ');
-            const userPhoto = tgPhotoUrl || '';
-
-            // Store unified gemini_user in localStorage
+            // Сохраняем в localStorage (фоллбэк для APK)
+            localStorage.setItem('tg_user_id', String(userId));
+            localStorage.setItem('vk_user_id', String(userId)); // Единый ключ как в Хранилке
+            localStorage.setItem('auth_provider', 'Telegram');
+            if (userName) localStorage.setItem('vk_user_name', userName); // Единый ключ
+            if (userPhoto) localStorage.setItem('vk_user_photo', userPhoto); // Единый ключ
+            if (tgUsername) localStorage.setItem('tg_username', tgUsername);
             localStorage.setItem('gemini_user', JSON.stringify({
-                id: String(tgId),
-                name: userName,
+                id: String(userId),
+                name: userName || 'TG User',
                 provider: 'tg',
-                hash: tgHash,
-                photo: userPhoto
+                hash: hash || null,
+                photo: userPhoto || ''
             }));
 
-            // Also store individual keys for backward compatibility
-            localStorage.setItem('tg_user_id', String(tgId));
-            localStorage.setItem('auth_provider', 'Telegram');
-            if (userName) localStorage.setItem('tg_user_name', userName);
-            if (userPhoto) localStorage.setItem('tg_user_photo', userPhoto);
-            if (tgUsername) localStorage.setItem('tg_username', tgUsername);
-
+            // Конструируем URL возврата с параметрами (как в Хранилке)
             let targetUrl = '/';
-            if (returnTo && returnTo !== '/') {
-                try {
-                    const domainRoot = new URL(returnTo).origin;
-                    let params = new URLSearchParams();
-                    params.set('tg_user_id', tgId);
-                    if (userName) params.set('tg_user_name', userName);
-                    if (userPhoto) params.set('tg_user_photo', userPhoto);
-                    if (tgUsername) params.set('tg_username', tgUsername);
-                    targetUrl = `${domainRoot}/?${params.toString()}`;
-                } catch(e) {
-                    const separator = returnTo.includes('?') ? '&' : '?';
-                    targetUrl = `${returnTo}${separator}tg_user_id=${tgId}`;
-                    if (userName) targetUrl += `&tg_user_name=${encodeURIComponent(userName)}`;
-                    if (userPhoto) targetUrl += `&tg_user_photo=${encodeURIComponent(userPhoto)}`;
-                    if (tgUsername) targetUrl += `&tg_username=${encodeURIComponent(tgUsername)}`;
-                }
-            } else {
-                targetUrl = `${window.location.origin}/?tg_user_id=${tgId}`;
+            try {
+                const domainRoot = returnTo && returnTo !== '/' 
+                    ? new URL(returnTo).origin 
+                    : window.location.origin;
+                const p = new URLSearchParams();
+                p.set('tg_user_id', String(userId));
+                if (userName) p.set('tg_user_name', userName);
+                if (userPhoto) p.set('tg_user_photo', userPhoto);
+                if (hash) p.set('tg_hash', hash);
+                targetUrl = `${domainRoot}/?${p.toString()}`;
+            } catch(e) {
+                const base = returnTo || '/';
+                const sep = base.includes('?') ? '&' : '?';
+                targetUrl = `${base}${sep}tg_user_id=${userId}`;
                 if (userName) targetUrl += `&tg_user_name=${encodeURIComponent(userName)}`;
                 if (userPhoto) targetUrl += `&tg_user_photo=${encodeURIComponent(userPhoto)}`;
-                if (tgUsername) targetUrl += `&tg_username=${encodeURIComponent(tgUsername)}`;
             }
 
-            const card = document.getElementById('auth_card');
-            card.innerHTML = `
-                <div style="width: 100px; height: 100px; margin: 0 auto 20px auto;">
-                    ${GEMINI_LOGO_SVG}
-                </div>
+            // Показываем экран успеха с кнопкой — БЕЗ авторедиректа!
+            document.getElementById('auth_card').innerHTML = `
+                <div class="logo">${GEMINI_LOGO_SVG}</div>
                 <div style="font: 700 22px sans-serif; margin-bottom: 8px; color: #000;">✅ Авторизация успешна!</div>
                 <div style="font: 400 14px sans-serif; color: #818c99; margin-bottom: 30px; line-height: 1.4;">
                     Нажмите кнопку ниже, чтобы вернуться в приложение
                 </div>
-                <a href="${targetUrl}" style="
-                    display: block; width: 100%; padding: 14px 0; background: #0088cc;
-                    color: white; text-decoration: none; border-radius: 12px; font-size: 16px;
-                    font-weight: 600; box-sizing: border-box;
-                ">Вернуться в приложение</a>
+                <a href="${targetUrl}" class="tg-btn">Вернуться в приложение</a>
             `;
-        } else {
-            // No auth callback yet — show the Telegram Login Widget
+        }
+
+        // ============================================================
+        //  СЦЕНАРИЙ 1: Возврат с id+hash от TG Login Widget
+        // ============================================================
+        if (tgId && tgHash) {
+            const userName = [tgFirstName, tgLastName].filter(Boolean).join(' ') || tgUsername || '';
+            const userPhoto = tgPhotoUrl || '';
+            redirectWithTgId(tgId, userName, userPhoto, tgHash);
+        }
+        // ============================================================
+        //  СЦЕНАРИЙ 2: Возврат с tg_user_id (из внешнего редиректа)
+        // ============================================================
+        else if (tgUserId) {
+            const userName = urlParams.get('tg_user_name') || urlParams.get('tg_username') || '';
+            const userPhoto = urlParams.get('tg_user_photo') || '';
+            const hash = urlParams.get('tg_hash') || null;
+            redirectWithTgId(tgUserId, userName, userPhoto, hash);
+        }
+        // ============================================================
+        //  СЦЕНАРИЙ 3: Нет параметров — показываем TG Login Widget
+        //  (виджет Telegram — просто кнопка, без QR-кода)
+        // ============================================================
+        else {
             const widgetScript = document.createElement('script');
             widgetScript.src = 'https://telegram.org/js/telegram-widget.js?22';
             widgetScript.setAttribute('data-telegram-login', 'gemini_aitg_bot');
             widgetScript.setAttribute('data-size', 'large');
+            // TG Widget вернёт параметры на tg.html — сработает СЦЕНАРИЙ 1
             widgetScript.setAttribute('data-auth-url', `${window.location.origin}/tg.html`);
             widgetScript.setAttribute('data-request-access', 'write');
             widgetScript.async = true;
-
             document.getElementById('tg_widget_container').appendChild(widgetScript);
         }
     </script>
