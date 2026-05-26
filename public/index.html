@@ -1434,6 +1434,25 @@
                 } catch(e) {
                     localStorage.removeItem('gemini_user');
                 }
+            } else {
+                // Фоллбэк: проверяем унифицированные ключи Хранилки (vk_user_id + auth_provider)
+                const savedId = localStorage.getItem('vk_user_id');
+                const savedProvider = localStorage.getItem('auth_provider');
+                if (savedId && savedId !== 'null' && savedId !== 'undefined') {
+                    const savedName = localStorage.getItem('vk_user_name');
+                    const savedPhoto = localStorage.getItem('vk_user_photo');
+                    user = {
+                        id: savedId,
+                        name: savedName || (savedProvider === 'VK' ? 'VK User' : 'TG User'),
+                        provider: savedProvider === 'VK' ? 'vk' : 'tg',
+                        hash: null,
+                        photo: savedPhoto || ''
+                    };
+                    localStorage.setItem('gemini_user', JSON.stringify(user));
+                    authBtn.textContent = user.name;
+                    authBtn.classList.add('logged-in');
+                    loadServerData();
+                }
             }
         }
 
@@ -1455,7 +1474,8 @@
         initChatDragDrop();
     });
 
-    // ---- АВТОРИЗАЦИЯ ИЗ URL (после возврата из vk.html/tg.html или TG Login Widget) ----
+    // ---- АВТОРИЗАЦИЯ ИЗ URL (после возврата из vk.html/tg.html, TG Widget или бэкенда) ----
+    // Работает как в Хранилке: читаем параметры из URL, сохраняем в localStorage, обновляем UI
     function initAuthFromURL() {
         const params = new URLSearchParams(window.location.search);
         const vkUserId = params.get('vk_user_id');
@@ -1463,62 +1483,73 @@
         // TG Login Widget возвращает параметры напрямую: id, first_name, hash, photo_url
         const tgDirectId = params.get('id');
         const tgDirectHash = params.get('hash');
+        // Бэкенд Хранилки возвращает ?tg_data={JSON} (для Gemini-бота)
+        const tgDataParam = params.get('tg_data');
 
+        // Вспомогательная функция: сохранить юзера, обновить UI, очистить URL (как в Хранилке)
+        function applyAuth(u) {
+            user = u;
+            // Сохраняем в gemini_user (собственный формат)
+            localStorage.setItem('gemini_user', JSON.stringify(user));
+            // Сохраняем в унифицированные ключи (как в Хранилке — vk_user_id для обоих провайдеров)
+            localStorage.setItem('vk_user_id', String(user.id));
+            localStorage.setItem('auth_provider', user.provider === 'vk' ? 'VK' : 'Telegram');
+            if (user.name && user.name !== 'VK User' && user.name !== 'TG User') {
+                localStorage.setItem('vk_user_name', user.name);
+            }
+            if (user.photo) localStorage.setItem('vk_user_photo', user.photo);
+
+            // Немедленно обновляем кнопку авторизации
+            authBtn.textContent = user.name || (user.provider === 'vk' ? 'VK' : 'TG');
+            authBtn.classList.add('logged-in');
+            // Убираем параметры авторизации из URL без перезагрузки
+            window.history.replaceState({}, document.title, window.location.pathname);
+            showToast('Добро пожаловать, ' + (user.name || 'пользователь') + '!', 'success');
+            loadServerData();
+        }
+
+        // СЦЕНАРИЙ 1: Возврат с vk_user_id (из vk.html или VK Mini App)
         if (vkUserId) {
             const name = params.get('vk_user_name') || 'VK User';
             const photo = params.get('vk_user_photo') || null;
-            user = { id: vkUserId, name: name, provider: 'vk', hash: null, photo: photo };
-            localStorage.setItem('gemini_user', JSON.stringify(user));
-            window.history.replaceState({}, document.title, window.location.pathname);
-            showToast('Добро пожаловать, ' + name + '!', 'success');
+            applyAuth({ id: vkUserId, name: name, provider: 'vk', hash: null, photo: photo });
+            return;
         }
 
+        // СЦЕНАРИЙ 2: Возврат с tg_user_id (из tg.html)
         if (tgUserId) {
             const name = params.get('tg_user_name') || params.get('tg_username') || 'TG User';
             const hash = params.get('tg_hash') || null;
             const photo = params.get('tg_user_photo') || null;
-            user = { id: tgUserId, name: name, provider: 'tg', hash: hash, photo: photo };
-            localStorage.setItem('gemini_user', JSON.stringify(user));
-            window.history.replaceState({}, document.title, window.location.pathname);
-            showToast('Добро пожаловать, ' + name + '!', 'success');
+            applyAuth({ id: tgUserId, name: name, provider: 'tg', hash: hash, photo: photo });
+            return;
         }
 
-        // TG Login Widget прямой колбэк (id, first_name, last_name, username, hash, photo_url)
-        if (tgDirectId && tgDirectHash && !user) {
+        // СЦЕНАРИЙ 3: tg_data от бэкенда Хранилки (JSON с id, first_name, username, photo_url)
+        if (tgDataParam) {
+            try {
+                const userData = JSON.parse(decodeURIComponent(tgDataParam));
+                const fullName = userData.last_name
+                    ? `${userData.first_name} ${userData.last_name}`
+                    : userData.first_name || '';
+                const name = fullName || userData.username || 'TG User';
+                const photo = userData.photo_url || null;
+                applyAuth({ id: String(userData.id), name: name, provider: 'tg', hash: null, photo: photo });
+                return;
+            } catch(e) {
+                console.error('Ошибка разбора tg_data:', e);
+            }
+        }
+
+        // СЦЕНАРИЙ 4: TG Login Widget прямой колбэк (id, first_name, last_name, username, hash, photo_url)
+        if (tgDirectId && tgDirectHash) {
             const firstName = params.get('first_name') || '';
             const lastName = params.get('last_name') || '';
             const username = params.get('username') || '';
             const photoUrl = params.get('photo_url') || '';
             const name = [firstName, lastName].filter(Boolean).join(' ') || username || 'TG User';
-            user = { id: String(tgDirectId), name: name, provider: 'tg', hash: tgDirectHash, photo: photoUrl };
-            localStorage.setItem('gemini_user', JSON.stringify(user));
-            window.history.replaceState({}, document.title, window.location.pathname);
-            showToast('Добро пожаловать, ' + name + '!', 'success');
-        }
-
-        // Также проверяем VK Mini App контекст
-        if (window.vkBridge) {
-            vkBridge.send('VKWebAppGetUserInfo').then(info => {
-                if (!user) {
-                    user = { id: String(info.id), name: info.first_name + ' ' + info.last_name, provider: 'vk', photo: info.photo_100 };
-                    localStorage.setItem('gemini_user', JSON.stringify(user));
-                    authBtn.textContent = info.first_name;
-                    authBtn.classList.add('logged-in');
-                    loadServerData();
-                }
-            }).catch(() => {});
-        }
-
-        // Проверяем Telegram WebApp контекст
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) {
-            const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
-            if (tgUser && !user) {
-                user = { id: String(tgUser.id), name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''), provider: 'tg', hash: window.Telegram.WebApp.initData };
-                localStorage.setItem('gemini_user', JSON.stringify(user));
-                authBtn.textContent = tgUser.first_name;
-                authBtn.classList.add('logged-in');
-                loadServerData();
-            }
+            applyAuth({ id: String(tgDirectId), name: name, provider: 'tg', hash: tgDirectHash, photo: photoUrl });
+            return;
         }
     }
 
@@ -3041,6 +3072,14 @@
     function doLogout() {
         user = null;
         localStorage.removeItem('gemini_user');
+        localStorage.removeItem('vk_user_id');
+        localStorage.removeItem('auth_provider');
+        localStorage.removeItem('vk_user_name');
+        localStorage.removeItem('vk_user_photo');
+        localStorage.removeItem('tg_user_id');
+        localStorage.removeItem('tg_username');
+        localStorage.removeItem('vk_return_to');
+        localStorage.removeItem('tg_return_to');
         authBtn.textContent = 'Войти';
         authBtn.classList.remove('logged-in');
         creditsAmount.textContent = '--';
