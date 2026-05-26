@@ -1,7 +1,7 @@
 // ============================================================
 // webHandler.js — Изолированный Шлюз для Веб-фронтенда
 // ============================================================
-// Не трогает Telegram-логику. Принимает JSON от фронтенда,
+// Не трогает worker.js. Принимает JSON от фронтенда,
 // вызывает функции монолита, возвращает чистый JSON.
 //
 // Контракт запроса:
@@ -11,18 +11,28 @@
 //   { success, error, credits_left, data: {type, content} }
 // ============================================================
 
-module.exports.handleWebRequest = async function(body, env, monolith) {
+module.exports.handleWebRequest = async function(body, env, ctx) {
     const { mode, auth, payload } = body;
+
+    // Привязываем контекст воркера (AI_MODELS, функции и т.д.)
+    const monolith = ctx || {};
 
     try {
         switch (mode) {
-            case 'chat':     return await handleChat(auth, payload, env, monolith);
-            case 'image':    return await handleImage(auth, payload, env, monolith);
-            case 'video':    return await handleVideo(auth, payload, env, monolith);
-            case 'audio':    return await handleAudio(auth, payload, env, monolith);
-            case 'balance':  return await handleBalance(auth, env, monolith);
-            case 'models':   return handleModels(monolith);
-            default:         return formatResponse(false, "Неизвестный режим: " + mode);
+            case 'chat':
+                return await handleChat(auth, payload, env, monolith);
+            case 'image':
+                return await handleImage(auth, payload, env, monolith);
+            case 'video':
+                return await handleVideo(auth, payload, env, monolith);
+            case 'audio':
+                return await handleAudio(auth, payload, env, monolith);
+            case 'models':
+                return await handleModels(auth, env, monolith);
+            case 'balance':
+                return await handleBalance(auth, env, monolith);
+            default:
+                return formatResponse(false, "Неизвестный режим: " + mode);
         }
     } catch (err) {
         console.error("[WebHandler] Error:", err.message, err.stack);
@@ -31,108 +41,98 @@ module.exports.handleWebRequest = async function(body, env, monolith) {
 };
 
 // ============================================================
-// 📋 МОДЕЛИ — Список доступных моделей для фронтенда
-// ============================================================
-function handleModels(monolith) {
-    const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
-    if (!AI_MODELS || !AI_MODEL_MENU_CONFIG) {
-        return { success: true, data: { chat: [], image: [], image_i2i: [], video: [], audio_tts: [], audio_stt: [] } };
-    }
-
-    const result = { chat: [], image: [], image_i2i: [], video: [], audio_tts: [], audio_stt: [] };
-
-    // Маппинг типов сервисов монолита → режимы веба
-    const serviceToMode = {
-        'TEXT_TO_TEXT':  'chat',
-        'TEXT_TO_IMAGE': 'image',
-        'IMAGE_TO_IMAGE': 'image_i2i',
-        'TEXT_TO_VIDEO': 'video',
-        'TEXT_TO_AUDIO': 'audio_tts',
-        'AUDIO_TO_TEXT': 'audio_stt',
-    };
-
-    for (const [serviceType, serviceConfig] of Object.entries(AI_MODEL_MENU_CONFIG)) {
-        const webMode = serviceToMode[serviceType];
-        if (!webMode) continue;
-
-        for (const [modelKey, friendlyName] of Object.entries(serviceConfig.models)) {
-            const modelConfig = AI_MODELS[modelKey];
-            if (!modelConfig) continue;
-
-            const pricing = modelConfig.pricing;
-            const isFree = !pricing || pricing === 0;
-            const cost = typeof pricing === 'number' ? pricing : 0;
-            const isDynamicPricing = typeof pricing === 'object' && pricing !== null;
-            const isAsync = modelConfig.SERVICE === 'KIEAI';
-
-            const serviceNames = { 'WORKERS_AI': 'Cloudflare', 'GEMINI': 'Gemini', 'KIEAI': 'KIE.AI', 'BOTHUB': 'BotHub', 'POLLINATIONS': 'Pollinations', 'FUSIONBRAIN': 'Kandinsky', 'STABILITY': 'Stability', 'VOICERSS': 'VoiceRSS', 'DEEPSEEK': 'DeepSeek', 'FREEPIK': 'Freepik' };
-            const serviceLabel = serviceNames[modelConfig.SERVICE] || modelConfig.SERVICE || 'Другие';
-            // Короткое имя модели
-            const modelShort = modelConfig.MODEL ? modelConfig.MODEL.split('/').pop().replace(/^gemini-/, '').substring(0, 30) : modelKey;
-
-            result[webMode].push({
-                key: modelKey,
-                name: friendlyName,
-                displayName: serviceLabel + ': ' + (friendlyName || modelShort),
-                modelShort: modelShort,
-                serviceLabel: serviceLabel,
-                service: modelConfig.SERVICE,
-                model: modelConfig.MODEL,
-                isFree,
-                cost,
-                isAsync,
-                isDynamicPricing,
-                pricing: pricing || null
-            });
-        }
-    }
-
-    return { success: true, data: result };
-}
-
-// ============================================================
 // 🟢 ЧАТ — Бесплатно для всех (гости + авторизованные)
 // ============================================================
 async function handleChat(auth, payload, env, monolith) {
     const userMessage = (payload.prompt || '').trim();
-    if (!userMessage) return formatResponse(false, 'Пустое сообщение');
+    // Allow empty text if there are attachments
+    if (!userMessage && (!payload.attachments || payload.attachments.length === 0)) {
+        return formatResponse(false, 'Пустое сообщение');
+    }
 
-    const { AI_MODELS, extractAndCleanModelResponse, syncS3Chat } = monolith;
-    const isAuth = !!(auth && auth.id);
-    const chatId = isAuth ? String(auth.id) : 'guest';
-
-    // Определяем модель из payload или по умолчанию
-    const modelKey = payload.model || 'TEXT_TO_TEXT_GEMINI';
-    const modelConfig = AI_MODELS[modelKey];
-    if (!modelConfig) return formatResponse(false, 'Модель не найдена: ' + modelKey);
+    const { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat } = monolith;
 
     // История из localStorage фронтенда → формат для AI-функций
     const browserHistory = payload.history || [];
-    let historyForModel = browserHistory.map(m => ({
+    const historyForModel = browserHistory.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         text: m.content
     }));
 
-    // Авторизованный пользователь — синхронизируем с S3
+    const isAuth = !!(auth && auth.id);
+    const chatId = isAuth ? String(auth.id) : 'guest';
+
+    // === Авторизованный пользователь — сохраняем в S3 ===
     if (isAuth && syncS3Chat) {
         try {
-            const s3History = await syncS3Chat(chatId, userMessage, 'user', env);
-            historyForModel = s3History.map(m => ({
+            const s3History = await syncS3Chat(chatId, userMessage || '[Файлы]', 'user', env);
+            const convertedHistory = s3History.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 text: m.content
             }));
+            historyForModel.length = 0;
+            historyForModel.push(...convertedHistory);
         } catch (e) {
             console.error("[WebHandler] S3 sync error (chat):", e.message);
-            // Падаем на localStorage-историю
         }
     }
 
-    // Вызываем AI-модель (единый интерфейс: config, history, message, env)
+    // Determine if we have attachments that need Vision
+    const hasAttachments = payload.attachments && payload.attachments.length > 0;
+    let serviceType = 'TEXT_TO_TEXT';
+
+    if (hasAttachments) {
+        // Check if any attachment is an image → use Vision
+        const hasImage = payload.attachments.some(a => a.type && a.type.startsWith('image/'));
+        const hasAudio = payload.attachments.some(a => a.type && a.type.startsWith('audio/'));
+        const hasVideo = payload.attachments.some(a => a.type && a.type.startsWith('video/'));
+
+        if (hasImage) serviceType = 'IMAGE_TO_TEXT';
+        else if (hasAudio) serviceType = 'AUDIO_TO_TEXT';
+        else if (hasVideo) serviceType = 'VIDEO_TO_TEXT';
+    }
+
+    // Загружаем активную модель
     let finalResponse;
     try {
-        const modelResponse = await modelConfig.FUNCTION(modelConfig, historyForModel, userMessage, env);
-        const cleaned = extractAndCleanModelResponse(modelResponse);
-        finalResponse = cleaned.finalResponse;
+        const { config } = await loadActiveConfig(serviceType, env, chatId);
+
+        if (serviceType === 'IMAGE_TO_TEXT' && hasAttachments) {
+            // Vision: send images to the model
+            const imageAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('image/'));
+            if (imageAttachments.length > 0 && config.FUNCTION.name === 'callGeminiVision') {
+                const visionPrompt = userMessage || 'Опиши это изображение подробно';
+                const imageBase64 = imageAttachments[0].base64;
+                const modelResponse = await config.FUNCTION(config, visionPrompt, env, imageBase64);
+                const cleaned = extractAndCleanModelResponse(modelResponse);
+                finalResponse = cleaned.finalResponse;
+            } else if (imageAttachments.length > 0 && config.FUNCTION.name === 'callWorkersAIVision') {
+                const visionPrompt = userMessage || 'Опиши это изображение подробно';
+                const imageBase64 = imageAttachments[0].base64;
+                const modelResponse = await config.FUNCTION(config, visionPrompt, env, imageBase64);
+                const cleaned = extractAndCleanModelResponse(modelResponse);
+                finalResponse = cleaned.finalResponse;
+            } else {
+                // Fallback: just send text with file names
+                const fileInfo = payload.attachments.map(a => a.name).join(', ');
+                const combinedMessage = userMessage ? `${userMessage}\n\n[Прикреплены файлы: ${fileInfo}]` : `Пользователь прикрепил файлы: ${fileInfo}. Опиши их.`;
+                const modelResponse = await config.FUNCTION(config, historyForModel, combinedMessage, env);
+                const cleaned = extractAndCleanModelResponse(modelResponse);
+                finalResponse = cleaned.finalResponse;
+            }
+        } else if (serviceType === 'AUDIO_TO_TEXT' && hasAttachments) {
+            const audioAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('audio/'));
+            if (audioAttachments.length > 0) {
+                const audioBase64 = audioAttachments[0].base64;
+                const modelResponse = await config.FUNCTION(config, audioBase64, env);
+                const cleaned = extractAndCleanModelResponse(modelResponse);
+                finalResponse = cleaned.finalResponse;
+            }
+        } else {
+            const modelResponse = await config.FUNCTION(config, historyForModel, userMessage, env);
+            const cleaned = extractAndCleanModelResponse(modelResponse);
+            finalResponse = cleaned.finalResponse;
+        }
     } catch (e) {
         console.error("[WebHandler] AI call error:", e.message);
         return formatResponse(false, "Ошибка ИИ: " + e.message);
@@ -154,134 +154,157 @@ async function handleChat(auth, payload, env, monolith) {
 }
 
 // ============================================================
-// 🎨 ИЗОБРАЖЕНИЕ — Бесплатный SDXL или платные (4¢)
+// 🎨 ИЗОБРАЖЕНИЕ — Поддержка t2i, i2i, upscale, rotate, convert
 // ============================================================
 async function handleImage(auth, payload, env, monolith) {
+    const { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, syncS3Chat, uploadBase64ImageToPublicUrl } = monolith;
+    const isAuth = !!(auth && auth.id);
+    const chatId = isAuth ? String(auth.id) : 'guest';
+    const imageMode = payload.image_mode || 't2i'; // t2i, i2i, upscale, rotate, convert
+
+    // === UPSCALE ===
+    if (imageMode === 'upscale') {
+        if (!payload.image_base64) return formatResponse(false, 'Нет изображения для апскейла');
+        if (!isAuth) return formatResponse(false, 'Нужна авторизация для апскейла');
+
+        const balance = await getUserBalance(chatId, env, monolith);
+        if (balance < 2) return formatResponse(false, 'Недостаточно кредитов. Нужно 2¢.', balance);
+
+        let imageResult;
+        try {
+            const { config } = await loadActiveConfig('IMAGE_TO_UPSCALE', env, chatId);
+            imageResult = await config.FUNCTION(config, payload.image_base64, env);
+        } catch (e) {
+            console.error("[WebHandler] Upscale error:", e.message);
+            return formatResponse(false, "Ошибка апскейла: " + e.message);
+        }
+
+        const creditsLeft = await deductCredits(chatId, 2, env, monolith);
+        return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId);
+    }
+
+    // === ROTATE ===
+    if (imageMode === 'rotate') {
+        if (!payload.image_base64) return formatResponse(false, 'Нет изображения для поворота');
+        const angle = payload.angle || '-90';
+
+        // Rotate via converter (free operation)
+        try {
+            const converterUrl = env.LESHIY_CONVERTER;
+            if (converterUrl) {
+                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+                const imageBuffer = Buffer.from(payload.image_base64, 'base64');
+                const response = await fetch(`${baseUrl}/rotate?angle=${angle}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: imageBuffer
+                });
+                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                const resultBuffer = Buffer.from(await response.arrayBuffer());
+                const resultBase64 = resultBuffer.toString('base64');
+                return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
+            }
+            return formatResponse(false, 'Конвертер недоступен');
+        } catch (e) {
+            console.error("[WebHandler] Rotate error:", e.message);
+            return formatResponse(false, "Ошибка поворота: " + e.message);
+        }
+    }
+
+    // === CONVERT ===
+    if (imageMode === 'convert') {
+        if (!payload.image_base64) return formatResponse(false, 'Нет изображения для конвертации');
+        const targetFormat = payload.target_format || 'png';
+
+        try {
+            const converterUrl = env.LESHIY_CONVERTER;
+            if (converterUrl) {
+                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+                const imageBuffer = Buffer.from(payload.image_base64, 'base64');
+                const response = await fetch(`${baseUrl}/convert-image?format=${targetFormat}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: imageBuffer
+                });
+                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                const resultBuffer = Buffer.from(await response.arrayBuffer());
+                const resultBase64 = resultBuffer.toString('base64');
+                return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
+            }
+            return formatResponse(false, 'Конвертер недоступен');
+        } catch (e) {
+            console.error("[WebHandler] Image convert error:", e.message);
+            return formatResponse(false, "Ошибка конвертации: " + e.message);
+        }
+    }
+
+    // === I2I (Image-to-Image) ===
+    if (imageMode === 'i2i') {
+        const prompt = (payload.prompt || '').trim();
+        if (!prompt) return formatResponse(false, 'Пустой промпт');
+        if (!payload.reference_images || payload.reference_images.length === 0) {
+            return formatResponse(false, 'Нет референсных изображений для i2i');
+        }
+
+        if (!isAuth) return formatResponse(false, 'Для I2I нужна авторизация');
+        const balance = await getUserBalance(chatId, env, monolith);
+        if (balance < 4) return formatResponse(false, 'Недостаточно кредитов. Нужно 4¢.', balance);
+
+        let imageResult;
+        try {
+            const { config } = await loadActiveConfig('IMAGE_TO_IMAGE', env, chatId);
+            const refImage = payload.reference_images[0]; // First reference image
+            imageResult = await config.FUNCTION(config, prompt, env, refImage);
+        } catch (e) {
+            console.error("[WebHandler] I2I error:", e.message);
+            return formatResponse(false, "Ошибка I2I: " + e.message);
+        }
+
+        const creditsLeft = await deductCredits(chatId, 4, env, monolith);
+        return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId);
+    }
+
+    // === T2I (Text-to-Image, default) ===
     const prompt = (payload.prompt || '').trim();
     if (!prompt) return formatResponse(false, 'Пустой промпт');
 
-    const { AI_MODELS, uploadBase64ImageToPublicUrl, createTaskKieAi } = monolith;
-    const isAuth = !!(auth && auth.id);
-    const chatId = isAuth ? String(auth.id) : 'guest';
-    const modelKey = payload.model || 'TEXT_TO_IMAGE_WORKERS_AI';
-    const modelConfig = AI_MODELS[modelKey];
-    if (!modelConfig) return formatResponse(false, 'Модель не найдена: ' + modelKey);
+    const selectedModel = payload.model || 'default';
+    const isFreeModel = (selectedModel === 'free_sdxl' || selectedModel.startsWith('WORKERS_AI'));
 
-    const pricing = modelConfig.pricing;
-    const isFree = !pricing || pricing === 0;
-    const cost = typeof pricing === 'number' ? pricing : 0;
-    const isKieAi = modelConfig.SERVICE === 'KIEAI';
-
-    // Платная модель → проверяем авторизацию и баланс
-    if (!isFree) {
-        if (!isAuth) {
-            return formatResponse(false, 'Для платных моделей нужна авторизация. Войдите через Telegram.');
-        }
-        const balanceCheck = await checkWebBalance(chatId, cost, env);
-        if (!balanceCheck.canProceed) {
-            return formatResponse(false, `Недостаточно кредитов. Нужно ${cost}¢, у вас ${balanceCheck.balance}¢. Пополните баланс.`, balanceCheck.balance);
-        }
+    if (!isFreeModel) {
+        if (!isAuth) return formatResponse(false, 'Для платных моделей нужна авторизация');
+        const balance = await getUserBalance(chatId, env, monolith);
+        if (balance < 4) return formatResponse(false, 'Недостаточно кредитов. Нужно 4¢.', balance);
     }
 
-    // Референсные изображения (до 4 штук, base64)
-    const referenceImages = payload.reference_images || [];
-
-    // ---- Синхронные сервисы (Workers AI, Gemini, BotHub, Pollinations, Kandinsky, Stability) ----
-    if (!isKieAi) {
-        let imageResult;
-        try {
-            // Универсальный вызов T2I: config, prompt, envData[, chatId][, options]
-            const options = {};
-            if (referenceImages.length > 0) {
-                options.reference_images = referenceImages; // передаём как массив base64
-                options.aspect_ratio = payload.aspect_ratio || payload.ratio || '1:1';
-            }
-            if (modelConfig.FUNCTION.length >= 5) {
-                imageResult = await modelConfig.FUNCTION(modelConfig, prompt, env, chatId, options);
-            } else if (modelConfig.FUNCTION.length >= 4) {
-                imageResult = await modelConfig.FUNCTION(modelConfig, prompt, env, chatId);
-            } else {
-                imageResult = await modelConfig.FUNCTION(modelConfig, prompt, env);
-            }
-        } catch (e) {
-            console.error("[WebHandler] Image gen error:", e.message);
-            return formatResponse(false, "Ошибка генерации: " + e.message);
-        }
-
-        // Списываем кредиты за платную модель
-        let creditsLeft = null;
-        if (!isFree && isAuth) {
-            const deductResult = await deductWebCredits(chatId, cost, env);
-            creditsLeft = deductResult.balance;
-        }
-
-        // Конвертируем результат в URL или base64
-        return processImageResult(imageResult, prompt, chatId, env, uploadBase64ImageToPublicUrl, creditsLeft);
-    }
-
-    // ---- Асинхронный сервис KIE.AI ----
-    if (!isAuth) {
-        return formatResponse(false, 'Для генерации через KIE.AI нужна авторизация.');
-    }
-
-    let taskId;
+    let imageResult;
     try {
-        const callbackUrl = env.WORKER_DOMAIN
-            ? `${env.WORKER_DOMAIN.startsWith('http') ? env.WORKER_DOMAIN : 'https://' + env.WORKER_DOMAIN}/api/kieai-callback?chatId=${chatId}&source=web`
-            : null;
-
-        const input = {
-            prompt: prompt,
-            output_format: 'png',
-            aspect_ratio: payload.aspect_ratio || '1:1',
-            image_size: payload.aspect_ratio || '1:1'
-        };
-        // Референсные изображения для KIE.AI (img2img)
-        if (referenceImages.length > 0) {
-            input.reference_images = referenceImages;
-        }
-
-        taskId = await createTaskKieAi(chatId, modelConfig, input, env, callbackUrl);
+        const { config } = await loadActiveConfig('TEXT_TO_IMAGE', env, chatId);
+        imageResult = await config.FUNCTION(config, prompt, env);
     } catch (e) {
-        console.error("[WebHandler] KIE.AI image task error:", e.message);
-        return formatResponse(false, "Ошибка создания задачи: " + e.message);
+        console.error("[WebHandler] Image gen error:", e.message);
+        return formatResponse(false, "Ошибка генерации: " + e.message);
     }
 
-    if (!taskId) {
-        return formatResponse(false, 'Не удалось создать задачу генерации изображения');
+    let creditsLeft = null;
+    if (!isFreeModel && isAuth) {
+        creditsLeft = await deductCredits(chatId, 4, env, monolith);
     }
 
-    // Сохраняем taskId в KV для последующего поллинга
-    const taskKey = chatId + '_active_image_task';
-    if (env.LAST_PHOTO_STORAGE) {
-        await env.LAST_PHOTO_STORAGE.put(taskKey, JSON.stringify({
-            taskId: taskId,
-            model: modelConfig.MODEL,
-            source: 'web'
-        }), { expirationTtl: 86400 });
-    }
-
-    // Списываем кредиты
-    const deductResult = await deductWebCredits(chatId, cost, env);
-
-    return formatResponse(true, null, deductResult.balance, {
-        type: 'image_task',
-        content: taskId  // Фронтенд будет поллить /api/image/status?taskId=
-    });
+    return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId);
 }
 
-// Обработка результата генерации изображения (синхронные сервисы)
-function processImageResult(imageResult, prompt, chatId, env, uploadBase64ImageToPublicUrl, creditsLeft) {
+// Helper: format image result
+function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId) {
     let imageUrl = null;
 
     if (imageResult instanceof ArrayBuffer || (imageResult && imageResult.constructor?.name === 'ArrayBuffer')) {
-        // Бинарное изображение — сохраняем в KV и отдаём URL
         if (uploadBase64ImageToPublicUrl) {
             try {
                 const base64 = Buffer.from(imageResult).toString('base64');
+                // Synchronous check, but uploadBase64ImageToPublicUrl may be async
                 imageUrl = uploadBase64ImageToPublicUrl(base64, env, chatId);
             } catch (e) {
-                // Фолбэк — возвращаем base64
                 const base64 = Buffer.from(imageResult).toString('base64');
                 return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
             }
@@ -297,6 +320,9 @@ function processImageResult(imageResult, prompt, chatId, env, uploadBase64ImageT
         }
     } else if (imageResult && imageResult.url) {
         imageUrl = imageResult.url;
+    } else if (imageResult && typeof imageResult.then === 'function') {
+        // Promise — shouldn't happen but handle gracefully
+        return formatResponse(false, 'Асинхронный результат не поддерживается');
     }
 
     if (!imageUrl) {
@@ -310,209 +336,316 @@ function processImageResult(imageResult, prompt, chatId, env, uploadBase64ImageT
 }
 
 // ============================================================
-// 🎬 ВИДЕО — Платно (20¢+), асинхронно через KIE.AI
+// 🎬 ВИДЕО — Поддержка generate, convert, upscale, rotate
 // ============================================================
 async function handleVideo(auth, payload, env, monolith) {
+    const { loadActiveConfig, createTaskKieAi, extractAndCleanModelResponse } = monolith;
+    const isAuth = !!(auth && auth.id);
+    const chatId = isAuth ? String(auth.id) : 'guest';
+    const videoMode = payload.video_mode || 'generate'; // generate, convert, upscale, rotate
+
+    // === CONVERT / ANALYSIS (free) ===
+    if (videoMode === 'convert') {
+        if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для анализа');
+        const prompt = (payload.prompt || 'Проанализируй это видео подробно').trim();
+
+        let result;
+        try {
+            const { config } = await loadActiveConfig('VIDEO_TO_ANALYSIS', env, chatId);
+            if (config.FUNCTION.name === 'callGeminiVideoVision' || config.FUNCTION.name === 'callGeminiSpeechToText') {
+                const videoBase64 = payload.video_base64;
+                result = await config.FUNCTION(config, prompt, env, videoBase64);
+            } else {
+                result = await config.FUNCTION(config, prompt, env, payload.video_base64);
+            }
+            const cleaned = extractAndCleanModelResponse(result);
+            return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || result });
+        } catch (e) {
+            console.error("[WebHandler] Video analysis error:", e.message);
+            return formatResponse(false, "Ошибка анализа видео: " + e.message);
+        }
+    }
+
+    // === ROTATE (free via converter) ===
+    if (videoMode === 'rotate') {
+        if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для поворота');
+        const angle = payload.angle || '-90';
+        try {
+            const converterUrl = env.LESHIY_CONVERTER;
+            if (converterUrl) {
+                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+                const videoBuffer = Buffer.from(payload.video_base64, 'base64');
+                const response = await fetch(`${baseUrl}/rotate-video?angle=${angle}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: videoBuffer
+                });
+                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                const resultBuffer = Buffer.from(await response.arrayBuffer());
+                const resultBase64 = resultBuffer.toString('base64');
+                return formatResponse(true, null, null, { type: 'video_base64', content: resultBase64 });
+            }
+            return formatResponse(false, 'Конвертер недоступен');
+        } catch (e) {
+            console.error("[WebHandler] Video rotate error:", e.message);
+            return formatResponse(false, "Ошибка поворота видео: " + e.message);
+        }
+    }
+
+    // === UPSCALE (10¢) ===
+    if (videoMode === 'upscale') {
+        if (!isAuth) return formatResponse(false, 'Нужна авторизация');
+        const balance = await getUserBalance(chatId, env, monolith);
+        if (balance < 10) return formatResponse(false, 'Недостаточно кредитов. Нужно 10¢.', balance);
+
+        let taskId;
+        try {
+            const { config: upscaleConfig } = await loadActiveConfig('VIDEO_TO_UPSCALE', env, chatId);
+            const workerDomain = env.WORKER_DOMAIN || '';
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+
+            const input = {
+                video_base64: payload.video_base64,
+                quality: payload.quality || '720p'
+            };
+
+            taskId = await createTaskKieAi(chatId, upscaleConfig, input, env, callbackUrl);
+        } catch (e) {
+            console.error("[WebHandler] Video upscale error:", e.message);
+            return formatResponse(false, "Ошибка апскейла видео: " + e.message);
+        }
+
+        if (!taskId) return formatResponse(false, 'Не удалось создать задачу апскейла видео');
+
+        const creditsLeft = await deductCredits(chatId, 10, env, monolith);
+        return formatResponse(true, null, creditsLeft, { type: 'video_task', content: taskId });
+    }
+
+    // === GENERATE (default, 20¢) ===
     const prompt = (payload.prompt || '').trim();
     if (!prompt) return formatResponse(false, 'Пустой промпт');
 
-    const { AI_MODELS, createTaskKieAi } = monolith;
-    const isAuth = !!(auth && auth.id);
-    const chatId = isAuth ? String(auth.id) : 'guest';
-    const modelKey = payload.model || 'TEXT_TO_VIDEO_KIEAI';
-    const modelConfig = AI_MODELS[modelKey];
-    if (!modelConfig) return formatResponse(false, 'Модель не найдена: ' + modelKey);
+    if (!isAuth) return formatResponse(false, 'Для генерации видео нужна авторизация');
 
-    // Видео — только для авторизованных
-    if (!isAuth) {
-        return formatResponse(false, 'Для генерации видео нужна авторизация. Войдите через Telegram.');
-    }
+    const balance = await getUserBalance(chatId, env, monolith);
+    if (balance < 20) return formatResponse(false, 'Недостаточно кредитов. Нужно 20¢.', balance);
 
-    // Рассчитываем стоимость
-    const pricing = modelConfig.pricing;
-    const isDynamicPricing = typeof pricing === 'object' && pricing !== null;
-    const cost = typeof pricing === 'number' ? pricing : 20; // Дефолт 20¢
-
-    // Для динамического прайсинга — предварительная оценка
-    let estimatedCost = cost;
-    if (isDynamicPricing) {
-        const quality = payload.quality || '480p';
-        const duration = parseInt(payload.duration) || 6;
-        const rate = pricing[quality] || pricing['480p'] || 6;
-        estimatedCost = Math.ceil(rate * duration);
-    }
-
-    // Проверка баланса
-    const balanceCheck = await checkWebBalance(chatId, estimatedCost, env);
-    if (!balanceCheck.canProceed) {
-        return formatResponse(false, `Недостаточно кредитов. Нужно ~${estimatedCost}¢, у вас ${balanceCheck.balance}¢. Пополните баланс.`, balanceCheck.balance);
-    }
-
-    // Создаём задачу KIE.AI
     let taskId;
     try {
-        const callbackUrl = env.WORKER_DOMAIN
-            ? `${env.WORKER_DOMAIN.startsWith('http') ? env.WORKER_DOMAIN : 'https://' + env.WORKER_DOMAIN}/api/kieai-callback?chatId=${chatId}&source=web`
-            : null;
+        const { config: videoConfig } = await loadActiveConfig('TEXT_TO_VIDEO', env, chatId);
+        const workerDomain = env.WORKER_DOMAIN || '';
+        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
         const input = {
             prompt: prompt,
             aspect_ratio: payload.aspect_ratio || '16:9',
-            duration: payload.duration || '6',
+            duration: payload.duration || '5',
             quality: payload.quality || '480p',
-            mode: payload.video_mode || 'normal'
+            mode: 'normal'
         };
-        // Референсные медиа для видео (image/video/audio, base64)
-        if (payload.reference_image) input.reference_image = payload.reference_image;
-        if (payload.reference_audio) input.reference_audio = payload.reference_audio;
-        if (payload.reference_video) input.reference_video = payload.reference_video;
 
-        taskId = await createTaskKieAi(chatId, modelConfig, input, env, callbackUrl);
+        // Add reference image if provided
+        if (payload.reference_image) {
+            input.image_base64 = payload.reference_image;
+        }
+
+        taskId = await createTaskKieAi(chatId, videoConfig, input, env, callbackUrl);
     } catch (e) {
         console.error("[WebHandler] Video task error:", e.message);
         return formatResponse(false, "Ошибка создания задачи видео: " + e.message);
     }
 
-    if (!taskId) {
-        return formatResponse(false, 'Не удалось создать задачу генерации видео');
-    }
+    if (!taskId) return formatResponse(false, 'Не удалось создать задачу генерации видео');
 
-    // Списываем кредиты (для динамического прайсинга — предварительная сумма)
-    const deductResult = await deductWebCredits(chatId, estimatedCost, env);
-
-    return formatResponse(true, null, deductResult.balance, {
-        type: 'video_task',
-        content: taskId,
-        estimated_cost: estimatedCost
-    });
+    const creditsLeft = await deductCredits(chatId, 20, env, monolith);
+    return formatResponse(true, null, creditsLeft, { type: 'video_task', content: taskId });
 }
 
 // ============================================================
-// 🔊 АУДИО — TTS (платно/бесплатно), STT (бесплатно)
+// 🔊 АУДИО — Поддержка TTS, STT, convert, voice_clone
 // ============================================================
 async function handleAudio(auth, payload, env, monolith) {
-    const audioMode = payload.audio_mode || 'tts'; // 'tts' или 'stt'
+    const { loadActiveConfig, extractAndCleanModelResponse } = monolith;
     const isAuth = !!(auth && auth.id);
     const chatId = isAuth ? String(auth.id) : 'guest';
+    const audioMode = payload.audio_mode || 'tts';
 
-    if (audioMode === 'tts') {
-        return await handleTTS(auth, payload, env, monolith, chatId, isAuth);
-    } else {
-        return await handleSTT(auth, payload, env, monolith, chatId, isAuth);
-    }
-}
+    // === STT (Speech-to-Text, free) ===
+    if (audioMode === 'stt') {
+        if (!payload.audio_base64) return formatResponse(false, 'Нет аудиофайла для распознавания');
 
-// TTS — Озвучка текста
-async function handleTTS(auth, payload, env, monolith, chatId, isAuth) {
-    const text = (payload.text || payload.prompt || '').trim();
-    if (!text) return formatResponse(false, 'Пустой текст для озвучки');
-
-    const { AI_MODELS } = monolith;
-    const modelKey = payload.model || 'TEXT_TO_AUDIO_GEMINI';
-    const modelConfig = AI_MODELS[modelKey];
-    if (!modelConfig) return formatResponse(false, 'Модель не найдена: ' + modelKey);
-
-    const pricing = modelConfig.pricing;
-    const isFree = !pricing || pricing === 0;
-    const cost = typeof pricing === 'number' ? pricing : 0;
-    const voice = payload.voice || 'Female';
-    const isKieAi = modelConfig.SERVICE === 'KIEAI';
-
-    // Платная модель → проверка
-    if (!isFree) {
-        if (!isAuth) {
-            return formatResponse(false, 'Для платной озвучки нужна авторизация. Войдите через Telegram.');
-        }
-        const balanceCheck = await checkWebBalance(chatId, cost, env);
-        if (!balanceCheck.canProceed) {
-            return formatResponse(false, `Недостаточно кредитов. Нужно ${cost}¢, у вас ${balanceCheck.balance}¢.`, balanceCheck.balance);
+        let result;
+        try {
+            const { config } = await loadActiveConfig('AUDIO_TO_TEXT', env, chatId);
+            result = await config.FUNCTION(config, payload.audio_base64, env);
+            const cleaned = extractAndCleanModelResponse(result);
+            return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || result });
+        } catch (e) {
+            console.error("[WebHandler] STT error:", e.message);
+            return formatResponse(false, "Ошибка распознавания: " + e.message);
         }
     }
 
-    // ---- Синхронные TTS (Gemini, VoiceRSS, Workers AI) ----
-    if (!isKieAi) {
+    // === CONVERT (free via converter) ===
+    if (audioMode === 'convert') {
+        if (!payload.audio_base64) return formatResponse(false, 'Нет аудиофайла для конвертации');
+        const targetFormat = payload.target_format || 'mp3';
+
+        try {
+            const converterUrl = env.LESHIY_CONVERTER;
+            if (converterUrl) {
+                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+                const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
+                const response = await fetch(`${baseUrl}/convert-audio?format=${targetFormat}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: audioBuffer
+                });
+                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                const resultBuffer = Buffer.from(await response.arrayBuffer());
+                const resultBase64 = resultBuffer.toString('base64');
+                return formatResponse(true, null, null, { type: 'audio_base64', content: resultBase64 });
+            }
+            return formatResponse(false, 'Конвертер недоступен');
+        } catch (e) {
+            console.error("[WebHandler] Audio convert error:", e.message);
+            return formatResponse(false, "Ошибка конвертации: " + e.message);
+        }
+    }
+
+    // === VOICE CLONE ===
+    if (audioMode === 'voice_clone') {
+        const text = (payload.text || '').trim();
+        if (!text) return formatResponse(false, 'Пустой текст');
+        if (!payload.voice_sample) return formatResponse(false, 'Нет образца голоса');
+        if (!isAuth) return formatResponse(false, 'Нужна авторизация');
+
+        const balance = await getUserBalance(chatId, env, monolith);
+        if (balance < 10) return formatResponse(false, 'Недостаточно кредитов. Нужно 10¢.', balance);
+
+        // Voice clone uses the same TTS function but with voice sample
         let audioBuffer;
         try {
-            // Функции TTS принимают (config, text, env, voice)
-            audioBuffer = await modelConfig.FUNCTION(modelConfig, text, env, voice);
+            const { config: audioConfig } = await loadActiveConfig('TEXT_TO_AUDIO', env, chatId);
+            // Pass voice sample to the function if it supports it
+            if (audioConfig.FUNCTION.name === 'callGeminiTextToAudio') {
+                audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, 'user_voice', payload.voice_sample);
+            } else {
+                audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env);
+            }
         } catch (e) {
-            console.error("[WebHandler] TTS error:", e.message);
-            return formatResponse(false, "Ошибка озвучки: " + e.message);
+            console.error("[WebHandler] Voice clone error:", e.message);
+            return formatResponse(false, "Ошибка клонирования: " + e.message);
         }
 
-        // Списываем кредиты за платную модель
-        let creditsLeft = null;
-        if (!isFree && isAuth) {
-            const deductResult = await deductWebCredits(chatId, cost, env);
-            creditsLeft = deductResult.balance;
-        }
-
-        // Конвертируем в base64 для передачи в JSON
+        const creditsLeft = await deductCredits(chatId, 10, env, monolith);
         const audioBase64 = bufferToBase64(audioBuffer);
-        if (!audioBase64) return formatResponse(false, 'Неожиданный формат аудио');
-
-        return formatResponse(true, null, creditsLeft, {
-            type: 'audio_base64',
-            content: audioBase64
-        });
+        return formatResponse(true, null, creditsLeft, { type: 'audio_base64', content: audioBase64 });
     }
 
-    // ---- Асинхронный KIE.AI TTS (ElevenLabs) ----
-    if (!isAuth) {
-        return formatResponse(false, 'Для ElevenLabs озвучки нужна авторизация.');
-    }
+    // === TTS (default, 2¢) ===
+    const text = (payload.text || payload.prompt || '').trim();
+    if (!text) return formatResponse(false, 'Пустой текст');
 
-    const { createTaskKieAi } = monolith;
-    let taskId;
+    if (!isAuth) return formatResponse(false, 'Для озвучки нужна авторизация');
+    const balance = await getUserBalance(chatId, env, monolith);
+    if (balance < 2) return formatResponse(false, 'Недостаточно кредитов. Нужно 2¢.', balance);
+
+    let audioBuffer;
     try {
-        const callbackUrl = env.WORKER_DOMAIN
-            ? `${env.WORKER_DOMAIN.startsWith('http') ? env.WORKER_DOMAIN : 'https://' + env.WORKER_DOMAIN}/api/kieai-callback?chatId=${chatId}&source=web`
-            : null;
+        const { config: audioConfig } = await loadActiveConfig('TEXT_TO_AUDIO', env, chatId);
+        const voice = payload.voice || 'Female';
 
-        const input = { text: text, voice: voice };
-        taskId = await createTaskKieAi(chatId, modelConfig, input, env, callbackUrl);
+        if (audioConfig.FUNCTION.name === 'callGeminiTextToAudio' || audioConfig.SERVICE === 'GEMINI') {
+            audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice);
+        } else {
+            audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env);
+        }
     } catch (e) {
-        console.error("[WebHandler] KIE.AI TTS task error:", e.message);
-        return formatResponse(false, "Ошибка создания задачи озвучки: " + e.message);
+        console.error("[WebHandler] Audio gen error:", e.message);
+        return formatResponse(false, "Ошибка генерации аудио: " + e.message);
     }
 
-    if (!taskId) {
-        return formatResponse(false, 'Не удалось создать задачу озвучки');
+    let creditsLeft = null;
+    if (isAuth) {
+        creditsLeft = await deductCredits(chatId, 2, env, monolith);
     }
 
-    // Списываем кредиты
-    const deductResult = await deductWebCredits(chatId, cost, env);
-
-    return formatResponse(true, null, deductResult.balance, {
-        type: 'audio_task',
-        content: taskId
-    });
+    const audioBase64 = bufferToBase64(audioBuffer);
+    return formatResponse(true, null, creditsLeft, { type: 'audio_base64', content: audioBase64 });
 }
 
-// STT — Транскрипция аудио (бесплатно)
-async function handleSTT(auth, payload, env, monolith, chatId, isAuth) {
-    // STT требует аудиофайл — пока поддерживаем через base64
-    const audioBase64 = payload.audio_base64;
-    if (!audioBase64) {
-        return formatResponse(false, 'Нет аудиоданных. Отправьте audio_base64 в payload.');
+// ============================================================
+// 📋 МОДЕЛИ — Возврат списка доступных моделей
+// ============================================================
+async function handleModels(auth, env, monolith) {
+    const { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig } = monolith;
+    const chatId = (auth && auth.id) ? String(auth.id) : 'guest';
+
+    const models = {
+        chat: [],
+        image: [],
+        image_i2i: [],
+        video: [],
+        audio_tts: [],
+        audio_stt: []
+    };
+
+    // Helper: load models for a service type
+    async function loadServiceModels(serviceType, targetArray) {
+        try {
+            const { config } = await loadActiveConfig(serviceType, env, chatId);
+            if (config) {
+                targetArray.push({
+                    key: serviceType,
+                    displayName: getShortServiceName(config.SERVICE) + ': ' + (config.MODEL || ''),
+                    modelShort: config.MODEL?.split('/').pop() || '',
+                    service: config.SERVICE,
+                    serviceLabel: getShortServiceName(config.SERVICE),
+                    isFree: !config.pricing,
+                    cost: typeof config.pricing === 'number' ? config.pricing : (config.pricing ? 'дин.' : 0)
+                });
+            }
+        } catch (e) {
+            // Service not available
+        }
     }
 
-    const { AI_MODELS } = monolith;
-    const modelKey = payload.model || 'AUDIO_TO_TEXT_WORKERS_AI';
-    const modelConfig = AI_MODELS[modelKey];
-    if (!modelConfig) return formatResponse(false, 'Модель не найдена: ' + modelKey);
+    // Load all service types
+    await Promise.all([
+        loadServiceModels('TEXT_TO_TEXT', models.chat),
+        loadServiceModels('IMAGE_TO_TEXT', models.chat), // Vision models also for chat
+        loadServiceModels('TEXT_TO_IMAGE', models.image),
+        loadServiceModels('IMAGE_TO_IMAGE', models.image_i2i),
+        loadServiceModels('IMAGE_TO_UPSCALE', models.image_i2i),
+        loadServiceModels('TEXT_TO_VIDEO', models.video),
+        loadServiceModels('IMAGE_TO_VIDEO', models.video),
+        loadServiceModels('VIDEO_TO_VIDEO', models.video),
+        loadServiceModels('AUDIO_TO_VIDEO', models.video),
+        loadServiceModels('VIDEO_TO_UPSCALE', models.video),
+        loadServiceModels('TEXT_TO_AUDIO', models.audio_tts),
+        loadServiceModels('AUDIO_TO_TEXT', models.audio_stt)
+    ]);
 
-    try {
-        const audioBuffer = Buffer.from(audioBase64, 'base64');
-        const transcript = await modelConfig.FUNCTION(modelConfig, audioBuffer, env);
-        return formatResponse(true, null, null, {
-            type: 'text',
-            content: transcript
-        });
-    } catch (e) {
-        console.error("[WebHandler] STT error:", e.message);
-        return formatResponse(false, "Ошибка распознавания: " + e.message);
-    }
+    // Mark free models
+    const freeServices = ['TEXT_TO_TEXT_WORKERS_AI', 'TEXT_TO_IMAGE_WORKERS_AI', 'IMAGE_TO_TEXT_WORKERS_AI', 'AUDIO_TO_TEXT_WORKERS_AI', 'TEXT_TO_AUDIO_WORKERS_AI'];
+    models.chat.forEach(m => { if (freeServices.some(f => m.key.includes('WORKERS_AI'))) m.isFree = true; });
+
+    return formatResponse(true, null, null, models);
+}
+
+function getShortServiceName(service) {
+    const names = {
+        'WORKERS_AI': 'Cloudflare',
+        'GEMINI': 'Gemini',
+        'KIEAI': 'KIE.AI',
+        'BOTHUB': 'BotHub',
+        'POLLINATIONS': 'Pollinations',
+        'FUSIONBRAIN': 'Kandinsky',
+        'STABILITY': 'Stability',
+        'VOICERSS': 'VoiceRSS'
+    };
+    return names[service] || service || '';
 }
 
 // ============================================================
@@ -523,81 +656,42 @@ async function handleBalance(auth, env, monolith) {
         return formatResponse(false, 'Не авторизован');
     }
     const chatId = String(auth.id);
-    const balanceInfo = await getWebBalance(chatId, env);
-    return formatResponse(true, null, balanceInfo.balance, { type: 'balance', balance: balanceInfo.balance, isVip: balanceInfo.isVip });
+    const balance = await getUserBalance(chatId, env, monolith);
+
+    // Check VIP status
+    const isVip = false; // TODO: implement VIP check
+
+    return formatResponse(true, null, balance, { type: 'balance', balance: balance, isVip: isVip });
 }
 
 // ============================================================
-// 💰 БАЛАНС — Чтение и списание (те же KV-ключи что в TG-боте)
+// 💰 БАЛАНС — Чтение и списание кредитов
 // ============================================================
 
-// Получить баланс (число или 'VIP')
-async function getWebBalance(chatId, env) {
-    const storage = env.LAST_PHOTO_STORAGE;
-    if (!storage) return { balance: 80, isVip: false };
-
-    const chatKey = String(chatId);
-    const BALANCE_KEY = chatKey + '_credit_balance';
-    const SUBSCRIPTION_END_KEY = chatKey + '_sub_end_credit';
-
-    // 1. Проверяем подписку (VIP)
-    const now = Date.now();
-    try {
-        const subEndStr = await storage.get(SUBSCRIPTION_END_KEY);
-        const subEndTime = parseInt(subEndStr);
-        if (subEndTime && subEndTime > now) {
-            return { balance: 999999, isVip: true };
+async function getUserBalance(chatId, env, monolith) {
+    if (env.LAST_PHOTO_STORAGE) {
+        try {
+            const balanceKey = `users/${chatId}/balance`;
+            const stored = await env.LAST_PHOTO_STORAGE.get(balanceKey);
+            if (stored) return parseInt(stored, 10);
+        } catch (e) {
+            console.error("[WebHandler] Balance read error:", e.message);
         }
-    } catch (e) {}
-
-    // 2. Читаем баланс
-    try {
-        let balanceStr = await storage.get(BALANCE_KEY);
-        let balance = parseInt(balanceStr);
-        if (isNaN(balance)) balance = 80; // FREE_LIMIT
-        return { balance, isVip: false };
-    } catch (e) {
-        return { balance: 80, isVip: false };
     }
+    return 80;
 }
 
-// Проверить, достаточно ли кредитов (без списания)
-async function checkWebBalance(chatId, cost, env) {
-    const info = await getWebBalance(chatId, env);
-    if (info.isVip) return { canProceed: true, balance: 'VIP' };
-    if (info.balance >= cost) return { canProceed: true, balance: info.balance };
-    return { canProceed: false, balance: info.balance };
-}
-
-// Списать кредиты (после успешной генерации)
-async function deductWebCredits(chatId, cost, env) {
-    const storage = env.LAST_PHOTO_STORAGE;
-    if (!storage) return { balance: null };
-
-    const chatKey = String(chatId);
-    const BALANCE_KEY = chatKey + '_credit_balance';
-    const SUBSCRIPTION_END_KEY = chatKey + '_sub_end_credit';
-
-    // Проверяем подписку
+async function deductCredits(chatId, amount, env, monolith) {
+    if (!env.LAST_PHOTO_STORAGE) return null;
     try {
-        const subEndStr = await storage.get(SUBSCRIPTION_END_KEY);
-        const subEndTime = parseInt(subEndStr);
-        if (subEndTime && subEndTime > Date.now()) {
-            return { balance: 'VIP' }; // VIP — не списываем
-        }
-    } catch (e) {}
-
-    try {
-        let balanceStr = await storage.get(BALANCE_KEY);
-        let balance = parseInt(balanceStr);
-        if (isNaN(balance)) balance = 80;
-
-        const newBalance = Math.max(0, balance - cost);
-        await storage.put(BALANCE_KEY, String(newBalance), { expirationTtl: 86400 * 365 });
-        return { balance: newBalance };
+        const balanceKey = `users/${chatId}/balance`;
+        const current = await getUserBalance(chatId, env, monolith);
+        const newBalance = Math.max(0, current - amount);
+        await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
+        return newBalance;
     } catch (e) {
         console.error("[WebHandler] Credit deduction error:", e.message);
-        return { balance: null };
+        return null;
     }
 }
 
@@ -605,20 +699,18 @@ async function deductWebCredits(chatId, cost, env) {
 // 📦 УТИЛИТЫ
 // ============================================================
 
+function bufferToBase64(buffer) {
+    if (Buffer.isBuffer(buffer)) return buffer.toString('base64');
+    if (buffer instanceof ArrayBuffer || (buffer && buffer.constructor?.name === 'ArrayBuffer'))
+        return Buffer.from(buffer).toString('base64');
+    if (typeof buffer === 'string') return buffer; // Already base64
+    return '';
+}
+
 function formatResponse(success, error = null, creditsLeft = null, data = null) {
     const response = { success };
     if (error) response.error = error;
-    if (creditsLeft !== null && creditsLeft !== undefined) response.credits_left = creditsLeft;
+    if (creditsLeft !== null) response.credits_left = creditsLeft;
     if (data) response.data = data;
     return response;
-}
-
-function bufferToBase64(buffer) {
-    if (!buffer) return null;
-    if (Buffer.isBuffer(buffer)) return buffer.toString('base64');
-    if (buffer instanceof ArrayBuffer || (buffer && buffer.constructor?.name === 'ArrayBuffer')) {
-        return Buffer.from(buffer).toString('base64');
-    }
-    if (typeof buffer === 'string') return buffer; // Уже base64
-    return null;
 }

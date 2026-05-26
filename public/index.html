@@ -30,16 +30,16 @@
         <!-- MODE TABS -->
         <div class="mode-tabs" id="modeTabs">
             <button class="mode-tab active" data-mode="chat" onclick="switchMode('chat')">
-                Чат <span class="free-badge">&#10003;</span>
+                <span class="mode-emoji">💬</span> Чат <span class="mode-check">✓</span>
             </button>
             <button class="mode-tab" data-mode="image" onclick="switchMode('image')">
-                Изображение
+                <span class="mode-emoji">✨</span> Изображение <span class="mode-check">✓</span>
             </button>
             <button class="mode-tab" data-mode="video" onclick="switchMode('video')">
-                Видео
+                <span class="mode-emoji">🎬</span> Видео <span class="mode-check">✓</span>
             </button>
             <button class="mode-tab" data-mode="audio" onclick="switchMode('audio')">
-                Аудио
+                <span class="mode-emoji">🔈</span> Аудио <span class="mode-check">✓</span>
             </button>
         </div>
 
@@ -52,9 +52,13 @@
         <div class="sub-header wrap-allowed" id="subImage">
             <div id="imageModeTag" class="mode-tag by-text">по тексту</div>
             <div class="sub-divider"></div>
+            <div id="imageSubModes"></div>
+            <div class="sub-divider"></div>
             <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
             <div class="sub-divider"></div>
             <div id="imageRatio"></div>
+            <div class="sub-divider"></div>
+            <div id="imageSize"></div>
         </div>
         <div class="sub-header wrap-allowed" id="subVideo">
             <div id="videoSubMode"></div>
@@ -64,13 +68,13 @@
             <div id="videoRatio"></div>
             <div class="sub-divider"></div>
             <div id="videoQuality"></div>
+            <div class="sub-divider"></div>
+            <div id="videoDuration"></div>
         </div>
         <div class="sub-header wrap-allowed" id="subAudio">
             <div id="audioSubMode"></div>
             <div class="sub-divider"></div>
             <div id="audioModels" class="skeleton" style="height:24px;width:200px"></div>
-            <div class="sub-divider"></div>
-            <div id="audioVoice"></div>
         </div>
 
         <!-- CHAT AREA -->
@@ -109,47 +113,108 @@
 
         <!-- IMAGE PANEL -->
         <div class="media-panel" id="imagePanel">
-            <div>
-                <h3 id="imageTitle">&#127912; Генерация изображения</h3>
-                <p id="imageDesc">Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ.</p>
-            </div>
-            <!-- Референсные изображения (до 4 референсов) -->
-            <div>
-                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсные изображения (до 4):</label>
-                <div id="imageRefSlots" style="display:flex;gap:8px;flex-wrap:wrap">
-                    <div class="upload-zone" id="imageRef0" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('imageRefInput0').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:11px">Реф. 1</div>
-                        <input type="file" id="imageRefInput0" accept="image/*" style="display:none" onchange="handleImageRef(0,this)">
-                    </div>
-                    <div class="upload-zone" id="imageRef1" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput1').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:11px">Реф. 2</div>
-                        <input type="file" id="imageRefInput1" accept="image/*" style="display:none" onchange="handleImageRef(1,this)">
-                    </div>
-                    <div class="upload-zone" id="imageRef2" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput2').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:11px">Реф. 3</div>
-                        <input type="file" id="imageRefInput2" accept="image/*" style="display:none" onchange="handleImageRef(2,this)">
-                    </div>
-                    <div class="upload-zone" id="imageRef3" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput3').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:11px">Реф. 4</div>
-                        <input type="file" id="imageRefInput3" accept="image/*" style="display:none" onchange="handleImageRef(3,this)">
+            <!-- Генерация (t2i / i2i) -->
+            <div class="panel-subsection active" id="imageGenSection">
+                <div>
+                    <h3 id="imageTitle">&#127912; Генерация изображения</h3>
+                    <p id="imageDesc">Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ.</p>
+                </div>
+                <!-- Референсные изображения (до 4 референсов) -->
+                <div>
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсные изображения (до 4):</label>
+                    <div id="imageRefSlots" style="display:flex;gap:8px;flex-wrap:wrap">
+                        <div class="upload-zone" id="imageRef0" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('imageRefInput0').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Реф. 1</div>
+                            <input type="file" id="imageRefInput0" accept="image/*" style="display:none" onchange="handleImageRef(0,this)">
+                        </div>
+                        <div class="upload-zone" id="imageRef1" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput1').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Реф. 2</div>
+                            <input type="file" id="imageRefInput1" accept="image/*" style="display:none" onchange="handleImageRef(1,this)">
+                        </div>
+                        <div class="upload-zone" id="imageRef2" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput2').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Реф. 3</div>
+                            <input type="file" id="imageRefInput2" accept="image/*" style="display:none" onchange="handleImageRef(2,this)">
+                        </div>
+                        <div class="upload-zone" id="imageRef3" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput3').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Реф. 4</div>
+                            <input type="file" id="imageRefInput3" accept="image/*" style="display:none" onchange="handleImageRef(3,this)">
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div>
-                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер:</label>
-                <div class="size-selector" id="imageSizeSelector">
-                    <button class="size-option active" data-size="1024x1024" onclick="selectImageSize(this)">1024x1024</button>
-                    <button class="size-option" data-size="1344x768" onclick="selectImageSize(this)">1344x768</button>
-                    <button class="size-option" data-size="768x1344" onclick="selectImageSize(this)">768x1344</button>
-                    <button class="size-option" data-size="1440x720" onclick="selectImageSize(this)">1440x720</button>
+                <div class="result-area" id="imageResult">
+                    <span class="result-placeholder">Здесь появится изображение</span>
                 </div>
             </div>
-            <div class="result-area" id="imageResult">
-                <span class="result-placeholder">Здесь появится изображение</span>
+
+            <!-- Апскейл -->
+            <div class="panel-subsection" id="imageUpscaleSection">
+                <div>
+                    <h3>&#128269; Увеличение разрешения</h3>
+                    <p>Загрузите фото — я увеличу разрешение в 4 раза. Стоимость: 2&#162;.</p>
+                </div>
+                <div class="upload-zone" id="imageUpscaleZone" onclick="document.getElementById('imageUpscaleInput').click()">
+                    <div class="icon">&#128247;</div>
+                    <div class="label">Загрузить изображение для апскейла</div>
+                    <div class="hint">JPG, PNG, WebP — до 10 МБ</div>
+                    <input type="file" id="imageUpscaleInput" accept="image/*" style="display:none" onchange="handleImageUpscale(this)">
+                </div>
+                <div class="result-area" id="imageUpscaleResult">
+                    <span class="result-placeholder">Здесь появится увеличенное изображение</span>
+                </div>
+            </div>
+
+            <!-- Поворот -->
+            <div class="panel-subsection" id="imageRotateSection">
+                <div>
+                    <h3>&#128260; Поворот изображения</h3>
+                    <p>Загрузите фото и выберите угол поворота. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="imageRotateZone" onclick="document.getElementById('imageRotateInput').click()">
+                    <div class="icon">&#128247;</div>
+                    <div class="label">Загрузить изображение для поворота</div>
+                    <div class="hint">JPG, PNG, WebP — до 10 МБ</div>
+                    <input type="file" id="imageRotateInput" accept="image/*" style="display:none" onchange="handleImageRotateUpload(this)">
+                </div>
+                <div id="imageRotateControls" style="display:none">
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Угол поворота:</label>
+                    <div class="size-selector" id="imageRotateAngle">
+                        <button class="size-option active" data-angle="-90" onclick="selectRotateAngle(this)">&#8634; 90&#176; влево</button>
+                        <button class="size-option" data-angle="180" onclick="selectRotateAngle(this)">&#128260; 180&#176;</button>
+                        <button class="size-option" data-angle="90" onclick="selectRotateAngle(this)">&#8635; 90&#176; вправо</button>
+                    </div>
+                </div>
+                <div class="result-area" id="imageRotateResult">
+                    <span class="result-placeholder">Здесь появится повёрнутое изображение</span>
+                </div>
+            </div>
+
+            <!-- Конвертация -->
+            <div class="panel-subsection" id="imageConvertSection">
+                <div>
+                    <h3>&#128260; Конвертация изображения</h3>
+                    <p>Загрузите изображение и выберите формат. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="imageConvertZone" onclick="document.getElementById('imageConvertInput').click()">
+                    <div class="icon">&#128247;</div>
+                    <div class="label">Загрузить изображение для конвертации</div>
+                    <div class="hint">Любой формат — JPG, PNG, WebP, GIF</div>
+                    <input type="file" id="imageConvertInput" accept="image/*" style="display:none" onchange="handleImageConvertUpload(this)">
+                </div>
+                <div id="imageConvertFormat" style="display:none">
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Формат:</label>
+                    <div class="size-selector" id="imageConvertFormatBtns">
+                        <button class="size-option active" onclick="selectedImageConvertFormat='png';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">PNG</button>
+                        <button class="size-option" onclick="selectedImageConvertFormat='jpg';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">JPG</button>
+                        <button class="size-option" onclick="selectedImageConvertFormat='webp';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">WebP</button>
+                    </div>
+                </div>
+                <div class="result-area" id="imageConvertResult">
+                    <span class="result-placeholder">Здесь появится сконвертированное изображение</span>
+                </div>
             </div>
         </div>
 
@@ -399,12 +464,13 @@
     let currentMode = 'chat';
     let credits = 0;
     let isProcessing = false;
-    let selectedImageSize = '1024x1024';
     let selectedPlan = 200;
     let user = null; // { id, name, provider, hash, photo }
     let chatHistory = [];
     let chatAttachments = []; // [{name, type, base64, previewUrl}] — файлы для чата
     let selectedAudioConvertFormat = 'mp3';
+    let selectedImageConvertFormat = 'png';
+    let selectedRotateAngle = '-90';
     let voiceCloneSample = null; // {base64, name} — образец голоса
 
     // ---- Динамические модели (загружаются с бэкенда) ----
@@ -413,17 +479,18 @@
         chat: null,
         image: null,
         image_i2i: null,
-        imageSubMode: 't2i',  // 't2i' или 'i2i'
+        imageSubMode: 't2i',  // 't2i', 'i2i', 'upscale', 'rotate', 'convert'
         video: null,
-        videoSubMode: 'generate',  // 'generate' или 'convert'
+        videoSubMode: 'generate',  // 'generate', 'convert', 'rotate', 'upscale'
         audio_tts: null,
         audio_stt: null,
         audioSubMode: 'tts',  // 'tts', 'stt', 'convert', 'voice_clone'
         ratio: '1:1',
         voice: 'Female',
         videoQuality: '480p',
-        videoDuration: '6',
-        videoMode: 'normal'
+        videoDuration: '5',
+        videoMode: 'normal',
+        imageSize: '1024x1024'
     };
 
     // ---- DOM REFS ----
@@ -749,39 +816,61 @@
         const modeTag = document.getElementById('imageModeTag');
         const hasRefs = imageRefs.some(r => r !== null);
 
+        // Sub-modes: t2i / i2i / upscale / rotate / convert
+        const subModesContainer = document.getElementById('imageSubModes');
+        subModesContainer.innerHTML = '';
+        [
+            { key: 't2i', label: '🎨 Генерация', cls: '' },
+            { key: 'i2i', label: '✏️ По фото', cls: '' },
+            { key: 'upscale', label: '🔍 Апскейл', cls: '' },
+            { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
+            { key: 'convert', label: '📦 Конверт', cls: 'free' }
+        ].forEach(sm => {
+            const btn = document.createElement('button');
+            btn.className = 'sub-option' + (selected.imageSubMode === sm.key ? ' active' : '') + (sm.cls ? ' ' + sm.cls : '');
+            btn.dataset.imageSubMode = sm.key;
+            btn.onclick = () => {
+                selected.imageSubMode = sm.key;
+                saveSelected();
+                renderImageSubHeader();
+                switchImageSubMode(sm.key);
+            };
+            btn.innerHTML = sm.label;
+            subModesContainer.appendChild(btn);
+        });
+
         // Модели — t2i или i2i
+        const showModels = (selected.imageSubMode === 't2i' || selected.imageSubMode === 'i2i');
         const modelList = selected.imageSubMode === 'i2i' ? availableModels.image_i2i : availableModels.image;
         const currentModelKey = selected.imageSubMode === 'i2i' ? selected.image_i2i : selected.image;
         const currentModel = modelList.find(m => m.key === currentModelKey);
 
-        // Обновляем тег режима — цвет зависит от стоимости выбранной модели
+        // Обновляем тег режима
         const isFreeModel = currentModel?.isFree;
-        if (hasRefs || selected.imageSubMode === 'i2i') {
+        if (selected.imageSubMode === 'i2i' || (hasRefs && selected.imageSubMode === 't2i')) {
             modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'txt-to-img');
             modeTag.textContent = 'по фото';
-            modeTag.style.cursor = 'pointer';
-            modeTag.title = 'Нажмите для переключения: по тексту';
-            modeTag.onclick = () => { selected.imageSubMode = 't2i'; saveSelected(); renderImageSubHeader(); updateImageDesc(); updateImagePlaceholder(); };
+        } else if (selected.imageSubMode === 'upscale') {
+            modeTag.className = 'mode-tag txt-to-img';
+            modeTag.textContent = 'апскейл';
+        } else if (selected.imageSubMode === 'rotate') {
+            modeTag.className = 'mode-tag by-photo';
+            modeTag.textContent = 'поворот';
+        } else if (selected.imageSubMode === 'convert') {
+            modeTag.className = 'mode-tag by-photo';
+            modeTag.textContent = 'конверт';
         } else {
             modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'by-text');
             modeTag.textContent = 'по тексту';
-            if (hasRefs || availableModels.image_i2i.length > 0) {
-                modeTag.style.cursor = 'pointer';
-                modeTag.title = 'Нажмите для переключения: по фото';
-                modeTag.onclick = () => { selected.imageSubMode = 'i2i'; saveSelected(); renderImageSubHeader(); updateImageDesc(); updateImagePlaceholder(); };
-            } else {
-                modeTag.style.cursor = 'default';
-                modeTag.onclick = null;
-            }
         }
+        modeTag.style.cursor = 'default';
+        modeTag.onclick = null;
 
         const modelsContainer = document.getElementById('imageModels');
         modelsContainer.classList.remove('skeleton');
         modelsContainer.innerHTML = '';
 
-        if (modelList.length === 0) {
-            modelsContainer.innerHTML = '<span class="sub-label">' + (selected.imageSubMode === 'i2i' ? 'Нет i2i моделей' : 'Нет моделей') + '</span>';
-        } else {
+        if (showModels && modelList.length > 0) {
             const sel = document.createElement('select');
             sel.className = 'model-select' + (modelList.find(m => m.key === currentModelKey)?.isFree ? ' model-free' : '');
             sel.value = currentModelKey || '';
@@ -811,27 +900,87 @@
                 sel.appendChild(optgroup);
             }
             modelsContainer.appendChild(sel);
+        } else if (selected.imageSubMode === 'upscale') {
+            modelsContainer.innerHTML = '<span class="sub-label">2\u00A2 за апскейл</span>';
+        } else if (selected.imageSubMode === 'rotate') {
+            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
+        } else if (selected.imageSubMode === 'convert') {
+            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
+        } else {
+            modelsContainer.innerHTML = '<span class="sub-label">Нет моделей</span>';
         }
 
-        // Aspect ratio
+        // Aspect ratio — только для генерации
         const ratioContainer = document.getElementById('imageRatio');
         ratioContainer.innerHTML = '';
-        ['1:1', '4:3', '16:9', '9:16'].forEach(r => {
-            const btn = document.createElement('button');
-            btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
-            btn.dataset.ratio = r;
-            btn.onclick = () => { selected.ratio = r; saveSelected(); renderImageSubHeader(); };
-            btn.textContent = r;
-            ratioContainer.appendChild(btn);
-        });
+        if (showModels) {
+            ['1:1', '4:3', '16:9', '9:16'].forEach(r => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
+                btn.dataset.ratio = r;
+                btn.onclick = () => { selected.ratio = r; saveSelected(); renderImageSubHeader(); updateImageSizeFromRatio(); };
+                btn.textContent = r;
+                ratioContainer.appendChild(btn);
+            });
+        }
+
+        // Размер — в sub-header, пересчитывается при смене соотношения
+        const sizeContainer = document.getElementById('imageSize');
+        sizeContainer.innerHTML = '';
+        if (showModels) {
+            const sizesForRatio = getSizesForRatio(selected.ratio);
+            sizesForRatio.forEach(s => {
+                const btn = document.createElement('button');
+                btn.className = 'size-option' + (selected.imageSize === s ? ' active' : '');
+                btn.dataset.size = s;
+                btn.onclick = () => { selected.imageSize = s; saveSelected(); renderImageSubHeader(); };
+                btn.textContent = s;
+                sizeContainer.appendChild(btn);
+            });
+        }
+
         updateImageDesc();
     }
 
+    // Размеры изображений по соотношению сторон
+    function getSizesForRatio(ratio) {
+        const sizeMap = {
+            '1:1': ['1024x1024'],
+            '4:3': ['1344x768', '1152x864'],
+            '16:9': ['1344x768', '1440x720'],
+            '9:16': ['768x1344', '720x1440']
+        };
+        return sizeMap[ratio] || ['1024x1024'];
+    }
+
+    function updateImageSizeFromRatio() {
+        const sizes = getSizesForRatio(selected.ratio);
+        if (!sizes.includes(selected.imageSize)) {
+            selected.imageSize = sizes[0];
+            saveSelected();
+        }
+    }
+
+    function switchImageSubMode(mode) {
+        selected.imageSubMode = mode;
+        saveSelected();
+        document.getElementById('imageGenSection').classList.toggle('active', mode === 't2i' || mode === 'i2i');
+        document.getElementById('imageUpscaleSection').classList.toggle('active', mode === 'upscale');
+        document.getElementById('imageRotateSection').classList.toggle('active', mode === 'rotate');
+        document.getElementById('imageConvertSection').classList.toggle('active', mode === 'convert');
+        updateImagePlaceholder();
+    }
+
     function renderVideoSubHeader() {
-        // Sub-mode toggle (generate / convert)
+        // Sub-mode toggle
         const subModeContainer = document.getElementById('videoSubMode');
         subModeContainer.innerHTML = '';
-        [{ key: 'generate', label: '\uD83C\uDFB5 Генерация', cls: '' }, { key: 'convert', label: '\uD83D\uDD04 Анализ', cls: 'free' }].forEach(vm => {
+        [
+            { key: 'generate', label: '🎬 Генерация', cls: '' },
+            { key: 'convert', label: '👀 Анализ', cls: 'free' },
+            { key: 'upscale', label: '🔍 Апскейл', cls: '' },
+            { key: 'rotate', label: '🔄 Поворот', cls: 'free' }
+        ].forEach(vm => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.videoSubMode === vm.key ? ' active' : '') + (vm.cls ? ' ' + vm.cls : '');
             btn.dataset.videoSubMode = vm.key;
@@ -877,6 +1026,10 @@
             modelsContainer.appendChild(sel);
         } else if (selected.videoSubMode === 'convert') {
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
+        } else if (selected.videoSubMode === 'upscale') {
+            modelsContainer.innerHTML = '<span class="sub-label">10\u00A2</span>';
+        } else if (selected.videoSubMode === 'rotate') {
+            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         }
 
         // Ratio — только для генерации
@@ -906,18 +1059,31 @@
                 qualityContainer.appendChild(btn);
             });
         }
+
+        // Длительность — только для генерации
+        const durationContainer = document.getElementById('videoDuration');
+        durationContainer.innerHTML = '';
+        if (selected.videoSubMode === 'generate') {
+            ['3', '5', '8', '10'].forEach(d => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-option' + (selected.videoDuration === d ? ' active' : '');
+                btn.dataset.duration = d;
+                btn.onclick = () => { selected.videoDuration = d; saveSelected(); renderVideoSubHeader(); };
+                btn.textContent = d + ' сек';
+                durationContainer.appendChild(btn);
+            });
+        }
     }
 
     function renderAudioSubHeader() {
         // Sub-mode toggle
         const subModeContainer = document.getElementById('audioSubMode');
         subModeContainer.innerHTML = '';
-        subModeContainer.innerHTML = '';
         [
-            { key: 'stt', label: '\uD83C\uDF99 Распознавание', cls: 'free' },
-            { key: 'tts', label: '\uD83C\uDFB5 Озвучка' },
-            { key: 'convert', label: '\uD83D\uDD04 Конвертация', cls: 'free' },
-            { key: 'voice_clone', label: '\uD83C\uDFA4 Голос' }
+            { key: 'tts', label: '🔊 Озвучка', cls: '' },
+            { key: 'stt', label: '🎧 Распознавание', cls: 'free' },
+            { key: 'convert', label: '🔄 Конвертация', cls: 'free' },
+            { key: 'voice_clone', label: '🎤 Свой голос' }
         ].forEach(am => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.audioSubMode === am.key ? ' active' : '') + (am.cls ? ' ' + am.cls : '');
@@ -932,12 +1098,13 @@
             subModeContainer.appendChild(btn);
         });
 
-        // Модели — для TTS/STT
+        // Модели + Голос (объединены)
         const modelsContainer = document.getElementById('audioModels');
         modelsContainer.classList.remove('skeleton');
         modelsContainer.innerHTML = '';
 
         if (selected.audioSubMode === 'tts') {
+            // Для TTS — объединяем выбор модели и голоса в один dropdown
             const modelList = availableModels.audio_tts;
             if (modelList.length > 0) {
                 const sel = document.createElement('select');
@@ -953,6 +1120,15 @@
                 }
                 modelsContainer.appendChild(sel);
             }
+            // Голос сразу после модели (без разделителя)
+            [{ key: 'Female', label: '\u2640 Женский' }, { key: 'Male', label: '\u2642 Мужской' }].forEach(v => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-option' + (selected.voice === v.key ? ' active' : '');
+                btn.dataset.voice = v.key;
+                btn.onclick = () => { selected.voice = v.key; saveSelected(); renderAudioSubHeader(); };
+                btn.innerHTML = v.label;
+                modelsContainer.appendChild(btn);
+            });
         } else if (selected.audioSubMode === 'stt') {
             const modelList = availableModels.audio_stt;
             if (modelList.length > 0) {
@@ -970,20 +1146,6 @@
         } else if (selected.audioSubMode === 'voice_clone') {
             modelsContainer.innerHTML = '<span class="sub-label">Клонирование голоса</span>';
         }
-
-        // Голос — только для TTS
-        const voiceContainer = document.getElementById('audioVoice');
-        voiceContainer.innerHTML = '';
-        if (selected.audioSubMode === 'tts') {
-            [{ key: 'Female', label: '\u2640 Женский' }, { key: 'Male', label: '\u2642 Мужской' }].forEach(v => {
-                const btn = document.createElement('button');
-                btn.className = 'sub-option' + (selected.voice === v.key ? ' active' : '');
-                btn.dataset.voice = v.key;
-                btn.onclick = () => { selected.voice = v.key; saveSelected(); renderAudioSubHeader(); };
-                btn.innerHTML = v.label;
-                voiceContainer.appendChild(btn);
-            });
-        }
     }
 
     // ---- PANEL SUB-MODE SWITCHING ----
@@ -992,7 +1154,7 @@
         saveSelected();
         renderVideoSubHeader();
         document.getElementById('videoGenSection').classList.toggle('active', mode === 'generate');
-        document.getElementById('videoConvertSection').classList.toggle('active', mode === 'convert');
+        document.getElementById('videoConvertSection').classList.toggle('active', mode === 'convert' || mode === 'upscale' || mode === 'rotate');
         updateVideoPlaceholder();
     }
 
@@ -1009,29 +1171,41 @@
 
     function updateImagePlaceholder() {
         if (currentMode === 'image') {
-            const isI2I = selected.imageSubMode === 'i2i';
-            userInput.placeholder = isI2I
-                ? 'Опишите результат на основе референса...'
-                : 'Опишите изображение на английском или русском...';
-            const modelList = isI2I ? availableModels.image_i2i : availableModels.image;
-            const modelKey = isI2I ? selected.image_i2i : selected.image;
-            const model = modelList.find(m => m.key === modelKey);
-            if (model && model.isFree) {
-                inputHint.textContent = isI2I ? 'Генерация по фото — бесплатно' : 'Генерация по тексту — бесплатно';
-            } else {
-                inputHint.textContent = isI2I ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели';
-            }
+            const phMap = {
+                t2i: 'Опишите изображение на английском или русском...',
+                i2i: 'Опишите результат на основе референса...',
+                upscale: 'Загрузите фото выше для увеличения разрешения',
+                rotate: 'Загрузите фото выше и выберите угол поворота',
+                convert: 'Загрузите фото выше и выберите формат'
+            };
+            const hintMap = {
+                t2i: 'Стоимость зависит от модели',
+                i2i: 'Режим «по фото» — генерация на основе референса',
+                upscale: 'Апскейл — 2¢ за изображение',
+                rotate: 'Поворот изображения — бесплатно',
+                convert: 'Конвертация — бесплатно'
+            };
+            userInput.placeholder = phMap[selected.imageSubMode] || 'Опишите изображение...';
+            inputHint.textContent = hintMap[selected.imageSubMode] || '';
         }
     }
 
     function updateVideoPlaceholder() {
         if (currentMode === 'video') {
-            userInput.placeholder = selected.videoSubMode === 'generate'
-                ? 'Опишите видео-сцену для ИИ...'
-                : 'Что сделать с видео? (анализ, описание, субтитры...)';
-            inputHint.textContent = selected.videoSubMode === 'generate'
-                ? 'Стоимость: от 20\u00A2'
-                : 'Анализ видео — бесплатно';
+            const phMap = {
+                generate: 'Опишите видео-сцену для ИИ...',
+                convert: 'Загрузите видеофайл выше для анализа',
+                upscale: 'Загрузите видео выше для увеличения разрешения',
+                rotate: 'Загрузите видео выше для поворота'
+            };
+            const hintMap = {
+                generate: 'Стоимость: от 20\u00A2',
+                convert: 'Анализ видео — бесплатно',
+                upscale: 'Апскейл видео — 10\u00A2',
+                rotate: 'Поворот видео — бесплатно'
+            };
+            userInput.placeholder = phMap[selected.videoSubMode] || 'Опишите видео...';
+            inputHint.textContent = hintMap[selected.videoSubMode] || '';
         }
     }
 
@@ -1052,16 +1226,8 @@
     }
 
     function updateModeTabBadges() {
-        const imageFree = availableModels.image.some(m => m.isFree);
-        document.querySelector('[data-mode="image"]').innerHTML = 'Изображение' +
-            (imageFree ? ' <span class="free-badge">&#10003;</span>' : ' <span class="cost">4&#162;</span>');
-
-        document.querySelector('[data-mode="video"]').innerHTML = 'Видео' +
-            ' <span class="free-badge">&#10003;</span>';
-
-        const hasFreeAudio = availableModels.audio_tts.some(m => m.isFree) || availableModels.audio_stt.some(m => m.isFree);
-        document.querySelector('[data-mode="audio"]').innerHTML = 'Аудио' +
-            (hasFreeAudio ? ' <span class="free-badge">&#10003;</span>' : '');
+        // Mode tabs now use emoji + checkmark system, no free-badge needed
+        // Just ensure the tabs are rendered correctly
     }
 
     function updateImageDesc() {
@@ -1121,7 +1287,7 @@
         userInput.placeholder = placeholders[mode];
         inputHint.textContent = hints[mode];
 
-        // Кнопка прикрепления файлов — видна только в чате
+        // Кнопка прикрепления файлов — видна в чате и для референсов в видео
         document.getElementById('chatFileBtn').style.display = (mode === 'chat') ? 'flex' : 'none';
 
         if (mode === 'image') updateImagePlaceholder();
@@ -1253,6 +1419,14 @@
         if (currentMode === 'chat') {
             await sendChat(text);
         } else if (currentMode === 'image') {
+            if (selected.imageSubMode === 'upscale') {
+                if (upscaleImageBase64) { showToast('Апскейл уже запущен при загрузке', 'info'); return; }
+                showToast('Загрузите изображение для апскейла', 'info'); return;
+            } else if (selected.imageSubMode === 'rotate') {
+                await executeImageRotate(); return;
+            } else if (selected.imageSubMode === 'convert') {
+                await executeImageConvert(); return;
+            }
             if (!text) { showToast('Опишите изображение', 'info'); return; }
             await generateImage(text);
         } else if (currentMode === 'video') {
@@ -1395,7 +1569,7 @@
         try {
             const payload = {
                 prompt,
-                image_size: selectedImageSize,
+                image_size: selected.imageSize,
                 model: modelKey,
                 aspect_ratio: selected.ratio,
                 reference_images: imageRefs.filter(r => r !== null)
@@ -2000,9 +2174,153 @@
 
     // ---- IMAGE SIZE ----
     function selectImageSize(btn) {
-        document.querySelectorAll('#imageSizeSelector .size-option').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('#imageSize .size-option').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        selectedImageSize = btn.dataset.size;
+        selected.imageSize = btn.dataset.size;
+        saveSelected();
+    }
+
+    // ---- ROTATE ANGLE ----
+    function selectRotateAngle(btn) {
+        document.querySelectorAll('#imageRotateAngle .size-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedRotateAngle = btn.dataset.angle;
+    }
+
+    // ---- IMAGE UPSCALE ----
+    let upscaleImageBase64 = null;
+    async function handleImageUpscale(input) {
+        const file = (input.files && input.files[0]) || null;
+        if (!file) return;
+        const resultArea = document.getElementById('imageUpscaleResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Увеличиваю разрешение...</span>';
+        try {
+            const base64 = await fileToBase64(file);
+            upscaleImageBase64 = base64;
+            const response = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'image',
+                    auth: getAuth(),
+                    payload: {
+                        image_base64: base64,
+                        image_mode: 'upscale',
+                        source_name: file.name
+                    }
+                })
+            });
+            if (!response.ok) throw new Error('Ошибка апскейла');
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error || 'Ошибка');
+            const content = data.data?.content;
+            if (content) {
+                const src = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
+                resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Upscaled"><br><a href="' + src + '" download="upscaled.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
+                showToast('Разрешение увеличено!', 'success');
+            } else throw new Error('Сервер не вернул изображение');
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
+        }
+        input.value = '';
+    }
+
+    // ---- IMAGE ROTATE ----
+    let rotateImageBase64 = null;
+    async function handleImageRotateUpload(input) {
+        const file = (input.files && input.files[0]) || null;
+        if (!file) return;
+        try {
+            rotateImageBase64 = await fileToBase64(file);
+            document.getElementById('imageRotateControls').style.display = 'block';
+            document.getElementById('imageRotateResult').innerHTML = '<span class="result-placeholder" style="color:var(--success)">&#10003; Изображение загружено. Выберите угол и отправьте.</span>';
+            showToast('Фото загружено. Выберите угол поворота и нажмите отправить.', 'info');
+        } catch (err) {
+            showToast('Ошибка загрузки фото', 'error');
+        }
+        input.value = '';
+    }
+
+    async function executeImageRotate() {
+        if (!rotateImageBase64) { showToast('Сначала загрузите фото', 'info'); return; }
+        const resultArea = document.getElementById('imageRotateResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Поворачиваю...</span>';
+        try {
+            const response = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'image',
+                    auth: getAuth(),
+                    payload: {
+                        image_base64: rotateImageBase64,
+                        image_mode: 'rotate',
+                        angle: selectedRotateAngle
+                    }
+                })
+            });
+            if (!response.ok) throw new Error('Ошибка поворота');
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error || 'Ошибка');
+            const content = data.data?.content;
+            if (content) {
+                const src = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
+                resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Rotated"><br><a href="' + src + '" download="rotated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
+                showToast('Изображение повёрнуто!', 'success');
+            } else throw new Error('Сервер не вернул изображение');
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
+        }
+    }
+
+    // ---- IMAGE CONVERT ----
+    let convertImageBase64 = null;
+    async function handleImageConvertUpload(input) {
+        const file = (input.files && input.files[0]) || null;
+        if (!file) return;
+        try {
+            convertImageBase64 = await fileToBase64(file);
+            document.getElementById('imageConvertFormat').style.display = 'block';
+            document.getElementById('imageConvertResult').innerHTML = '<span class="result-placeholder" style="color:var(--success)">&#10003; Изображение загружено. Выберите формат и отправьте.</span>';
+        } catch (err) {
+            showToast('Ошибка загрузки фото', 'error');
+        }
+        input.value = '';
+    }
+
+    async function executeImageConvert() {
+        if (!convertImageBase64) { showToast('Сначала загрузите фото', 'info'); return; }
+        const resultArea = document.getElementById('imageConvertResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Конвертирую...</span>';
+        try {
+            const response = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'image',
+                    auth: getAuth(),
+                    payload: {
+                        image_base64: convertImageBase64,
+                        image_mode: 'convert',
+                        target_format: selectedImageConvertFormat
+                    }
+                })
+            });
+            if (!response.ok) throw new Error('Ошибка конвертации');
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error || 'Ошибка');
+            const content = data.data?.content;
+            if (content) {
+                const src = content.startsWith('http') ? content : 'data:image/' + selectedImageConvertFormat + ';base64,' + content;
+                resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Converted"><br><a href="' + src + '" download="converted.' + selectedImageConvertFormat + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + selectedImageConvertFormat.toUpperCase() + '</a>';
+                showToast('Конвертация выполнена!', 'success');
+            } else throw new Error('Сервер не вернул изображение');
+        } catch (err) {
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
+        }
     }
 
     // ---- PURCHASE DIALOG ----

@@ -20,8 +20,9 @@
     --user-bubble: #0f3460;
     --bot-bubble: #2d2d44;
     --shadow: 0 4px 20px rgba(0,0,0,0.3);
-    --radius: 12px;
-    --radius-sm: 8px;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
     --transition: 0.2s ease;
 }
 
@@ -29,7 +30,7 @@ body {
     background: var(--bg-primary);
     color: var(--text-primary);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
-    font-size: 15px;
+    font-size: 16px;
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
@@ -148,11 +149,13 @@ body {
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
 }
+.mode-tabs::-webkit-scrollbar { display: none; } /* Chrome/Safari */
 
 .mode-tab {
-    padding: 7px 16px;
-    border-radius: 20px;
+    padding: 8px 14px;
+    border-radius: 24px;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
@@ -163,24 +166,36 @@ body {
     display: flex;
     align-items: center;
     gap: 5px;
+    font-weight: 500;
 }
 
-.mode-tab:hover { border-color: var(--accent); color: var(--text-primary); }
+.mode-tab:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-light); }
 
 .mode-tab.active {
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
     border-color: var(--accent);
     color: white;
+    box-shadow: 0 2px 12px rgba(168, 85, 247, 0.35);
+}
+
+.mode-tab .mode-emoji {
+    font-size: 15px;
+}
+
+.mode-tab .mode-check {
+    font-size: 11px;
+    margin-left: 2px;
+    opacity: 0;
+    transition: opacity var(--transition);
+}
+
+.mode-tab.active .mode-check {
+    opacity: 1;
 }
 
 .mode-tab .cost {
     font-size: 11px;
     opacity: 0.7;
-}
-
-.mode-tab .free-badge {
-    font-size: 11px;
-    color: var(--free);
 }
 
 /* ===== SUB-HEADER (настройки каждого режима) ===== */
@@ -201,8 +216,8 @@ body {
 .sub-header.wrap-allowed { flex-wrap: wrap; max-height: 88px; overflow-y: auto; }
 
 .sub-option {
-    padding: 5px 12px;
-    border-radius: 16px;
+    padding: 6px 14px;
+    border-radius: 20px;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
@@ -211,7 +226,7 @@ body {
     transition: all var(--transition);
     white-space: nowrap;
 }
-.sub-option:hover { border-color: var(--accent); }
+.sub-option:hover { border-color: var(--accent); color: var(--text-primary); }
 .sub-option.active { background: var(--accent); border-color: var(--accent); color: white; }
 .sub-option.free { border-color: rgba(34,197,94,0.4); color: var(--free); }
 .sub-option.free.active { background: var(--free); color: white; }
@@ -279,7 +294,7 @@ body {
 }
 
 
-/* ===== CHAT AREA ===== */
+/* ===== CUSTOM SCROLLBARS (Premium Dark) ===== */
 .chat-area {
     flex: 1;
     overflow-y: auto;
@@ -289,11 +304,27 @@ body {
     gap: 12px;
     scroll-behavior: smooth;
     position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
 }
-
-.chat-area::-webkit-scrollbar { width: 4px; }
+.chat-area::-webkit-scrollbar { width: 6px; }
 .chat-area::-webkit-scrollbar-track { background: transparent; }
-.chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.chat-area::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.3); border-radius: 3px; }
+.chat-area::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.5); }
+
+.media-panel {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
+}
+.media-panel::-webkit-scrollbar { width: 6px; }
+.media-panel::-webkit-scrollbar-track { background: transparent; }
+.media-panel::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.3); border-radius: 3px; }
+.media-panel::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.5); }
+
+.sub-header {
+    scrollbar-width: none;
+}
+.sub-header::-webkit-scrollbar { display: none; }
 
 /* Chat drop overlay */
 .chat-drop-overlay {
@@ -629,11 +660,12 @@ body {
 .upload-zone {
     border: 2px dashed var(--border);
     border-radius: var(--radius);
-    padding: 30px;
+    padding: 24px;
     text-align: center;
     cursor: pointer;
     transition: all 0.25s ease;
     color: var(--text-secondary);
+    background: rgba(15, 52, 96, 0.15);
 }
 
 .upload-zone:hover {
@@ -676,17 +708,17 @@ body {
 }
 
 .size-option {
-    padding: 6px 12px;
-    border-radius: var(--radius-sm);
+    padding: 6px 14px;
+    border-radius: 20px;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
     font-size: 13px;
     cursor: pointer;
     transition: all var(--transition);
+    white-space: nowrap;
 }
-
-.size-option:hover { border-color: var(--accent); }
+.size-option:hover { border-color: var(--accent); color: var(--text-primary); }
 .size-option.active { background: var(--accent); border-color: var(--accent); color: white; }
 
 .generate-btn {
@@ -754,12 +786,12 @@ body {
 
 .input-wrapper textarea {
     width: 100%;
-    padding: 10px 14px;
-    border-radius: var(--radius-sm);
+    padding: 10px 16px;
+    border-radius: 24px;
     border: 1px solid var(--border);
     background: var(--bg-input);
     color: var(--text-primary);
-    font-size: 15px;
+    font-size: 16px;
     font-family: inherit;
     resize: none;
     max-height: 120px;
@@ -777,9 +809,9 @@ body {
 .send-btn {
     width: 44px;
     height: 44px;
-    border-radius: var(--radius-sm);
+    border-radius: 50%;
     border: none;
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
     color: white;
     font-size: 18px;
     cursor: pointer;
@@ -788,15 +820,16 @@ body {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
 }
 
-.send-btn:hover { background: var(--accent-hover); transform: scale(1.05); }
-.send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.send-btn:hover { background: linear-gradient(135deg, #9333ea 0%, #6d28d9 100%); transform: scale(1.08); box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4); }
+.send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .attach-btn {
     width: 44px;
     height: 44px;
-    border-radius: var(--radius-sm);
+    border-radius: 50%;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
@@ -808,7 +841,7 @@ body {
     justify-content: center;
     flex-shrink: 0;
 }
-.attach-btn:hover { border-color: var(--accent); color: var(--accent); }
+.attach-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
 .input-hint {
     font-size: 12px;
