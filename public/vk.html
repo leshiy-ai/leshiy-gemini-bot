@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta property="vk:app_id" content="" />
     <title>Авторизация ВКонтакте — Gemini-AI</title>
     <style>
         body { 
@@ -15,6 +16,8 @@
             font-family: sans-serif; 
         }
     </style>
+    <!-- VK Bridge для авторизации через VK Mini App -->
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const returnToFromUrl = urlParams.get('returnTo') || urlParams.get('auth_origin') || '';
