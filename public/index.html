@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gemini-AI</title>
+    <title>Gemini-AI Premium</title>
     <meta name="description" content="Gemini-AI — чат с ИИ, генерация изображений, видео и аудио">
     <meta name="theme-color" content="#1a1a2e">
     <link rel="icon" type="image/svg+xml" href="/images/gemini_purple.svg">
+
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,7 +16,7 @@
         <div class="header">
             <div class="header-left">
                 <div class="header-logo">Gemini<span>-AI</span></div>
-                <div class="header-badge">Beta</div>
+                <div class="header-badge">Premium</div>
             </div>
             <div class="header-right">
                 <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()" title="Купить кредиты">
@@ -112,6 +113,32 @@
                 <h3 id="imageTitle">&#127912; Генерация изображения</h3>
                 <p id="imageDesc">Опиши что ты хочешь увидеть, и я создам изображение с помощью ИИ.</p>
             </div>
+            <!-- Референсные изображения (до 4 референсов) -->
+            <div>
+                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсные изображения (до 4):</label>
+                <div id="imageRefSlots" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <div class="upload-zone" id="imageRef0" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('imageRefInput0').click()">
+                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                        <div class="hint" style="margin:0;font-size:11px">Реф. 1</div>
+                        <input type="file" id="imageRefInput0" accept="image/*" style="display:none" onchange="handleImageRef(0,this)">
+                    </div>
+                    <div class="upload-zone" id="imageRef1" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput1').click()">
+                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                        <div class="hint" style="margin:0;font-size:11px">Реф. 2</div>
+                        <input type="file" id="imageRefInput1" accept="image/*" style="display:none" onchange="handleImageRef(1,this)">
+                    </div>
+                    <div class="upload-zone" id="imageRef2" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput2').click()">
+                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                        <div class="hint" style="margin:0;font-size:11px">Реф. 3</div>
+                        <input type="file" id="imageRefInput2" accept="image/*" style="display:none" onchange="handleImageRef(2,this)">
+                    </div>
+                    <div class="upload-zone" id="imageRef3" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput3').click()">
+                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                        <div class="hint" style="margin:0;font-size:11px">Реф. 4</div>
+                        <input type="file" id="imageRefInput3" accept="image/*" style="display:none" onchange="handleImageRef(3,this)">
+                    </div>
+                </div>
+            </div>
             <div>
                 <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер:</label>
                 <div class="size-selector" id="imageSizeSelector">
@@ -119,32 +146,6 @@
                     <button class="size-option" data-size="1344x768" onclick="selectImageSize(this)">1344x768</button>
                     <button class="size-option" data-size="768x1344" onclick="selectImageSize(this)">768x1344</button>
                     <button class="size-option" data-size="1440x720" onclick="selectImageSize(this)">1440x720</button>
-                </div>
-            </div>
-            <!-- Референсные изображения (до 4 референсов) -->
-            <div>
-                <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсные изображения (до 4):</label>
-                <div id="imageRefSlots" style="display:flex;gap:8px;flex-wrap:wrap">
-                    <div class="upload-zone" id="imageRef0" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('imageRefInput0').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:10px">Реф. 1</div>
-                        <input type="file" id="imageRefInput0" accept="image/*" style="display:none" onchange="handleImageRef(0,this)">
-                    </div>
-                    <div class="upload-zone" id="imageRef1" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput1').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:10px">Реф. 2</div>
-                        <input type="file" id="imageRefInput1" accept="image/*" style="display:none" onchange="handleImageRef(1,this)">
-                    </div>
-                    <div class="upload-zone" id="imageRef2" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput2').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:10px">Реф. 3</div>
-                        <input type="file" id="imageRefInput2" accept="image/*" style="display:none" onchange="handleImageRef(2,this)">
-                    </div>
-                    <div class="upload-zone" id="imageRef3" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput3').click()">
-                        <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                        <div class="hint" style="margin:0;font-size:10px">Реф. 4</div>
-                        <input type="file" id="imageRefInput3" accept="image/*" style="display:none" onchange="handleImageRef(3,this)">
-                    </div>
                 </div>
             </div>
             <div class="result-area" id="imageResult">
@@ -165,19 +166,19 @@
                 <div>
                     <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсы (необязательно):</label>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <div class="upload-zone" id="videoRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefImgInput').click()">
+                        <div class="upload-zone" id="videoRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoRefImgInput').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                            <div class="hint" style="margin:0;font-size:10px">Картинка</div>
+                            <div class="hint" style="margin:0;font-size:11px">Картинка</div>
                             <input type="file" id="videoRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRef('image',this)">
                         </div>
-                        <div class="upload-zone" id="videoRefAudio" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefAudioInput').click()">
+                        <div class="upload-zone" id="videoRefAudio" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoRefAudioInput').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#127925;</div>
-                            <div class="hint" style="margin:0;font-size:10px">Аудио</div>
+                            <div class="hint" style="margin:0;font-size:11px">Аудио</div>
                             <input type="file" id="videoRefAudioInput" accept="audio/*" style="display:none" onchange="handleVideoRef('audio',this)">
                         </div>
-                        <div class="upload-zone" id="videoRefVideo" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center" onclick="document.getElementById('videoRefVideoInput').click()">
+                        <div class="upload-zone" id="videoRefVideo" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoRefVideoInput').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#127916;</div>
-                            <div class="hint" style="margin:0;font-size:10px">Видео</div>
+                            <div class="hint" style="margin:0;font-size:11px">Видео</div>
                             <input type="file" id="videoRefVideoInput" accept="video/*" style="display:none" onchange="handleVideoRef('video',this)">
                         </div>
                     </div>
@@ -676,18 +677,18 @@
                 if (!availableModels.audio_tts) availableModels.audio_tts = [];
                 if (!availableModels.audio_stt) availableModels.audio_stt = [];
 
-                // Устанавливаем дефолты если ещё не выбраны
-                if (!selected.chat && availableModels.chat.length > 0)
+                // Устанавливаем дефолты если ещё не выбраны, ИЛИ если выбранный ключ больше не существует (stale key из localStorage)
+                if ((!selected.chat || !availableModels.chat.find(m => m.key === selected.chat)) && availableModels.chat.length > 0)
                     selected.chat = availableModels.chat.find(m => m.isFree)?.key || availableModels.chat[0]?.key;
-                if (!selected.image && availableModels.image.length > 0)
+                if ((!selected.image || !availableModels.image.find(m => m.key === selected.image)) && availableModels.image.length > 0)
                     selected.image = availableModels.image.find(m => m.isFree)?.key || availableModels.image[0]?.key;
-                if (!selected.image_i2i && availableModels.image_i2i.length > 0)
+                if ((!selected.image_i2i || !availableModels.image_i2i.find(m => m.key === selected.image_i2i)) && availableModels.image_i2i.length > 0)
                     selected.image_i2i = availableModels.image_i2i[0]?.key;
-                if (!selected.video && availableModels.video.length > 0)
+                if ((!selected.video || !availableModels.video.find(m => m.key === selected.video)) && availableModels.video.length > 0)
                     selected.video = availableModels.video[0]?.key;
-                if (!selected.audio_tts && availableModels.audio_tts.length > 0)
+                if ((!selected.audio_tts || !availableModels.audio_tts.find(m => m.key === selected.audio_tts)) && availableModels.audio_tts.length > 0)
                     selected.audio_tts = availableModels.audio_tts.find(m => m.isFree)?.key || availableModels.audio_tts[0]?.key;
-                if (!selected.audio_stt && availableModels.audio_stt.length > 0)
+                if ((!selected.audio_stt || !availableModels.audio_stt.find(m => m.key === selected.audio_stt)) && availableModels.audio_stt.length > 0)
                     selected.audio_stt = availableModels.audio_stt[0]?.key;
 
                 saveSelected();
@@ -1380,11 +1381,8 @@
         const modelList = isI2I ? availableModels.image_i2i : availableModels.image;
         const model = modelList.find(m => m.key === modelKey);
         const cost = model?.cost || 4;
-        if (!model?.isFree && credits < cost) {
-            showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
-            openPurchaseDialog();
-            return;
-        }
+        if (!model?.isFree && !checkAuth(cost)) return;
+        if (model?.isFree && !user) { /* free models don't require auth but warn */ }
 
         isProcessing = true;
         sendBtn.disabled = true;
@@ -1463,11 +1461,9 @@
     }
 
     async function generateVideo(prompt) {
-        if (credits < 20) {
-            showToast('Недостаточно кредитов! Нужно 20\u00A2', 'error');
-            openPurchaseDialog();
-            return;
-        }
+        const model = availableModels.video.find(m => m.key === selected.video);
+        const cost = model?.cost || 20;
+        if (!checkAuth(cost)) return;
 
         isProcessing = true;
         sendBtn.disabled = true;
@@ -1491,9 +1487,9 @@
                         quality: selected.videoQuality,
                         duration: selected.videoDuration,
                         video_mode: selected.videoMode || 'normal',
-                        reference_image: videoRefs.image,
-                        reference_audio: videoRefs.audio,
-                        reference_video: videoRefs.video
+                        ...(videoRefs.image ? { reference_image: videoRefs.image } : {}),
+                        ...(videoRefs.audio ? { reference_audio: videoRefs.audio } : {}),
+                        ...(videoRefs.video ? { reference_video: videoRefs.video } : {})
                     }
                 })
             });
@@ -1513,7 +1509,7 @@
                 const videoUrl = data.data?.content || data.data?.url || data.url;
                 if (videoUrl) {
                     resultArea.innerHTML = '<video controls autoplay loop><source src="' + videoUrl + '" type="video/mp4"></video>';
-                    credits = data.credits_left !== undefined ? data.credits_left : credits - 20;
+                    credits = data.credits_left !== undefined ? data.credits_left : credits - cost;
                     updateCreditsDisplay();
                     showToast('Видео создано!', 'success');
                 } else {
@@ -1523,7 +1519,7 @@
                 const rawUrl = await response.text();
                 if (rawUrl && rawUrl.startsWith('http')) {
                     resultArea.innerHTML = '<video controls autoplay loop><source src="' + rawUrl.trim() + '" type="video/mp4"></video>';
-                    credits -= 20;
+                    credits -= cost;
                     updateCreditsDisplay();
                     showToast('Видео создано!', 'success');
                 } else {
@@ -1600,11 +1596,7 @@
     async function generateAudioTTS(text) {
         const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
         const cost = model?.cost || 2;
-        if (!model?.isFree && credits < cost) {
-            showToast('Недостаточно кредитов! Нужно ' + cost + '\u00A2', 'error');
-            openPurchaseDialog();
-            return;
-        }
+        if (!model?.isFree && !checkAuth(cost)) return;
 
         isProcessing = true;
         sendBtn.disabled = true;
@@ -1773,6 +1765,8 @@
     }
 
     async function generateVoiceClone(text) {
+        if (!checkAuth(10)) return;
+
         isProcessing = true;
         sendBtn.disabled = true;
         userInput.value = '';
