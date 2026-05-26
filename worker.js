@@ -16425,9 +16425,32 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     }
 
     // -----------------------------
-    // ✅ ВНЕШНЯЯ СТРАНИЦА WEBHOOKA
+    // ✅ ВНЕШНЯЯ СТРАНИЦА (РАЗДАЧА INDEX.HTML ИЛИ ФОЛЛБЭК ЗАГЛУШКИ)
     // -----------------------------
     if (request.method !== 'POST') {
+        // Если это запрос на корень (/) или прямо на /index.html — отдаем настоящий фронтенд
+        if (path === '/' || path === '/index.html') {
+            try {
+                const fsModule = typeof __non_webpack_require__ !== 'undefined' ? __non_webpack_require__ : (typeof require !== 'undefined' ? require : null);
+                if (fsModule) {
+                    const fs = fsModule('fs');
+                    const pathModule = fsModule('path');
+                    const filePath = pathModule.join(__dirname || '.', 'public', 'index.html');
+                    
+                    if (fs.existsSync(filePath)) {
+                        const content = fs.readFileSync(filePath, 'utf8');
+                        return new Response(content, {
+                            headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
+                            status: 200
+                        });
+                    }
+                }
+            } catch(e) {
+                console.error('Ошибка загрузки index.html с диска:', e);
+            }
+        }
+
+        // --- ФОЛЛБЭК: Если файла index.html нет на диске, отдаем старую заглушку с QR ---
         const cdn = "https://storage.yandexcloud.net/leshiy-storage-images";
         const htmlContent = `
             <!DOCTYPE html>
@@ -16455,10 +16478,10 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         `;
 
         return new Response(htmlContent, {
-            headers: { 'Content-Type': 'text/html' },
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
             status: 200
         });
-    } // КОНЕЦ БЛОКА ВНЕШНЕЙ СТРАНИЦЫ WEBHOOKA
+    } // КОНЕЦ БЛОКА ВНЕШНЕЙ СТРАНИЦЫ
 
     // --- 0. ПЕРЕД ИЗВЛЕЧЕНИЕМ JSON ---
     const update = await request.json().catch(() => ({})); // <--- В ЭТОЙ СТРОКЕ request.body БЫЛ ИСЧЕРПАН
