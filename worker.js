@@ -16425,18 +16425,36 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     }
 
     // -----------------------------
-    // ✅ ВНЕШНЯЯ СТРАНИЦА (РАЗДАЧА INDEX.HTML ИЛИ ФОЛЛБЭК ЗАГЛУШКИ)
+    // ✅ ВНЕШНЯЯ СТРАНИЦА И СТАТИКА (CSS, JS, INDEX.HTML)
     // -----------------------------
     if (request.method !== 'POST') {
-        // Если это запрос на корень (/) или прямо на /index.html — отдаем настоящий фронтенд
-        if (path === '/' || path === '/index.html') {
-            try {
-                const fsModule = typeof __non_webpack_require__ !== 'undefined' ? __non_webpack_require__ : (typeof require !== 'undefined' ? require : null);
-                if (fsModule) {
-                    const fs = fsModule('fs');
-                    const pathModule = fsModule('path');
+        try {
+            const fsModule = typeof __non_webpack_require__ !== 'undefined' ? __non_webpack_require__ : (typeof require !== 'undefined' ? require : null);
+            if (fsModule) {
+                const fs = fsModule('fs');
+                const pathModule = fsModule('path');
+
+                // 1. Если запрашивают конкретный статический файл (например, style.css)
+                if (path.endsWith('.css') || path.endsWith('.js')) {
+                    // Убираем лишние слэши и строим путь к файлу внутри папки public
+                    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+                    const filePath = pathModule.join(__dirname || '.', 'public', cleanPath);
+
+                    if (fs.existsSync(filePath)) {
+                        const content = fs.readFileSync(filePath);
+                        // Определяем правильный MIME-тип, иначе браузер заблокирует файл
+                        const contentType = path.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8';
+                        
+                        return new Response(content, {
+                            headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache' },
+                            status: 200
+                        });
+                    }
+                }
+
+                // 2. Если запрашивают корень (/) или index.html
+                if (path === '/' || path === '/index.html') {
                     const filePath = pathModule.join(__dirname || '.', 'public', 'index.html');
-                    
                     if (fs.existsSync(filePath)) {
                         const content = fs.readFileSync(filePath, 'utf8');
                         return new Response(content, {
@@ -16445,9 +16463,9 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                         });
                     }
                 }
-            } catch(e) {
-                console.error('Ошибка загрузки index.html с диска:', e);
             }
+        } catch(e) {
+            console.error('Ошибка раздачи статики с диска:', e);
         }
 
         // --- ФОЛЛБЭК: Если файла index.html нет на диске, отдаем старую заглушку с QR ---
