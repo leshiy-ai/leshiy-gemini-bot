@@ -9,10 +9,6 @@
 //
 // Контракт ответа:
 //   { success, error, credits_left, data: {type, content} }
-//
-// ВАЖНО: На Yandex Cloud НЕТ CLOUDFLARE_ACCOUNT_ID / env.AI.run
-// Поэтому ВСЕ модели WORKERS_AI здесь не работают.
-// getWebModel() выбирает GEMINI-модели как дефолт для веба.
 // ============================================================
 
 module.exports.handleWebRequest = async function(body, env, ctx) {
@@ -20,13 +16,6 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
 
     // Привязываем контекст воркера (AI_MODELS, функции и т.д.)
     const monolith = ctx || {};
-
-    // 🛑 СТАБ env.ctx для Yandex Cloud (worker.js использует env.ctx.waitUntil)
-    if (!env.ctx) {
-        env.ctx = {
-            waitUntil: (promise) => { /* no-op on Yandex Cloud */ }
-        };
-    }
 
     try {
         switch (mode) {
@@ -56,114 +45,18 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
 };
 
 // ============================================================
-// 🧠 УМНЫЙ ВЫБОР МОДЕЛИ ДЛЯ ВЕБА
-// ============================================================
-// На Yandex Cloud нет CLOUDFLARE_ACCOUNT_ID и env.AI.run,
-// поэтому WORKERS_AI модели не работают.
-// Эта функция подбирает рабочую модель, предпочитая GEMINI.
-
-// Приоритет сервисов для веба (первый = лучший)
-const WEB_SERVICE_PRIORITY = ['GEMINI', 'KIEAI', 'BOTHUB', 'POLLINATIONS', 'VOICERSS', 'STABILITY', 'FUSIONBRAIN'];
-
-// Явные маппинги: какой ключ модели использовать по умолчанию для каждого типа
-const WEB_DEFAULT_MODELS = {
-    'TEXT_TO_TEXT':       'TEXT_TO_TEXT_GEMINI',
-    'IMAGE_TO_TEXT':     'IMAGE_TO_TEXT_GEMINI',
-    'TEXT_TO_IMAGE':     'TEXT_TO_IMAGE_GEMINI',
-    'IMAGE_TO_IMAGE':    'IMAGE_TO_IMAGE_GEMINI',
-    'IMAGE_TO_UPSCALE':  'IMAGE_TO_UPSCALE_KIEAI',
-    'TEXT_TO_VIDEO':     'TEXT_TO_VIDEO_KIEAI',
-    'IMAGE_TO_VIDEO':    'IMAGE_TO_VIDEO_KIEAI',
-    'VIDEO_TO_VIDEO':    'VIDEO_TO_VIDEO_KIEAI_WAN',
-    'AUDIO_TO_VIDEO':    'AUDIO_TO_VIDEO_KIEAI',
-    'VIDEO_TO_UPSCALE':  'VIDEO_TO_UPSCALE_KIEAI',
-    'VIDEO_TO_ANALYSIS': 'VIDEO_TO_ANALYSIS_GEMINI',
-    'TEXT_TO_AUDIO':     'TEXT_TO_AUDIO_GEMINI',
-    'AUDIO_TO_TEXT':     'AUDIO_TO_TEXT_GEMINI',
-    'VIDEO_TO_TEXT':     'VIDEO_TO_TEXT_GEMINI',
-    'AUDIO_TO_AUDIO':    'AUDIO_TO_AUDIO_KIEAI',
-};
-
-/**
- * Выбирает модель для веб-запроса.
- * 1. Если юзер явно указал payload.model и она НЕ WORKERS_AI → используем её
- * 2. Если указана WORKERS_AI → игнорируем, подбираем альтернативу
- * 3. По умолчанию берём из WEB_DEFAULT_MODELS
- * 4. Фоллбэк: ищем первую не-WORKERS_AI модель в AI_MODEL_MENU_CONFIG
- */
-function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel) {
-    // 1. Явный выбор юзера (если это не WORKERS_AI)
-    if (payloadModel && AI_MODELS[payloadModel]) {
-        const model = AI_MODELS[payloadModel];
-        if (model.SERVICE !== 'WORKERS_AI') {
-            return { config: model, key: payloadModel };
-        }
-        // WORKERS_AI не работает на вебе — подбираем замену
-        console.log(`[WebHandler] Model ${payloadModel} is WORKERS_AI, substituting...`);
-    }
-
-    // 2. Явный дефолт из таблицы
-    const defaultKey = WEB_DEFAULT_MODELS[serviceType];
-    if (defaultKey && AI_MODELS[defaultKey]) {
-        return { config: AI_MODELS[defaultKey], key: defaultKey };
-    }
-
-    // 3. Ищем первую не-WORKERS_AI модель в AI_MODEL_MENU_CONFIG
-    const menuConfig = AI_MODEL_MENU_CONFIG[serviceType];
-    if (menuConfig && menuConfig.models) {
-        for (const [modelKey] of Object.entries(menuConfig.models)) {
-            const model = AI_MODELS[modelKey];
-            if (model && model.SERVICE !== 'WORKERS_AI') {
-                return { config: model, key: modelKey };
-            }
-        }
-    }
-
-    // 4. Фоллбэк: перебираем все AI_MODELS по приоритету сервиса
-    for (const preferredService of WEB_SERVICE_PRIORITY) {
-        for (const [modelKey, model] of Object.entries(AI_MODELS)) {
-            if (model.SERVICE === preferredService) {
-                // Проверяем что модель подходит по типу
-                const modelServiceType = modelKey.split('_').slice(0, 3).join('_');
-                if (modelServiceType === serviceType) {
-                    return { config: model, key: modelKey };
-                }
-            }
-        }
-    }
-
-    return null;
-}
-
-// Хелпер: получить URL конвертера (может быть объектом с .toString() или строкой)
-function getConverterUrl(env) {
-    const raw = env.LESHIY_CONVERTER;
-    if (!raw) return '';
-    if (typeof raw === 'string') return raw;
-    if (typeof raw.toString === 'function') return raw.toString();
-    return '';
-}
-
-// Хелпер: получить URL прокси
-function getProxyUrl(env) {
-    const raw = env.LESHIY_AI_PROXY;
-    if (!raw) return '';
-    if (typeof raw === 'string') return raw;
-    if (typeof raw.toString === 'function') return raw.toString();
-    return '';
-}
-
-// ============================================================
 // 🟢 ЧАТ — Бесплатно для всех (гости + авторизованные)
 // ============================================================
 async function handleChat(auth, payload, env, monolith) {
     const userMessage = (payload.prompt || '').trim();
+    // Allow empty text if there are attachments
     if (!userMessage && (!payload.attachments || payload.attachments.length === 0)) {
         return formatResponse(false, 'Пустое сообщение');
     }
 
-    const { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse, syncS3Chat } = monolith;
+    const { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat } = monolith;
 
+    // История из localStorage фронтенда → формат для AI-функций
     const browserHistory = payload.history || [];
     const historyForModel = browserHistory.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
@@ -173,7 +66,7 @@ async function handleChat(auth, payload, env, monolith) {
     const isAuth = !!(auth && auth.id);
     const chatId = isAuth ? String(auth.id) : 'guest';
 
-    // Авторизованный — сохраняем в S3
+    // === Авторизованный пользователь — сохраняем в S3 ===
     if (isAuth && syncS3Chat) {
         try {
             const s3History = await syncS3Chat(chatId, userMessage || '[Файлы]', 'user', env);
@@ -184,15 +77,16 @@ async function handleChat(auth, payload, env, monolith) {
             historyForModel.length = 0;
             historyForModel.push(...convertedHistory);
         } catch (e) {
-            console.error("[WebHandler] S3 sync error:", e.message);
+            console.error("[WebHandler] S3 sync error (chat):", e.message);
         }
     }
 
-    // Определяем тип сервиса
+    // Determine if we have attachments that need Vision
     const hasAttachments = payload.attachments && payload.attachments.length > 0;
     let serviceType = 'TEXT_TO_TEXT';
 
     if (hasAttachments) {
+        // Check if any attachment is an image → use Vision
         const hasImage = payload.attachments.some(a => a.type && a.type.startsWith('image/'));
         const hasAudio = payload.attachments.some(a => a.type && a.type.startsWith('audio/'));
         const hasVideo = payload.attachments.some(a => a.type && a.type.startsWith('video/'));
@@ -202,48 +96,34 @@ async function handleChat(auth, payload, env, monolith) {
         else if (hasVideo) serviceType = 'VIDEO_TO_TEXT';
     }
 
-    // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ — GEMINI вместо WORKERS_AI
+    // Загружаем модель: из payload (выбор юзера) или активную из KV
     let finalResponse;
+    let config;
     try {
-        const modelInfo = getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-        if (!modelInfo) {
-            return formatResponse(false, `Нет доступной модели для ${serviceType}`);
+        if (payload.model && AI_MODELS[payload.model]) {
+            config = AI_MODELS[payload.model];
+        } else {
+            const loaded = await loadActiveConfig(serviceType, env, chatId);
+            config = loaded.config;
         }
-        const config = modelInfo.config;
-        console.log(`[WebHandler] Chat using model: ${modelInfo.key} (${config.SERVICE})`);
 
         if (serviceType === 'IMAGE_TO_TEXT' && hasAttachments) {
-            // === VISION ===
+            // Vision: send images to the model
             const imageAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('image/'));
-            if (imageAttachments.length === 0) {
-                return formatResponse(false, 'Нет изображений для распознавания');
-            }
-
-            const imageBase64 = imageAttachments[0].base64;
-            const imageBuffer = Buffer.from(imageBase64, 'base64');
-
-            // callGeminiVision(config, imageBuffer, envData) — imageBuffer = сырые байты
-            if (config.FUNCTION.name === 'callGeminiVision') {
-                const visionResult = await config.FUNCTION(config, imageBuffer, env);
-                // callGeminiVision возвращает строку (описание изображения)
-                if (typeof visionResult === 'string') {
-                    finalResponse = visionResult;
-                } else {
-                    const cleaned = extractAndCleanModelResponse(visionResult);
-                    finalResponse = cleaned.finalResponse || String(visionResult);
-                }
-            } else if (config.FUNCTION.name === 'callPollinationsVision' || config.FUNCTION.name === 'callBotHubVisionChat') {
-                // Другие Vision-функции — передаём base64
+            if (imageAttachments.length > 0 && config.FUNCTION.name === 'callGeminiVision') {
                 const visionPrompt = userMessage || 'Опиши это изображение подробно';
-                const visionResult = await config.FUNCTION(config, visionPrompt, env, imageBase64);
-                if (typeof visionResult === 'string') {
-                    finalResponse = visionResult;
-                } else {
-                    const cleaned = extractAndCleanModelResponse(visionResult);
-                    finalResponse = cleaned.finalResponse || String(visionResult);
-                }
+                const imageBase64 = imageAttachments[0].base64;
+                const modelResponse = await config.FUNCTION(config, visionPrompt, env, imageBase64);
+                const cleaned = extractAndCleanModelResponse(modelResponse);
+                finalResponse = cleaned.finalResponse;
+            } else if (imageAttachments.length > 0 && config.FUNCTION.name === 'callWorkersAIVision') {
+                const visionPrompt = userMessage || 'Опиши это изображение подробно';
+                const imageBase64 = imageAttachments[0].base64;
+                const modelResponse = await config.FUNCTION(config, visionPrompt, env, imageBase64);
+                const cleaned = extractAndCleanModelResponse(modelResponse);
+                finalResponse = cleaned.finalResponse;
             } else {
-                // Фоллбэк: отправляем текст с именами файлов
+                // Fallback: just send text with file names
                 const fileInfo = payload.attachments.map(a => a.name).join(', ');
                 const combinedMessage = userMessage ? `${userMessage}\n\n[Прикреплены файлы: ${fileInfo}]` : `Пользователь прикрепил файлы: ${fileInfo}. Опиши их.`;
                 const modelResponse = await config.FUNCTION(config, historyForModel, combinedMessage, env);
@@ -254,23 +134,11 @@ async function handleChat(auth, payload, env, monolith) {
             const audioAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('audio/'));
             if (audioAttachments.length > 0) {
                 const audioBase64 = audioAttachments[0].base64;
-                const audioBuffer = Buffer.from(audioBase64, 'base64');
-                // Большинство STT-функций принимает base64 или buffer
-                let result;
-                if (config.FUNCTION.name === 'callGeminiSpeechToText') {
-                    result = await config.FUNCTION(config, audioBuffer, env);
-                } else {
-                    result = await config.FUNCTION(config, audioBase64, env);
-                }
-                if (typeof result === 'string') {
-                    finalResponse = result;
-                } else {
-                    const cleaned = extractAndCleanModelResponse(result);
-                    finalResponse = cleaned.finalResponse || String(result);
-                }
+                const modelResponse = await config.FUNCTION(config, audioBase64, env);
+                const cleaned = extractAndCleanModelResponse(modelResponse);
+                finalResponse = cleaned.finalResponse;
             }
         } else {
-            // Обычный текстовый чат
             const modelResponse = await config.FUNCTION(config, historyForModel, userMessage, env);
             const cleaned = extractAndCleanModelResponse(modelResponse);
             finalResponse = cleaned.finalResponse;
@@ -299,10 +167,10 @@ async function handleChat(auth, payload, env, monolith) {
 // 🎨 ИЗОБРАЖЕНИЕ — Поддержка t2i, i2i, upscale, rotate, convert
 // ============================================================
 async function handleImage(auth, payload, env, monolith) {
-    const { AI_MODELS, AI_MODEL_MENU_CONFIG, uploadBase64ImageToPublicUrl } = monolith;
+    const { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, syncS3Chat, uploadBase64ImageToPublicUrl } = monolith;
     const isAuth = !!(auth && auth.id);
     const chatId = isAuth ? String(auth.id) : 'guest';
-    const imageMode = payload.image_mode || 't2i';
+    const imageMode = payload.image_mode || 't2i'; // t2i, i2i, upscale, rotate, convert
 
     // === UPSCALE ===
     if (imageMode === 'upscale') {
@@ -314,10 +182,8 @@ async function handleImage(auth, payload, env, monolith) {
 
         let imageResult;
         try {
-            const modelInfo = getWebModel('IMAGE_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-            if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла');
-            console.log(`[WebHandler] Upscale using: ${modelInfo.key}`);
-            imageResult = await modelInfo.config.FUNCTION(modelInfo.config, payload.image_base64, env);
+            const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('IMAGE_TO_UPSCALE', env, chatId)).config;
+            imageResult = await config.FUNCTION(config, payload.image_base64, env);
         } catch (e) {
             console.error("[WebHandler] Upscale error:", e.message);
             return formatResponse(false, "Ошибка апскейла: " + e.message);
@@ -327,13 +193,14 @@ async function handleImage(auth, payload, env, monolith) {
         return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId);
     }
 
-    // === ROTATE (бесплатно через конвертер) ===
+    // === ROTATE ===
     if (imageMode === 'rotate') {
         if (!payload.image_base64) return formatResponse(false, 'Нет изображения для поворота');
         const angle = payload.angle || '-90';
 
+        // Rotate via converter (free operation)
         try {
-            const converterUrl = getConverterUrl(env);
+            const converterUrl = typeof env.LESHIY_CONVERTER === 'string' ? env.LESHIY_CONVERTER : (env.LESHIY_CONVERTER?.toString() || '');
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const imageBuffer = Buffer.from(payload.image_base64, 'base64');
@@ -354,13 +221,13 @@ async function handleImage(auth, payload, env, monolith) {
         }
     }
 
-    // === CONVERT (бесплатно через конвертер) ===
+    // === CONVERT ===
     if (imageMode === 'convert') {
         if (!payload.image_base64) return formatResponse(false, 'Нет изображения для конвертации');
         const targetFormat = payload.target_format || 'png';
 
         try {
-            const converterUrl = getConverterUrl(env);
+            const converterUrl = typeof env.LESHIY_CONVERTER === 'string' ? env.LESHIY_CONVERTER : (env.LESHIY_CONVERTER?.toString() || '');
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const imageBuffer = Buffer.from(payload.image_base64, 'base64');
@@ -395,12 +262,9 @@ async function handleImage(auth, payload, env, monolith) {
 
         let imageResult;
         try {
-            const modelInfo = getWebModel('IMAGE_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-            if (!modelInfo) return formatResponse(false, 'Нет модели для I2I');
-            console.log(`[WebHandler] I2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
-
-            const refImage = payload.reference_images[0];
-            imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env, refImage);
+            const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('IMAGE_TO_IMAGE', env, chatId)).config;
+            const refImage = payload.reference_images[0]; // First reference image
+            imageResult = await config.FUNCTION(config, prompt, env, refImage);
         } catch (e) {
             console.error("[WebHandler] I2I error:", e.message);
             return formatResponse(false, "Ошибка I2I: " + e.message);
@@ -414,11 +278,8 @@ async function handleImage(auth, payload, env, monolith) {
     const prompt = (payload.prompt || '').trim();
     if (!prompt) return formatResponse(false, 'Пустой промпт');
 
-    // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ
-    const modelInfo = getWebModel('TEXT_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-    if (!modelInfo) return formatResponse(false, 'Нет доступной модели для генерации изображений');
-
-    const isFreeModel = modelInfo.config.SERVICE === 'WORKERS_AI' || !modelInfo.config.pricing;
+    const selectedModel = payload.model || 'default';
+    const isFreeModel = (selectedModel === 'free_sdxl' || selectedModel.startsWith('WORKERS_AI'));
 
     if (!isFreeModel) {
         if (!isAuth) return formatResponse(false, 'Для платных моделей нужна авторизация');
@@ -428,8 +289,8 @@ async function handleImage(auth, payload, env, monolith) {
 
     let imageResult;
     try {
-        console.log(`[WebHandler] T2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
-        imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env);
+        const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_IMAGE', env, chatId)).config;
+        imageResult = await config.FUNCTION(config, prompt, env);
     } catch (e) {
         console.error("[WebHandler] Image gen error:", e.message);
         return formatResponse(false, "Ошибка генерации: " + e.message);
@@ -443,99 +304,84 @@ async function handleImage(auth, payload, env, monolith) {
     return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId);
 }
 
-// Helper: форматирование результата изображения
+// Helper: format image result
 function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId) {
-    // Gemini text2image / image2image могут вернуть {imageBase64, mimeType} или просто base64
-    if (imageResult && typeof imageResult === 'object' && imageResult.imageBase64) {
-        return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: imageResult.imageBase64 });
-    }
-    // Gemini может вернуть {url, ...}
-    if (imageResult && typeof imageResult === 'object' && imageResult.url) {
-        return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageResult.url });
-    }
-    // ArrayBuffer / Uint8Array
+    let imageUrl = null;
+
     if (imageResult instanceof ArrayBuffer || (imageResult && imageResult.constructor?.name === 'ArrayBuffer')) {
-        const base64 = Buffer.from(imageResult).toString('base64');
-        // Пробуем загрузить в публичный URL
         if (uploadBase64ImageToPublicUrl) {
             try {
-                const imageUrl = uploadBase64ImageToPublicUrl(base64, env, chatId);
-                if (imageUrl && typeof imageUrl === 'string') {
-                    return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageUrl });
-                }
-                // Может быть Promise
-                if (imageUrl && typeof imageUrl.then === 'function') {
-                    // Асинхронная загрузка — возвращаем base64 сразу
-                }
+                const base64 = Buffer.from(imageResult).toString('base64');
+                // Synchronous check, but uploadBase64ImageToPublicUrl may be async
+                imageUrl = uploadBase64ImageToPublicUrl(base64, env, chatId);
             } catch (e) {
-                // fallback to base64
+                const base64 = Buffer.from(imageResult).toString('base64');
+                return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
             }
+        } else {
+            const base64 = Buffer.from(imageResult).toString('base64');
+            return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
         }
-        return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
-    }
-    // Строка — URL или base64
-    if (typeof imageResult === 'string') {
+    } else if (typeof imageResult === 'string') {
         if (imageResult.startsWith('http')) {
-            return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageResult });
+            imageUrl = imageResult;
+        } else {
+            return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: imageResult });
         }
-        return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: imageResult });
-    }
-    // Buffer
-    if (Buffer.isBuffer(imageResult)) {
-        const base64 = imageResult.toString('base64');
-        return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
-    }
-    // Promise (не должно быть)
-    if (imageResult && typeof imageResult.then === 'function') {
+    } else if (imageResult && imageResult.url) {
+        imageUrl = imageResult.url;
+    } else if (imageResult && typeof imageResult.then === 'function') {
+        // Promise — shouldn't happen but handle gracefully
         return formatResponse(false, 'Асинхронный результат не поддерживается');
     }
 
-    return formatResponse(false, 'Неожиданный формат ответа от ИИ: ' + typeof imageResult);
+    if (!imageUrl) {
+        return formatResponse(false, 'Неожиданный формат ответа от ИИ');
+    }
+
+    return formatResponse(true, null, creditsLeft, {
+        type: 'image_url',
+        content: imageUrl
+    });
 }
 
 // ============================================================
 // 🎬 ВИДЕО — Поддержка generate, convert, upscale, rotate
 // ============================================================
 async function handleVideo(auth, payload, env, monolith) {
-    const { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse } = monolith;
+    const { AI_MODELS, loadActiveConfig, createTaskKieAi, extractAndCleanModelResponse } = monolith;
     const isAuth = !!(auth && auth.id);
     const chatId = isAuth ? String(auth.id) : 'guest';
-    const videoMode = payload.video_mode || 'generate';
+    const videoMode = payload.video_mode || 'generate'; // generate, convert, upscale, rotate
 
-    // === CONVERT / ANALYSIS (бесплатно) ===
+    // === CONVERT / ANALYSIS (free) ===
     if (videoMode === 'convert') {
         if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для анализа');
         const prompt = (payload.prompt || 'Проанализируй это видео подробно').trim();
 
         let result;
         try {
-            const modelInfo = getWebModel('VIDEO_TO_ANALYSIS', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-            if (!modelInfo) return formatResponse(false, 'Нет модели для анализа видео');
-            console.log(`[WebHandler] Video analysis using: ${modelInfo.key}`);
-
-            const config = modelInfo.config;
-            if (config.FUNCTION.name === 'callGeminiVideoVision') {
-                result = await config.FUNCTION(config, prompt, env, payload.video_base64);
+            const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('VIDEO_TO_ANALYSIS', env, chatId)).config;
+            if (config.FUNCTION.name === 'callGeminiVideoVision' || config.FUNCTION.name === 'callGeminiSpeechToText') {
+                const videoBase64 = payload.video_base64;
+                result = await config.FUNCTION(config, prompt, env, videoBase64);
             } else {
                 result = await config.FUNCTION(config, prompt, env, payload.video_base64);
             }
-            if (typeof result === 'string') {
-                return formatResponse(true, null, null, { type: 'text', content: result });
-            }
             const cleaned = extractAndCleanModelResponse(result);
-            return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || String(result) });
+            return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || result });
         } catch (e) {
             console.error("[WebHandler] Video analysis error:", e.message);
             return formatResponse(false, "Ошибка анализа видео: " + e.message);
         }
     }
 
-    // === ROTATE (бесплатно через конвертер) ===
+    // === ROTATE (free via converter) ===
     if (videoMode === 'rotate') {
         if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для поворота');
         const angle = payload.angle || '-90';
         try {
-            const converterUrl = getConverterUrl(env);
+            const converterUrl = typeof env.LESHIY_CONVERTER === 'string' ? env.LESHIY_CONVERTER : (env.LESHIY_CONVERTER?.toString() || '');
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const videoBuffer = Buffer.from(payload.video_base64, 'base64');
@@ -562,14 +408,9 @@ async function handleVideo(auth, payload, env, monolith) {
         const balance = await getUserBalance(chatId, env, monolith);
         if (balance < 10) return formatResponse(false, 'Недостаточно кредитов. Нужно 10¢.', balance);
 
-        // KIE.AI upscale — используем startKieAiVideoUpscale через createTaskKieAi
-        const { createTaskKieAi } = monolith;
-        if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
-
         let taskId;
         try {
-            const modelInfo = getWebModel('VIDEO_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-            if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла видео');
+            const upscaleConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('VIDEO_TO_UPSCALE', env, chatId)).config;
             const workerDomain = env.WORKER_DOMAIN || '';
             const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
@@ -578,7 +419,7 @@ async function handleVideo(auth, payload, env, monolith) {
                 quality: payload.quality || '720p'
             };
 
-            taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
+            taskId = await createTaskKieAi(chatId, upscaleConfig, input, env, callbackUrl);
         } catch (e) {
             console.error("[WebHandler] Video upscale error:", e.message);
             return formatResponse(false, "Ошибка апскейла видео: " + e.message);
@@ -599,20 +440,9 @@ async function handleVideo(auth, payload, env, monolith) {
     const balance = await getUserBalance(chatId, env, monolith);
     if (balance < 20) return formatResponse(false, 'Недостаточно кредитов. Нужно 20¢.', balance);
 
-    const { createTaskKieAi } = monolith;
-    if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
-
     let taskId;
     try {
-        // Определяем подтип видео по videoSubMode
-        let videoServiceType = 'TEXT_TO_VIDEO';
-        if (payload.video_submode === 'i2v') videoServiceType = 'IMAGE_TO_VIDEO';
-        else if (payload.video_submode === 'v2v') videoServiceType = 'VIDEO_TO_VIDEO';
-        else if (payload.video_submode === 'a2v') videoServiceType = 'AUDIO_TO_VIDEO';
-
-        const modelInfo = getWebModel(videoServiceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-        if (!modelInfo) return formatResponse(false, 'Нет модели для генерации видео');
-
+        const videoConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_VIDEO', env, chatId)).config;
         const workerDomain = env.WORKER_DOMAIN || '';
         const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
@@ -624,21 +454,12 @@ async function handleVideo(auth, payload, env, monolith) {
             mode: 'normal'
         };
 
-        // Добавляем референсное изображение если есть (i2v)
+        // Add reference image if provided
         if (payload.reference_image) {
             input.image_base64 = payload.reference_image;
         }
-        // Добавляем референсное видео если есть (v2v)
-        if (payload.reference_video) {
-            input.video_base64 = payload.reference_video;
-        }
-        // Добавляем аудио если есть (a2v)
-        if (payload.reference_audio) {
-            input.audio_base64 = payload.reference_audio;
-        }
 
-        console.log(`[WebHandler] Video gen using: ${modelInfo.key}`);
-        taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
+        taskId = await createTaskKieAi(chatId, videoConfig, input, env, callbackUrl);
     } catch (e) {
         console.error("[WebHandler] Video task error:", e.message);
         return formatResponse(false, "Ошибка создания задачи видео: " + e.message);
@@ -654,47 +475,34 @@ async function handleVideo(auth, payload, env, monolith) {
 // 🔊 АУДИО — Поддержка TTS, STT, convert, voice_clone
 // ============================================================
 async function handleAudio(auth, payload, env, monolith) {
-    const { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse } = monolith;
+    const { AI_MODELS, loadActiveConfig, extractAndCleanModelResponse } = monolith;
     const isAuth = !!(auth && auth.id);
     const chatId = isAuth ? String(auth.id) : 'guest';
     const audioMode = payload.audio_mode || 'tts';
 
-    // === STT (Speech-to-Text, бесплатно) ===
+    // === STT (Speech-to-Text, free) ===
     if (audioMode === 'stt') {
         if (!payload.audio_base64) return formatResponse(false, 'Нет аудиофайла для распознавания');
 
         let result;
         try {
-            const modelInfo = getWebModel('AUDIO_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-            if (!modelInfo) return formatResponse(false, 'Нет модели для распознавания');
-            console.log(`[WebHandler] STT using: ${modelInfo.key}`);
-
-            const config = modelInfo.config;
-            if (config.FUNCTION.name === 'callGeminiSpeechToText') {
-                // Gemini STT принимает Buffer
-                const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
-                result = await config.FUNCTION(config, audioBuffer, env);
-            } else {
-                result = await config.FUNCTION(config, payload.audio_base64, env);
-            }
-            if (typeof result === 'string') {
-                return formatResponse(true, null, null, { type: 'text', content: result });
-            }
+            const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('AUDIO_TO_TEXT', env, chatId)).config;
+            result = await config.FUNCTION(config, payload.audio_base64, env);
             const cleaned = extractAndCleanModelResponse(result);
-            return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || String(result) });
+            return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || result });
         } catch (e) {
             console.error("[WebHandler] STT error:", e.message);
             return formatResponse(false, "Ошибка распознавания: " + e.message);
         }
     }
 
-    // === CONVERT (бесплатно через конвертер) ===
+    // === CONVERT (free via converter) ===
     if (audioMode === 'convert') {
         if (!payload.audio_base64) return formatResponse(false, 'Нет аудиофайла для конвертации');
         const targetFormat = payload.target_format || 'mp3';
 
         try {
-            const converterUrl = getConverterUrl(env);
+            const converterUrl = typeof env.LESHIY_CONVERTER === 'string' ? env.LESHIY_CONVERTER : (env.LESHIY_CONVERTER?.toString() || '');
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
@@ -725,17 +533,15 @@ async function handleAudio(auth, payload, env, monolith) {
         const balance = await getUserBalance(chatId, env, monolith);
         if (balance < 10) return formatResponse(false, 'Недостаточно кредитов. Нужно 10¢.', balance);
 
-        let audioResult;
+        // Voice clone uses the same TTS function but with voice sample
+        let audioBuffer;
         try {
-            const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-            if (!modelInfo) return formatResponse(false, 'Нет модели для клонирования');
-            const config = modelInfo.config;
-
-            if (config.FUNCTION.name === 'callGeminiTextToAudio') {
-                audioResult = await config.FUNCTION(config, text, env, 'user_voice', payload.voice_sample);
+            const audioConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_AUDIO', env, chatId)).config;
+            // Pass voice sample to the function if it supports it
+            if (audioConfig.FUNCTION.name === 'callGeminiTextToAudio') {
+                audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, 'user_voice', payload.voice_sample);
             } else {
-                try { audioResult = await config.FUNCTION(config, text, env, payload.voice_sample); }
-                catch(_) { audioResult = await config.FUNCTION(config, text, env); }
+                audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env);
             }
         } catch (e) {
             console.error("[WebHandler] Voice clone error:", e.message);
@@ -743,8 +549,7 @@ async function handleAudio(auth, payload, env, monolith) {
         }
 
         const creditsLeft = await deductCredits(chatId, 10, env, monolith);
-        const audioBase64 = extractAudioBase64(audioResult);
-        if (!audioBase64) return formatResponse(false, 'Сервер не вернул аудио');
+        const audioBase64 = bufferToBase64(audioBuffer);
         return formatResponse(true, null, creditsLeft, { type: 'audio_base64', content: audioBase64 });
     }
 
@@ -756,30 +561,27 @@ async function handleAudio(auth, payload, env, monolith) {
     const balance = await getUserBalance(chatId, env, monolith);
     if (balance < 2) return formatResponse(false, 'Недостаточно кредитов. Нужно 2¢.', balance);
 
-    let audioResult;
+    let audioBuffer;
     try {
-        const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
-        if (!modelInfo) return formatResponse(false, 'Нет модели для TTS');
-        const config = modelInfo.config;
+        const audioConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_AUDIO', env, chatId)).config;
         const voice = payload.voice || 'Female';
 
-        console.log(`[WebHandler] TTS using: ${modelInfo.key} (${config.SERVICE}), voice: ${voice}`);
-
-        // Вызываем TTS-функцию с правильной сигнатурой
-        if (config.SERVICE === 'GEMINI' || config.FUNCTION.name === 'callGeminiTextToAudio') {
-            // callGeminiTextToAudio(config, text, envData, voice) → возвращает {audioBase64, mimeType}
-            audioResult = await config.FUNCTION(config, text, env, voice);
-        } else if (config.SERVICE === 'VOICERSS' || config.FUNCTION.name === 'callVoiceRSSTextToAudio') {
-            // callVoiceRSSTextToAudio(config, text, envData, voice) → возвращает ArrayBuffer
-            audioResult = await config.FUNCTION(config, text, env, voice);
-        } else if (config.SERVICE === 'WORKERS_AI') {
-            // Workers AI TTS — не работает на Yandex, но пробуем
-            try { audioResult = await config.FUNCTION(config, text, env, voice); }
-            catch(_) { audioResult = await config.FUNCTION(config, text, env); }
+        // Передаём voice во все TTS-функции по аналогии с телеграм-ботом
+        // Функции сами маппят голос по сервису (Gemini→Kore/Enceladus, WorkersAI→orpheus/athena, etc.)
+        if (audioConfig.SERVICE === 'GEMINI' || audioConfig.FUNCTION.name === 'callGeminiTextToAudio') {
+            audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice);
+        } else if (audioConfig.SERVICE === 'WORKERS_AI' || audioConfig.FUNCTION.name === 'callWorkersAITextToAudio' || audioConfig.FUNCTION.name === 'callWorkersAITTS') {
+            audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice);
+        } else if (audioConfig.SERVICE === 'KIEAI' || audioConfig.SERVICE === 'BOTHUB') {
+            // KIE.AI и BotHub TTS — voice передаётся как 4-й аргумент
+            try { audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice); }
+            catch(_) { audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env); }
+        } else if (audioConfig.SERVICE === 'VOICERSS') {
+            audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice);
         } else {
-            // KIE.AI, BotHub и прочие — пробуем с voice
-            try { audioResult = await config.FUNCTION(config, text, env, voice); }
-            catch(_) { audioResult = await config.FUNCTION(config, text, env); }
+            // Фоллбэк: пробуем с voice, если не работает — без
+            try { audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice); }
+            catch(_) { audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env); }
         }
     } catch (e) {
         console.error("[WebHandler] Audio gen error:", e.message);
@@ -791,55 +593,8 @@ async function handleAudio(auth, payload, env, monolith) {
         creditsLeft = await deductCredits(chatId, 2, env, monolith);
     }
 
-    // 🛑 КРИТИЧЕСКИ ВАЖНО: Gemini TTS возвращает {audioBase64, mimeType},
-    // а НЕ ArrayBuffer. Нужно правильно извлечь base64.
-    const audioBase64 = extractAudioBase64(audioResult);
-    if (!audioBase64) {
-        console.error("[WebHandler] Audio result type:", typeof audioResult, "keys:", audioResult ? Object.keys(audioResult) : 'null');
-        return formatResponse(false, 'Сервер не вернул аудио');
-    }
-
+    const audioBase64 = bufferToBase64(audioBuffer);
     return formatResponse(true, null, creditsLeft, { type: 'audio_base64', content: audioBase64 });
-}
-
-/**
- * Универсальный экстрактор base64 из разных форматов ответа AI-функций:
- * - Gemini TTS: { audioBase64: '...', mimeType: 'audio/mpeg' }
- * - ArrayBuffer / Uint8Array / Buffer
- * - Просто base64 строка
- */
-function extractAudioBase64(result) {
-    if (!result) return null;
-
-    // Gemini TTS формат: { audioBase64, mimeType }
-    if (typeof result === 'object' && result.audioBase64) {
-        return result.audioBase64;
-    }
-
-    // Buffer
-    if (Buffer.isBuffer(result)) {
-        return result.toString('base64');
-    }
-
-    // ArrayBuffer / Uint8Array
-    if (result instanceof ArrayBuffer || (result && result.constructor?.name === 'ArrayBuffer')) {
-        return Buffer.from(result).toString('base64');
-    }
-    if (result instanceof Uint8Array) {
-        return Buffer.from(result).toString('base64');
-    }
-
-    // Строка — может быть base64 или URL
-    if (typeof result === 'string') {
-        if (result.startsWith('http')) {
-            // URL — не base64, возвращаем как есть (фронтенд скачает)
-            return null; // TODO: скачать и конвертировать
-        }
-        // Предполагаем base64
-        if (result.length > 100) return result;
-    }
-
-    return null;
 }
 
 // ============================================================
@@ -849,31 +604,41 @@ async function handleModels(auth, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
 
     const models = {
-        chat: [], image: [], image_i2i: [], image_vision: [], image_upscale: [],
-        video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [], video_upscale: [],
-        audio_tts: [], audio_stt: []
+        chat: [],
+        image: [],
+        image_i2i: [],
+        image_vision: [],
+        image_upscale: [],
+        video_t2v: [],
+        video_i2v: [],
+        video_v2v: [],
+        video_a2v: [],
+        video_analysis: [],
+        video_upscale: [],
+        audio_tts: [],
+        audio_stt: []
     };
 
+    // Маппинг: сервис-тип → целевая категория фронтенда + признак бесплатности
     const serviceMapping = {
-        'TEXT_TO_TEXT':     { target: 'chat',          freeByDefault: true  },
-        'IMAGE_TO_TEXT':    { target: 'image_vision',  freeByDefault: true  },
-        'TEXT_TO_IMAGE':    { target: 'image',         freeByDefault: false },
-        'IMAGE_TO_IMAGE':   { target: 'image_i2i',     freeByDefault: false },
+        'TEXT_TO_TEXT':   { target: 'chat',          freeByDefault: true  },
+        'IMAGE_TO_TEXT':  { target: 'image_vision',  freeByDefault: true  },
+        'TEXT_TO_IMAGE':  { target: 'image',         freeByDefault: false },
+        'IMAGE_TO_IMAGE': { target: 'image_i2i',     freeByDefault: false },
         'IMAGE_TO_UPSCALE': { target: 'image_upscale', freeByDefault: false },
-        'TEXT_TO_VIDEO':    { target: 'video_t2v',     freeByDefault: false },
-        'IMAGE_TO_VIDEO':   { target: 'video_i2v',     freeByDefault: false },
-        'VIDEO_TO_VIDEO':   { target: 'video_v2v',     freeByDefault: false },
-        'AUDIO_TO_VIDEO':   { target: 'video_a2v',     freeByDefault: false },
+        'TEXT_TO_VIDEO':  { target: 'video_t2v',     freeByDefault: false },
+        'IMAGE_TO_VIDEO': { target: 'video_i2v',     freeByDefault: false },
+        'VIDEO_TO_VIDEO': { target: 'video_v2v',     freeByDefault: false },
+        'AUDIO_TO_VIDEO': { target: 'video_a2v',     freeByDefault: false },
         'VIDEO_TO_UPSCALE': { target: 'video_upscale', freeByDefault: false },
-        'VIDEO_TO_ANALYSIS':{ target: 'video_analysis', freeByDefault: true  },
-        'TEXT_TO_AUDIO':    { target: 'audio_tts',     freeByDefault: false },
-        'AUDIO_TO_TEXT':    { target: 'audio_stt',     freeByDefault: true  },
-        'VIDEO_TO_TEXT':    { target: 'audio_stt',     freeByDefault: true  },
-        'AUDIO_TO_AUDIO':   { target: 'audio_stt',     freeByDefault: true  },
+        'VIDEO_TO_ANALYSIS': { target: 'video_analysis', freeByDefault: true },
+        'TEXT_TO_AUDIO':  { target: 'audio_tts',     freeByDefault: false },
+        'AUDIO_TO_TEXT':  { target: 'audio_stt',     freeByDefault: true  },
+        'VIDEO_TO_TEXT':  { target: 'audio_stt',     freeByDefault: true  },
+        'AUDIO_TO_AUDIO': { target: 'audio_stt',     freeByDefault: true  },
     };
 
-    const hasCloudflare = !!(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
-
+    // Перебираем ВСЕ модели из AI_MODEL_MENU_CONFIG и AI_MODELS
     for (const [serviceType, menuConfig] of Object.entries(AI_MODEL_MENU_CONFIG)) {
         const mapping = serviceMapping[serviceType];
         if (!mapping) continue;
@@ -883,9 +648,6 @@ async function handleModels(auth, env, monolith) {
         for (const [modelKey, friendlyName] of Object.entries(menuConfig.models)) {
             const modelDetails = AI_MODELS[modelKey];
             if (!modelDetails) continue;
-
-            // 🛑 Скрываем WORKERS_AI модели если нет Cloudflare кредов
-            if (modelDetails.SERVICE === 'WORKERS_AI' && !hasCloudflare) continue;
 
             const isFree = mapping.freeByDefault || !modelDetails.pricing || modelDetails.SERVICE === 'WORKERS_AI';
             const cost = typeof modelDetails.pricing === 'number' ? modelDetails.pricing : (modelDetails.pricing ? 'дин.' : 0);
@@ -904,7 +666,7 @@ async function handleModels(auth, env, monolith) {
         }
     }
 
-    // Дедупликация по key
+    // Дедупликация по key (модели могут попасть в один массив из разных сервис-типов)
     for (const arr of Object.values(models)) {
         const seen = new Set();
         const unique = [];
@@ -936,11 +698,17 @@ function getShortServiceName(service) {
 }
 
 // ============================================================
-// 🔑 КЛЮЧИ — Возврат API ключей и прокси-URL
+// 🔑 КЛЮЧИ — Возврат API ключей и прокси-URL для клиентских AI-вызовов
 // ============================================================
 async function handleKeys(auth, env) {
-    const proxyUrl = getProxyUrl(env);
-    const converterUrl = getConverterUrl(env);
+    // Ключи доступны даже гостям — они нужны для клиентских AI-вызовов
+    // (как в leshiy-ai где ключи встроены в билд через VITE_ переменные)
+    const proxyUrl = (env.LESHIY_AI_PROXY && typeof env.LESHIY_AI_PROXY === 'string')
+        ? env.LESHIY_AI_PROXY
+        : (typeof env.LESHIY_AI_PROXY?.toString === 'function' ? env.LESHIY_AI_PROXY.toString() : '');
+    const converterUrl = (env.LESHIY_CONVERTER && typeof env.LESHIY_CONVERTER === 'string')
+        ? env.LESHIY_CONVERTER
+        : (typeof env.LESHIY_CONVERTER?.toString === 'function' ? env.LESHIY_CONVERTER.toString() : '');
 
     const keys = {
         GEMINI_API_KEY: env.GEMINI_API_KEY || '',
@@ -950,6 +718,7 @@ async function handleKeys(auth, env) {
         BOTHUB_API_KEY: env.BOTHUB_API_KEY || '',
         DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY || '',
         VOICERSS_API_KEY: env.VOICERSS_API_KEY || '',
+        // Прокси
         PROXY_URL: proxyUrl || 'https://d5dtt5rfr7nk66bbrec2.kf69zffa.apigw.yandexcloud.net/ai-proxy',
         PROXY_SECRET_KEY: env.PROXY_SECRET_KEY || env.GEMINI_PROXY_KEY || '',
         FALLBACK_PROXY: env.FALLBACK_PROXY || 'https://leshiy-ai-proxy.leshiyalex.workers.dev',
@@ -957,28 +726,25 @@ async function handleKeys(auth, env) {
         GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY || env.PROXY_SECRET_KEY || '',
         MP3_CONVERTER_URL: converterUrl || 'https://d5dtt5rfr7nk66bbrec2.kf69zffa.apigw.yandexcloud.net/converter'
     };
+    console.log('[handleKeys] PROXY_URL=' + proxyUrl.substring(0, 50) + '... KEYS=' + Object.keys(keys).filter(k => keys[k]).length);
     return formatResponse(true, null, null, keys);
 }
 
 // ============================================================
-// 🤖 AI-КОНФИГ — Возврат AI_MODELS без FUNCTION
+// 🤖 AI-КОНФИГ — Возврат AI_MODELS без FUNCTION (для клиентских вызовов)
 // ============================================================
 async function handleAIConfig(auth, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
     if (!AI_MODELS) return formatResponse(false, 'AI_MODELS не загружены');
 
-    const hasCloudflare = !!(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
+    // Возвращаем модели без FUNCTION (она не серриализуема)
     const safeModels = {};
-
     for (const [key, val] of Object.entries(AI_MODELS)) {
         if (!val || typeof val !== 'object') continue;
-        // Скрываем WORKERS_AI если нет Cloudflare
-        if (val.SERVICE === 'WORKERS_AI' && !hasCloudflare) continue;
-
         safeModels[key] = {
             SERVICE: val.SERVICE,
             MODEL: val.MODEL,
-            API_KEY: val.API_KEY,
+            API_KEY: val.API_KEY, // имя ключа, не сам ключ
             BASE_URL: val.BASE_URL,
             ...(val.API_PATH ? { API_PATH: val.API_PATH } : {}),
             ...(val.voices ? { voices: val.voices } : {}),
@@ -1001,6 +767,8 @@ async function handleBalance(auth, env, monolith) {
     }
     const chatId = String(auth.id);
     const balance = await getUserBalance(chatId, env, monolith);
+
+    // Check VIP status
     const isVip = false; // TODO: implement VIP check
 
     return formatResponse(true, null, balance, { type: 'balance', balance: balance, isVip: isVip });
@@ -1045,7 +813,7 @@ function bufferToBase64(buffer) {
     if (Buffer.isBuffer(buffer)) return buffer.toString('base64');
     if (buffer instanceof ArrayBuffer || (buffer && buffer.constructor?.name === 'ArrayBuffer'))
         return Buffer.from(buffer).toString('base64');
-    if (typeof buffer === 'string') return buffer;
+    if (typeof buffer === 'string') return buffer; // Already base64
     return '';
 }
 
