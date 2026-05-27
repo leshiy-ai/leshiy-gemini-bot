@@ -125,6 +125,16 @@ body {
     color: var(--accent);
 }
 
+.credits-display.is-admin {
+    border: 1px solid var(--warning);
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.auth-btn.admin-btn:hover {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: #d97706;
+}
+
 .auth-btn {
     padding: 7px 16px;
     border-radius: 20px;

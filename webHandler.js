@@ -49,6 +49,8 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handleKeys(auth, env);
             case 'ai-config':
                 return await handleAIConfig(auth, env, monolith);
+            case 'admin':
+                return await handleAdmin(auth, payload, env, monolith);
             default:
                 return formatResponse(false, "Неизвестный режим: " + mode);
         }
@@ -1218,6 +1220,96 @@ async function handleAIConfig(auth, env, monolith) {
 }
 
 // ============================================================
+// 🔑 АДМИН-ПАНЕЛЬ — Управление балансом, VIP и моделями
+// ============================================================
+// Доступ только для ADMIN_CHAT_ID (как в телеграм-боте)
+async function handleAdmin(auth, payload, env, monolith) {
+    // Проверка прав админа
+    if (!auth || !auth.id) {
+        return formatResponse(false, 'Не авторизован');
+    }
+    const chatId = String(auth.id);
+    if (!checkAdminStatus(chatId, env)) {
+        return formatResponse(false, 'Доступ запрещён: вы не админ');
+    }
+
+    const action = payload.action;
+    
+    // === УСТАНОВИТЬ БАЛАНС ===
+    if (action === 'set_balance') {
+        const targetId = payload.target_id;
+        const amount = payload.amount;
+        if (!targetId || amount === undefined || amount === null) {
+            return formatResponse(false, 'Укажите target_id и amount');
+        }
+        if (!env.LAST_PHOTO_STORAGE) {
+            return formatResponse(false, 'База данных недоступна');
+        }
+        try {
+            // Как в телеграм-боте: ключ = {targetId}_credit_balance
+            const balanceKey = targetId + '_credit_balance';
+            await env.LAST_PHOTO_STORAGE.put(balanceKey, String(amount), { expirationTtl: 86400 * 365 });
+            console.log(`[Admin] Balance set: ${targetId} → ${amount}`);
+            return formatResponse(true, null, null, { type: 'admin', action: 'set_balance', target_id: targetId, new_balance: amount });
+        } catch (e) {
+            return formatResponse(false, 'Ошибка записи баланса: ' + e.message);
+        }
+    }
+
+    // === УСТАНОВИТЬ VIP ===
+    if (action === 'set_vip') {
+        const targetId = payload.target_id;
+        const days = payload.days || 30;
+        if (!targetId) {
+            return formatResponse(false, 'Укажите target_id');
+        }
+        if (!env.LAST_PHOTO_STORAGE) {
+            return formatResponse(false, 'База данных недоступна');
+        }
+        try {
+            // Как в телеграм-боте: ключ = {targetId}_sub_end_credit
+            const subEndKey = targetId + '_sub_end_credit';
+            const endTime = Date.now() + (days * 86400 * 1000);
+            await env.LAST_PHOTO_STORAGE.put(subEndKey, String(endTime), { expirationTtl: 86400 * 365 });
+            console.log(`[Admin] VIP set: ${targetId} → ${days} days (until ${new Date(endTime).toISOString()})`);
+            return formatResponse(true, null, null, { type: 'admin', action: 'set_vip', target_id: targetId, days: days, until: endTime });
+        } catch (e) {
+            return formatResponse(false, 'Ошибка установки VIP: ' + e.message);
+        }
+    }
+
+    // === ПОЛУЧИТЬ ИНФО О ЮЗЕРЕ ===
+    if (action === 'get_user_info') {
+        const targetId = payload.target_id;
+        if (!targetId) {
+            return formatResponse(false, 'Укажите target_id');
+        }
+        if (!env.LAST_PHOTO_STORAGE) {
+            return formatResponse(false, 'База данных недоступна');
+        }
+        try {
+            const balanceKey = targetId + '_credit_balance';
+            const subEndKey = targetId + '_sub_end_credit';
+            const [balance, subEnd] = await Promise.all([
+                env.LAST_PHOTO_STORAGE.get(balanceKey),
+                env.LAST_PHOTO_STORAGE.get(subEndKey)
+            ]);
+            const isVip = subEnd ? parseInt(subEnd, 10) > Date.now() : false;
+            return formatResponse(true, null, null, { 
+                type: 'admin', action: 'get_user_info', target_id: targetId,
+                balance: balance ? parseInt(balance, 10) : 0,
+                isVip: isVip,
+                vipUntil: subEnd ? parseInt(subEnd, 10) : null
+            });
+        } catch (e) {
+            return formatResponse(false, 'Ошибка чтения данных: ' + e.message);
+        }
+    }
+
+    return formatResponse(false, 'Неизвестное действие админа: ' + action);
+}
+
+// ============================================================
 // 💰 БАЛАНС — Запрос текущего баланса
 // ============================================================
 async function handleBalance(auth, env, monolith) {
@@ -1226,9 +1318,48 @@ async function handleBalance(auth, env, monolith) {
     }
     const chatId = String(auth.id);
     const balance = await getUserBalance(chatId, env, monolith);
-    const isVip = false; // TODO: implement VIP check
+    const isVip = await checkVipStatus(chatId, env);
+    const isAdmin = checkAdminStatus(chatId, env);
 
-    return formatResponse(true, null, balance, { type: 'balance', balance: balance, isVip: isVip });
+    return formatResponse(true, null, balance, { 
+        type: 'balance', 
+        balance: balance, 
+        isVip: isVip,
+        isAdmin: isAdmin
+    });
+}
+
+// ============================================================
+// 👑 VIP — Проверка VIP-статуса из базы
+// ============================================================
+// VIP = активная подписка: в KV хранится _sub_end_credit с timestamp окончания
+// Если timestamp > Date.now() — подписка активна
+async function checkVipStatus(chatId, env) {
+    if (!env.LAST_PHOTO_STORAGE) return false;
+    try {
+        // Как в телеграм-боте: ключ = {chatId}_sub_end_credit
+        const subEndKey = chatId + '_sub_end_credit';
+        const subEnd = await env.LAST_PHOTO_STORAGE.get(subEndKey);
+        if (subEnd) {
+            const endTime = parseInt(subEnd, 10);
+            if (endTime > Date.now()) {
+                return true;
+            }
+        }
+    } catch (e) {
+        console.error("[WebHandler] VIP check error:", e.message);
+    }
+    return false;
+}
+
+// ============================================================
+// 🔑 ADMIN — Проверка прав администратора через ADMIN_CHAT_ID
+// ============================================================
+// Как в телеграм-боте: если chatId совпадает с ADMIN_CHAT_ID из env — это админ
+function checkAdminStatus(chatId, env) {
+    const adminChatId = env.ADMIN_CHAT_ID;
+    if (!adminChatId) return false;
+    return String(chatId) === String(adminChatId);
 }
 
 // ============================================================
@@ -1236,22 +1367,38 @@ async function handleBalance(auth, env, monolith) {
 // ============================================================
 
 async function getUserBalance(chatId, env, monolith) {
+    // Сначала проверяем VIP — если активен, баланс = бесконечность
+    const isVip = await checkVipStatus(chatId, env);
+    if (isVip) return 999999;
+
     if (env.LAST_PHOTO_STORAGE) {
         try {
-            const balanceKey = `users/${chatId}/balance`;
+            // Как в телеграм-боте: ключ = {chatId}_credit_balance
+            const balanceKey = chatId + '_credit_balance';
             const stored = await env.LAST_PHOTO_STORAGE.get(balanceKey);
-            if (stored) return parseInt(stored, 10);
+            if (stored !== null && stored !== undefined) {
+                const val = parseInt(stored, 10);
+                if (!isNaN(val)) return val;
+            }
+            // Если баланса нет в базе — создаём начальный (80 бесплатных кредитов)
+            await env.LAST_PHOTO_STORAGE.put(balanceKey, '80', { expirationTtl: 86400 * 365 });
+            return 80;
         } catch (e) {
             console.error("[WebHandler] Balance read error:", e.message);
         }
     }
-    return 80;
+    return 0; // Нет доступа к базе = нет кредитов
 }
 
 async function deductCredits(chatId, amount, env, monolith) {
+    // VIP не тратит кредиты
+    const isVip = await checkVipStatus(chatId, env);
+    if (isVip) return 999999;
+
     if (!env.LAST_PHOTO_STORAGE) return null;
     try {
-        const balanceKey = `users/${chatId}/balance`;
+        // Как в телеграм-боте: ключ = {chatId}_credit_balance
+        const balanceKey = chatId + '_credit_balance';
         const current = await getUserBalance(chatId, env, monolith);
         const newBalance = Math.max(0, current - amount);
         await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });

@@ -481,11 +481,15 @@
                 <div style="flex:1">
                     <div id="profileName" style="font-weight:600;font-size:15px;color:var(--text-primary)"></div>
                     <div id="profileProvider" style="font-size:12px;color:var(--text-secondary);margin-top:2px"></div>
+                    <div id="profileBadges" style="margin-top:4px;display:flex;gap:4px"></div>
                 </div>
             </div>
             <div id="profileCredits" style="padding:10px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:12px">
                 <div style="font-size:12px;color:var(--text-secondary)">Баланс</div>
                 <div style="font-size:18px;font-weight:700;color:var(--warning)" id="profileCreditsAmount">--&#162;</div>
+            </div>
+            <div id="profileAdminSection" style="display:none;margin-bottom:12px">
+                <button class="btn-secondary" onclick="closeProfileDialog();openAdminDialog()" style="width:100%;border-color:var(--warning);color:var(--warning)">&#128081; Админ-панель</button>
             </div>
             <div class="dialog-actions" style="flex-direction:column;gap:8px">
                 <button class="btn-primary" onclick="openPurchaseDialog();closeProfileDialog()" style="width:100%">&#9733; Купить кредиты</button>
@@ -851,25 +855,182 @@
                 const data = await resp.json();
                 if (data.success && data.data) {
                     const display = document.getElementById('creditsDisplay');
+                    // VIP статус
                     if (data.data.isVip) {
                         creditsAmount.textContent = 'VIP';
                         display.classList.add('vip');
+                        display.classList.add('is-vip');
                     } else {
-                        credits = data.data.balance ?? 80;
+                        credits = data.data.balance ?? 0;
                         creditsAmount.textContent = credits;
                         display.classList.remove('vip');
+                        display.classList.remove('is-vip');
+                    }
+                    // Admin статус
+                    if (data.data.isAdmin) {
+                        display.classList.add('is-admin');
+                        showAdminPanel();
+                    } else {
+                        display.classList.remove('is-admin');
+                        hideAdminPanel();
                     }
                 } else {
-                    credits = 80;
-                    creditsAmount.textContent = credits;
+                    credits = 0;
+                    creditsAmount.textContent = '--';
                 }
             } else {
-                credits = 80;
-                creditsAmount.textContent = credits;
+                creditsAmount.textContent = '--';
             }
         } catch (err) {
             showToast('Ошибка обновления баланса', 'error');
-            creditsAmount.textContent = '80';
+            creditsAmount.textContent = '--';
+        }
+    }
+
+    // ---- АДМИН-ПАНЕЛЬ ----
+    let adminVisible = false;
+
+    function showAdminPanel() {
+        if (adminVisible) return;
+        adminVisible = true;
+        // Добавляем кнопку админки в хедер
+        const headerRight = document.querySelector('.header-right');
+        if (headerRight && !document.getElementById('adminBtn')) {
+            const adminBtn = document.createElement('button');
+            adminBtn.id = 'adminBtn';
+            adminBtn.className = 'auth-btn admin-btn';
+            adminBtn.style.cssText = 'border-color:var(--warning);color:var(--warning);margin-right:4px;font-size:11px;padding:5px 10px';
+            adminBtn.textContent = '👑 Админ';
+            adminBtn.onclick = () => openAdminDialog();
+            headerRight.insertBefore(adminBtn, headerRight.firstChild);
+        }
+    }
+
+    function hideAdminPanel() {
+        adminVisible = false;
+        const adminBtn = document.getElementById('adminBtn');
+        if (adminBtn) adminBtn.remove();
+    }
+
+    function openAdminDialog() {
+        // Простая админ-панель: управление моделями, балансом
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay open';
+        overlay.id = 'adminDialog';
+        overlay.innerHTML = `
+            <div class="dialog" style="max-width:600px">
+                <h3>👑 Админ-панель</h3>
+                <p style="font-size:13px;color:var(--text-secondary)">Управление моделями и балансом</p>
+                
+                <div style="margin-top:16px">
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:8px">Активные модели (сервис → тип → модель)</label>
+                    <div id="adminModelList" style="max-height:300px;overflow-y:auto;font-size:13px"></div>
+                </div>
+
+                <div style="margin-top:16px">
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:8px">Управление балансом</label>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <input type="text" id="adminTargetId" placeholder="ID пользователя" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
+                        <input type="number" id="adminCreditsAmount" placeholder="Кредиты" style="width:80px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
+                        <button class="btn-primary" onclick="adminSetBalance()" style="padding:8px 16px;font-size:13px">Задать</button>
+                    </div>
+                </div>
+
+                <div style="margin-top:16px">
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:8px">VIP подписка</label>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <input type="text" id="adminVipId" placeholder="ID пользователя" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
+                        <input type="number" id="adminVipDays" placeholder="Дней" value="30" style="width:70px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
+                        <button class="btn-primary" onclick="adminSetVip()" style="padding:8px 16px;font-size:13px">VIP</button>
+                    </div>
+                </div>
+
+                <div class="dialog-actions" style="margin-top:20px">
+                    <button class="btn-secondary" onclick="document.getElementById('adminDialog').remove()" style="width:100%">Закрыть</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) overlay.remove();
+        });
+        loadAdminModelList();
+    }
+
+    async function loadAdminModelList() {
+        const container = document.getElementById('adminModelList');
+        if (!container) return;
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'models', auth: getAuth(), payload: {} })
+            });
+            const data = await resp.json();
+            if (data.success && data.data) {
+                let html = '';
+                for (const [cat, models] of Object.entries(data.data)) {
+                    if (!Array.isArray(models) || models.length === 0) continue;
+                    html += `<div style="margin-bottom:12px"><div style="font-weight:600;color:var(--accent);margin-bottom:4px">${cat}</div>`;
+                    models.forEach(m => {
+                        html += `<div style="padding:4px 8px;color:var(--text-secondary);border-left:2px solid var(--border);margin-left:8px">${m.service}: ${m.modelShort || m.displayName || m.key} ${m.isFree ? '✓' : (m.cost ? m.cost + '¢' : '')}</div>`;
+                    });
+                    html += '</div>';
+                }
+                container.innerHTML = html || '<span style="color:var(--text-muted)">Нет моделей</span>';
+            }
+        } catch(e) {
+            container.innerHTML = '<span style="color:var(--danger)">Ошибка загрузки</span>';
+        }
+    }
+
+    async function adminSetBalance() {
+        const targetId = document.getElementById('adminTargetId')?.value?.trim();
+        const amount = parseInt(document.getElementById('adminCreditsAmount')?.value, 10);
+        if (!targetId || isNaN(amount)) {
+            showToast('Укажите ID и количество кредитов', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'admin', auth: getAuth(), payload: { action: 'set_balance', target_id: targetId, amount: amount } })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast('Баланс обновлён: ' + targetId + ' → ' + amount + '¢', 'success');
+                loadServerData();
+            } else {
+                showToast('Ошибка: ' + (data.error || 'отказ'), 'error');
+            }
+        } catch(e) {
+            showToast('Сетевая ошибка', 'error');
+        }
+    }
+
+    async function adminSetVip() {
+        const targetId = document.getElementById('adminVipId')?.value?.trim();
+        const days = parseInt(document.getElementById('adminVipDays')?.value, 10) || 30;
+        if (!targetId) {
+            showToast('Укажите ID пользователя', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'admin', auth: getAuth(), payload: { action: 'set_vip', target_id: targetId, days: days } })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast('VIP установлен: ' + targetId + ' → ' + days + ' дней', 'success');
+                loadServerData();
+            } else {
+                showToast('Ошибка: ' + (data.error || 'отказ'), 'error');
+            }
+        } catch(e) {
+            showToast('Сетевая ошибка', 'error');
         }
     }
 
@@ -880,6 +1041,9 @@
             openAuthDialog();
             return false;
         }
+        // VIP не ограничен кредитами
+        const display = document.getElementById('creditsDisplay');
+        if (display.classList.contains('is-vip')) return true;
         if (credits < requiredCost) {
             showToast('Недостаточно кредитов для генерации!', 'error');
             openPurchaseDialog();
@@ -3194,6 +3358,8 @@
         const profileProvider = document.getElementById('profileProvider');
         const profilePhoto = document.getElementById('profilePhoto');
         const profileCreditsAmount = document.getElementById('profileCreditsAmount');
+        const profileBadges = document.getElementById('profileBadges');
+        const profileAdminSection = document.getElementById('profileAdminSection');
 
         if (profileName) profileName.textContent = user.name || 'Пользователь';
         if (profileProvider) {
@@ -3215,7 +3381,25 @@
                 profileCreditsAmount.style.color = 'var(--accent)';
             } else {
                 profileCreditsAmount.textContent = credits + '\u00A2';
+                profileCreditsAmount.style.color = 'var(--warning)';
             }
+        }
+        // Бейджи
+        if (profileBadges) {
+            let badges = '';
+            const display = document.getElementById('creditsDisplay');
+            if (display.classList.contains('is-vip')) {
+                badges += '<span style="background:rgba(168,85,247,0.2);color:var(--accent);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">&#128081; VIP</span>';
+            }
+            if (display.classList.contains('is-admin')) {
+                badges += '<span style="background:rgba(245,158,11,0.2);color:var(--warning);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">&#128081; Админ</span>';
+            }
+            profileBadges.innerHTML = badges;
+        }
+        // Секция админа
+        if (profileAdminSection) {
+            const display = document.getElementById('creditsDisplay');
+            profileAdminSection.style.display = display.classList.contains('is-admin') ? 'block' : 'none';
         }
         profileDialog.classList.add('open');
     }
@@ -3226,6 +3410,7 @@
 
     function doLogout() {
         user = null;
+        credits = 0;
         localStorage.removeItem('gemini_user');
         localStorage.removeItem('vk_user_id');
         localStorage.removeItem('auth_provider');
@@ -3238,7 +3423,9 @@
         authBtn.textContent = 'Войти';
         authBtn.classList.remove('logged-in');
         creditsAmount.textContent = '--';
-        document.getElementById('creditsDisplay').classList.remove('vip');
+        const creditsDisplay = document.getElementById('creditsDisplay');
+        creditsDisplay.classList.remove('vip', 'is-vip', 'is-admin');
+        hideAdminPanel();
         closeProfileDialog();
         showToast('Вы вышли из аккаунта', 'info');
     }
