@@ -504,6 +504,12 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.file-badge:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
 }
 .file-badge .file-icon { font-size: 13px; flex-shrink: 0; }
 .file-badge .file-name { overflow: hidden; text-overflow: ellipsis; }
@@ -763,6 +769,7 @@ body {
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
+    transition: border-color 0.2s ease, background 0.2s ease;
 }
 
 .input-row {
@@ -1249,6 +1256,7 @@ body {
     align-items: center;
     justify-content: center;
     z-index: 301;
+    flex-direction: column;
 }
 .lightbox-content img {
     max-width: 90vw;
@@ -1256,6 +1264,15 @@ body {
     border-radius: 8px;
     object-fit: contain;
     transition: transform 0.15s ease;
+}
+.lightbox-content video {
+    max-width: 90vw;
+    max-height: 80vh;
+    border-radius: 8px;
+}
+.lightbox-content audio {
+    width: 80vw;
+    max-width: 400px;
 }
 
 .lightbox-nav {

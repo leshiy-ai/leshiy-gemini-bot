@@ -395,7 +395,7 @@
         <!-- INPUT AREA -->
         <div class="input-area">
             <div class="chat-attachments" id="chatAttachments"></div>
-            <input type="file" id="chatFileInput" multiple accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt,.csv" style="display:none" onchange="handleChatFileUpload(this)">
+            <input type="file" id="chatFileInput" multiple accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.pptx,.zip,.rar,.7z,.json,.xml,.html,.css,.js,.py,.java,.cpp,.c,.md,.rtf,.odt,.ods,.odp,.epub,.mobi,.apk,.exe,.dmg,.iso" style="display:none" onchange="handleChatFileUpload(this)">
             <div class="input-row">
                 <button class="attach-btn" id="chatFileBtn" onclick="document.getElementById('chatFileInput').click()" title="Прикрепить файл">&#128206;</button>
                 <div class="input-wrapper">
@@ -1799,20 +1799,19 @@
         document.querySelector('.app').addEventListener('dragleave', function(e) {
             e.preventDefault();
             dragCounter--;
-            if (dragCounter === 0) overlay.classList.remove('visible');
+            if (dragCounter <= 0) { dragCounter = 0; overlay.classList.remove('visible'); }
         });
 
         document.querySelector('.app').addEventListener('dragover', function(e) {
             e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
         });
 
         document.querySelector('.app').addEventListener('drop', function(e) {
             e.preventDefault();
+            e.stopPropagation();
             dragCounter = 0;
             overlay.classList.remove('visible');
-
-            // If the drop was already handled by a more specific handler (e.g. input-area, upload-zone), skip
-            if (e.defaultPrevented && e._handled) return;
 
             const files = e.dataTransfer.files;
             if (!files.length) return;
@@ -1882,6 +1881,33 @@
                 }
             }
         });
+
+        // Также добавляем drag-and-drop на область ввода (input-area)
+        const inputArea = document.querySelector('.input-area');
+        if (inputArea) {
+            inputArea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                inputArea.style.borderColor = 'var(--accent)';
+                inputArea.style.background = 'var(--accent-light)';
+            });
+            inputArea.addEventListener('dragleave', function(e) {
+                inputArea.style.borderColor = '';
+                inputArea.style.background = '';
+            });
+            inputArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                inputArea.style.borderColor = '';
+                inputArea.style.background = '';
+                dragCounter = 0;
+                overlay.classList.remove('visible');
+                const files = e.dataTransfer.files;
+                if (files.length && currentMode === 'chat') {
+                    processChatFiles(files);
+                }
+            });
+        }
     }
 
     function handleChatFileUpload(input) {
@@ -1936,6 +1962,8 @@
                 } else if (file.type.startsWith('audio/')) {
                     attachment.icon = '&#127925;'; // 🎵
                     attachment.category = 'audio';
+                    // Создаём URL для предпросмотра аудио
+                    attachment.previewUrl = URL.createObjectURL(file);
                 } else if (file.type.includes('pdf')) {
                     attachment.icon = '&#128213;'; // 📕
                     attachment.category = 'document';
@@ -1959,6 +1987,13 @@
         chatAttachments.forEach((att, i) => {
             const badge = document.createElement('div');
             badge.className = 'file-badge';
+            // Все файлы кликабельны для предпросмотра
+            badge.style.cursor = 'pointer';
+            badge.onclick = function(e) {
+                // Не открывать предпросмотр при клике на крестик
+                if (e.target.classList.contains('file-remove')) return;
+                previewAttachment(att, i);
+            };
 
             let icon = att.icon || '&#128196;'; // документ по умолчанию
             if (!att.icon) {
@@ -1998,6 +2033,37 @@
             }
             container.appendChild(badge);
         });
+    }
+
+    // Предпросмотр прикреплённого файла (аудио, видео, изображение)
+    function previewAttachment(att, index) {
+        if (!att.base64) return;
+        const lightbox = document.getElementById('mediaLightbox');
+        const content = document.getElementById('lightboxContent');
+        lightboxItems = [];
+
+        if (att.type.startsWith('image/')) {
+            const src = att.previewUrl || ('data:' + att.type + ';base64,' + att.base64);
+            lightboxItems.push({ src: src, type: 'img' });
+            content.innerHTML = '<img src="' + src + '" alt="' + att.name + '">';
+        } else if (att.type.startsWith('video/')) {
+            const src = 'data:' + att.type + ';base64,' + att.base64;
+            lightboxItems.push({ src: src, type: 'video' });
+            content.innerHTML = '<video src="' + src + '" controls autoplay style="max-width:90vw;max-height:80vh;border-radius:8px"></video>';
+        } else if (att.type.startsWith('audio/')) {
+            const src = 'data:' + att.type + ';base64,' + att.base64;
+            lightboxItems.push({ src: src, type: 'audio' });
+            content.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:20px">&#127925;</div><div style="color:var(--text-primary);margin-bottom:16px;font-size:16px">' + att.name + '</div><audio src="' + src + '" controls autoplay style="width:100%;max-width:400px"></audio></div>';
+        } else {
+            // Документы — показываем информацию
+            content.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:20px">&#128196;</div><div style="color:var(--text-primary);margin-bottom:8px;font-size:16px">' + att.name + '</div><div style="color:var(--text-secondary);font-size:14px">' + att.type + '</div></div>';
+        }
+
+        lightboxIndex = 0;
+        lightbox.classList.add('open');
+        document.getElementById('lightboxCounter').style.display = 'none';
+        document.querySelector('.lightbox-prev').style.display = 'none';
+        document.querySelector('.lightbox-next').style.display = 'none';
     }
 
     function removeChatAttachment(index) {

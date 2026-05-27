@@ -59,100 +59,33 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
 };
 
 // ============================================================
-// 🧠 УМНЫЙ ВЫБОР МОДЕЛИ ДЛЯ ВЕБА
+// 🧠 ВЫБОР МОДЕЛИ — КАК В ЛЕШИЙ-АИ: БЕЗ ПОДМЕН И ФАЛБЭКОВ
 // ============================================================
-// WORKERS_AI модели работают через Cloudflare REST API если есть креды.
-// Иначе подбираем альтернативу из других сервисов.
-
-// Приоритет сервисов для веба (WORKERS_AI через REST API работает!)
-const WEB_SERVICE_PRIORITY = ['WORKERS_AI', 'GEMINI', 'KIEAI', 'BOTHUB', 'POLLINATIONS', 'VOICERSS', 'STABILITY', 'FUSIONBRAIN'];
-
-// Явные маппинги: какой ключ модели использовать по умолчанию для каждого типа
-// WORKERS_AI модели ПЕРВЫЕ — они бесплатные и быстрые через REST API
-const WEB_DEFAULT_MODELS = {
-    'TEXT_TO_TEXT':       'TEXT_TO_TEXT_WORKERS_AI',
-    'IMAGE_TO_TEXT':     'IMAGE_TO_TEXT_WORKERS_AI',
-    'TEXT_TO_IMAGE':     'TEXT_TO_IMAGE_WORKERS_AI',
-    'IMAGE_TO_IMAGE':    'IMAGE_TO_IMAGE_WORKERS_AI',
-    'IMAGE_TO_UPSCALE':  'IMAGE_TO_UPSCALE_KIEAI',
-    'TEXT_TO_VIDEO':     'TEXT_TO_VIDEO_KIEAI',
-    'IMAGE_TO_VIDEO':    'IMAGE_TO_VIDEO_KIEAI',
-    'VIDEO_TO_VIDEO':    'VIDEO_TO_VIDEO_KIEAI_WAN',
-    'AUDIO_TO_VIDEO':    'AUDIO_TO_VIDEO_KIEAI',
-    'VIDEO_TO_UPSCALE':  'VIDEO_TO_UPSCALE_KIEAI',
-    'VIDEO_TO_ANALYSIS': 'VIDEO_TO_ANALYSIS_GEMINI',
-    'TEXT_TO_AUDIO':     'TEXT_TO_AUDIO_WORKERS_AI',
-    'AUDIO_TO_TEXT':     'AUDIO_TO_TEXT_WORKERS_AI',
-    'VIDEO_TO_TEXT':     'VIDEO_TO_TEXT_WORKERS_AI',
-    'AUDIO_TO_AUDIO':    'AUDIO_TO_AUDIO_KIEAI',
-};
-
-/**
- * Проверяет, доступен ли Cloudflare REST API
- */
-function hasCloudflareRestAPI(env) {
-    return !!(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
-}
+// Если юзер выбрал модель — используем ТОЛЬКО её.
+// Если модель не выбрана — берём первую из AI_MODEL_MENU_CONFIG.
+// Никаких перекрёстных подмен между сервисами!
+// Все чат-модели умеют вижн, все видео2текст умеют транскрибацию,
+// все аудио2текст умеют транскрибировать аудио.
 
 /**
  * Выбирает модель для веб-запроса.
- * WORKERS_AI модели РАБОТАЮТ через REST API если есть CLOUDFLARE_ACCOUNT_ID.
- * Если нет — подбираем альтернативу.
+ * КАК В ТЕЛЕГРАМ-БОТЕ: никакой подмены между сервисами.
  *
- * 1. Если юзер явно указал payload.model → используем её (если доступна)
- * 2. По умолчанию берём из WEB_DEFAULT_MODELS
- * 3. Фоллбэк: ищем первую доступную модель в AI_MODEL_MENU_CONFIG
+ * 1. Если юзер явно указал payload.model → используем её, БЕЗ подмен
+ * 2. По умолчанию — первая модель из AI_MODEL_MENU_CONFIG[serviceType]
  */
 function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel, env) {
-    const cfAvailable = hasCloudflareRestAPI(env);
-
-    // 1. Явный выбор юзера
+    // 1. Явный выбор юзера — ИСПОЛЬЗУЕМ КАК ЕСТЬ, без подмен
     if (payloadModel && AI_MODELS[payloadModel]) {
-        const model = AI_MODELS[payloadModel];
-        // WORKERS_AI доступна через REST API
-        if (model.SERVICE === 'WORKERS_AI' && cfAvailable) {
-            return { config: model, key: payloadModel };
-        }
-        // WORKERS_AI НЕ доступна — подбираем замену
-        if (model.SERVICE === 'WORKERS_AI' && !cfAvailable) {
-            console.log(`[WebHandler] Model ${payloadModel} is WORKERS_AI but no CF creds, substituting...`);
-        } else {
-            return { config: model, key: payloadModel };
-        }
+        return { config: AI_MODELS[payloadModel], key: payloadModel };
     }
 
-    // 2. Явный дефолт из таблицы
-    const defaultKey = WEB_DEFAULT_MODELS[serviceType];
-    if (defaultKey && AI_MODELS[defaultKey]) {
-        const model = AI_MODELS[defaultKey];
-        if (model.SERVICE === 'WORKERS_AI' && !cfAvailable) {
-            // Дефолтная WORKERS_AI недоступна — ищем замену ниже
-        } else {
-            return { config: model, key: defaultKey };
-        }
-    }
-
-    // 3. Ищем первую доступную модель в AI_MODEL_MENU_CONFIG
+    // 2. По умолчанию — первая модель из меню (как loadActiveConfig в телеграм-боте)
     const menuConfig = AI_MODEL_MENU_CONFIG[serviceType];
     if (menuConfig && menuConfig.models) {
-        for (const [modelKey] of Object.entries(menuConfig.models)) {
-            const model = AI_MODELS[modelKey];
-            if (!model) continue;
-            if (model.SERVICE === 'WORKERS_AI' && !cfAvailable) continue;
-            return { config: model, key: modelKey };
-        }
-    }
-
-    // 4. Фоллбэк: перебираем все AI_MODELS по приоритету сервиса
-    for (const preferredService of WEB_SERVICE_PRIORITY) {
-        if (preferredService === 'WORKERS_AI' && !cfAvailable) continue;
-        for (const [modelKey, model] of Object.entries(AI_MODELS)) {
-            if (model.SERVICE === preferredService) {
-                const modelServiceType = modelKey.split('_').slice(0, 3).join('_');
-                if (modelServiceType === serviceType) {
-                    return { config: model, key: modelKey };
-                }
-            }
+        const firstKey = Object.keys(menuConfig.models)[0];
+        if (firstKey && AI_MODELS[firstKey]) {
+            return { config: AI_MODELS[firstKey], key: firstKey };
         }
     }
 
@@ -349,7 +282,7 @@ async function handleChat(auth, payload, env, monolith) {
         }
     }
 
-    // Определяем тип сервиса
+    // Определяем тип сервиса по вложениям
     const hasAttachments = payload.attachments && payload.attachments.length > 0;
     let serviceType = 'TEXT_TO_TEXT';
 
@@ -361,9 +294,11 @@ async function handleChat(auth, payload, env, monolith) {
         if (hasImage) serviceType = 'IMAGE_TO_TEXT';
         else if (hasAudio) serviceType = 'AUDIO_TO_TEXT';
         else if (hasVideo) serviceType = 'VIDEO_TO_TEXT';
+        // Остальные файлы (PDF, документы и т.д.) — тоже распознавание
+        else serviceType = 'IMAGE_TO_TEXT';
     }
 
-    // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ — WORKERS_AI через REST API или другие сервисы
+    // 🧠 ВЫБОР МОДЕЛИ — БЕЗ ПОДМЕН: выбрали Cloudflare = Cloudflare, выбрали Gemini = Gemini
     let finalResponse;
     try {
         const modelInfo = getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
@@ -374,84 +309,75 @@ async function handleChat(auth, payload, env, monolith) {
         const isWorkersAI = config.SERVICE === 'WORKERS_AI';
         console.log(`[WebHandler] Chat using model: ${modelInfo.key} (${config.SERVICE}${isWorkersAI ? ' via REST API' : ''})`);
 
-        if (serviceType === 'IMAGE_TO_TEXT' && hasAttachments) {
-            // === VISION ===
+        // Вложение-изображение → Vision (все чат-модели умеют вижн)
+        if (hasAttachments && payload.attachments.some(a => a.type && a.type.startsWith('image/'))) {
             const imageAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('image/'));
-            if (imageAttachments.length === 0) {
-                return formatResponse(false, 'Нет изображений для распознавания');
-            }
-
             const imageBase64 = imageAttachments[0].base64;
             const imageBuffer = Buffer.from(imageBase64, 'base64');
 
             if (isWorkersAI) {
-                // Cloudflare Workers AI Vision через REST API
                 const visionResult = await callWorkersAIWeb(config, imageBuffer, env);
                 finalResponse = typeof visionResult === 'string' ? visionResult : String(visionResult);
-            } else if (config.FUNCTION.name === 'callGeminiVision') {
-                const visionResult = await config.FUNCTION(config, imageBuffer, env);
-                if (typeof visionResult === 'string') {
-                    finalResponse = visionResult;
-                } else {
-                    const cleaned = extractAndCleanModelResponse(visionResult);
-                    finalResponse = cleaned.finalResponse || String(visionResult);
-                }
+            } else if (config.FUNCTION.name === 'callGeminiVision' || config.FUNCTION.name === 'callGeminiChat') {
+                // Gemini чат И вижн — обе модели понимают изображения
+                const fn = config.FUNCTION;
+                const result = await fn(config, imageBuffer, env);
+                finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else if (config.FUNCTION.name === 'callPollinationsVision' || config.FUNCTION.name === 'callBotHubVisionChat') {
                 const visionPrompt = userMessage || 'Опиши это изображение подробно';
-                const visionResult = await config.FUNCTION(config, visionPrompt, env, imageBase64);
-                if (typeof visionResult === 'string') {
-                    finalResponse = visionResult;
-                } else {
-                    const cleaned = extractAndCleanModelResponse(visionResult);
-                    finalResponse = cleaned.finalResponse || String(visionResult);
-                }
+                const result = await config.FUNCTION(config, visionPrompt, env, imageBase64);
+                finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
+            } else if (config.FUNCTION.name === 'callBotHubTextChat' || config.FUNCTION.name === 'callPollinationsChat') {
+                // Чат-модели BotHub/Pollinations тоже умеют вижн — передаём промпт с файлом
+                const visionPrompt = userMessage || 'Опиши это изображение подробно';
+                const result = await config.FUNCTION(config, visionPrompt, env, imageBase64);
+                finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else {
+                // Прочие модели — пробуем вызвать напрямую
                 const fileInfo = payload.attachments.map(a => a.name).join(', ');
                 const combinedMessage = userMessage ? `${userMessage}\n\n[Прикреплены файлы: ${fileInfo}]` : `Пользователь прикрепил файлы: ${fileInfo}. Опиши их.`;
                 const modelResponse = await config.FUNCTION(config, historyForModel, combinedMessage, env);
-                const cleaned = extractAndCleanModelResponse(modelResponse);
-                finalResponse = cleaned.finalResponse;
+                finalResponse = typeof modelResponse === 'string' ? modelResponse : extractAndCleanModelResponse(modelResponse).finalResponse;
             }
-        } else if (serviceType === 'AUDIO_TO_TEXT' && hasAttachments) {
+        // Вложение-аудио → STT (все аудио2текст модели умеют транскрибацию)
+        } else if (hasAttachments && payload.attachments.some(a => a.type && a.type.startsWith('audio/'))) {
             const audioAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('audio/'));
-            if (audioAttachments.length > 0) {
-                const audioBase64 = audioAttachments[0].base64;
-                const audioBuffer = Buffer.from(audioBase64, 'base64');
-                let result;
-                if (isWorkersAI) {
-                    result = await callWorkersAIWeb(config, audioBuffer, env);
-                } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
-                    result = await config.FUNCTION(config, audioBuffer, env);
-                } else {
-                    result = await config.FUNCTION(config, audioBase64, env);
-                }
-                if (typeof result === 'string') {
-                    finalResponse = result;
-                } else {
-                    const cleaned = extractAndCleanModelResponse(result);
-                    finalResponse = cleaned.finalResponse || String(result);
-                }
+            const audioBase64 = audioAttachments[0].base64;
+            const audioBuffer = Buffer.from(audioBase64, 'base64');
+            let result;
+            if (isWorkersAI) {
+                result = await callWorkersAIWeb(config, audioBuffer, env);
+            } else if (config.FUNCTION.name === 'callGeminiSpeechToText' || config.FUNCTION.name === 'callGeminiChat') {
+                result = await config.FUNCTION(config, audioBuffer, env);
+            } else {
+                result = await config.FUNCTION(config, audioBase64, env);
             }
-        } else if (serviceType === 'VIDEO_TO_TEXT' && hasAttachments) {
+            finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
+        // Вложение-видео → транскрибация (все видео2текст модели умеют транскрибацию)
+        } else if (hasAttachments && payload.attachments.some(a => a.type && a.type.startsWith('video/'))) {
             const videoAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('video/'));
-            if (videoAttachments.length > 0) {
-                const videoBase64 = videoAttachments[0].base64;
-                const videoBuffer = Buffer.from(videoBase64, 'base64');
-                let result;
-                if (isWorkersAI) {
-                    result = await callWorkersAIWeb(config, videoBuffer, env);
-                } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
-                    result = await config.FUNCTION(config, videoBuffer, env);
-                } else {
-                    result = await config.FUNCTION(config, videoBase64, env);
-                }
-                if (typeof result === 'string') {
-                    finalResponse = result;
-                } else {
-                    const cleaned = extractAndCleanModelResponse(result);
-                    finalResponse = cleaned.finalResponse || String(result);
-                }
+            const videoBase64 = videoAttachments[0].base64;
+            const videoBuffer = Buffer.from(videoBase64, 'base64');
+            let result;
+            if (isWorkersAI) {
+                result = await callWorkersAIWeb(config, videoBuffer, env);
+            } else if (config.FUNCTION.name === 'callGeminiSpeechToText' || config.FUNCTION.name === 'callGeminiVideoVision') {
+                result = await config.FUNCTION(config, videoBuffer, env);
+            } else {
+                result = await config.FUNCTION(config, videoBase64, env);
             }
+            finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
+        // Остальные файлы (PDF, документы) → пробуем вижн или текст
+        } else if (hasAttachments) {
+            const fileInfo = payload.attachments.map(a => a.name).join(', ');
+            const combinedMessage = userMessage ? `${userMessage}\n\n[Прикреплены файлы: ${fileInfo}]` : `Пользователь прикрепил файлы: ${fileInfo}. Опиши их.`;
+            let modelResponse;
+            if (isWorkersAI) {
+                modelResponse = await callWorkersAIWeb(config, historyForModel, combinedMessage, env);
+            } else {
+                modelResponse = await config.FUNCTION(config, historyForModel, combinedMessage, env);
+            }
+            finalResponse = typeof modelResponse === 'string' ? modelResponse : extractAndCleanModelResponse(modelResponse).finalResponse;
         } else {
             // Обычный текстовый чат
             let modelResponse;
@@ -1069,7 +995,7 @@ async function handleModels(auth, env, monolith) {
         'AUDIO_TO_AUDIO':   { target: 'audio_stt',     freeByDefault: true  },
     };
 
-    const hasCloudflare = !!(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
+    // Не скрываем модели — юзер сам решает
 
     for (const [serviceType, menuConfig] of Object.entries(AI_MODEL_MENU_CONFIG)) {
         const mapping = serviceMapping[serviceType];
@@ -1081,8 +1007,7 @@ async function handleModels(auth, env, monolith) {
             const modelDetails = AI_MODELS[modelKey];
             if (!modelDetails) continue;
 
-            // 🛑 Скрываем WORKERS_AI модели если нет Cloudflare кредов
-            if (modelDetails.SERVICE === 'WORKERS_AI' && !hasCloudflare) continue;
+            // Показываем ВСЕ модели — юзер сам выбирает. Никакого скрытия!
 
             const isFree = mapping.freeByDefault || !modelDetails.pricing || modelDetails.SERVICE === 'WORKERS_AI';
             const cost = typeof modelDetails.pricing === 'number' ? modelDetails.pricing : (modelDetails.pricing ? 'дин.' : 0);
@@ -1164,13 +1089,12 @@ async function handleAIConfig(auth, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
     if (!AI_MODELS) return formatResponse(false, 'AI_MODELS не загружены');
 
-    const hasCloudflare = !!(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
+    // Показываем ВСЕ модели — юзер сам выбирает
     const safeModels = {};
 
     for (const [key, val] of Object.entries(AI_MODELS)) {
         if (!val || typeof val !== 'object') continue;
-        // Скрываем WORKERS_AI если нет Cloudflare
-        if (val.SERVICE === 'WORKERS_AI' && !hasCloudflare) continue;
+        // Никакого скрытия WORKERS_AI — если юзер выбрал, используем
 
         safeModels[key] = {
             SERVICE: val.SERVICE,
