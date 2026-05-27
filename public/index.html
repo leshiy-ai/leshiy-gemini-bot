@@ -1149,23 +1149,8 @@
                 }
             }
 
-            // Фильтруем WORKERS_AI модели — они не работают на Yandex Cloud (нет env.AI.run)
-            for (const cat of Object.keys(categorized)) {
-                categorized[cat] = categorized[cat].filter(m => m.service !== 'WORKERS_AI');
-            }
-
+            // WORKERS_AI models now work through Cloudflare REST API on the backend — no filtering needed
             availableModels = categorized;
-
-            // Если ранее выбранная модель была WORKERS_AI — сбрасываем
-            for (const key of Object.keys(selected)) {
-                if (typeof selected[key] === 'string' && selected[key]) {
-                    const cat = key; // e.g. 'chat', 'image', 'video_t2v', etc.
-                    const modelList = availableModels[cat];
-                    if (modelList && !modelList.find(m => m.key === selected[key])) {
-                        selected[key] = null;
-                    }
-                }
-            }
 
             setModelDefaults();
             saveSelected();
@@ -1804,7 +1789,7 @@
         const overlay = document.getElementById('chatDropOverlay');
         let dragCounter = 0;
 
-        // Drag-and-drop на всю область приложения
+        // Drag-and-drop на всю область приложения — роутинг по текущему режиму
         document.querySelector('.app').addEventListener('dragenter', function(e) {
             e.preventDefault();
             dragCounter++;
@@ -1826,9 +1811,76 @@
             dragCounter = 0;
             overlay.classList.remove('visible');
 
+            // If the drop was already handled by a more specific handler (e.g. input-area, upload-zone), skip
+            if (e.defaultPrevented && e._handled) return;
+
             const files = e.dataTransfer.files;
             if (!files.length) return;
-            processChatFiles(files);
+
+            // Route dropped files based on current mode
+            if (currentMode === 'chat') {
+                processChatFiles(files);
+            } else if (currentMode === 'image') {
+                if (selected.imageSubMode === 'generate') {
+                    if (files[0].type.startsWith('image/')) {
+                        handleImageRef(0, { files: files, value: '' });
+                    } else {
+                        // Non-image file in generate mode — switch to chat and process there
+                        processChatFiles(files);
+                    }
+                } else if (selected.imageSubMode === 'upscale') {
+                    handleImageUpscale({ files: files, value: '' });
+                } else if (selected.imageSubMode === 'rotate') {
+                    handleImageRotateUpload({ files: files, value: '' });
+                } else if (selected.imageSubMode === 'convert') {
+                    handleImageConvertUpload({ files: files, value: '' });
+                }
+            } else if (currentMode === 'video') {
+                const file = files[0];
+                if (selected.videoSubMode === 'i2v' && file.type.startsWith('image/')) {
+                    handleVideoRef('image', { files: files, value: '' });
+                } else if (selected.videoSubMode === 'v2v' && file.type.startsWith('video/')) {
+                    handleVideoRef('video', { files: files, value: '' });
+                } else if (selected.videoSubMode === 'a2v' && file.type.startsWith('audio/')) {
+                    handleVideoRef('audio', { files: files, value: '' });
+                } else if (selected.videoSubMode === 'analysis' && file.type.startsWith('video/')) {
+                    handleVideoConvert({ files: files, value: '' });
+                } else {
+                    // Auto-detect: switch to appropriate sub-mode
+                    if (file.type.startsWith('image/')) {
+                        selected.videoSubMode = 'i2v';
+                        renderVideoSubHeader();
+                        switchVideoSubMode('i2v');
+                        handleVideoRef('image', { files: files, value: '' });
+                    } else if (file.type.startsWith('video/')) {
+                        selected.videoSubMode = 'analysis';
+                        renderVideoSubHeader();
+                        switchVideoSubMode('analysis');
+                        handleVideoConvert({ files: files, value: '' });
+                    } else if (file.type.startsWith('audio/')) {
+                        selected.videoSubMode = 'a2v';
+                        renderVideoSubHeader();
+                        switchVideoSubMode('a2v');
+                        handleVideoRef('audio', { files: files, value: '' });
+                    }
+                }
+            } else if (currentMode === 'audio') {
+                if (files[0].type.startsWith('audio/')) {
+                    if (selected.audioSubMode === 'stt') {
+                        handleAudioUpload({ files: files, value: '' });
+                    } else if (selected.audioSubMode === 'convert') {
+                        handleAudioConvert({ files: files, value: '' });
+                    } else if (selected.audioSubMode === 'voice_clone') {
+                        handleVoiceClone({ files: files, value: '' });
+                    } else {
+                        // Default: switch to STT
+                        selected.audioSubMode = 'stt';
+                        renderAudioSubHeader();
+                        switchAudioSubMode('stt');
+                        handleAudioUpload({ files: files, value: '' });
+                    }
+                }
+            }
         });
     }
 
@@ -1851,15 +1903,18 @@
                     type: file.type,
                     base64: base64,
                     previewUrl: null,
-                    icon: null  // emoji icon for display
+                    icon: null,  // emoji icon for display
+                    category: 'document'  // 'image', 'video', 'audio', 'document'
                 };
                 // Для изображений — создаем превью
                 if (file.type.startsWith('image/')) {
                     attachment.previewUrl = URL.createObjectURL(file);
                     attachment.icon = '&#128247;'; // 📷
+                    attachment.category = 'image';
                 } else if (file.type.startsWith('video/')) {
-                    // Для видео — создаём превью-кадр
+                    // Для видео — создаём превью-кадр с иконкой Play
                     attachment.icon = '&#127916;'; // 🎬
+                    attachment.category = 'video';
                     try {
                         const videoEl = document.createElement('video');
                         videoEl.src = URL.createObjectURL(file);
@@ -1868,9 +1923,9 @@
                             // Делаем скриншот первого кадра
                             try {
                                 const canvas = document.createElement('canvas');
-                                canvas.width = 80;
-                                canvas.height = 60;
-                                canvas.getContext('2d').drawImage(videoEl, 0, 0, 80, 60);
+                                canvas.width = 160;
+                                canvas.height = 120;
+                                canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
                                 attachment.previewUrl = canvas.toDataURL('image/jpeg', 0.6);
                             } catch(e) {}
                             URL.revokeObjectURL(videoEl.src);
@@ -1880,10 +1935,13 @@
                     } catch(e) { renderChatAttachments(); }
                 } else if (file.type.startsWith('audio/')) {
                     attachment.icon = '&#127925;'; // 🎵
+                    attachment.category = 'audio';
                 } else if (file.type.includes('pdf')) {
                     attachment.icon = '&#128213;'; // 📕
+                    attachment.category = 'document';
                 } else {
                     attachment.icon = '&#128196;'; // 📄
+                    attachment.category = 'document';
                 }
                 chatAttachments.push(attachment);
                 renderChatAttachments();
@@ -1918,9 +1976,25 @@
             }
 
             if (att.previewUrl) {
-                badge.innerHTML = '<img class="file-thumb" src="' + att.previewUrl + '" alt=""><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                // Video thumbnails get a play icon overlay
+                const isVideo = att.category === 'video' || att.type.startsWith('video/');
+                if (isVideo) {
+                    badge.innerHTML = '<div style="position:relative;display:inline-block">' +
+                        '<img class="file-thumb" src="' + att.previewUrl + '" alt="">' +
+                        '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:24px;height:24px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:white">&#9654;</div>' +
+                        '</div>' +
+                        '<span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                } else {
+                    badge.innerHTML = '<img class="file-thumb" src="' + att.previewUrl + '" alt=""><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                }
             } else {
-                badge.innerHTML = '<span class="file-icon">' + icon + '</span><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                // Audio files get a styled icon badge
+                const isAudio = att.category === 'audio' || att.type.startsWith('audio/');
+                if (isAudio) {
+                    badge.innerHTML = '<span class="file-icon" style="background:rgba(139,92,246,0.15);border-radius:8px;padding:4px 8px">' + icon + '</span><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                } else {
+                    badge.innerHTML = '<span class="file-icon">' + icon + '</span><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                }
             }
             container.appendChild(badge);
         });
@@ -1988,14 +2062,14 @@
 
         if (welcomeScreen) welcomeScreen.style.display = 'none';
 
-        // Формируем отображаемое сообщение с превью картинок
+        // Формируем отображаемое сообщение с превью всех вложений
         let displayText = text;
-        const imageAttachments = chatAttachments.filter(a => a.type.startsWith('image/') && a.previewUrl);
+        const allAttachments = chatAttachments; // Pass ALL attachments (images, video, audio, documents)
         if (chatAttachments.length > 0) {
             const fileNames = chatAttachments.map(a => a.name).join(', ');
             if (!displayText) displayText = '[Файлы: ' + fileNames + ']';
         }
-        addMessage(displayText, 'user', imageAttachments);
+        addMessage(displayText, 'user', allAttachments);
         chatHistory.push({ role: 'user', content: displayText });
         saveHistory();
 
@@ -2018,28 +2092,44 @@
                 model: selected.chat
             };
 
-            // Прикрепляем файлы — если есть картинки, отправляем через Vision-режим
+            // Прикрепляем файлы — классифицируем по типу и отправляем с правильным serviceType
             if (chatAttachments.length > 0) {
                 const hasImages = chatAttachments.some(a => a.type.startsWith('image/'));
                 const hasAudio = chatAttachments.some(a => a.type.startsWith('audio/'));
                 const hasVideo = chatAttachments.some(a => a.type.startsWith('video/'));
+                const hasDocuments = chatAttachments.some(a =>
+                    !a.type.startsWith('image/') && !a.type.startsWith('audio/') && !a.type.startsWith('video/')
+                );
 
                 payload.attachments = chatAttachments.map(a => ({
                     name: a.name,
                     type: a.type,
-                    base64: a.base64
+                    base64: a.base64,
+                    // Send serviceType hint so the backend knows how to process each file
+                    serviceType: a.type.startsWith('image/') ? 'IMAGE_TO_TEXT' :
+                                 a.type.startsWith('video/') ? 'VIDEO_TO_TEXT' :
+                                 a.type.startsWith('audio/') ? 'AUDIO_TO_TEXT' :
+                                 'DOCUMENT'
                 }));
 
+                // Determine the best model based on file types (priority: images > video > audio > docs)
                 if (hasImages) {
+                    // Images use Vision model
                     payload.model = selected.image_vision || payload.model;
-                }
-                if (hasAudio && !hasImages) {
-                    payload.model = selected.audio_stt || availableModels.audio_stt?.find(m => m.isFree)?.key || 'AUDIO_TO_TEXT_GEMINI';
-                    payload.audio_mode = 'stt';
-                }
-                if (hasVideo && !hasImages && !hasAudio) {
+                    payload.serviceType = 'IMAGE_TO_TEXT';
+                } else if (hasVideo) {
+                    // Video uses VIDEO_TO_TEXT recognition
                     payload.model = selected.video_analysis || availableModels.video_analysis?.find(m => m.isFree)?.key || 'VIDEO_TO_ANALYSIS_GEMINI';
                     payload.video_mode = 'convert';
+                    payload.serviceType = 'VIDEO_TO_TEXT';
+                } else if (hasAudio) {
+                    // Audio uses AUDIO_TO_TEXT recognition
+                    payload.model = selected.audio_stt || availableModels.audio_stt?.find(m => m.isFree)?.key || 'AUDIO_TO_TEXT_GEMINI';
+                    payload.audio_mode = 'stt';
+                    payload.serviceType = 'AUDIO_TO_TEXT';
+                } else if (hasDocuments) {
+                    // Documents — send file names for context (content extraction on backend)
+                    payload.serviceType = 'DOCUMENT';
                 }
                 if (!text) {
                     const types = chatAttachments.map(a => {
@@ -2221,7 +2311,13 @@
             } else {
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
-                storeLastGeneratedImage(url);
+                // Convert blob to base64 for storeLastGeneratedImage (needed for upscale/rotate)
+                const base64 = await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result.split(',')[1] || reader.result);
+                    reader.readAsDataURL(blob);
+                });
+                lastGeneratedImage = { base64: base64, url: url };
                 resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">' +
                     '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
                     '<a href="' + url + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>' +
@@ -3455,15 +3551,37 @@
             bubble.textContent = text;
         }
 
-        // Прикреплённые картинки (превью)
+        // Прикреплённые файлы — показываем все типы (картинки, видео, аудио, документы)
         if (imageAttachments && imageAttachments.length > 0) {
             const imgContainer = document.createElement('div');
             imgContainer.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-top:4px';
             imageAttachments.forEach(att => {
-                const img = document.createElement('img');
-                img.src = att.previewUrl;
-                img.className = 'chat-img-preview';
-                imgContainer.appendChild(img);
+                if (att.type.startsWith('image/') && att.previewUrl) {
+                    // Image preview
+                    const img = document.createElement('img');
+                    img.src = att.previewUrl;
+                    img.className = 'chat-img-preview';
+                    imgContainer.appendChild(img);
+                } else if ((att.category === 'video' || att.type.startsWith('video/')) && att.previewUrl) {
+                    // Video thumbnail with play icon overlay
+                    const wrap = document.createElement('div');
+                    wrap.style.cssText = 'position:relative;display:inline-block;width:60px;height:45px;cursor:pointer';
+                    wrap.innerHTML = '<img src="' + att.previewUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' +
+                        '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:white">&#9654;</div>';
+                    imgContainer.appendChild(wrap);
+                } else if (att.category === 'audio' || att.type.startsWith('audio/')) {
+                    // Audio icon badge
+                    const badge = document.createElement('div');
+                    badge.style.cssText = 'display:flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(139,92,246,0.15);border-radius:8px;font-size:12px;color:var(--text-secondary)';
+                    badge.innerHTML = '&#127925; ' + (att.name || 'audio');
+                    imgContainer.appendChild(badge);
+                } else {
+                    // Document icon badge
+                    const badge = document.createElement('div');
+                    badge.style.cssText = 'display:flex;align-items:center;gap:4px;padding:4px 8px;background:var(--bg-tertiary);border-radius:8px;font-size:12px;color:var(--text-secondary)';
+                    badge.innerHTML = (att.icon || '&#128196;') + ' ' + (att.name || 'file');
+                    imgContainer.appendChild(badge);
+                }
             });
             bubble.appendChild(imgContainer);
         }
@@ -3662,14 +3780,20 @@
         else if (e.key === 'ArrowRight') lightboxNav(1);
     });
 
-    // Делегирование кликов — открываем лайтбокс по клику на медиа
+    // Делегирование кликов — открываем лайтбокс по клику на ЛЮБОЕ изображение/видео
     document.addEventListener('click', function(e) {
-        const img = e.target.closest('.generated-image, .result-area img, .result-area video, .chat-img-preview, .message img[onclick]');
-        if (img) {
+        // Catch all clickable images: generated images, result area images, chat previews,
+        // images inside bot messages, and any image with cursor:pointer
+        const media = e.target.closest(
+            '.generated-image, .result-area img, .result-area video, ' +
+            '.chat-img-preview, .message img, .msg-row img:not(.msg-avatar img), ' +
+            '.file-thumb, img[style*="cursor: pointer"], img[style*="cursor:pointer"]'
+        );
+        if (media && (media.tagName === 'IMG' || media.tagName === 'VIDEO')) {
             e.preventDefault();
             e.stopPropagation();
-            const src = img.src || img.currentSrc;
-            if (src) openLightbox(src, img.tagName.toLowerCase());
+            const src = media.src || media.currentSrc;
+            if (src) openLightbox(src, media.tagName.toLowerCase());
         }
     });
 
@@ -3679,14 +3803,33 @@
     // ============================================================
 
     // Обновлённая функция: после генерации изображения сохраняем его
+    // Always ensures base64 is available for use in upscale/rotate/convert
     function storeLastGeneratedImage(src) {
         if (!src) return;
-        // Определяем base64 или URL
         if (src.startsWith('data:')) {
             const base64 = src.split(',')[1] || src;
             lastGeneratedImage = { base64: base64, url: null };
         } else {
             lastGeneratedImage = { base64: null, url: src };
+            // Asynchronously fetch the URL and convert to base64 for upscale/rotate/convert
+            // (which require base64 data)
+            fetch(src)
+                .then(r => r.blob())
+                .then(blob => new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                }))
+                .then(dataUrl => {
+                    const base64 = dataUrl.split(',')[1] || dataUrl;
+                    // Only update if this is still the current lastGeneratedImage
+                    if (lastGeneratedImage && lastGeneratedImage.url === src) {
+                        lastGeneratedImage.base64 = base64;
+                    }
+                })
+                .catch(err => {
+                    console.warn('Could not convert image URL to base64:', err);
+                });
         }
     }
 
@@ -3782,6 +3925,7 @@
 
         inputArea.addEventListener('drop', function(e) {
             e.preventDefault();
+            e._handled = true; // Mark as handled so .app handler doesn't double-process
             dragCounter = 0;
             if (overlay) overlay.classList.remove('visible');
 

@@ -10,9 +10,12 @@
 // Контракт ответа:
 //   { success, error, credits_left, data: {type, content} }
 //
-// ВАЖНО: На Yandex Cloud НЕТ CLOUDFLARE_ACCOUNT_ID / env.AI.run
-// Поэтому ВСЕ модели WORKERS_AI здесь не работают.
-// getWebModel() выбирает GEMINI-модели как дефолт для веба.
+// ПОДДЕРЖКА CLOUDFLARE WORKERS AI:
+// Если есть CLOUDFLARE_ACCOUNT_ID и CLOUDFLARE_API_TOKEN,
+// модели WORKERS_AI вызываются через REST API:
+//   POST https://api.cloudflare.com/client/v4/accounts/{id}/ai/run/{model}
+//   Authorization: Bearer {token}
+// Это позволяет использовать Cloudflare AI с любого хостинга.
 // ============================================================
 
 module.exports.handleWebRequest = async function(body, env, ctx) {
@@ -58,19 +61,19 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
 // ============================================================
 // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ ДЛЯ ВЕБА
 // ============================================================
-// На Yandex Cloud нет CLOUDFLARE_ACCOUNT_ID и env.AI.run,
-// поэтому WORKERS_AI модели не работают.
-// Эта функция подбирает рабочую модель, предпочитая GEMINI.
+// WORKERS_AI модели работают через Cloudflare REST API если есть креды.
+// Иначе подбираем альтернативу из других сервисов.
 
-// Приоритет сервисов для веба (первый = лучший)
-const WEB_SERVICE_PRIORITY = ['GEMINI', 'KIEAI', 'BOTHUB', 'POLLINATIONS', 'VOICERSS', 'STABILITY', 'FUSIONBRAIN'];
+// Приоритет сервисов для веба (WORKERS_AI через REST API работает!)
+const WEB_SERVICE_PRIORITY = ['WORKERS_AI', 'GEMINI', 'KIEAI', 'BOTHUB', 'POLLINATIONS', 'VOICERSS', 'STABILITY', 'FUSIONBRAIN'];
 
 // Явные маппинги: какой ключ модели использовать по умолчанию для каждого типа
+// WORKERS_AI модели ПЕРВЫЕ — они бесплатные и быстрые через REST API
 const WEB_DEFAULT_MODELS = {
-    'TEXT_TO_TEXT':       'TEXT_TO_TEXT_GEMINI',
-    'IMAGE_TO_TEXT':     'IMAGE_TO_TEXT_GEMINI',
-    'TEXT_TO_IMAGE':     'TEXT_TO_IMAGE_GEMINI',
-    'IMAGE_TO_IMAGE':    'IMAGE_TO_IMAGE_GEMINI',
+    'TEXT_TO_TEXT':       'TEXT_TO_TEXT_WORKERS_AI',
+    'IMAGE_TO_TEXT':     'IMAGE_TO_TEXT_WORKERS_AI',
+    'TEXT_TO_IMAGE':     'TEXT_TO_IMAGE_WORKERS_AI',
+    'IMAGE_TO_IMAGE':    'IMAGE_TO_IMAGE_WORKERS_AI',
     'IMAGE_TO_UPSCALE':  'IMAGE_TO_UPSCALE_KIEAI',
     'TEXT_TO_VIDEO':     'TEXT_TO_VIDEO_KIEAI',
     'IMAGE_TO_VIDEO':    'IMAGE_TO_VIDEO_KIEAI',
@@ -78,52 +81,73 @@ const WEB_DEFAULT_MODELS = {
     'AUDIO_TO_VIDEO':    'AUDIO_TO_VIDEO_KIEAI',
     'VIDEO_TO_UPSCALE':  'VIDEO_TO_UPSCALE_KIEAI',
     'VIDEO_TO_ANALYSIS': 'VIDEO_TO_ANALYSIS_GEMINI',
-    'TEXT_TO_AUDIO':     'TEXT_TO_AUDIO_GEMINI',
-    'AUDIO_TO_TEXT':     'AUDIO_TO_TEXT_GEMINI',
-    'VIDEO_TO_TEXT':     'VIDEO_TO_TEXT_GEMINI',
+    'TEXT_TO_AUDIO':     'TEXT_TO_AUDIO_WORKERS_AI',
+    'AUDIO_TO_TEXT':     'AUDIO_TO_TEXT_WORKERS_AI',
+    'VIDEO_TO_TEXT':     'VIDEO_TO_TEXT_WORKERS_AI',
     'AUDIO_TO_AUDIO':    'AUDIO_TO_AUDIO_KIEAI',
 };
 
 /**
- * Выбирает модель для веб-запроса.
- * 1. Если юзер явно указал payload.model и она НЕ WORKERS_AI → используем её
- * 2. Если указана WORKERS_AI → игнорируем, подбираем альтернативу
- * 3. По умолчанию берём из WEB_DEFAULT_MODELS
- * 4. Фоллбэк: ищем первую не-WORKERS_AI модель в AI_MODEL_MENU_CONFIG
+ * Проверяет, доступен ли Cloudflare REST API
  */
-function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel) {
-    // 1. Явный выбор юзера (если это не WORKERS_AI)
+function hasCloudflareRestAPI(env) {
+    return !!(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
+}
+
+/**
+ * Выбирает модель для веб-запроса.
+ * WORKERS_AI модели РАБОТАЮТ через REST API если есть CLOUDFLARE_ACCOUNT_ID.
+ * Если нет — подбираем альтернативу.
+ *
+ * 1. Если юзер явно указал payload.model → используем её (если доступна)
+ * 2. По умолчанию берём из WEB_DEFAULT_MODELS
+ * 3. Фоллбэк: ищем первую доступную модель в AI_MODEL_MENU_CONFIG
+ */
+function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel, env) {
+    const cfAvailable = hasCloudflareRestAPI(env);
+
+    // 1. Явный выбор юзера
     if (payloadModel && AI_MODELS[payloadModel]) {
         const model = AI_MODELS[payloadModel];
-        if (model.SERVICE !== 'WORKERS_AI') {
+        // WORKERS_AI доступна через REST API
+        if (model.SERVICE === 'WORKERS_AI' && cfAvailable) {
             return { config: model, key: payloadModel };
         }
-        // WORKERS_AI не работает на вебе — подбираем замену
-        console.log(`[WebHandler] Model ${payloadModel} is WORKERS_AI, substituting...`);
+        // WORKERS_AI НЕ доступна — подбираем замену
+        if (model.SERVICE === 'WORKERS_AI' && !cfAvailable) {
+            console.log(`[WebHandler] Model ${payloadModel} is WORKERS_AI but no CF creds, substituting...`);
+        } else {
+            return { config: model, key: payloadModel };
+        }
     }
 
     // 2. Явный дефолт из таблицы
     const defaultKey = WEB_DEFAULT_MODELS[serviceType];
     if (defaultKey && AI_MODELS[defaultKey]) {
-        return { config: AI_MODELS[defaultKey], key: defaultKey };
+        const model = AI_MODELS[defaultKey];
+        if (model.SERVICE === 'WORKERS_AI' && !cfAvailable) {
+            // Дефолтная WORKERS_AI недоступна — ищем замену ниже
+        } else {
+            return { config: model, key: defaultKey };
+        }
     }
 
-    // 3. Ищем первую не-WORKERS_AI модель в AI_MODEL_MENU_CONFIG
+    // 3. Ищем первую доступную модель в AI_MODEL_MENU_CONFIG
     const menuConfig = AI_MODEL_MENU_CONFIG[serviceType];
     if (menuConfig && menuConfig.models) {
         for (const [modelKey] of Object.entries(menuConfig.models)) {
             const model = AI_MODELS[modelKey];
-            if (model && model.SERVICE !== 'WORKERS_AI') {
-                return { config: model, key: modelKey };
-            }
+            if (!model) continue;
+            if (model.SERVICE === 'WORKERS_AI' && !cfAvailable) continue;
+            return { config: model, key: modelKey };
         }
     }
 
     // 4. Фоллбэк: перебираем все AI_MODELS по приоритету сервиса
     for (const preferredService of WEB_SERVICE_PRIORITY) {
+        if (preferredService === 'WORKERS_AI' && !cfAvailable) continue;
         for (const [modelKey, model] of Object.entries(AI_MODELS)) {
             if (model.SERVICE === preferredService) {
-                // Проверяем что модель подходит по типу
                 const modelServiceType = modelKey.split('_').slice(0, 3).join('_');
                 if (modelServiceType === serviceType) {
                     return { config: model, key: modelKey };
@@ -133,6 +157,143 @@ function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel)
     }
 
     return null;
+}
+
+// ============================================================
+// ☁️ CLOUDFLARE REST API — Вызов Workers AI через HTTP
+// ============================================================
+// Работает с любого хостинга (Yandex Cloud, VPS и т.д.)
+// Документация: https://developers.cloudflare.com/workers-ai/rest-api/
+
+async function callCloudflareRestAPI(modelName, requestBody, env) {
+    const accountId = env.CLOUDFLARE_ACCOUNT_ID;
+    const apiToken = env.CLOUDFLARE_API_TOKEN;
+    if (!accountId || !apiToken) {
+        throw new Error('CLOUDFLARE_ACCOUNT_ID или CLOUDFLARE_API_TOKEN не заданы');
+    }
+
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${modelName}`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Cloudflare API error ${response.status}: ${errorText}`);
+    }
+
+    // Проверяем Content-Type ответа
+    const contentType = response.headers.get('content-type') || '';
+
+    // Бинарный ответ (изображение, аудио)
+    if (contentType.includes('image/') || contentType.includes('audio/') || contentType.includes('video/') || contentType.includes('octet-stream')) {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        return { binary: true, data: buffer, contentType };
+    }
+
+    // JSON ответ
+    const json = await response.json();
+    if (!json.success && json.errors) {
+        throw new Error('Cloudflare API error: ' + (json.errors[0]?.message || JSON.stringify(json.errors)));
+    }
+    return json;
+}
+
+/**
+ * Универсальный вызов WORKERS_AI модели для веба.
+ * Определяет тип модели и формирует правильный запрос к REST API.
+ */
+async function callWorkersAIWeb(config, ...args) {
+    const modelName = config.MODEL; // e.g. '@cf/qwen/qwen2.5-coder-32b-instruct'
+
+    // === ТЕКСТОВЫЙ ЧАТ ===
+    if (config.FUNCTION.name === 'callWorkersAIChat') {
+        const [history, message, env] = args;
+        const messages = (history || []).map(m => ({
+            role: m.role === 'model' ? 'assistant' : 'user',
+            content: m.text || m.content || ''
+        }));
+        if (message) messages.push({ role: 'user', content: message });
+        const result = await callCloudflareRestAPI(modelName, { messages }, env);
+        return result.result?.response || result.result?.content || JSON.stringify(result.result || result);
+    }
+
+    // === VISION (Image → Text) ===
+    if (config.FUNCTION.name === 'callWorkersAIVision') {
+        const [imageBuffer, env] = args;
+        const base64 = Buffer.isBuffer(imageBuffer) ? imageBuffer.toString('base64') : imageBuffer;
+        const prompt = 'Опиши это изображение подробно на русском языке';
+        const messages = [{
+            role: 'user',
+            content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } }
+            ]
+        }];
+        const result = await callCloudflareRestAPI(modelName, { messages }, env);
+        return result.result?.response || result.result?.description || JSON.stringify(result.result || result);
+    }
+
+    // === STT (Audio → Text / Video → Text) ===
+    if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
+        const [audioBuffer, env] = args;
+        const base64 = Buffer.isBuffer(audioBuffer) ? audioBuffer.toString('base64') : audioBuffer;
+        const result = await callCloudflareRestAPI(modelName, {
+            audio: base64
+        }, env);
+        return result.result?.text || result.result?.transcription || JSON.stringify(result.result || result);
+    }
+
+    // === TTS (Text → Audio) ===
+    if (config.FUNCTION.name === 'callWorkersAITextToAudio') {
+        const [text, env, voice] = args;
+        const result = await callCloudflareRestAPI(modelName, {
+            prompt: text,
+            voice: voice || 'female'
+        }, env);
+        // Возвращаем бинарный результат
+        if (result.binary) return result.data;
+        return result.result;
+    }
+
+    // === TEXT → IMAGE ===
+    if (config.FUNCTION.name === 'callWorkersAITextToImage') {
+        const [prompt, env] = args;
+        const result = await callCloudflareRestAPI(modelName, {
+            prompt: prompt
+        }, env);
+        // Возвращаем бинарный результат (изображение)
+        if (result.binary) return result.data;
+        return result.result;
+    }
+
+    // === IMAGE → IMAGE (img2img) ===
+    if (config.FUNCTION.name === 'callWorkersAIImg2Img') {
+        const [prompt, env, refImage] = args;
+        const imageBase64 = typeof refImage === 'string' ? refImage : Buffer.isBuffer(refImage) ? refImage.toString('base64') : '';
+        const result = await callCloudflareRestAPI(modelName, {
+            prompt: prompt,
+            image: imageBase64
+        }, env);
+        if (result.binary) return result.data;
+        return result.result;
+    }
+
+    // Фоллбэк — пробуем как chat
+    console.log(`[WebHandler] Unknown WORKERS_AI function: ${config.FUNCTION.name}, trying as chat`);
+    const [fallbackArg1, fallbackArg2] = args;
+    const envArg = args.find(a => a && typeof a === 'object' && !Buffer.isBuffer(a) && !Array.isArray(a));
+    if (envArg) {
+        const messages = [{ role: 'user', content: String(fallbackArg1 || '') }];
+        const result = await callCloudflareRestAPI(modelName, { messages }, envArg);
+        return result.result?.response || JSON.stringify(result.result || result);
+    }
+    throw new Error('Не удалось вызвать WORKERS_AI модель: ' + config.FUNCTION.name);
 }
 
 // Хелпер: получить URL конвертера (может быть объектом с .toString() или строкой)
@@ -202,15 +363,16 @@ async function handleChat(auth, payload, env, monolith) {
         else if (hasVideo) serviceType = 'VIDEO_TO_TEXT';
     }
 
-    // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ — GEMINI вместо WORKERS_AI
+    // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ — WORKERS_AI через REST API или другие сервисы
     let finalResponse;
     try {
-        const modelInfo = getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+        const modelInfo = getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
         if (!modelInfo) {
             return formatResponse(false, `Нет доступной модели для ${serviceType}`);
         }
         const config = modelInfo.config;
-        console.log(`[WebHandler] Chat using model: ${modelInfo.key} (${config.SERVICE})`);
+        const isWorkersAI = config.SERVICE === 'WORKERS_AI';
+        console.log(`[WebHandler] Chat using model: ${modelInfo.key} (${config.SERVICE}${isWorkersAI ? ' via REST API' : ''})`);
 
         if (serviceType === 'IMAGE_TO_TEXT' && hasAttachments) {
             // === VISION ===
@@ -222,10 +384,12 @@ async function handleChat(auth, payload, env, monolith) {
             const imageBase64 = imageAttachments[0].base64;
             const imageBuffer = Buffer.from(imageBase64, 'base64');
 
-            // callGeminiVision(config, imageBuffer, envData) — imageBuffer = сырые байты
-            if (config.FUNCTION.name === 'callGeminiVision') {
+            if (isWorkersAI) {
+                // Cloudflare Workers AI Vision через REST API
+                const visionResult = await callWorkersAIWeb(config, imageBuffer, env);
+                finalResponse = typeof visionResult === 'string' ? visionResult : String(visionResult);
+            } else if (config.FUNCTION.name === 'callGeminiVision') {
                 const visionResult = await config.FUNCTION(config, imageBuffer, env);
-                // callGeminiVision возвращает строку (описание изображения)
                 if (typeof visionResult === 'string') {
                     finalResponse = visionResult;
                 } else {
@@ -233,7 +397,6 @@ async function handleChat(auth, payload, env, monolith) {
                     finalResponse = cleaned.finalResponse || String(visionResult);
                 }
             } else if (config.FUNCTION.name === 'callPollinationsVision' || config.FUNCTION.name === 'callBotHubVisionChat') {
-                // Другие Vision-функции — передаём base64
                 const visionPrompt = userMessage || 'Опиши это изображение подробно';
                 const visionResult = await config.FUNCTION(config, visionPrompt, env, imageBase64);
                 if (typeof visionResult === 'string') {
@@ -243,7 +406,6 @@ async function handleChat(auth, payload, env, monolith) {
                     finalResponse = cleaned.finalResponse || String(visionResult);
                 }
             } else {
-                // Фоллбэк: отправляем текст с именами файлов
                 const fileInfo = payload.attachments.map(a => a.name).join(', ');
                 const combinedMessage = userMessage ? `${userMessage}\n\n[Прикреплены файлы: ${fileInfo}]` : `Пользователь прикрепил файлы: ${fileInfo}. Опиши их.`;
                 const modelResponse = await config.FUNCTION(config, historyForModel, combinedMessage, env);
@@ -255,9 +417,10 @@ async function handleChat(auth, payload, env, monolith) {
             if (audioAttachments.length > 0) {
                 const audioBase64 = audioAttachments[0].base64;
                 const audioBuffer = Buffer.from(audioBase64, 'base64');
-                // Большинство STT-функций принимает base64 или buffer
                 let result;
-                if (config.FUNCTION.name === 'callGeminiSpeechToText') {
+                if (isWorkersAI) {
+                    result = await callWorkersAIWeb(config, audioBuffer, env);
+                } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
                     result = await config.FUNCTION(config, audioBuffer, env);
                 } else {
                     result = await config.FUNCTION(config, audioBase64, env);
@@ -269,11 +432,40 @@ async function handleChat(auth, payload, env, monolith) {
                     finalResponse = cleaned.finalResponse || String(result);
                 }
             }
+        } else if (serviceType === 'VIDEO_TO_TEXT' && hasAttachments) {
+            const videoAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('video/'));
+            if (videoAttachments.length > 0) {
+                const videoBase64 = videoAttachments[0].base64;
+                const videoBuffer = Buffer.from(videoBase64, 'base64');
+                let result;
+                if (isWorkersAI) {
+                    result = await callWorkersAIWeb(config, videoBuffer, env);
+                } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
+                    result = await config.FUNCTION(config, videoBuffer, env);
+                } else {
+                    result = await config.FUNCTION(config, videoBase64, env);
+                }
+                if (typeof result === 'string') {
+                    finalResponse = result;
+                } else {
+                    const cleaned = extractAndCleanModelResponse(result);
+                    finalResponse = cleaned.finalResponse || String(result);
+                }
+            }
         } else {
             // Обычный текстовый чат
-            const modelResponse = await config.FUNCTION(config, historyForModel, userMessage, env);
-            const cleaned = extractAndCleanModelResponse(modelResponse);
-            finalResponse = cleaned.finalResponse;
+            let modelResponse;
+            if (isWorkersAI) {
+                modelResponse = await callWorkersAIWeb(config, historyForModel, userMessage, env);
+            } else {
+                modelResponse = await config.FUNCTION(config, historyForModel, userMessage, env);
+            }
+            if (typeof modelResponse === 'string') {
+                finalResponse = modelResponse;
+            } else {
+                const cleaned = extractAndCleanModelResponse(modelResponse);
+                finalResponse = cleaned.finalResponse;
+            }
         }
     } catch (e) {
         console.error("[WebHandler] AI call error:", e.message);
@@ -314,7 +506,7 @@ async function handleImage(auth, payload, env, monolith) {
 
         let imageResult;
         try {
-            const modelInfo = getWebModel('IMAGE_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+            const modelInfo = getWebModel('IMAGE_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла');
             console.log(`[WebHandler] Upscale using: ${modelInfo.key}`);
             imageResult = await modelInfo.config.FUNCTION(modelInfo.config, payload.image_base64, env);
@@ -395,12 +587,16 @@ async function handleImage(auth, payload, env, monolith) {
 
         let imageResult;
         try {
-            const modelInfo = getWebModel('IMAGE_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+            const modelInfo = getWebModel('IMAGE_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для I2I');
             console.log(`[WebHandler] I2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
             const refImage = payload.reference_images[0];
-            imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env, refImage);
+            if (modelInfo.config.SERVICE === 'WORKERS_AI') {
+                imageResult = await callWorkersAIWeb(modelInfo.config, prompt, env, refImage);
+            } else {
+                imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env, refImage);
+            }
         } catch (e) {
             console.error("[WebHandler] I2I error:", e.message);
             return formatResponse(false, "Ошибка I2I: " + e.message);
@@ -415,7 +611,7 @@ async function handleImage(auth, payload, env, monolith) {
     if (!prompt) return formatResponse(false, 'Пустой промпт');
 
     // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ
-    const modelInfo = getWebModel('TEXT_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+    const modelInfo = getWebModel('TEXT_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
     if (!modelInfo) return formatResponse(false, 'Нет доступной модели для генерации изображений');
 
     const isFreeModel = modelInfo.config.SERVICE === 'WORKERS_AI' || !modelInfo.config.pricing;
@@ -429,7 +625,11 @@ async function handleImage(auth, payload, env, monolith) {
     let imageResult;
     try {
         console.log(`[WebHandler] T2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
-        imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env);
+        if (modelInfo.config.SERVICE === 'WORKERS_AI') {
+            imageResult = await callWorkersAIWeb(modelInfo.config, prompt, env);
+        } else {
+            imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env);
+        }
     } catch (e) {
         console.error("[WebHandler] Image gen error:", e.message);
         return formatResponse(false, "Ошибка генерации: " + e.message);
@@ -509,7 +709,7 @@ async function handleVideo(auth, payload, env, monolith) {
 
         let result;
         try {
-            const modelInfo = getWebModel('VIDEO_TO_ANALYSIS', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+            const modelInfo = getWebModel('VIDEO_TO_ANALYSIS', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для анализа видео');
             console.log(`[WebHandler] Video analysis using: ${modelInfo.key}`);
 
@@ -568,7 +768,7 @@ async function handleVideo(auth, payload, env, monolith) {
 
         let taskId;
         try {
-            const modelInfo = getWebModel('VIDEO_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+            const modelInfo = getWebModel('VIDEO_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла видео');
             const workerDomain = env.WORKER_DOMAIN || '';
             const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
@@ -610,7 +810,7 @@ async function handleVideo(auth, payload, env, monolith) {
         else if (payload.video_submode === 'v2v') videoServiceType = 'VIDEO_TO_VIDEO';
         else if (payload.video_submode === 'a2v') videoServiceType = 'AUDIO_TO_VIDEO';
 
-        const modelInfo = getWebModel(videoServiceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+        const modelInfo = getWebModel(videoServiceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
         if (!modelInfo) return formatResponse(false, 'Нет модели для генерации видео');
 
         const workerDomain = env.WORKER_DOMAIN || '';
@@ -665,7 +865,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
         let result;
         try {
-            const modelInfo = getWebModel('AUDIO_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+            const modelInfo = getWebModel('AUDIO_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для распознавания');
             console.log(`[WebHandler] STT using: ${modelInfo.key}`);
 
@@ -727,7 +927,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
         let audioResult;
         try {
-            const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+            const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для клонирования');
             const config = modelInfo.config;
 
@@ -758,7 +958,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
     let audioResult;
     try {
-        const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model);
+        const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
         if (!modelInfo) return formatResponse(false, 'Нет модели для TTS');
         const config = modelInfo.config;
         const voice = payload.voice || 'Female';
@@ -766,16 +966,13 @@ async function handleAudio(auth, payload, env, monolith) {
         console.log(`[WebHandler] TTS using: ${modelInfo.key} (${config.SERVICE}), voice: ${voice}`);
 
         // Вызываем TTS-функцию с правильной сигнатурой
-        if (config.SERVICE === 'GEMINI' || config.FUNCTION.name === 'callGeminiTextToAudio') {
-            // callGeminiTextToAudio(config, text, envData, voice) → возвращает {audioBase64, mimeType}
+        if (config.SERVICE === 'WORKERS_AI') {
+            // Workers AI TTS через Cloudflare REST API
+            audioResult = await callWorkersAIWeb(config, text, env, voice);
+        } else if (config.SERVICE === 'GEMINI' || config.FUNCTION.name === 'callGeminiTextToAudio') {
             audioResult = await config.FUNCTION(config, text, env, voice);
         } else if (config.SERVICE === 'VOICERSS' || config.FUNCTION.name === 'callVoiceRSSTextToAudio') {
-            // callVoiceRSSTextToAudio(config, text, envData, voice) → возвращает ArrayBuffer
             audioResult = await config.FUNCTION(config, text, env, voice);
-        } else if (config.SERVICE === 'WORKERS_AI') {
-            // Workers AI TTS — не работает на Yandex, но пробуем
-            try { audioResult = await config.FUNCTION(config, text, env, voice); }
-            catch(_) { audioResult = await config.FUNCTION(config, text, env); }
         } else {
             // KIE.AI, BotHub и прочие — пробуем с voice
             try { audioResult = await config.FUNCTION(config, text, env, voice); }
