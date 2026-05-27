@@ -16322,7 +16322,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                     if (urlMode) webBody.mode = urlMode;
                 }
             }
-            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse, syncS3Chat, uploadBase64ImageToPublicUrl, createTaskKieAi });
+            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat, uploadBase64ImageToPublicUrl, createTaskKieAi });
             return new Response(JSON.stringify(result), {
                 status: 200,
                 headers: {
