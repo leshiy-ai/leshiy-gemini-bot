@@ -511,6 +511,10 @@
             ? ''  // Тот же домен — относительный путь
             : 'https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net');
 
+    // ---- AI CONFIG (loaded from backend, like leshiy-ai config.js) ----
+    let AI_CONFIG = null; // Will be populated by loadAIConfig()
+    let AI_MODELS_CLIENT = null; // Client-side model configs (from /api/ai-config)
+
     // ---- STATE ----
     let currentMode = 'chat';
     let credits = 0;
@@ -711,6 +715,7 @@
 
         autoResize(userInput);
         loadModels();
+        loadAIConfig(); // Load AI config for client-side calls
         initChatDragDrop();
     });
 
@@ -877,6 +882,199 @@
     function getAuth() {
         if (user) return { provider: user.provider, id: String(user.id), hash: user.hash || null };
         return { provider: null, id: null, hash: null };
+    }
+
+    // ============================================================
+    //  AI CONFIG LOADING (from backend, like leshiy-ai config.js)
+    // ============================================================
+    async function loadAIConfig() {
+        try {
+            // Fetch API keys
+            const keysResp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'keys', auth: getAuth(), payload: {} })
+            });
+            if (keysResp.ok) {
+                const keysData = await keysResp.json();
+                if (keysData.success && keysData.data) {
+                    AI_CONFIG = keysData.data;
+                    console.log('AI_CONFIG loaded: keys = ' + Object.keys(AI_CONFIG).filter(k => AI_CONFIG[k]).join(', '));
+                }
+            }
+            // Fetch AI model configs
+            const configResp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'ai-config', auth: getAuth(), payload: {} })
+            });
+            if (configResp.ok) {
+                const configData = await configResp.json();
+                if (configData.success && configData.data) {
+                    AI_MODELS_CLIENT = configData.data.AI_MODELS || {};
+                    console.log('AI_MODELS_CLIENT loaded: ' + Object.keys(AI_MODELS_CLIENT).length + ' models');
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load AI config:', e);
+        }
+    }
+
+    // ============================================================
+    //  CLIENT-SIDE AI REQUEST (ported from leshiy-core.js)
+    //  3-tier proxy fallback: Yandex → Cloudflare → Gemini proxy
+    // ============================================================
+    const SYSTEM_PROMPT = 'Ты — многофункциональный AI-ассистент Gemini AI от Leshiy, отвечающий на русском языке. Твоя задача — вести диалог, отвечать на вопросы и помогать пользователю с функциями приложения. Ответы должны быть информативными и доброжелательными на русском языке.';
+
+    async function sendAIRequest(config, url, body, authHeader, isRawBody) {
+        if (!AI_CONFIG) throw new Error('AI_CONFIG не загружен. Перезагрузите страницу.');
+
+        const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+        const isBinary = isRawBody && (body instanceof ArrayBuffer || body instanceof Uint8Array || body === null);
+
+        const commonProxyHeaders = {
+            'X-Target-URL': url,
+            'X-Proxy-Secret': AI_CONFIG.PROXY_SECRET_KEY || ''
+        };
+
+        // Content-Type
+        if (isFormData) {
+            // Don't set Content-Type, browser will set multipart/form-data with boundary
+        } else if (isBinary) {
+            commonProxyHeaders['Content-Type'] = body ? 'application/octet-stream' : 'text/plain';
+        } else {
+            commonProxyHeaders['Content-Type'] = 'application/json';
+        }
+
+        // Authorization
+        if (authHeader) {
+            commonProxyHeaders['X-Proxy-Authorization'] = authHeader;
+        }
+
+        // Request body
+        let requestBody;
+        if (isFormData) requestBody = body;
+        else if (body === null) requestBody = null;
+        else if (isBinary) requestBody = body;
+        else requestBody = JSON.stringify(body);
+
+        console.log("DEBUG AI REQUEST:", { proxy: AI_CONFIG.PROXY_URL, target: url, isFormData, isBinary });
+
+        let response;
+
+        // Attempt 1: Yandex proxy
+        try {
+            response = await fetch(AI_CONFIG.PROXY_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: commonProxyHeaders,
+                body: requestBody
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error('[Proxy 1] ' + response.status + ': ' + errorText);
+            }
+            return response;
+        } catch (error1) {
+            console.warn('Основной прокси не удался: ' + error1.message);
+
+            // Attempt 2: Cloudflare fallback
+            try {
+                response = await fetch(AI_CONFIG.FALLBACK_PROXY, {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: commonProxyHeaders,
+                    body: requestBody
+                });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error('[Proxy 2] ' + response.status + ': ' + errorText);
+                }
+                return response;
+            } catch (error2) {
+                console.warn('Резервный прокси не удался: ' + error2.message);
+
+                // Attempt 3: Gemini-specific proxy (only for Gemini service)
+                if (config && config.SERVICE === 'GEMINI' && AI_CONFIG.GEMINI_PROXY) {
+                    try {
+                        const geminiProxyUrl = url.replace(new URL(url).origin, AI_CONFIG.GEMINI_PROXY);
+                        response = await fetch(geminiProxyUrl, {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Proxy-Secret': AI_CONFIG.GEMINI_PROXY_KEY || ''
+                            },
+                            body: JSON.stringify(body)
+                        });
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error('[Proxy 3] ' + response.status + ': ' + errorText);
+                        }
+                        return response;
+                    } catch (error3) {
+                        throw new Error('Все 3 прокси не удались. Последняя ошибка: ' + error3.message);
+                    }
+                }
+                throw error2;
+            }
+        }
+    }
+
+    // Конвертация Base64 → ArrayBuffer
+    function base64ToArrayBuffer(base64) {
+        const binary_string = window.atob(base64);
+        const len = binary_string.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary_string.charCodeAt(i);
+        return bytes.buffer;
+    }
+
+    // Конвертация PCM → MP3 через сервер конвертер
+    async function convertPcmToMp3(pcmBuffer) {
+        if (!AI_CONFIG || !AI_CONFIG.MP3_CONVERTER_URL) {
+            throw new Error("URL конвертера не настроен");
+        }
+        const BASE_URL_CONV = AI_CONFIG.MP3_CONVERTER_URL.endsWith('/') ? AI_CONFIG.MP3_CONVERTER_URL.slice(0, -1) : AI_CONFIG.MP3_CONVERTER_URL;
+        const endpoint = '/pcm2mp3';
+        const queryParams = { sampleRate: 24000, channels: 1, format: 's16le' };
+        const urlParams = new URLSearchParams(queryParams);
+        const finalUrl = BASE_URL_CONV + endpoint + '?' + urlParams.toString();
+
+        const convResponse = await fetch(finalUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: pcmBuffer,
+            signal: AbortSignal.timeout(120000)
+        });
+        if (!convResponse.ok) throw new Error('Ошибка конвертера PCM→MP3: ' + convResponse.status);
+        return await convResponse.arrayBuffer();
+    }
+
+    // Обработчик ошибок AI
+    function handleAiError(error) {
+        let msg = 'Произошла неизвестная ошибка.';
+        const orig = (error && error.message) ? String(error.message) : '';
+        if (orig.includes('quota') || orig.includes('429')) msg = 'Исчерпан лимит запросов к модели.';
+        else if (orig.includes('402') || orig.includes('Balance')) msg = 'Закончились средства на балансе модели.';
+        else if (orig.includes('location is not supported')) msg = 'Доступ ограничен в вашем регионе.';
+        else if (orig.includes('API key')) msg = 'Ключ API недействителен.';
+        else if (orig.includes('Failed to fetch') || orig.includes('network')) msg = 'Сетевая ошибка. Проверьте интернет.';
+        else msg = orig;
+        return { type: 'error', text: msg };
+    }
+
+    // Получить конфиг модели для клиентского вызова, подставив реальные ключи
+    function getClientModelConfig(modelKey) {
+        if (!AI_MODELS_CLIENT || !AI_CONFIG) return null;
+        const m = AI_MODELS_CLIENT[modelKey];
+        if (!m) return null;
+        // Replace API_KEY name with actual value from AI_CONFIG
+        const resolved = { ...m };
+        if (resolved.API_KEY && AI_CONFIG[resolved.API_KEY]) {
+            resolved._apiKeyValue = AI_CONFIG[resolved.API_KEY];
+        }
+        return resolved;
     }
 
     // ============================================================
@@ -1739,6 +1937,153 @@
 
         const typingEl = showTyping();
 
+        // --- Client-side AI call with fallback ---
+        const modelKey = selected.chat;
+        const config = getClientModelConfig(modelKey);
+
+        if (config && AI_CONFIG) {
+            // Client-side AI call via proxy
+            try {
+                let reply = '';
+                const hasImages = chatAttachments.some(a => a.type.startsWith('image/'));
+                const service = config.SERVICE;
+
+                if (service === 'GEMINI') {
+                    // Gemini chat (and vision)
+                    let url = config.BASE_URL + '/models/' + config.MODEL + ':generateContent?key=' + config._apiKeyValue;
+                    let currentUserParts = [];
+                    if (text) currentUserParts.push({ text: text });
+                    // Add image attachments for vision
+                    if (hasImages) {
+                        chatAttachments.filter(a => a.type.startsWith('image/')).forEach(a => {
+                            currentUserParts.push({ inlineData: { mimeType: a.type, data: a.base64 } });
+                        });
+                    }
+                    // Add non-image file descriptions
+                    chatAttachments.filter(a => !a.type.startsWith('image/')).forEach(a => {
+                        currentUserParts.push({ text: '[Прикреплён файл: ' + a.name + ' (' + a.type + ')]' });
+                    });
+                    if (!text && currentUserParts.length === 0) {
+                        currentUserParts.push({ text: 'Опиши прикреплённые файлы подробно' });
+                    }
+
+                    // Build history in Gemini format
+                    const geminiHistory = chatHistory.slice(0, -1).map(msg => ({
+                        role: msg.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: msg.content || msg.text || '' }]
+                    }));
+
+                    const body = {
+                        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+                        contents: [...geminiHistory, { role: 'user', parts: currentUserParts }]
+                    };
+
+                    const response = await sendAIRequest(config, url, body, null);
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+                    reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '(пустой ответ)';
+
+                } else if (service === 'CLOUDFLARE' || service === 'WORKERS_AI') {
+                    let url = config.BASE_URL + '/' + (AI_CONFIG.CLOUDFLARE_ACCOUNT_ID || '') + '/ai/run/' + config.MODEL;
+                    const authHeader = 'Bearer ' + config._apiKeyValue;
+                    const messages = chatHistory.map(msg => ({
+                        role: msg.role === 'user' ? 'user' : 'assistant',
+                        content: msg.content || msg.text || ''
+                    }));
+                    // Add vision content
+                    if (hasImages) {
+                        const lastMsg = messages[messages.length - 1];
+                        const imgParts = chatAttachments.filter(a => a.type.startsWith('image/')).map(a => ({
+                            type: 'image_url',
+                            image_url: { url: 'data:' + a.type + ';base64,' + a.base64 }
+                        }));
+                        lastMsg.content = [{ type: 'text', text: text || 'Опиши изображение' }, ...imgParts];
+                    }
+                    const body = { messages, stream: false };
+                    const response = await sendAIRequest(config, url, body, authHeader);
+                    const data = await response.json();
+                    reply = data.result?.response || data.result?.message || data.result || '(пустой ответ)';
+
+                } else if (service === 'BOTHUB') {
+                    let url = config.BASE_URL + '/chat/completions';
+                    const authHeader = 'Bearer ' + config._apiKeyValue;
+                    const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
+                    chatHistory.forEach(msg => {
+                        messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content || msg.text || '' });
+                    });
+                    const body = { model: config.MODEL, messages };
+                    const response = await sendAIRequest(config, url, body, authHeader);
+                    const data = await response.json();
+                    reply = data.choices?.[0]?.message?.content || '(пустой ответ)';
+
+                } else if (service === 'POLLINATIONS') {
+                    let url = config.BASE_URL + '/v1/chat/completions';
+                    const authHeader = config._apiKeyValue ? 'Bearer ' + config._apiKeyValue : undefined;
+                    const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
+                    chatHistory.forEach(msg => {
+                        messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content || msg.text || '' });
+                    });
+                    const body = { model: config.MODEL, messages, temperature: 0.7 };
+                    const response = await sendAIRequest(config, url, body, authHeader);
+                    const data = await response.json();
+                    reply = data.choices?.[0]?.message?.content || '(пустой ответ)';
+
+                } else if (service === 'DEEPSEEK') {
+                    let url = config.BASE_URL + '/chat/completions';
+                    const authHeader = 'Bearer ' + config._apiKeyValue;
+                    const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
+                    chatHistory.forEach(msg => {
+                        messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content || msg.text || '' });
+                    });
+                    const body = { model: config.MODEL, messages };
+                    const response = await sendAIRequest(config, url, body, authHeader);
+                    const data = await response.json();
+                    reply = data.choices?.[0]?.message?.content || '(пустой ответ)';
+
+                } else {
+                    // Unknown service — fall back to backend
+                    throw new Error('FALLBACK_TO_BACKEND');
+                }
+
+                removeTyping(typingEl);
+                addMessage(reply, 'bot');
+                chatHistory.push({ role: 'assistant', content: reply });
+                saveHistory();
+
+                // Очищаем вложения после отправки
+                chatAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+                chatAttachments = [];
+                renderChatAttachments();
+
+            } catch (err) {
+                if (err.message === 'FALLBACK_TO_BACKEND') {
+                    // Fall through to backend call below
+                    removeTyping(typingEl);
+                    // Re-add typing for backend call
+                    const typingEl2 = showTyping();
+                    await sendChatBackend(text, typingEl2);
+                } else {
+                    removeTyping(typingEl);
+                    const errInfo = handleAiError(err);
+                    addMessage(errInfo.text, 'error');
+                    chatHistory.pop();
+                    saveHistory();
+                    userInput.value = text;
+                    autoResize(userInput);
+                }
+            }
+        } else {
+            // Fallback: use backend API
+            await sendChatBackend(text, typingEl);
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
+        userInput.focus();
+    }
+
+    // Backend fallback for chat
+    async function sendChatBackend(text, typingEl) {
         try {
             const payload = {
                 prompt: text || 'Опиши прикреплённые файлы подробно',
@@ -1750,7 +2095,6 @@
             if (chatAttachments.length > 0) {
                 const hasImages = chatAttachments.some(a => a.type.startsWith('image/'));
                 const hasAudio = chatAttachments.some(a => a.type.startsWith('audio/'));
-                const hasVideo = chatAttachments.some(a => a.type.startsWith('video/'));
 
                 payload.attachments = chatAttachments.map(a => ({
                     name: a.name,
@@ -1758,18 +2102,12 @@
                     base64: a.base64
                 }));
 
-                // Если есть картинки — отправляем через chat с attachments (Vision)
-                // webHandler сам определит serviceType=IMAGE_TO_TEXT по attachments
                 if (hasImages) {
-                    // Выбираем модель Vision если указана, иначе бэкенд сам подберёт
                     payload.model = selected.image_vision || payload.model;
                 }
-
-                // Если есть аудио — используем STT модель
                 if (hasAudio && !hasImages) {
                     payload.model = selected.audio_stt || availableModels.audio_stt?.find(m => m.isFree)?.key || 'AUDIO_TO_TEXT_WORKERS_AI';
                 }
-                // Если нет текста — добавляем подсказку для ИИ
                 if (!text) {
                     const types = chatAttachments.map(a => {
                         if (a.type.startsWith('image/')) return 'изображение';
@@ -1837,10 +2175,6 @@
             userInput.value = text;
             autoResize(userInput);
         }
-
-        isProcessing = false;
-        sendBtn.disabled = false;
-        userInput.focus();
     }
 
     async function generateImage(prompt) {
@@ -1860,14 +2194,115 @@
         const resultArea = document.getElementById('imageResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую изображение...</span>';
 
+        const config = getClientModelConfig(modelKey);
+
+        if (config && AI_CONFIG) {
+            // Client-side AI call via proxy
+            try {
+                const service = config.SERVICE;
+                const refImages = imageRefs.filter(r => r !== null);
+
+                if (service === 'GEMINI') {
+                    // Gemini image gen
+                    let url = config.BASE_URL + '/models/' + config.MODEL + ':generateContent?key=' + config._apiKeyValue;
+                    let currentUserParts = [{ text: prompt }];
+                    // Add reference images for i2i
+                    if (isI2I && refImages.length > 0) {
+                        refImages.forEach(ref => {
+                            currentUserParts.push({ inlineData: { mimeType: 'image/png', data: ref } });
+                        });
+                    }
+                    const body = { contents: [{ parts: currentUserParts }] };
+                    const response = await sendAIRequest(config, url, body, null);
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+                    // Find inlineData in response
+                    const parts = data.candidates?.[0]?.content?.parts || [];
+                    const imgPart = parts.find(p => p.inlineData);
+                    if (imgPart) {
+                        const imgSrc = 'data:' + imgPart.inlineData.mimeType + ';base64,' + imgPart.inlineData.data;
+                        resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="' + prompt + '">';
+                    } else {
+                        // Text-only response — show it
+                        const textPart = parts.find(p => p.text);
+                        throw new Error(textPart?.text || 'Gemini не вернул изображение');
+                    }
+
+                } else if (service === 'BOTHUB') {
+                    // Bothub DALL-E image gen
+                    let url = config.BASE_URL + '/images/generations';
+                    const authHeader = 'Bearer ' + config._apiKeyValue;
+                    const body = { model: config.MODEL, prompt: prompt, n: 1, size: selected.imageSize || '1024x1024' };
+                    const response = await sendAIRequest(config, url, body, authHeader);
+                    const data = await response.json();
+                    const imgUrl = data.data?.[0]?.url;
+                    if (imgUrl) {
+                        resultArea.innerHTML = '<img class="generated-image" src="' + imgUrl + '" alt="' + prompt + '">';
+                    } else throw new Error('BotHub не вернул изображение');
+
+                } else if (service === 'POLLINATIONS') {
+                    // Pollinations T2I — direct GET request
+                    const seed = Math.floor(Math.random() * 999999);
+                    const pollUrl = config.BASE_URL + '/image/' + encodeURIComponent(prompt) + '?model=flux&seed=' + seed + '&nologo=true&width=' + (parseInt(selected.imageSize) || 1024) + '&height=' + (parseInt(selected.imageSize) || 1024);
+                    // Pollinations returns image binary directly
+                    const response = await fetch(pollUrl);
+                    if (!response.ok) throw new Error('Pollinations ошибка: ' + response.status);
+                    const blob = await response.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    resultArea.innerHTML = '<img class="generated-image" src="' + blobUrl + '" alt="' + prompt + '">';
+
+                } else if (service === 'CLOUDFLARE' || service === 'WORKERS_AI') {
+                    // Cloudflare Workers AI image gen
+                    let url = config.BASE_URL + '/' + (AI_CONFIG.CLOUDFLARE_ACCOUNT_ID || '') + '/ai/run/' + config.MODEL;
+                    const authHeader = 'Bearer ' + config._apiKeyValue;
+                    const body = { prompt: prompt, num_steps: 20 };
+                    const response = await sendAIRequest(config, url, body, authHeader);
+                    const data = await response.json();
+                    if (data.image) {
+                        resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.image + '" alt="' + prompt + '">';
+                    } else if (data.images?.[0]) {
+                        resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.images[0] + '" alt="' + prompt + '">';
+                    } else throw new Error('Cloudflare не вернул изображение');
+
+                } else {
+                    throw new Error('FALLBACK_TO_BACKEND');
+                }
+
+                if (!model?.isFree) credits -= cost;
+                updateCreditsDisplay();
+                showToast('Изображение создано!', 'success');
+
+            } catch (err) {
+                if (err.message === 'FALLBACK_TO_BACKEND') {
+                    await generateImageBackend(prompt, modelKey, model, cost, resultArea);
+                } else {
+                    const errInfo = handleAiError(err);
+                    resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + errInfo.text + '</span>';
+                    showToast('Ошибка генерации: ' + errInfo.text, 'error');
+                    userInput.value = prompt;
+                    autoResize(userInput);
+                }
+            }
+        } else {
+            // Fallback: use backend API
+            await generateImageBackend(prompt, modelKey, model, cost, resultArea);
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
+    }
+
+    // Backend fallback for image generation
+    async function generateImageBackend(prompt, modelKey, model, cost, resultArea) {
         try {
+            const hasRefs = imageRefs.some(r => r !== null);
+            const isI2I = hasRefs;
             const payload = {
                 prompt,
                 image_size: selected.imageSize,
                 model: modelKey,
                 aspect_ratio: selected.ratio,
             };
-            // Добавляем image_mode и референсы если есть
             if (isI2I && hasRefs) {
                 payload.image_mode = 'i2i';
                 payload.reference_images = imageRefs.filter(r => r !== null);
@@ -1880,7 +2315,7 @@
             });
 
             const contentType = response.headers.get('Content-Type') || '';
-            
+
             if (!response.ok) {
                 let errMsg = 'Ошибка генерации';
                 if (contentType.includes("application/json")) {
@@ -1889,7 +2324,7 @@
                 }
                 throw new Error(errMsg);
             }
-            
+
             if (contentType.includes('application/json')) {
                 const data = await response.json();
                 if (data.credits_left !== undefined) credits = data.credits_left;
@@ -1920,16 +2355,12 @@
                 updateCreditsDisplay();
                 showToast('Изображение создано!', 'success');
             }
-
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка генерации: ' + err.message, 'error');
             userInput.value = prompt;
             autoResize(userInput);
         }
-
-        isProcessing = false;
-        sendBtn.disabled = false;
     }
 
     async function generateVideo(prompt) {
@@ -2104,6 +2535,99 @@
         const resultArea = document.getElementById('audioTTSResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую аудио...</span>';
 
+        const config = getClientModelConfig(selected.audio_tts);
+
+        if (config && AI_CONFIG) {
+            // Client-side AI call via proxy
+            try {
+                const service = config.SERVICE;
+                const voice = selected.voice;
+
+                if (service === 'GEMINI') {
+                    // Gemini TTS — returns PCM → convert to MP3
+                    let url = config.BASE_URL + '/models/' + config.MODEL + ':generateContent?key=' + config._apiKeyValue;
+                    const body = {
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: {
+                                voiceConfig: {
+                                    prebuiltVoiceConfig: { voiceName: voice }
+                                }
+                            }
+                        },
+                        contents: [{ parts: [{ text: text }] }]
+                    };
+                    const response = await sendAIRequest(config, url, body, null);
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+                    const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    if (!audioData) throw new Error('Gemini не вернул аудио');
+                    // Convert PCM → MP3
+                    const pcmBuffer = base64ToArrayBuffer(audioData);
+                    const mp3Buffer = await convertPcmToMp3(pcmBuffer);
+                    const blob = new Blob([mp3Buffer], { type: 'audio/mp3' });
+                    const audioUrl = URL.createObjectURL(blob);
+                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '" type="audio/mp3"></audio><br><a href="' + audioUrl + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
+
+                } else if (service === 'CLOUDFLARE' || service === 'WORKERS_AI') {
+                    // Cloudflare Workers AI TTS
+                    let url = config.BASE_URL + '/' + (AI_CONFIG.CLOUDFLARE_ACCOUNT_ID || '') + '/ai/run/' + config.MODEL;
+                    const authHeader = 'Bearer ' + config._apiKeyValue;
+                    const body = { prompt: text, voice: voice };
+                    const response = await sendAIRequest(config, url, body, authHeader);
+                    const blob = await response.blob();
+                    const audioUrl = URL.createObjectURL(blob);
+                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '" type="audio/mp3"></audio><br><a href="' + audioUrl + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
+
+                } else if (service === 'BOTHUB') {
+                    // Bothub TTS
+                    let url = config.BASE_URL + '/audio/speech';
+                    const authHeader = 'Bearer ' + config._apiKeyValue;
+                    const body = { model: config.MODEL, input: text, voice: voice };
+                    const response = await sendAIRequest(config, url, body, authHeader);
+                    const blob = await response.blob();
+                    const audioUrl = URL.createObjectURL(blob);
+                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '" type="audio/mp3"></audio><br><a href="' + audioUrl + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
+
+                } else if (service === 'VOICERSS') {
+                    // VoiceRSS TTS — direct GET request
+                    const voiceUrl = config.BASE_URL + '?' + config.MODEL + '&key=' + config._apiKeyValue + '&src=' + encodeURIComponent(text) + '&v=' + voice;
+                    const voiceResponse = await fetch(voiceUrl);
+                    if (!voiceResponse.ok) throw new Error('VoiceRSS ошибка: ' + voiceResponse.status);
+                    const blob = await voiceResponse.blob();
+                    const audioUrl = URL.createObjectURL(blob);
+                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '" type="audio/mp3"></audio><br><a href="' + audioUrl + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
+
+                } else {
+                    throw new Error('FALLBACK_TO_BACKEND');
+                }
+
+                if (!model?.isFree) credits -= cost;
+                updateCreditsDisplay();
+                showToast('Аудио создано!', 'success');
+
+            } catch (err) {
+                if (err.message === 'FALLBACK_TO_BACKEND') {
+                    await generateAudioTTSBackend(text, model, cost, resultArea);
+                } else {
+                    const errInfo = handleAiError(err);
+                    resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + errInfo.text + '</span>';
+                    showToast('Ошибка: ' + errInfo.text, 'error');
+                    userInput.value = text;
+                    autoResize(userInput);
+                }
+            }
+        } else {
+            // Fallback: use backend API
+            await generateAudioTTSBackend(text, model, cost, resultArea);
+        }
+
+        isProcessing = false;
+        sendBtn.disabled = false;
+    }
+
+    // Backend fallback for audio TTS
+    async function generateAudioTTSBackend(text, model, cost, resultArea) {
         try {
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
@@ -2123,7 +2647,6 @@
                 if (!data.success) throw new Error(data.error || 'Ошибка генерации');
                 const audioContent = data.data?.content;
                 if (audioContent) {
-                    // content может быть URL или base64
                     const audioSrc = audioContent.startsWith('http') ? audioContent : 'data:audio/mp3;base64,' + audioContent;
                     resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '" type="audio/mp3"></audio><br><a href="' + audioSrc + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
                 } else throw new Error('Сервер не вернул аудио');
@@ -2145,9 +2668,6 @@
             userInput.value = text;
             autoResize(userInput);
         }
-
-        isProcessing = false;
-        sendBtn.disabled = false;
     }
 
     // ---- AUDIO STT (распознавание, бесплатно) ----

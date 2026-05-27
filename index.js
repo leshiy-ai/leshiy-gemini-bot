@@ -282,6 +282,7 @@ module.exports.handler = async (event, context) => {
         nodeCrypto,
         // Функции с методом fetch:
         LESHIY_AI_PROXY: {
+            toString: () => process.env.LESHIY_AI_PROXY || '',
             fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
         },
         LESHIY_CONVERTER: {

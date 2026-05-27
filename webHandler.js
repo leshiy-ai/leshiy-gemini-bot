@@ -31,6 +31,10 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handleModels(auth, env, monolith);
             case 'balance':
                 return await handleBalance(auth, env, monolith);
+            case 'keys':
+                return await handleKeys(auth, env);
+            case 'ai-config':
+                return await handleAIConfig(auth, env, monolith);
             default:
                 return formatResponse(false, "Неизвестный режим: " + mode);
         }
@@ -691,6 +695,67 @@ function getShortServiceName(service) {
         'VOICERSS': 'VoiceRSS'
     };
     return names[service] || service || '';
+}
+
+// ============================================================
+// 🔑 КЛЮЧИ — Возврат API ключей и прокси-URL для клиентских AI-вызовов
+// ============================================================
+async function handleKeys(auth, env) {
+    // Ключи доступны даже гостям — они нужны для клиентских AI-вызовов
+    // (как в leshiy-ai где ключи встроены в билд через VITE_ переменные)
+    const proxyUrl = (env.LESHIY_AI_PROXY && typeof env.LESHIY_AI_PROXY === 'string')
+        ? env.LESHIY_AI_PROXY
+        : (typeof env.LESHIY_AI_PROXY?.toString === 'function' ? env.LESHIY_AI_PROXY.toString() : '');
+    const converterUrl = (env.LESHIY_CONVERTER && typeof env.LESHIY_CONVERTER === 'string')
+        ? env.LESHIY_CONVERTER
+        : (typeof env.LESHIY_CONVERTER?.toString === 'function' ? env.LESHIY_CONVERTER.toString() : '');
+
+    const keys = {
+        GEMINI_API_KEY: env.GEMINI_API_KEY || '',
+        CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN || '',
+        CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID || '',
+        POLLINATIONS_API_KEY: env.POLLINATIONS_API_KEY || '',
+        BOTHUB_API_KEY: env.BOTHUB_API_KEY || '',
+        DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY || '',
+        VOICERSS_API_KEY: env.VOICERSS_API_KEY || '',
+        // Прокси
+        PROXY_URL: proxyUrl,
+        PROXY_SECRET_KEY: env.PROXY_SECRET_KEY || '',
+        FALLBACK_PROXY: env.FALLBACK_PROXY || 'https://leshiy-ai-proxy.leshiyalex.workers.dev',
+        GEMINI_PROXY: env.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev',
+        GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY || '',
+        MP3_CONVERTER_URL: converterUrl
+    };
+    console.log('[handleKeys] PROXY_URL=' + proxyUrl.substring(0, 50) + '... KEYS=' + Object.keys(keys).filter(k => keys[k]).length);
+    return formatResponse(true, null, null, keys);
+}
+
+// ============================================================
+// 🤖 AI-КОНФИГ — Возврат AI_MODELS без FUNCTION (для клиентских вызовов)
+// ============================================================
+async function handleAIConfig(auth, env, monolith) {
+    const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
+    if (!AI_MODELS) return formatResponse(false, 'AI_MODELS не загружены');
+
+    // Возвращаем модели без FUNCTION (она не серриализуема)
+    const safeModels = {};
+    for (const [key, val] of Object.entries(AI_MODELS)) {
+        if (!val || typeof val !== 'object') continue;
+        safeModels[key] = {
+            SERVICE: val.SERVICE,
+            MODEL: val.MODEL,
+            API_KEY: val.API_KEY, // имя ключа, не сам ключ
+            BASE_URL: val.BASE_URL,
+            ...(val.API_PATH ? { API_PATH: val.API_PATH } : {}),
+            ...(val.voices ? { voices: val.voices } : {}),
+            ...(val.pricing ? { pricing: val.pricing } : {})
+        };
+    }
+
+    return formatResponse(true, null, null, {
+        AI_MODELS: safeModels,
+        AI_MODEL_MENU_CONFIG: AI_MODEL_MENU_CONFIG || {}
+    });
 }
 
 // ============================================================

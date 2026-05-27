@@ -1010,7 +1010,7 @@ body {
     .header { padding: 10px 12px; }
     .header-logo { font-size: 20px; }
     
-    .mode-tabs { padding: 6px 8px; gap: 3px; }
+    .mode-tabs { padding: 6px 8px; gap: 3px; -webkit-overflow-scrolling: touch; }
     .mode-tab { padding: 6px 10px; font-size: 12px; min-height: 34px; }
     .mode-emoji { font-size: 13px; }
     
@@ -1034,6 +1034,7 @@ body {
     .result-area { min-height: 160px; }
     
     .input-wrapper textarea { font-size: 14px; padding: 10px 12px; }
+    .input-area { padding: 10px 8px; }
     
     .dialog { padding: 24px; max-width: 400px; }
     .dialog p { font-size: 14px; }
@@ -1047,7 +1048,7 @@ body {
     .credits-display { font-size: 12px; padding: 4px 8px; }
     .auth-btn { font-size: 11px; padding: 5px 10px; }
     
-    .mode-tabs { padding: 5px 6px; gap: 2px; }
+    .mode-tabs { padding: 5px 6px; gap: 2px; -webkit-overflow-scrolling: touch; }
     .mode-tab { padding: 5px 7px; font-size: 11px; min-height: 34px; border-radius: 18px; }
     .mode-emoji { font-size: 12px; }
     
@@ -1057,11 +1058,13 @@ body {
         min-height: 36px;
         flex-wrap: wrap;
     }
-    .sub-option { font-size: 10px; padding: 4px 6px; min-height: 28px; }
+    .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
+    .sub-option { font-size: 10px; padding: 3px 6px; min-height: 28px; border-radius: 14px; }
     .sub-label { font-size: 10px; }
-    .model-select { font-size: 10px; max-width: 130px; padding: 3px 20px 3px 6px; }
+    .model-select { font-size: 10px; max-width: 120px; padding: 3px 20px 3px 6px; }
     .mode-tag { font-size: 10px; padding: 2px 6px; }
-    .size-option { font-size: 10px; padding: 3px 6px; min-height: 28px; }
+    .size-option { font-size: 10px; padding: 3px 6px; min-height: 28px; border-radius: 14px; }
+    .size-selector { gap: 4px; }
     
     .media-panel { padding: 10px 8px; gap: 10px; }
     .media-panel h3 { font-size: 14px; }
@@ -1075,7 +1078,8 @@ body {
     .result-area { min-height: 140px; }
     .result-placeholder { font-size: 12px; }
     
-    .input-wrapper textarea { font-size: 13px; }
+    .input-wrapper textarea { font-size: 13px; padding: 8px 10px; }
+    .input-area { padding: 8px 6px; }
     .input-hint { font-size: 10px; }
     
     .message { font-size: 13px; padding: 8px 10px; }
@@ -1090,6 +1094,16 @@ body {
     .dialog h3 { font-size: 15px; }
     .dialog p { font-size: 13px; }
     .auth-provider-btn { font-size: 13px; padding: 10px; }
+}
+
+/* ===== RESPONSIVE — Very small screens (iPhone SE, etc.) ===== */
+@media (max-width: 360px) {
+    .mode-tab { padding: 4px 6px; font-size: 10px; }
+    .sub-header { gap: 2px; padding: 4px 4px; }
+    .sub-option { font-size: 9px; padding: 3px 5px; min-height: 26px; }
+    .sub-divider { height: 16px; }
+    .model-select { max-width: 100px; font-size: 9px; }
+    .input-wrapper textarea { font-size: 12px; padding: 6px 8px; }
 }
 
 /* Результат-область для аудио — вертикальная компоновка */
