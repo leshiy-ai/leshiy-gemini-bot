@@ -30,16 +30,16 @@
         <!-- MODE TABS -->
         <div class="mode-tabs" id="modeTabs">
             <button class="mode-tab active" data-mode="chat" onclick="switchMode('chat')">
-                <span class="mode-emoji">💬</span> Чат <span class="mode-check">✓</span>
+                <span class="mode-emoji">💬</span> Чат
             </button>
             <button class="mode-tab" data-mode="image" onclick="switchMode('image')">
-                <span class="mode-emoji">✨</span> Изображение <span class="mode-check">✓</span>
+                <span class="mode-emoji">✨</span> Картинки
             </button>
             <button class="mode-tab" data-mode="video" onclick="switchMode('video')">
-                <span class="mode-emoji">🎬</span> Видео <span class="mode-check">✓</span>
+                <span class="mode-emoji">🎬</span> Видео
             </button>
             <button class="mode-tab" data-mode="audio" onclick="switchMode('audio')">
-                <span class="mode-emoji">🔈</span> Аудио <span class="mode-check">✓</span>
+                <span class="mode-emoji">🔈</span> Аудио
             </button>
         </div>
 
@@ -224,42 +224,85 @@
         <div class="media-panel" id="videoPanel">
             <!-- Переключатель подрежимов — в sub-header (#subVideo), здесь только контент -->
 
-            <!-- Генерация видео -->
-            <div class="panel-subsection active" id="videoGenSection">
+            <!-- Текст→Видео -->
+            <div class="panel-subsection active" id="videoT2VSection">
                 <div>
-                    <h3>&#127916; Генерация видео</h3>
+                    <h3>&#127916; Текст &#8594; Видео</h3>
                     <p>Опиши сцену, и я создам короткое видео с помощью ИИ. Стоимость от 20&#162;.</p>
                 </div>
-                <div>
-                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсы (необязательно):</label>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <div class="upload-zone" id="videoRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoRefImgInput').click()">
-                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
-                            <div class="hint" style="margin:0;font-size:11px">Картинка</div>
-                            <input type="file" id="videoRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRef('image',this)">
-                        </div>
-                        <div class="upload-zone" id="videoRefAudio" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoRefAudioInput').click()">
-                            <div class="icon" style="font-size:20px;margin:0">&#127925;</div>
-                            <div class="hint" style="margin:0;font-size:11px">Аудио</div>
-                            <input type="file" id="videoRefAudioInput" accept="audio/*" style="display:none" onchange="handleVideoRef('audio',this)">
-                        </div>
-                        <div class="upload-zone" id="videoRefVideo" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoRefVideoInput').click()">
-                            <div class="icon" style="font-size:20px;margin:0">&#127916;</div>
-                            <div class="hint" style="margin:0;font-size:11px">Видео</div>
-                            <input type="file" id="videoRefVideoInput" accept="video/*" style="display:none" onchange="handleVideoRef('video',this)">
-                        </div>
-                    </div>
-                </div>
-                <div class="result-area" id="videoResult">
+                <div class="result-area" id="videoT2VResult">
                     <span class="result-placeholder">Здесь появится видео</span>
                 </div>
             </div>
 
-            <!-- Конвертация/распознавание видео (бесплатно) -->
-            <div class="panel-subsection" id="videoConvertSection">
+            <!-- Картинка→Видео -->
+            <div class="panel-subsection" id="videoI2VSection">
                 <div>
-                    <h3>&#128260; Конвертация и анализ видео</h3>
-                    <p>Загрузите видеофайл для распознавания контента, анализа или конвертации. Бесплатно.</p>
+                    <h3>&#127916; Картинка &#8594; Видео</h3>
+                    <p>Загрузите референсное изображение, и я анимирую его в видео. Стоимость от 20&#162;.</p>
+                </div>
+                <div>
+                    <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Референсное изображение (обязательно):</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <div class="upload-zone ref-required" id="videoI2VRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoI2VRefImgInput').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Картинка</div>
+                            <input type="file" id="videoI2VRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRef('image',this)">
+                        </div>
+                    </div>
+                </div>
+                <div class="result-area" id="videoI2VResult">
+                    <span class="result-placeholder">Здесь появится видео</span>
+                </div>
+            </div>
+
+            <!-- Видео→Видео -->
+            <div class="panel-subsection" id="videoV2VSection">
+                <div>
+                    <h3>&#127916; Видео &#8594; Видео</h3>
+                    <p>Загрузите видео и опишите трансформацию. Стоимость от 20&#162;.</p>
+                </div>
+                <div>
+                    <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Исходное видео (обязательно):</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <div class="upload-zone ref-required" id="videoV2VRefVideo" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoV2VRefVideoInput').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#127916;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Видео</div>
+                            <input type="file" id="videoV2VRefVideoInput" accept="video/*" style="display:none" onchange="handleVideoRef('video',this)">
+                        </div>
+                    </div>
+                </div>
+                <div class="result-area" id="videoV2VResult">
+                    <span class="result-placeholder">Здесь появится видео</span>
+                </div>
+            </div>
+
+            <!-- Аудио→Аватар -->
+            <div class="panel-subsection" id="videoA2VSection">
+                <div>
+                    <h3>&#127916; Аудио &#8594; Аватар</h3>
+                    <p>Загрузите аудиофайл, и я создам видео-аватар с речью. Стоимость от 20&#162;.</p>
+                </div>
+                <div>
+                    <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Аудиофайл (обязательно):</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <div class="upload-zone ref-required" id="videoA2VRefAudio" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoA2VRefAudioInput').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#127925;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Аудио</div>
+                            <input type="file" id="videoA2VRefAudioInput" accept="audio/*" style="display:none" onchange="handleVideoRef('audio',this)">
+                        </div>
+                    </div>
+                </div>
+                <div class="result-area" id="videoA2VResult">
+                    <span class="result-placeholder">Здесь появится видео-аватар</span>
+                </div>
+            </div>
+
+            <!-- Анализ видео (бесплатно) -->
+            <div class="panel-subsection" id="videoAnalysisSection">
+                <div>
+                    <h3>&#128065; Анализ видео</h3>
+                    <p>Загрузите видеофайл для распознавания контента и анализа. Бесплатно.</p>
                 </div>
                 <div class="upload-zone" id="videoConvertZone" onclick="document.getElementById('videoConvertInput').click()">
                     <div class="icon">&#127916;</div>
@@ -573,14 +616,14 @@
         image_i2i: null,
         image_vision: null,
         image_upscale: null,
-        imageSubMode: 't2i',  // 't2i', 'i2i', 'upscale', 'rotate', 'convert'
+        imageSubMode: 'generate',  // 'generate', 'upscale', 'rotate', 'convert'
         video_t2v: null,
         video_i2v: null,
         video_v2v: null,
         video_a2v: null,
         video_analysis: null,
         video_upscale: null,
-        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'analysis', 'upscale'
+        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'analysis'
         audio_tts: null,
         audio_stt: null,
         audioSubMode: 'tts',  // 'tts', 'stt', 'convert', 'voice_clone'
@@ -661,6 +704,7 @@
                 if (parsed.videoMode) delete parsed.videoMode;
                 if (parsed.videoSubMode === 'generate') parsed.videoSubMode = 't2v';
                 if (parsed.videoSubMode === 'convert') parsed.videoSubMode = 'analysis';
+                if (parsed.imageSubMode === 't2i' || parsed.imageSubMode === 'i2i') parsed.imageSubMode = 'generate';
                 selected = { ...selected, ...parsed };
             }
         } catch(e) {}
@@ -988,12 +1032,12 @@
         const modeTag = document.getElementById('imageModeTag');
         const hasRefs = imageRefs.some(r => r !== null);
 
-        // Sub-modes: t2i / i2i / upscale / rotate / convert
+        // Автоопределение режима: если есть референсы → i2i, иначе t2i
+        // Кнопки подрежимов: Генерация / Апскейл / Поворот / Конверт (без "По фото")
         const subModesContainer = document.getElementById('imageSubModes');
         subModesContainer.innerHTML = '';
         [
-            { key: 't2i', label: '🎨 Генерация', cls: '' },
-            { key: 'i2i', label: '✏️ По фото', cls: '' },
+            { key: 'generate', label: '🎨 Генерация', cls: '' },
             { key: 'upscale', label: '🔍 Апскейл', cls: '' },
             { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
             { key: 'convert', label: '📦 Конверт', cls: 'free' }
@@ -1011,18 +1055,16 @@
             subModesContainer.appendChild(btn);
         });
 
-        // Модели — t2i или i2i
-        const showModels = (selected.imageSubMode === 't2i' || selected.imageSubMode === 'i2i');
-        const modelList = selected.imageSubMode === 'i2i' ? availableModels.image_i2i : availableModels.image;
-        const currentModelKey = selected.imageSubMode === 'i2i' ? selected.image_i2i : selected.image;
+        // Модели — если есть референсы → i2i модели, иначе t2i
+        const showModels = (selected.imageSubMode === 'generate');
+        const isI2I = hasRefs && selected.imageSubMode === 'generate';
+        const modelList = isI2I ? availableModels.image_i2i : availableModels.image;
+        const currentModelKey = isI2I ? selected.image_i2i : selected.image;
         const currentModel = modelList.find(m => m.key === currentModelKey);
 
-        // Обновляем тег режима
+        // Обновляем тег режима — авто: «по тексту» / «по фото»
         const isFreeModel = currentModel?.isFree;
-        if (selected.imageSubMode === 'i2i' || (hasRefs && selected.imageSubMode === 't2i')) {
-            modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'txt-to-img');
-            modeTag.textContent = 'по фото';
-        } else if (selected.imageSubMode === 'upscale') {
+        if (selected.imageSubMode === 'upscale') {
             modeTag.className = 'mode-tag txt-to-img';
             modeTag.textContent = 'апскейл';
         } else if (selected.imageSubMode === 'rotate') {
@@ -1031,6 +1073,9 @@
         } else if (selected.imageSubMode === 'convert') {
             modeTag.className = 'mode-tag by-photo';
             modeTag.textContent = 'конверт';
+        } else if (isI2I || hasRefs) {
+            modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'txt-to-img');
+            modeTag.textContent = 'по фото';
         } else {
             modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'by-text');
             modeTag.textContent = 'по тексту';
@@ -1047,7 +1092,7 @@
             sel.className = 'model-select' + (modelList.find(m => m.key === currentModelKey)?.isFree ? ' model-free' : '');
             sel.value = currentModelKey || '';
             sel.onchange = () => {
-                if (selected.imageSubMode === 'i2i') selected.image_i2i = sel.value;
+                if (isI2I) selected.image_i2i = sel.value;
                 else selected.image = sel.value;
                 saveSelected(); renderImageSubHeader(); updateImageDesc();
             };
@@ -1153,7 +1198,7 @@
     function switchImageSubMode(mode) {
         selected.imageSubMode = mode;
         saveSelected();
-        document.getElementById('imageGenSection').classList.toggle('active', mode === 't2i' || mode === 'i2i');
+        document.getElementById('imageGenSection').classList.toggle('active', mode === 'generate');
         document.getElementById('imageUpscaleSection').classList.toggle('active', mode === 'upscale');
         document.getElementById('imageRotateSection').classList.toggle('active', mode === 'rotate');
         document.getElementById('imageConvertSection').classList.toggle('active', mode === 'convert');
@@ -1169,8 +1214,7 @@
             { key: 'i2v', label: '🎬 Картинка\u2192Видео', cls: '' },
             { key: 'v2v', label: '🎥 Видео\u2192Видео', cls: '' },
             { key: 'a2v', label: '🗣 Аудио\u2192Аватар', cls: '' },
-            { key: 'analysis', label: '👀 Анализ', cls: 'free' },
-            { key: 'upscale', label: '🔍 Апскейл', cls: '' }
+            { key: 'analysis', label: '👀 Анализ', cls: 'free' }
         ].forEach(vm => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.videoSubMode === vm.key ? ' active' : '') + (vm.cls ? ' ' + vm.cls : '');
@@ -1243,8 +1287,6 @@
             } else {
                 modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
             }
-        } else if (selected.videoSubMode === 'upscale') {
-            modelsContainer.innerHTML = '<span class="sub-label">10\u00A2</span>';
         }
 
         // Ratio — для генерации
@@ -1382,9 +1424,12 @@
         selected.videoSubMode = mode;
         saveSelected();
         renderVideoSubHeader();
-        const isGenerate = ['t2v','i2v','v2v','a2v'].includes(mode);
-        document.getElementById('videoGenSection').classList.toggle('active', isGenerate);
-        document.getElementById('videoConvertSection').classList.toggle('active', mode === 'analysis' || mode === 'upscale');
+        // Показываем соответствующую секцию
+        document.getElementById('videoT2VSection').classList.toggle('active', mode === 't2v');
+        document.getElementById('videoI2VSection').classList.toggle('active', mode === 'i2v');
+        document.getElementById('videoV2VSection').classList.toggle('active', mode === 'v2v');
+        document.getElementById('videoA2VSection').classList.toggle('active', mode === 'a2v');
+        document.getElementById('videoAnalysisSection').classList.toggle('active', mode === 'analysis');
         updateVideoPlaceholder();
     }
 
@@ -1401,16 +1446,15 @@
 
     function updateImagePlaceholder() {
         if (currentMode === 'image') {
+            const hasRefs = imageRefs.some(r => r !== null);
             const phMap = {
-                t2i: 'Опишите изображение на английском или русском...',
-                i2i: 'Опишите результат на основе референса...',
+                generate: hasRefs ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
                 upscale: 'Загрузите фото выше для увеличения разрешения',
                 rotate: 'Загрузите фото выше и выберите угол поворота',
                 convert: 'Загрузите фото выше и выберите формат'
             };
             const hintMap = {
-                t2i: 'Стоимость зависит от модели',
-                i2i: 'Режим «по фото» — генерация на основе референса',
+                generate: hasRefs ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
                 upscale: 'Апскейл — 2¢ за изображение',
                 rotate: 'Поворот изображения — бесплатно',
                 convert: 'Конвертация — бесплатно'
@@ -1422,22 +1466,19 @@
 
     function updateVideoPlaceholder() {
         if (currentMode === 'video') {
-            const isGenerate = ['t2v','i2v','v2v','a2v'].includes(selected.videoSubMode);
             const phMap = {
                 t2v: 'Опишите видео-сцену для ИИ...',
                 i2v: 'Опишите анимацию для картинки...',
-                v2v: 'Загрузите видео выше и опишите трансформацию...',
-                a2v: 'Загрузите аудио выше для создания аватара...',
-                analysis: 'Загрузите видеофайл выше для анализа',
-                upscale: 'Загрузите видео выше для увеличения разрешения'
+                v2v: 'Опишите трансформацию видео...',
+                a2v: 'Опишите аватар для генерации...',
+                analysis: 'Загрузите видеофайл выше для анализа'
             };
             const hintMap = {
                 t2v: 'Стоимость: от 20\u00A2',
-                i2v: 'Стоимость: от 20\u00A2',
-                v2v: 'Динамическая цена по качеству',
-                a2v: 'Динамическая цена по качеству',
-                analysis: 'Анализ видео — бесплатно',
-                upscale: 'Апскейл видео — 10\u00A2'
+                i2v: 'Обязательно загрузите картинку выше',
+                v2v: 'Обязательно загрузите видео выше',
+                a2v: 'Обязательно загрузите аудио выше',
+                analysis: 'Анализ видео — бесплатно'
             };
             userInput.placeholder = phMap[selected.videoSubMode] || 'Опишите видео...';
             inputHint.textContent = hintMap[selected.videoSubMode] || '';
@@ -1468,7 +1509,8 @@
     function updateImageDesc() {
         const desc = document.getElementById('imageDesc');
         const title = document.getElementById('imageTitle');
-        const isI2I = selected.imageSubMode === 'i2i';
+        const hasRefs = imageRefs.some(r => r !== null);
+        const isI2I = hasRefs && selected.imageSubMode === 'generate';
         const modelList = isI2I ? availableModels.image_i2i : availableModels.image;
         const modelKey = isI2I ? selected.image_i2i : selected.image;
         const model = modelList.find(m => m.key === modelKey);
@@ -1509,13 +1551,13 @@
         // Плейсхолдеры
         const placeholders = {
             chat: 'Напишите сообщение или перетащите файл...',
-            image: selected.imageSubMode === 'i2i' ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
+            image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
             video: ['t2v','i2v','v2v','a2v'].includes(selected.videoSubMode) ? 'Опишите видео-сцену для ИИ...' : 'Загрузите видеофайл',
             audio: 'Введите текст для озвучки...'
         };
         const hints = {
             chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат',
-            image: selected.imageSubMode === 'i2i' ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
+            image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
             video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : selected.videoSubMode === 'analysis' ? 'Анализ видео — бесплатно' : 'Стоимость зависит от режима',
             audio: selected.audioSubMode === 'tts' ? 'Стоимость озвучки зависит от модели' : 'Бесплатно'
         };
@@ -1665,7 +1707,7 @@
             if (!text) { showToast('Опишите изображение', 'info'); return; }
             await generateImage(text);
         } else if (currentMode === 'video') {
-            if (selected.videoSubMode === 'analysis' || selected.videoSubMode === 'upscale') {
+            if (selected.videoSubMode === 'analysis') {
                 showToast('Для этого режима загрузите видеофайл', 'info');
                 return;
             }
@@ -1802,13 +1844,13 @@
     }
 
     async function generateImage(prompt) {
-        const isI2I = selected.imageSubMode === 'i2i';
-        const modelKey = isI2I ? selected.image_i2i : selected.image;
-        const modelList = isI2I ? availableModels.image_i2i : availableModels.image;
+        const hasRefs = imageRefs.some(r => r !== null);
+        const isI2I = hasRefs; // Авто: если есть референсы → i2i
+        const modelKey = isI2I ? (selected.image_i2i || selected.image) : selected.image;
+        const modelList = isI2I ? (availableModels.image_i2i.length > 0 ? availableModels.image_i2i : availableModels.image) : availableModels.image;
         const model = modelList.find(m => m.key === modelKey);
         const cost = model?.cost || 4;
         if (!model?.isFree && !checkAuth(cost)) return;
-        if (model?.isFree && !user) { /* free models don't require auth but warn */ }
 
         isProcessing = true;
         sendBtn.disabled = true;
@@ -1824,9 +1866,12 @@
                 image_size: selected.imageSize,
                 model: modelKey,
                 aspect_ratio: selected.ratio,
-                reference_images: imageRefs.filter(r => r !== null)
             };
-            if (isI2I) payload.image_mode = 'i2i';
+            // Добавляем image_mode и референсы если есть
+            if (isI2I && hasRefs) {
+                payload.image_mode = 'i2i';
+                payload.reference_images = imageRefs.filter(r => r !== null);
+            }
 
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
@@ -1895,12 +1940,31 @@
         const cost = model?.isDynamicPricing ? 20 : (model?.cost || 20);
         if (!model?.isFree && !checkAuth(cost)) return;
 
+        // Проверяем обязательные референсы
+        if (selected.videoSubMode === 'i2v' && !videoRefs.image) {
+            showToast('Для режима Картинка→Видео загрузите референсное изображение', 'error');
+            return;
+        }
+        if (selected.videoSubMode === 'v2v' && !videoRefs.video) {
+            showToast('Для режима Видео→Видео загрузите исходное видео', 'error');
+            return;
+        }
+        if (selected.videoSubMode === 'a2v' && !videoRefs.audio) {
+            showToast('Для режима Аудио→Аватар загрузите аудиофайл', 'error');
+            return;
+        }
+
         isProcessing = true;
         sendBtn.disabled = true;
         userInput.value = '';
         autoResize(userInput);
 
-        const resultArea = document.getElementById('videoResult');
+        // Определяем result area по режиму
+        const resultMap = {
+            t2v: 'videoT2VResult', i2v: 'videoI2VResult',
+            v2v: 'videoV2VResult', a2v: 'videoA2VResult'
+        };
+        const resultArea = document.getElementById(resultMap[selected.videoSubMode] || 'videoT2VResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую видео (может занять до минуты)...</span>';
 
         try {
@@ -2296,11 +2360,7 @@
                 if (nextSlot) nextSlot.style.display = 'flex';
             }
 
-            // Автоматически переключаемся в i2i если есть референсы
-            if (imageRefs.some(r => r !== null) && selected.imageSubMode !== 'i2i' && availableModels.image_i2i.length > 0) {
-                selected.imageSubMode = 'i2i';
-                saveSelected();
-            }
+            // Автоматически обновляем sub-header (mode tag переключится на «по фото»)
             renderImageSubHeader();
             updateImagePlaceholder();
         } catch (err) {
@@ -2323,11 +2383,7 @@
             }
         }
 
-        // Если все референсы удалены — возвращаемся в t2i
-        if (!imageRefs.some(r => r !== null)) {
-            selected.imageSubMode = 't2i';
-            saveSelected();
-        }
+        // Если все референсы удалены — обновляем (mode tag вернётся к «по тексту»)
         renderImageSubHeader();
         updateImagePlaceholder();
     }
@@ -2343,35 +2399,50 @@
             const base64 = await fileToBase64(file);
             videoRefs[type] = base64;
 
-            const slotId = type === 'image' ? 'videoRefImg' : type === 'audio' ? 'videoRefAudio' : 'videoRefVideo';
-            const slot = document.getElementById(slotId);
+            // Находим слот в соответствующей секции
+            const slotMap = {
+                image: ['videoI2VRefImg'],
+                audio: ['videoA2VRefAudio'],
+                video: ['videoV2VRefVideo']
+            };
+            const slotIds = slotMap[type] || [];
             const icons = { image: '&#128247;', audio: '&#127925;', video: '&#127916;' };
             const labels = { image: 'Картинка', audio: 'Аудио', video: 'Видео' };
 
-            if (type === 'image') {
-                const previewUrl = URL.createObjectURL(file);
-                slot.innerHTML = '<img src="' + previewUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" alt="' + labels[type] + '">' +
-                    '<button onclick="event.stopPropagation();removeVideoRef(\'' + type + '\')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
-            } else {
-                slot.innerHTML = '<div style="font-size:11px;color:var(--success);text-align:center">' + labels[type] + ': ' + file.name.substring(0,15) + '</div>' +
-                    '<button onclick="event.stopPropagation();removeVideoRef(\'' + type + '\')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
-            }
+            slotIds.forEach(slotId => {
+                const slot = document.getElementById(slotId);
+                if (!slot) return;
+                if (type === 'image') {
+                    const previewUrl = URL.createObjectURL(file);
+                    slot.innerHTML = '<img src="' + previewUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" alt="' + labels[type] + '">' +
+                        '<button onclick="event.stopPropagation();removeVideoRef(\'' + type + '\',\'' + slotId + '\')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
+                } else {
+                    slot.innerHTML = '<div style="font-size:11px;color:var(--success);text-align:center">' + labels[type] + ': ' + file.name.substring(0,15) + '</div>' +
+                        '<button onclick="event.stopPropagation();removeVideoRef(\'' + type + '\',\'' + slotId + '\')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
+                }
+            });
         } catch (err) {
             showToast('Ошибка загрузки референса: ' + err.message, 'error');
         }
         input.value = '';
     }
 
-    function removeVideoRef(type) {
+    function removeVideoRef(type, slotId) {
         videoRefs[type] = null;
-        const slotId = type === 'image' ? 'videoRefImg' : type === 'audio' ? 'videoRefAudio' : 'videoRefVideo';
         const slot = document.getElementById(slotId);
-        const inputId = type === 'image' ? 'videoRefImgInput' : type === 'audio' ? 'videoRefAudioInput' : 'videoRefVideoInput';
+        if (!slot) return;
+        const inputIdMap = {
+            'videoI2VRefImg': 'videoI2VRefImgInput',
+            'videoV2VRefVideo': 'videoV2VRefVideoInput',
+            'videoA2VRefAudio': 'videoA2VRefAudioInput'
+        };
+        const inputId = inputIdMap[slotId] || '';
         const icons = { image: '&#128247;', audio: '&#127925;', video: '&#127916;' };
         const labels = { image: 'Картинка', audio: 'Аудио', video: 'Видео' };
+        const acceptMap = { image: 'image/*', audio: 'audio/*', video: 'video/*' };
         slot.innerHTML = '<div class="icon" style="font-size:20px;margin:0">' + icons[type] + '</div>' +
             '<div class="hint" style="margin:0;font-size:10px">' + labels[type] + '</div>' +
-            '<input type="file" id="' + inputId + '" accept="' + (type === 'image' ? 'image/*' : type === 'audio' ? 'audio/*' : 'video/*') + '" style="display:none" onchange="handleVideoRef(\'' + type + '\',this)">';
+            (inputId ? '<input type="file" id="' + inputId + '" accept="' + acceptMap[type] + '" style="display:none" onchange="handleVideoRef(\'' + type + '\',this)">' : '');
     }
 
     // ---- UI HELPERS ----
@@ -2778,12 +2849,12 @@
                 handleImageRef(index, { files: files, value: '' });
             } else if (id === 'audioUploadZone') {
                 handleAudioUpload({ files: files, value: '' });
-            } else if (id === 'videoRefImg') {
+            } else if (id === 'videoI2VRefImg') {
                 handleVideoRef('image', { files: files, value: '' });
-            } else if (id === 'videoRefAudio') {
-                handleVideoRef('audio', { files: files, value: '' });
-            } else if (id === 'videoRefVideo') {
+            } else if (id === 'videoV2VRefVideo') {
                 handleVideoRef('video', { files: files, value: '' });
+            } else if (id === 'videoA2VRefAudio') {
+                handleVideoRef('audio', { files: files, value: '' });
             } else if (id === 'videoConvertZone') {
                 handleVideoConvert({ files: files, value: '' });
             } else if (id === 'audioConvertZone') {
@@ -2934,30 +3005,30 @@
         if (arg) {
             // Как в боте: /create [prompt] → сразу генерируем
             switchMode('image');
-            selected.imageSubMode = 't2i';
+            selected.imageSubMode = 'generate';
             renderImageSubHeader();
-            switchImageSubMode('t2i');
+            switchImageSubMode('generate');
             generateImage(arg);
         } else {
             switchMode('image');
-            selected.imageSubMode = 't2i';
+            selected.imageSubMode = 'generate';
             renderImageSubHeader();
-            switchImageSubMode('t2i');
+            switchImageSubMode('generate');
             showToast('Опишите картинку и нажмите отправить', 'info');
         }
     }
     function cmdPhoto(arg) {
-        switchMode('image'); selected.imageSubMode = 'i2i'; renderImageSubHeader(); switchImageSubMode('i2i');
+        switchMode('image'); selected.imageSubMode = 'generate'; renderImageSubHeader(); switchImageSubMode('generate');
         if (arg) { userInput.value = arg; autoResize(userInput); }
         showToast('Загрузите фото как референс', 'info');
     }
     function cmdText(arg) {
         if (arg) {
             // Как /create — сразу генерируем
-            switchMode('image'); selected.imageSubMode = 't2i'; renderImageSubHeader(); switchImageSubMode('t2i');
+            switchMode('image'); selected.imageSubMode = 'generate'; renderImageSubHeader(); switchImageSubMode('generate');
             generateImage(arg);
         } else {
-            switchMode('image'); selected.imageSubMode = 't2i'; renderImageSubHeader(); switchImageSubMode('t2i');
+            switchMode('image'); selected.imageSubMode = 'generate'; renderImageSubHeader(); switchImageSubMode('generate');
         }
     }
     function cmdVideo(arg) {

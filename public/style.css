@@ -182,16 +182,7 @@ body {
     font-size: 15px;
 }
 
-.mode-tab .mode-check {
-    font-size: 11px;
-    margin-left: 2px;
-    opacity: 0;
-    transition: opacity var(--transition);
-}
-
-.mode-tab.active .mode-check {
-    opacity: 1;
-}
+/* mode-check removed — not used anymore */
 
 .mode-tab .cost {
     font-size: 11px;
@@ -1019,27 +1010,28 @@ body {
     .header { padding: 10px 12px; }
     .header-logo { font-size: 20px; }
     
-    .mode-tabs { padding: 6px 10px; gap: 4px; }
-    .mode-tab { padding: 6px 12px; font-size: 13px; min-height: 36px; }
+    .mode-tabs { padding: 6px 8px; gap: 3px; }
+    .mode-tab { padding: 6px 10px; font-size: 12px; min-height: 34px; }
+    .mode-emoji { font-size: 13px; }
     
     .sub-header { 
-        padding: 6px 10px; 
-        gap: 6px;
-        min-height: 42px;
+        padding: 6px 8px; 
+        gap: 4px;
+        min-height: 38px;
         flex-wrap: wrap;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { padding: 5px 10px; font-size: 12px; min-height: 32px; }
-    .model-select { font-size: 12px; padding: 5px 26px 5px 10px; }
+    .sub-option { padding: 4px 8px; font-size: 11px; min-height: 30px; }
+    .model-select { font-size: 11px; padding: 4px 22px 4px 8px; max-width: 150px; }
     
-    .media-panel { padding: 16px 12px; gap: 14px; }
+    .media-panel { padding: 14px 10px; gap: 12px; }
     
-    .upload-zone { padding: 24px; }
-    .upload-zone .icon { font-size: 28px; }
-    .upload-zone .label { font-size: 14px; }
-    .upload-zone .hint { font-size: 12px; }
+    .upload-zone { padding: 20px; }
+    .upload-zone .icon { font-size: 24px; }
+    .upload-zone .label { font-size: 13px; }
+    .upload-zone .hint { font-size: 11px; }
     
-    .result-area { min-height: 180px; }
+    .result-area { min-height: 160px; }
     
     .input-wrapper textarea { font-size: 14px; padding: 10px 12px; }
     
@@ -1050,55 +1042,54 @@ body {
 /* ===== RESPONSIVE — Small phones ===== */
 @media (max-width: 400px) {
     .header { padding: 8px 10px; gap: 6px; }
-    .header-logo { font-size: 18px; }
-    .header-badge { font-size: 11px; padding: 2px 6px; }
-    .credits-display { font-size: 13px; padding: 5px 10px; }
-    .auth-btn { font-size: 12px; padding: 6px 12px; }
+    .header-logo { font-size: 17px; }
+    .header-badge { font-size: 10px; padding: 2px 5px; }
+    .credits-display { font-size: 12px; padding: 4px 8px; }
+    .auth-btn { font-size: 11px; padding: 5px 10px; }
     
-    .mode-tab { padding: 6px 10px; font-size: 12px; min-height: 44px; }
-    .mode-tab .cost { font-size: 10px; }
-    .mode-tab .free-badge { font-size: 10px; }
+    .mode-tabs { padding: 5px 6px; gap: 2px; }
+    .mode-tab { padding: 5px 7px; font-size: 11px; min-height: 34px; border-radius: 18px; }
+    .mode-emoji { font-size: 12px; }
     
     .sub-header { 
-        padding: 6px 8px; 
-        gap: 4px;
-        min-height: 44px;
+        padding: 5px 6px; 
+        gap: 3px;
+        min-height: 36px;
         flex-wrap: wrap;
     }
-    .sub-option { font-size: 11px; padding: 5px 8px; min-height: 34px; }
-    .sub-label { font-size: 11px; }
-    .model-select { font-size: 11px; max-width: 160px; }
-    .mode-tag { font-size: 11px; padding: 3px 8px; }
+    .sub-option { font-size: 10px; padding: 4px 6px; min-height: 28px; }
+    .sub-label { font-size: 10px; }
+    .model-select { font-size: 10px; max-width: 130px; padding: 3px 20px 3px 6px; }
+    .mode-tag { font-size: 10px; padding: 2px 6px; }
+    .size-option { font-size: 10px; padding: 3px 6px; min-height: 28px; }
     
-    .media-panel { padding: 12px 10px; gap: 12px; }
-    .media-panel h3 { font-size: 15px; }
-    .media-panel p { font-size: 12px; }
+    .media-panel { padding: 10px 8px; gap: 10px; }
+    .media-panel h3 { font-size: 14px; }
+    .media-panel p { font-size: 11px; }
     
-    .upload-zone { padding: 20px; }
-    .upload-zone .icon { font-size: 24px; margin-bottom: 6px; }
-    .upload-zone .label { font-size: 13px; }
-    .upload-zone .hint { font-size: 11px; }
+    .upload-zone { padding: 16px; }
+    .upload-zone .icon { font-size: 22px; margin-bottom: 4px; }
+    .upload-zone .label { font-size: 12px; }
+    .upload-zone .hint { font-size: 10px; }
     
-    .result-area { min-height: 160px; }
-    .result-placeholder { font-size: 13px; }
+    .result-area { min-height: 140px; }
+    .result-placeholder { font-size: 12px; }
     
-    .size-option { font-size: 12px; padding: 5px 10px; min-height: 36px; }
+    .input-wrapper textarea { font-size: 13px; }
+    .input-hint { font-size: 10px; }
     
-    .input-wrapper textarea { font-size: 14px; }
-    .input-hint { font-size: 11px; }
+    .message { font-size: 13px; padding: 8px 10px; }
+    .message.bot code { font-size: 12px; }
+    .message.bot pre { font-size: 12px; }
     
-    .message { font-size: 14px; padding: 8px 12px; }
-    .message.bot code { font-size: 13px; }
-    .message.bot pre { font-size: 13px; }
+    .file-badge { font-size: 11px; }
     
-    .file-badge { font-size: 12px; }
+    .toast { font-size: 12px; padding: 8px 14px; }
     
-    .toast { font-size: 13px; padding: 8px 16px; }
-    
-    .dialog { padding: 20px; }
-    .dialog h3 { font-size: 16px; }
-    .dialog p { font-size: 14px; }
-    .auth-provider-btn { font-size: 14px; padding: 12px; }
+    .dialog { padding: 18px; }
+    .dialog h3 { font-size: 15px; }
+    .dialog p { font-size: 13px; }
+    .auth-provider-btn { font-size: 13px; padding: 10px; }
 }
 
 /* Результат-область для аудио — вертикальная компоновка */
@@ -1109,6 +1100,17 @@ body {
 .result-area a {
     display: inline-block;
     margin-top: 8px;
+}
+
+/* Обязательный референс — красная рамка */
+.upload-zone.ref-required {
+    border-color: var(--danger);
+    border-style: dashed;
+    animation: refPulse 2s ease-in-out infinite;
+}
+@keyframes refPulse {
+    0%, 100% { border-color: var(--danger); }
+    50% { border-color: rgba(239, 68, 68, 0.4); }
 }
 
 /* ===== SLASH COMMANDS MENU ===== */
