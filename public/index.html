@@ -74,6 +74,8 @@
         <div class="sub-header wrap-allowed" id="subAudio">
             <div id="audioSubMode"></div>
             <div class="sub-divider"></div>
+            <div id="audioVoices"></div>
+            <div class="sub-divider" id="audioVoicesDivider" style="display:none"></div>
             <div id="audioModels" class="skeleton" style="height:24px;width:200px"></div>
         </div>
 
@@ -458,7 +460,13 @@
     //  Gemini-AI Frontend — Pure JS, no frameworks
     // ============================================
 
-    const API_URL = '';  // Запросы идут на тот же домен (Yandex Cloud Function / Worker)
+    // API URL — определяется автоматически:
+    // 1. Если фронтенд на том же домене что бэкенд — относительный путь
+    // 2. Если отдельно — берём из localStorage (api_url) или Yandex Cloud Gateway
+    const API_URL = localStorage.getItem('api_url') ||
+        (window.location.hostname.includes('yandexcloud') || window.location.hostname.includes('apigw')
+            ? ''  // Тот же домен — относительный путь
+            : 'https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net');
 
     // ---- STATE ----
     let currentMode = 'chat';
@@ -473,76 +481,64 @@
     let selectedRotateAngle = '-90';
     let voiceCloneSample = null; // {base64, name} — образец голоса
 
-    // ---- Fallback моделей (если API недоступен) — ключи совпадают с worker.js ----
-    const HARDCODED_MODELS = {
-        chat: [
-            { key: 'TEXT_TO_TEXT_WORKERS_AI', service: 'WORKERS_AI', serviceLabel: '\u2733\uFE0F Cloudflare', modelShort: 'Qwen 2.5 Coder 32B', displayName: 'Cloudflare: Qwen 2.5 Coder 32B', isFree: true, cost: 0 },
-            { key: 'TEXT_TO_TEXT_GEMINI', service: 'GEMINI', serviceLabel: '\u2728 Gemini', modelShort: '2.5 Flash Lite', displayName: 'Gemini: 2.5 Flash Lite', isFree: true, cost: 0 },
-            { key: 'TEXT_TO_TEXT_BOTHUB', service: 'BOTHUB', serviceLabel: '\u2734\uFE0F BotHub', modelShort: '2.5 Flash', displayName: 'BotHub: 2.5 Flash', isFree: true, cost: 0 },
-            { key: 'TEXT_TO_TEXT_POLLINATIONS', service: 'POLLINATIONS', serviceLabel: '\u262F\uFE0F Pollinations', modelShort: 'Grok', displayName: 'Pollinations: Grok', isFree: true, cost: 0 },
-            { key: 'TEXT_TO_TEXT_DEEPSEEK', service: 'DEEPSEEK', serviceLabel: '\uD83E\uDDE0 DeepSeek', modelShort: 'Chat', displayName: 'DeepSeek: Chat', isFree: true, cost: 0 },
-        ],
-        image: [
-            { key: 'TEXT_TO_IMAGE_WORKERS_AI', service: 'WORKERS_AI', serviceLabel: '\u2733\uFE0F Cloudflare', modelShort: 'SDXL Base 1.0', displayName: 'Cloudflare: SDXL', isFree: true, cost: 0 },
-            { key: 'TEXT_TO_IMAGE_GEMINI', service: 'GEMINI', serviceLabel: '\u2728 Gemini', modelShort: '2.5 Flash Image', displayName: 'Gemini: 2.5 Flash Image', isFree: false, cost: 4 },
-            { key: 'TEXT_TO_IMAGE_KIEAI', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'Nano Banana', displayName: 'KIE.AI: Nano Banana', isFree: false, cost: 4 },
-            { key: 'TEXT_TO_IMAGE_DALLE', service: 'BOTHUB', serviceLabel: '\u2734\uFE0F BotHub', modelShort: 'DALL-E 3', displayName: 'BotHub: DALL-E 3', isFree: false, cost: 4 },
-            { key: 'TEXT_TO_IMAGE_BOTHUB', service: 'BOTHUB', serviceLabel: '\u2734\uFE0F BotHub', modelShort: '2.5 Flash Image', displayName: 'BotHub: 2.5 Flash Image', isFree: false, cost: 4 },
-            { key: 'TEXT_TO_IMAGE_STABILITY', service: 'STABILITY', serviceLabel: '\uD83D\uDD37 Stability', modelShort: 'Core', displayName: 'Stability: Core', isFree: false, cost: 4 },
-            { key: 'TEXT_TO_IMAGE_POLLINATIONS', service: 'POLLINATIONS', serviceLabel: '\u262F\uFE0F Pollinations', modelShort: 'Flux', displayName: 'Pollinations: Flux', isFree: false, cost: 4 },
-        ],
-        image_i2i: [
-            { key: 'IMAGE_TO_IMAGE_WORKERS_AI', service: 'WORKERS_AI', serviceLabel: '\u2733\uFE0F Cloudflare', modelShort: 'SD v1.5 Img2Img', displayName: 'Cloudflare: SD Img2Img', isFree: true, cost: 0 },
-            { key: 'IMAGE_TO_IMAGE_GEMINI', service: 'GEMINI', serviceLabel: '\u2728 Gemini', modelShort: '2.5 Flash Image', displayName: 'Gemini: 2.5 Flash Image', isFree: false, cost: 4 },
-            { key: 'IMAGE_TO_IMAGE_KIEAI', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'Nano Banana Edit', displayName: 'KIE.AI: Nano Banana Edit', isFree: false, cost: 4 },
-            { key: 'IMAGE_TO_IMAGE_BOTHUB', service: 'BOTHUB', serviceLabel: '\u2734\uFE0F BotHub', modelShort: '2.5 Flash Image', displayName: 'BotHub: 2.5 Flash Image', isFree: false, cost: 4 },
-            { key: 'IMAGE_TO_IMAGE_STABILITY', service: 'STABILITY', serviceLabel: '\uD83D\uDD37 Stability', modelShort: 'SD3.5 Flash', displayName: 'Stability: SD3.5 Flash', isFree: false, cost: 4 },
-        ],
-        image_vision: [
-            { key: 'IMAGE_TO_TEXT_WORKERS_AI', service: 'WORKERS_AI', serviceLabel: '\u2733\uFE0F Cloudflare', modelShort: 'UForm Gen2', displayName: 'Cloudflare: UForm Gen2', isFree: true, cost: 0 },
-            { key: 'IMAGE_TO_TEXT_GEMINI', service: 'GEMINI', serviceLabel: '\u2728 Gemini', modelShort: '2.5 Flash', displayName: 'Gemini: 2.5 Flash', isFree: true, cost: 0 },
-            { key: 'IMAGE_TO_TEXT_POLLINATIONS', service: 'POLLINATIONS', serviceLabel: '\u262F\uFE0F Pollinations', modelShort: 'Gemini Fast', displayName: 'Pollinations: Gemini Fast', isFree: true, cost: 0 },
-            { key: 'IMAGE_TO_TEXT_BOTHUB', service: 'BOTHUB', serviceLabel: '\u2734\uFE0F BotHub', modelShort: '2.5 Flash', displayName: 'BotHub: 2.5 Flash', isFree: true, cost: 0 },
-        ],
-        image_upscale: [
-            { key: 'IMAGE_TO_UPSCALE_KIEAI', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'Crisp Upscale', displayName: 'KIE.AI: Crisp Upscale', isFree: false, cost: 2 },
-            { key: 'IMAGE_TO_UPSCALE_STABILITY', service: 'STABILITY', serviceLabel: '\uD83D\uDD37 Stability', modelShort: 'Fast Upscaler', displayName: 'Stability: Fast Upscaler', isFree: false, cost: 2 },
-        ],
-        video_t2v: [
-            { key: 'TEXT_TO_VIDEO_KIEAI', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'Text\u2192Video', displayName: 'KIE.AI: Text\u2192Video', isFree: false, cost: 20 },
-        ],
-        video_i2v: [
-            { key: 'IMAGE_TO_VIDEO_KIEAI', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'Image\u2192Video', displayName: 'KIE.AI: Image\u2192Video', isFree: false, cost: 20 },
-        ],
-        video_v2v: [
-            { key: 'VIDEO_TO_VIDEO_KIEAI_WAN', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'WAN Animate', displayName: 'KIE.AI: WAN Animate', isFree: false, cost: 0, isDynamicPricing: true },
-            { key: 'VIDEO_TO_VIDEO_KIEAI_Kling', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'Kling Motion', displayName: 'KIE.AI: Kling Motion', isFree: false, cost: 0, isDynamicPricing: true },
-        ],
-        video_a2v: [
-            { key: 'AUDIO_TO_VIDEO_KIEAI', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'Audio\u2192Avatar', displayName: 'KIE.AI: Audio\u2192Avatar', isFree: false, cost: 0, isDynamicPricing: true },
-        ],
-        video_analysis: [
-            { key: 'VIDEO_TO_ANALYSIS_GEMINI', service: 'GEMINI', serviceLabel: '\u2728 Gemini', modelShort: '2.5 Flash', displayName: 'Gemini: 2.5 Flash', isFree: true, cost: 0 },
-            { key: 'VIDEO_TO_ANALYSIS_BOTHUB', service: 'BOTHUB', serviceLabel: '\u2734\uFE0F BotHub', modelShort: '2.5 Flash', displayName: 'BotHub: 2.5 Flash', isFree: false, cost: 2 },
-        ],
-        video_upscale: [
-            { key: 'VIDEO_TO_UPSCALE_KIEAI', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'Upscale', displayName: 'KIE.AI: Video Upscale', isFree: false, cost: 10 },
-        ],
-        audio_tts: [
-            { key: 'TEXT_TO_AUDIO_WORKERS_AI', service: 'WORKERS_AI', serviceLabel: '\u2733\uFE0F Cloudflare', modelShort: 'Aura 1', displayName: 'Cloudflare: Aura 1', isFree: true, cost: 0 },
-            { key: 'TEXT_TO_AUDIO_GEMINI', service: 'GEMINI', serviceLabel: '\u2728 Gemini', modelShort: '2.5 Flash TTS', displayName: 'Gemini: 2.5 Flash TTS', isFree: true, cost: 0 },
-            { key: 'TEXT_TO_AUDIO_KIEAI', service: 'KIEAI', serviceLabel: '\uD83D\uDD2E KIE.AI', modelShort: 'ElevenLabs Turbo', displayName: 'KIE.AI: ElevenLabs Turbo', isFree: false, cost: 6 },
-            { key: 'TEXT_TO_AUDIO_BOTHUB', service: 'BOTHUB', serviceLabel: '\u2734\uFE0F BotHub', modelShort: 'TTS-1', displayName: 'BotHub: TTS-1', isFree: false, cost: 2 },
-            { key: 'TEXT_TO_AUDIO_VOICERSS', service: 'VOICERSS', serviceLabel: '\uD83C\uDF99 VoiceRSS', modelShort: 'Russian', displayName: 'VoiceRSS: Russian', isFree: true, cost: 0 },
-        ],
-        audio_stt: [
-            { key: 'AUDIO_TO_TEXT_WORKERS_AI', service: 'WORKERS_AI', serviceLabel: '\u2733\uFE0F Cloudflare', modelShort: 'Whisper', displayName: 'Cloudflare: Whisper', isFree: true, cost: 0 },
-            { key: 'AUDIO_TO_TEXT_GEMINI', service: 'GEMINI', serviceLabel: '\u2728 Gemini', modelShort: '2.5 Flash', displayName: 'Gemini: 2.5 Flash', isFree: true, cost: 0 },
-            { key: 'AUDIO_TO_TEXT_POLLINATIONS', service: 'POLLINATIONS', serviceLabel: '\u262F\uFE0F Pollinations', modelShort: 'Whisper', displayName: 'Pollinations: Whisper', isFree: true, cost: 0 },
-        ],
+    // НИКАКОГО ХАРДКОДА — модели загружаются ТОЛЬКО из /api (mode=models)
+    // Пустые массивы = состояние загрузки, пока API не ответит
+    const FALLBACK_MODELS = {
+        chat: [], image: [], image_i2i: [], image_vision: [], image_upscale: [],
+        video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [], video_upscale: [],
+        audio_tts: [], audio_stt: []
     };
 
-    // ---- Динамические модели (загружаются с бэкенда, fallback = хардкод) ----
+    // Маппинг голосов по сервису — как в телеграм-боте (worker.js)
+    const VOICE_MAP = {
+        'GEMINI': [
+            { id: 'Kore', label: '\u2640 Кора', group: 'Female' },
+            { id: 'Enceladus', label: '\u2642 Энцеладус', group: 'Male' },
+            { id: 'Luna', label: '\u2640 Луна', group: 'Female' },
+        ],
+        'WORKERS_AI': [
+            { id: 'orpheus', label: '\u2642 Орфей', group: 'Male' },
+            { id: 'zeus', label: '\u2642 Зевс', group: 'Male' },
+            { id: 'athena', label: '\u2640 Афина', group: 'Female' },
+            { id: 'luna', label: '\u2640 Луна', group: 'Female' },
+        ],
+        'KIEAI': [
+            { id: 'Roger', label: '\u2642 Роджер', group: 'Male' },
+            { id: 'Rachel', label: '\u2640 Рейчел', group: 'Female' },
+        ],
+        'BOTHUB': [
+            { id: 'echo', label: '\u2642 Эхо', group: 'Male' },
+            { id: 'nova', label: '\u2640 Нова', group: 'Female' },
+        ],
+        'VOICERSS': [
+            { id: 'Peter', label: '\u2642 Пётр', group: 'Male' },
+            { id: 'Marina', label: '\u2640 Марина', group: 'Female' },
+            { id: 'Olga', label: '\u2640 Ольга', group: 'Female' },
+        ],
+        'POLLINATIONS': [
+            { id: 'Female', label: '\u2640 Женский', group: 'Female' },
+            { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
+        ],
+        'STABILITY': [
+            { id: 'Female', label: '\u2640 Женский', group: 'Female' },
+            { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
+        ],
+    };
+    // Дефолтный набор голосов если сервис неизвестен
+    const DEFAULT_VOICES = [
+        { id: 'Female', label: '\u2640 Женский', group: 'Female' },
+        { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
+    ];
+
+    // Получить голоса для текущей TTS-модели
+    function getVoicesForModel(modelKey) {
+        if (!modelKey || !availableModels.audio_tts) return DEFAULT_VOICES;
+        const model = availableModels.audio_tts.find(m => m.key === modelKey);
+        if (!model) return DEFAULT_VOICES;
+        return VOICE_MAP[model.service] || DEFAULT_VOICES;
+    }
+
+    // ---- Динамические модели (загружаются с бэкенда, fallback = FALLBACK_MODELS) ----
     // Категории моделей — ключи совпадают с префиксами в worker.js
     const MODEL_CATEGORIES = {
         'TEXT_TO_TEXT': 'chat',
@@ -570,7 +566,7 @@
         return null;
     }
 
-    let availableModels = JSON.parse(JSON.stringify(HARDCODED_MODELS));
+    let availableModels = JSON.parse(JSON.stringify(FALLBACK_MODELS));
     let selected = {
         chat: null,
         image: null,
@@ -843,72 +839,72 @@
     //  ЗАГРУЗКА МОДЕЛЕЙ ИЗ /api/models
     // ============================================================
     async function loadModels() {
-        // Сначала устанавливаем дефолты по хардкоду (уже в availableModels)
+        // Сначала рендерим с фоллбэком (чтобы UI не был пустым)
         setModelDefaults();
         saveSelected();
         renderSubHeaders();
         updateModeTabBadges();
 
-        // Пытаемся получить модели с бэкенда
+        // Загружаем модели с бэкенда динамически (НИКАКОГО ХАРДКОДА!)
         try {
             const resp = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mode: 'models', auth: getAuth(), payload: {} })
             });
-            if (!resp.ok) return; // бэкенд не поддерживает /models — используем хардкод
+            if (!resp.ok) {
+                console.log('Бэкенд вернул ' + resp.status + ', используем фоллбэк-модели');
+                return;
+            }
             const data = await resp.json();
-            if (data.success && data.data) {
-                // Бэкенд может вернуть модели сгруппированными по-своему (chat, image, video...).
-                // Мы перекатегоризируем по ключу модели (префиксу), чтобы точно разделить
-                // TEXT_TO_TEXT, IMAGE_TO_TEXT, TEXT_TO_VIDEO, IMAGE_TO_VIDEO и т.д.
-                const categorized = {};
-                for (const cat of Object.keys(HARDCODED_MODELS)) {
-                    categorized[cat] = [];
-                }
+            if (!data.success || !data.data) {
+                console.log('Бэкенд не вернул модели, используем фоллбэк');
+                return;
+            }
 
-                // Собираем все модели из всех категорий API
-                const apiModels = data.data;
-                const allModels = [];
-                const seenKeys = new Set();
-                for (const cat of Object.keys(apiModels)) {
-                    if (!Array.isArray(apiModels[cat])) continue;
-                    for (const m of apiModels[cat]) {
+            // Бэкенд возвращает модели в правильных категориях фронтенда.
+            const categorized = {};
+            const seenKeys = new Set();
+            for (const cat of Object.keys(FALLBACK_MODELS)) {
+                categorized[cat] = [];
+            }
+
+            // Бэкенд уже возвращает модели в правильных категориях фронтенда.
+            // Также используем prefix-маппинг для моделей, которые API вернул в других категориях.
+            const apiModels = data.data;
+
+            // Шаг 1: Принимаем модели из API как есть (они уже в правильных категориях)
+            for (const [apiCat, modelArray] of Object.entries(apiModels)) {
+                if (!Array.isArray(modelArray)) continue;
+                if (categorized[apiCat]) {
+                    for (const m of modelArray) {
                         if (!seenKeys.has(m.key)) {
                             seenKeys.add(m.key);
-                            allModels.push(m);
+                            categorized[apiCat].push(m);
+                        }
+                    }
+                } else {
+                    // Неизвестная категория — пробуем по ключу модели
+                    for (const m of modelArray) {
+                        if (!seenKeys.has(m.key)) {
+                            seenKeys.add(m.key);
+                            const cat = categorizeModelKey(m.key);
+                            if (cat && categorized[cat]) {
+                                categorized[cat].push(m);
+                            }
                         }
                     }
                 }
-
-                // Перекатегоризируем по ключу
-                for (const m of allModels) {
-                    const cat = categorizeModelKey(m.key);
-                    if (cat && categorized[cat]) {
-                        categorized[cat].push(m);
-                    }
-                }
-
-                // Мерджим: дополняем недостающие из хардкода
-                for (const cat of Object.keys(categorized)) {
-                    if (categorized[cat].length === 0) {
-                        categorized[cat] = [...HARDCODED_MODELS[cat]];
-                    } else {
-                        const existingKeys = new Set(categorized[cat].map(m => m.key));
-                        HARDCODED_MODELS[cat].forEach(m => {
-                            if (!existingKeys.has(m.key)) categorized[cat].push(m);
-                        });
-                    }
-                }
-
-                availableModels = categorized;
-                setModelDefaults();
-                saveSelected();
-                renderSubHeaders();
-                updateModeTabBadges();
             }
+
+            availableModels = categorized;
+            setModelDefaults();
+            saveSelected();
+            renderSubHeaders();
+            updateModeTabBadges();
+            console.log('Модели загружены с API:', Object.entries(availableModels).map(([k,v]) => k + '=' + v.length).join(', '));
         } catch(e) {
-            console.log('Using hardcoded models (API unavailable):', e.message);
+            console.log('API недоступен, используем фоллбэк-модели:', e.message);
         }
     }
 
@@ -1317,22 +1313,36 @@
             subModeContainer.appendChild(btn);
         });
 
-        // Модели + Голос (объединены)
+        // Голос — в отдельном контейнере ВЫШЕ моделей, зависит от выбранной модели (как в боте)
+        const voicesContainer = document.getElementById('audioVoices');
+        const voicesDivider = document.getElementById('audioVoicesDivider');
+        voicesContainer.innerHTML = '';
+        voicesDivider.style.display = 'none';
+
+        if (selected.audioSubMode === 'tts') {
+            voicesDivider.style.display = '';
+            const voices = getVoicesForModel(selected.audio_tts);
+            voices.forEach(v => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-option' + (selected.voice === v.id ? ' active' : '');
+                btn.dataset.voice = v.id;
+                btn.onclick = () => { selected.voice = v.id; saveSelected(); renderAudioSubHeader(); };
+                btn.innerHTML = v.label;
+                voicesContainer.appendChild(btn);
+            });
+            // Если текущий голос не входит в список доступных — выбрать первый
+            if (voices.length > 0 && !voices.find(v => v.id === selected.voice)) {
+                selected.voice = voices[0].id;
+                saveSelected();
+            }
+        }
+
+        // Модели — после голосов
         const modelsContainer = document.getElementById('audioModels');
         modelsContainer.classList.remove('skeleton');
         modelsContainer.innerHTML = '';
 
         if (selected.audioSubMode === 'tts') {
-            // Голос ПЕРЕД моделью (чтобы не прятались под списком)
-            [{ key: 'Female', label: '\u2640 Женский' }, { key: 'Male', label: '\u2642 Мужской' }].forEach(v => {
-                const btn = document.createElement('button');
-                btn.className = 'sub-option' + (selected.voice === v.key ? ' active' : '');
-                btn.dataset.voice = v.key;
-                btn.onclick = () => { selected.voice = v.key; saveSelected(); renderAudioSubHeader(); };
-                btn.innerHTML = v.label;
-                modelsContainer.appendChild(btn);
-            });
-            // Модель после голосов
             const modelList = availableModels.audio_tts;
             if (modelList.length > 0) {
                 const sel = document.createElement('select');
@@ -1694,7 +1704,7 @@
                 model: selected.chat
             };
 
-            // Прикрепляем файлы — если есть картинки, используем Vision модель
+            // Прикрепляем файлы — если есть картинки, отправляем через Vision-режим
             if (chatAttachments.length > 0) {
                 const hasImages = chatAttachments.some(a => a.type.startsWith('image/'));
                 const hasAudio = chatAttachments.some(a => a.type.startsWith('audio/'));
@@ -1706,12 +1716,13 @@
                     base64: a.base64
                 }));
 
-                // Если есть картинки — используем Vision модель (IMAGE_TO_TEXT)
+                // Если есть картинки — отправляем через chat с attachments (Vision)
+                // webHandler сам определит serviceType=IMAGE_TO_TEXT по attachments
                 if (hasImages) {
-                    // Берём выбранную vision-модель или первую бесплатную
-                    const visionKey = selected.image_vision || availableModels.image_vision?.find(m => m.isFree)?.key || 'IMAGE_TO_TEXT_WORKERS_AI';
-                    payload.model = visionKey;
+                    // Выбираем модель Vision если указана, иначе бэкенд сам подберёт
+                    payload.model = selected.image_vision || payload.model;
                 }
+
                 // Если есть аудио — используем STT модель
                 if (hasAudio && !hasImages) {
                     payload.model = selected.audio_stt || availableModels.audio_stt?.find(m => m.isFree)?.key || 'AUDIO_TO_TEXT_WORKERS_AI';
@@ -2920,30 +2931,57 @@
         }
     }
     function cmdCreate(arg) {
-        if (arg) { switchMode('image'); selected.imageSubMode = 't2i'; renderImageSubHeader(); userInput.value = arg; }
-        else { switchMode('image'); selected.imageSubMode = 't2i'; renderImageSubHeader(); showToast('Опишите картинку и нажмите отправить', 'info'); }
+        if (arg) {
+            // Как в боте: /create [prompt] → сразу генерируем
+            switchMode('image');
+            selected.imageSubMode = 't2i';
+            renderImageSubHeader();
+            switchImageSubMode('t2i');
+            generateImage(arg);
+        } else {
+            switchMode('image');
+            selected.imageSubMode = 't2i';
+            renderImageSubHeader();
+            switchImageSubMode('t2i');
+            showToast('Опишите картинку и нажмите отправить', 'info');
+        }
     }
     function cmdPhoto(arg) {
         switchMode('image'); selected.imageSubMode = 'i2i'; renderImageSubHeader(); switchImageSubMode('i2i');
+        if (arg) { userInput.value = arg; autoResize(userInput); }
         showToast('Загрузите фото как референс', 'info');
     }
     function cmdText(arg) {
-        if (arg) { switchMode('image'); selected.imageSubMode = 't2i'; renderImageSubHeader(); userInput.value = arg; }
-        else { switchMode('image'); selected.imageSubMode = 't2i'; renderImageSubHeader(); }
+        if (arg) {
+            // Как /create — сразу генерируем
+            switchMode('image'); selected.imageSubMode = 't2i'; renderImageSubHeader(); switchImageSubMode('t2i');
+            generateImage(arg);
+        } else {
+            switchMode('image'); selected.imageSubMode = 't2i'; renderImageSubHeader(); switchImageSubMode('t2i');
+        }
     }
     function cmdVideo(arg) {
         switchMode('video'); selected.videoSubMode = 't2v'; renderVideoSubHeader(); switchVideoSubMode('t2v');
-        if (arg) { userInput.value = arg; }
-        else showToast('Опишите видео-сцену', 'info');
+        if (arg) {
+            // Как в боте: /video [prompt] → сразу генерируем
+            generateVideo(arg);
+        } else {
+            showToast('Опишите видео-сцену', 'info');
+        }
     }
     function cmdAvatar(arg) {
         switchMode('video'); selected.videoSubMode = 'a2v'; renderVideoSubHeader(); switchVideoSubMode('a2v');
+        if (arg) { userInput.value = arg; autoResize(userInput); }
         showToast('Загрузите аудио и опишите аватар', 'info');
     }
     function cmdSay(arg) {
         switchMode('audio'); selected.audioSubMode = 'tts'; renderAudioSubHeader(); switchAudioSubMode('tts');
-        if (arg) { userInput.value = arg; }
-        else showToast('Введите текст для озвучки', 'info');
+        if (arg) {
+            // Как в боте: /say [text] → сразу озвучиваем
+            generateAudioTTS(arg);
+        } else {
+            showToast('Введите текст для озвучки', 'info');
+        }
     }
     function cmdUpscale(arg) {
         switchMode('image'); selected.imageSubMode = 'upscale'; renderImageSubHeader(); switchImageSubMode('upscale');

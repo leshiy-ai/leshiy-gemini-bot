@@ -196,7 +196,7 @@ async function handleImage(auth, payload, env, monolith) {
 
         // Rotate via converter (free operation)
         try {
-            const converterUrl = env.LESHIY_CONVERTER;
+            const converterUrl = typeof env.LESHIY_CONVERTER === 'string' ? env.LESHIY_CONVERTER : (env.LESHIY_CONVERTER?.toString() || '');
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const imageBuffer = Buffer.from(payload.image_base64, 'base64');
@@ -223,7 +223,7 @@ async function handleImage(auth, payload, env, monolith) {
         const targetFormat = payload.target_format || 'png';
 
         try {
-            const converterUrl = env.LESHIY_CONVERTER;
+            const converterUrl = typeof env.LESHIY_CONVERTER === 'string' ? env.LESHIY_CONVERTER : (env.LESHIY_CONVERTER?.toString() || '');
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const imageBuffer = Buffer.from(payload.image_base64, 'base64');
@@ -377,7 +377,7 @@ async function handleVideo(auth, payload, env, monolith) {
         if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для поворота');
         const angle = payload.angle || '-90';
         try {
-            const converterUrl = env.LESHIY_CONVERTER;
+            const converterUrl = typeof env.LESHIY_CONVERTER === 'string' ? env.LESHIY_CONVERTER : (env.LESHIY_CONVERTER?.toString() || '');
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const videoBuffer = Buffer.from(payload.video_base64, 'base64');
@@ -498,7 +498,7 @@ async function handleAudio(auth, payload, env, monolith) {
         const targetFormat = payload.target_format || 'mp3';
 
         try {
-            const converterUrl = env.LESHIY_CONVERTER;
+            const converterUrl = typeof env.LESHIY_CONVERTER === 'string' ? env.LESHIY_CONVERTER : (env.LESHIY_CONVERTER?.toString() || '');
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
@@ -562,10 +562,22 @@ async function handleAudio(auth, payload, env, monolith) {
         const audioConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_AUDIO', env, chatId)).config;
         const voice = payload.voice || 'Female';
 
-        if (audioConfig.FUNCTION.name === 'callGeminiTextToAudio' || audioConfig.SERVICE === 'GEMINI') {
+        // Передаём voice во все TTS-функции по аналогии с телеграм-ботом
+        // Функции сами маппят голос по сервису (Gemini→Kore/Enceladus, WorkersAI→orpheus/athena, etc.)
+        if (audioConfig.SERVICE === 'GEMINI' || audioConfig.FUNCTION.name === 'callGeminiTextToAudio') {
+            audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice);
+        } else if (audioConfig.SERVICE === 'WORKERS_AI' || audioConfig.FUNCTION.name === 'callWorkersAITextToAudio' || audioConfig.FUNCTION.name === 'callWorkersAITTS') {
+            audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice);
+        } else if (audioConfig.SERVICE === 'KIEAI' || audioConfig.SERVICE === 'BOTHUB') {
+            // KIE.AI и BotHub TTS — voice передаётся как 4-й аргумент
+            try { audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice); }
+            catch(_) { audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env); }
+        } else if (audioConfig.SERVICE === 'VOICERSS') {
             audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice);
         } else {
-            audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env);
+            // Фоллбэк: пробуем с voice, если не работает — без
+            try { audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, voice); }
+            catch(_) { audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env); }
         }
     } catch (e) {
         console.error("[WebHandler] Audio gen error:", e.message);
@@ -591,26 +603,35 @@ async function handleModels(auth, env, monolith) {
         chat: [],
         image: [],
         image_i2i: [],
-        video: [],
+        image_vision: [],
+        image_upscale: [],
+        video_t2v: [],
+        video_i2v: [],
+        video_v2v: [],
+        video_a2v: [],
+        video_analysis: [],
+        video_upscale: [],
         audio_tts: [],
         audio_stt: []
     };
 
-    // Маппинг: сервис-тип → целевой массив + признак бесплатности
+    // Маппинг: сервис-тип → целевая категория фронтенда + признак бесплатности
     const serviceMapping = {
-        'TEXT_TO_TEXT':   { target: 'chat',     freeByDefault: true  },
-        'IMAGE_TO_TEXT':  { target: 'chat',     freeByDefault: true  },
-        'TEXT_TO_IMAGE':  { target: 'image',    freeByDefault: false },
-        'IMAGE_TO_IMAGE': { target: 'image_i2i', freeByDefault: false },
-        'IMAGE_TO_UPSCALE': { target: 'image_i2i', freeByDefault: false },
-        'TEXT_TO_VIDEO':  { target: 'video',    freeByDefault: false },
-        'IMAGE_TO_VIDEO': { target: 'video',    freeByDefault: false },
-        'VIDEO_TO_VIDEO': { target: 'video',    freeByDefault: false },
-        'AUDIO_TO_VIDEO': { target: 'video',    freeByDefault: false },
-        'VIDEO_TO_UPSCALE': { target: 'video',  freeByDefault: false },
-        'VIDEO_TO_ANALYSIS': { target: 'video', freeByDefault: true  },
-        'TEXT_TO_AUDIO':  { target: 'audio_tts', freeByDefault: false },
-        'AUDIO_TO_TEXT':  { target: 'audio_stt', freeByDefault: true  },
+        'TEXT_TO_TEXT':   { target: 'chat',          freeByDefault: true  },
+        'IMAGE_TO_TEXT':  { target: 'image_vision',  freeByDefault: true  },
+        'TEXT_TO_IMAGE':  { target: 'image',         freeByDefault: false },
+        'IMAGE_TO_IMAGE': { target: 'image_i2i',     freeByDefault: false },
+        'IMAGE_TO_UPSCALE': { target: 'image_upscale', freeByDefault: false },
+        'TEXT_TO_VIDEO':  { target: 'video_t2v',     freeByDefault: false },
+        'IMAGE_TO_VIDEO': { target: 'video_i2v',     freeByDefault: false },
+        'VIDEO_TO_VIDEO': { target: 'video_v2v',     freeByDefault: false },
+        'AUDIO_TO_VIDEO': { target: 'video_a2v',     freeByDefault: false },
+        'VIDEO_TO_UPSCALE': { target: 'video_upscale', freeByDefault: false },
+        'VIDEO_TO_ANALYSIS': { target: 'video_analysis', freeByDefault: true },
+        'TEXT_TO_AUDIO':  { target: 'audio_tts',     freeByDefault: false },
+        'AUDIO_TO_TEXT':  { target: 'audio_stt',     freeByDefault: true  },
+        'VIDEO_TO_TEXT':  { target: 'audio_stt',     freeByDefault: true  },
+        'AUDIO_TO_AUDIO': { target: 'audio_stt',     freeByDefault: true  },
     };
 
     // Перебираем ВСЕ модели из AI_MODEL_MENU_CONFIG и AI_MODELS
@@ -626,6 +647,7 @@ async function handleModels(auth, env, monolith) {
 
             const isFree = mapping.freeByDefault || !modelDetails.pricing || modelDetails.SERVICE === 'WORKERS_AI';
             const cost = typeof modelDetails.pricing === 'number' ? modelDetails.pricing : (modelDetails.pricing ? 'дин.' : 0);
+            const isDynamicPricing = typeof modelDetails.pricing === 'object' && modelDetails.pricing !== null;
 
             targetArray.push({
                 key: modelKey,
@@ -634,7 +656,8 @@ async function handleModels(auth, env, monolith) {
                 service: modelDetails.SERVICE,
                 serviceLabel: getShortServiceName(modelDetails.SERVICE),
                 isFree: isFree,
-                cost: cost
+                cost: cost,
+                isDynamicPricing: isDynamicPricing
             });
         }
     }

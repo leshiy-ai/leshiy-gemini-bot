@@ -1,7 +1,7 @@
 // Worker для Cloudflare: Мультимодальный Telegram-бот "Gemini AI" by Leshiy
 // Автор: Огорельцев Александр Валерьевич @Leshiyalex
 
-const VERSION = 'v5.0.5 от 01.04.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
+const VERSION = 'v5.0.6 от 27.05.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
 
 // --- ГЛОБАЛЬНЫЕ КОНСТАНТЫ ---
 const GLOBAL_DEBUG_KEY = 'global_debug_setting'; // Отладка / Debug
@@ -16322,6 +16322,8 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                     if (urlMode) webBody.mode = urlMode;
                 }
             }
+            // Добавляем ctx в env, чтобы функции воркера могли использовать ctx.waitUntil
+            env.ctx = ctx;
             const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat, uploadBase64ImageToPublicUrl, createTaskKieAi });
             return new Response(JSON.stringify(result), {
                 status: 200,
