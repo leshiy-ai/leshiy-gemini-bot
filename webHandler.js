@@ -92,10 +92,16 @@ async function handleChat(auth, payload, env, monolith) {
         else if (hasVideo) serviceType = 'VIDEO_TO_TEXT';
     }
 
-    // Загружаем активную модель
+    // Загружаем модель: из payload (выбор юзера) или активную из KV
     let finalResponse;
+    let config;
     try {
-        const { config } = await loadActiveConfig(serviceType, env, chatId);
+        if (payload.model && AI_MODELS[payload.model]) {
+            config = AI_MODELS[payload.model];
+        } else {
+            const loaded = await loadActiveConfig(serviceType, env, chatId);
+            config = loaded.config;
+        }
 
         if (serviceType === 'IMAGE_TO_TEXT' && hasAttachments) {
             // Vision: send images to the model
@@ -172,7 +178,7 @@ async function handleImage(auth, payload, env, monolith) {
 
         let imageResult;
         try {
-            const { config } = await loadActiveConfig('IMAGE_TO_UPSCALE', env, chatId);
+            const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('IMAGE_TO_UPSCALE', env, chatId)).config;
             imageResult = await config.FUNCTION(config, payload.image_base64, env);
         } catch (e) {
             console.error("[WebHandler] Upscale error:", e.message);
@@ -252,7 +258,7 @@ async function handleImage(auth, payload, env, monolith) {
 
         let imageResult;
         try {
-            const { config } = await loadActiveConfig('IMAGE_TO_IMAGE', env, chatId);
+            const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('IMAGE_TO_IMAGE', env, chatId)).config;
             const refImage = payload.reference_images[0]; // First reference image
             imageResult = await config.FUNCTION(config, prompt, env, refImage);
         } catch (e) {
@@ -279,7 +285,7 @@ async function handleImage(auth, payload, env, monolith) {
 
     let imageResult;
     try {
-        const { config } = await loadActiveConfig('TEXT_TO_IMAGE', env, chatId);
+        const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_IMAGE', env, chatId)).config;
         imageResult = await config.FUNCTION(config, prompt, env);
     } catch (e) {
         console.error("[WebHandler] Image gen error:", e.message);
@@ -339,7 +345,7 @@ function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUr
 // 🎬 ВИДЕО — Поддержка generate, convert, upscale, rotate
 // ============================================================
 async function handleVideo(auth, payload, env, monolith) {
-    const { loadActiveConfig, createTaskKieAi, extractAndCleanModelResponse } = monolith;
+    const { AI_MODELS, loadActiveConfig, createTaskKieAi, extractAndCleanModelResponse } = monolith;
     const isAuth = !!(auth && auth.id);
     const chatId = isAuth ? String(auth.id) : 'guest';
     const videoMode = payload.video_mode || 'generate'; // generate, convert, upscale, rotate
@@ -351,7 +357,7 @@ async function handleVideo(auth, payload, env, monolith) {
 
         let result;
         try {
-            const { config } = await loadActiveConfig('VIDEO_TO_ANALYSIS', env, chatId);
+            const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('VIDEO_TO_ANALYSIS', env, chatId)).config;
             if (config.FUNCTION.name === 'callGeminiVideoVision' || config.FUNCTION.name === 'callGeminiSpeechToText') {
                 const videoBase64 = payload.video_base64;
                 result = await config.FUNCTION(config, prompt, env, videoBase64);
@@ -400,7 +406,7 @@ async function handleVideo(auth, payload, env, monolith) {
 
         let taskId;
         try {
-            const { config: upscaleConfig } = await loadActiveConfig('VIDEO_TO_UPSCALE', env, chatId);
+            const upscaleConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('VIDEO_TO_UPSCALE', env, chatId)).config;
             const workerDomain = env.WORKER_DOMAIN || '';
             const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
@@ -432,7 +438,7 @@ async function handleVideo(auth, payload, env, monolith) {
 
     let taskId;
     try {
-        const { config: videoConfig } = await loadActiveConfig('TEXT_TO_VIDEO', env, chatId);
+        const videoConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_VIDEO', env, chatId)).config;
         const workerDomain = env.WORKER_DOMAIN || '';
         const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
@@ -465,7 +471,7 @@ async function handleVideo(auth, payload, env, monolith) {
 // 🔊 АУДИО — Поддержка TTS, STT, convert, voice_clone
 // ============================================================
 async function handleAudio(auth, payload, env, monolith) {
-    const { loadActiveConfig, extractAndCleanModelResponse } = monolith;
+    const { AI_MODELS, loadActiveConfig, extractAndCleanModelResponse } = monolith;
     const isAuth = !!(auth && auth.id);
     const chatId = isAuth ? String(auth.id) : 'guest';
     const audioMode = payload.audio_mode || 'tts';
@@ -476,7 +482,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
         let result;
         try {
-            const { config } = await loadActiveConfig('AUDIO_TO_TEXT', env, chatId);
+            const config = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('AUDIO_TO_TEXT', env, chatId)).config;
             result = await config.FUNCTION(config, payload.audio_base64, env);
             const cleaned = extractAndCleanModelResponse(result);
             return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || result });
@@ -526,7 +532,7 @@ async function handleAudio(auth, payload, env, monolith) {
         // Voice clone uses the same TTS function but with voice sample
         let audioBuffer;
         try {
-            const { config: audioConfig } = await loadActiveConfig('TEXT_TO_AUDIO', env, chatId);
+            const audioConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_AUDIO', env, chatId)).config;
             // Pass voice sample to the function if it supports it
             if (audioConfig.FUNCTION.name === 'callGeminiTextToAudio') {
                 audioBuffer = await audioConfig.FUNCTION(audioConfig, text, env, 'user_voice', payload.voice_sample);
@@ -553,7 +559,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
     let audioBuffer;
     try {
-        const { config: audioConfig } = await loadActiveConfig('TEXT_TO_AUDIO', env, chatId);
+        const audioConfig = (payload.model && AI_MODELS[payload.model]) ? AI_MODELS[payload.model] : (await loadActiveConfig('TEXT_TO_AUDIO', env, chatId)).config;
         const voice = payload.voice || 'Female';
 
         if (audioConfig.FUNCTION.name === 'callGeminiTextToAudio' || audioConfig.SERVICE === 'GEMINI') {
@@ -579,8 +585,7 @@ async function handleAudio(auth, payload, env, monolith) {
 // 📋 МОДЕЛИ — Возврат списка доступных моделей
 // ============================================================
 async function handleModels(auth, env, monolith) {
-    const { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig } = monolith;
-    const chatId = (auth && auth.id) ? String(auth.id) : 'guest';
+    const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
 
     const models = {
         chat: [],
@@ -591,45 +596,62 @@ async function handleModels(auth, env, monolith) {
         audio_stt: []
     };
 
-    // Helper: load models for a service type
-    async function loadServiceModels(serviceType, targetArray) {
-        try {
-            const { config } = await loadActiveConfig(serviceType, env, chatId);
-            if (config) {
-                targetArray.push({
-                    key: serviceType,
-                    displayName: getShortServiceName(config.SERVICE) + ': ' + (config.MODEL || ''),
-                    modelShort: config.MODEL?.split('/').pop() || '',
-                    service: config.SERVICE,
-                    serviceLabel: getShortServiceName(config.SERVICE),
-                    isFree: !config.pricing,
-                    cost: typeof config.pricing === 'number' ? config.pricing : (config.pricing ? 'дин.' : 0)
-                });
-            }
-        } catch (e) {
-            // Service not available
+    // Маппинг: сервис-тип → целевой массив + признак бесплатности
+    const serviceMapping = {
+        'TEXT_TO_TEXT':   { target: 'chat',     freeByDefault: true  },
+        'IMAGE_TO_TEXT':  { target: 'chat',     freeByDefault: true  },
+        'TEXT_TO_IMAGE':  { target: 'image',    freeByDefault: false },
+        'IMAGE_TO_IMAGE': { target: 'image_i2i', freeByDefault: false },
+        'IMAGE_TO_UPSCALE': { target: 'image_i2i', freeByDefault: false },
+        'TEXT_TO_VIDEO':  { target: 'video',    freeByDefault: false },
+        'IMAGE_TO_VIDEO': { target: 'video',    freeByDefault: false },
+        'VIDEO_TO_VIDEO': { target: 'video',    freeByDefault: false },
+        'AUDIO_TO_VIDEO': { target: 'video',    freeByDefault: false },
+        'VIDEO_TO_UPSCALE': { target: 'video',  freeByDefault: false },
+        'VIDEO_TO_ANALYSIS': { target: 'video', freeByDefault: true  },
+        'TEXT_TO_AUDIO':  { target: 'audio_tts', freeByDefault: false },
+        'AUDIO_TO_TEXT':  { target: 'audio_stt', freeByDefault: true  },
+    };
+
+    // Перебираем ВСЕ модели из AI_MODEL_MENU_CONFIG и AI_MODELS
+    for (const [serviceType, menuConfig] of Object.entries(AI_MODEL_MENU_CONFIG)) {
+        const mapping = serviceMapping[serviceType];
+        if (!mapping) continue;
+        const targetArray = models[mapping.target];
+        if (!targetArray) continue;
+
+        for (const [modelKey, friendlyName] of Object.entries(menuConfig.models)) {
+            const modelDetails = AI_MODELS[modelKey];
+            if (!modelDetails) continue;
+
+            const isFree = mapping.freeByDefault || !modelDetails.pricing || modelDetails.SERVICE === 'WORKERS_AI';
+            const cost = typeof modelDetails.pricing === 'number' ? modelDetails.pricing : (modelDetails.pricing ? 'дин.' : 0);
+
+            targetArray.push({
+                key: modelKey,
+                displayName: friendlyName,
+                modelShort: modelDetails.MODEL?.split('/').pop() || modelDetails.MODEL || '',
+                service: modelDetails.SERVICE,
+                serviceLabel: getShortServiceName(modelDetails.SERVICE),
+                isFree: isFree,
+                cost: cost
+            });
         }
     }
 
-    // Load all service types
-    await Promise.all([
-        loadServiceModels('TEXT_TO_TEXT', models.chat),
-        loadServiceModels('IMAGE_TO_TEXT', models.chat), // Vision models also for chat
-        loadServiceModels('TEXT_TO_IMAGE', models.image),
-        loadServiceModels('IMAGE_TO_IMAGE', models.image_i2i),
-        loadServiceModels('IMAGE_TO_UPSCALE', models.image_i2i),
-        loadServiceModels('TEXT_TO_VIDEO', models.video),
-        loadServiceModels('IMAGE_TO_VIDEO', models.video),
-        loadServiceModels('VIDEO_TO_VIDEO', models.video),
-        loadServiceModels('AUDIO_TO_VIDEO', models.video),
-        loadServiceModels('VIDEO_TO_UPSCALE', models.video),
-        loadServiceModels('TEXT_TO_AUDIO', models.audio_tts),
-        loadServiceModels('AUDIO_TO_TEXT', models.audio_stt)
-    ]);
-
-    // Mark free models
-    const freeServices = ['TEXT_TO_TEXT_WORKERS_AI', 'TEXT_TO_IMAGE_WORKERS_AI', 'IMAGE_TO_TEXT_WORKERS_AI', 'AUDIO_TO_TEXT_WORKERS_AI', 'TEXT_TO_AUDIO_WORKERS_AI'];
-    models.chat.forEach(m => { if (freeServices.some(f => m.key.includes('WORKERS_AI'))) m.isFree = true; });
+    // Дедупликация по key (модели могут попасть в один массив из разных сервис-типов)
+    for (const arr of Object.values(models)) {
+        const seen = new Set();
+        const unique = [];
+        for (const m of arr) {
+            if (!seen.has(m.key)) {
+                seen.add(m.key);
+                unique.push(m);
+            }
+        }
+        arr.length = 0;
+        arr.push(...unique);
+    }
 
     return formatResponse(true, null, null, models);
 }

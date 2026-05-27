@@ -16,7 +16,7 @@
         <div class="header">
             <div class="header-left">
                 <div class="header-logo">Gemini<span>-AI</span></div>
-                <div class="header-badge">Premium</div>
+                <div class="header-badge">Beta</div>
             </div>
             <div class="header-right">
                 <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()" title="Купить кредиты">
@@ -1600,7 +1600,8 @@
 
                 if (data.data?.content) {
                     const content = data.data.content;
-                    resultArea.innerHTML = '<img class="generated-image" src="' + content + '" alt="' + prompt + '">';
+                    const imgSrc = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
+                    resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="' + prompt + '">';
                 } else if (data.data?.image) {
                     resultArea.innerHTML = '<img class="generated-image" src="data:image/png;base64,' + data.data.image + '" alt="' + prompt + '">';
                 } else if (data.data?.url) {
@@ -1660,7 +1661,7 @@
                         aspect_ratio: selected.ratio,
                         quality: selected.videoQuality,
                         duration: selected.videoDuration,
-                        video_mode: selected.videoMode || 'normal',
+                        video_mode: 'generate',
                         ...(videoRefs.image ? { reference_image: videoRefs.image } : {}),
                         ...(videoRefs.audio ? { reference_audio: videoRefs.audio } : {}),
                         ...(videoRefs.video ? { reference_video: videoRefs.video } : {})
@@ -1796,9 +1797,12 @@
             const contentType = response.headers.get('Content-Type') || '';
             if (contentType.includes('application/json')) {
                 const data = await response.json();
-                const audioUrl = data.data?.content || data.data?.url;
-                if (audioUrl) {
-                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '"></audio>';
+                if (!data.success) throw new Error(data.error || 'Ошибка генерации');
+                const audioContent = data.data?.content;
+                if (audioContent) {
+                    // content может быть URL или base64
+                    const audioSrc = audioContent.startsWith('http') ? audioContent : 'data:audio/mp3;base64,' + audioContent;
+                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '" type="audio/mp3"></audio><br><a href="' + audioSrc + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
                 } else throw new Error('Сервер не вернул аудио');
                 if (data.credits_left !== undefined) credits = data.credits_left;
                 else if (!model?.isFree) credits -= cost;
@@ -1887,9 +1891,11 @@
 
             if (contentType.includes('application/json')) {
                 const data = await response.json();
-                const content = data.data?.content || data.data?.url;
+                if (!data.success) throw new Error(data.error || 'Ошибка конвертации');
+                const content = data.data?.content;
                 if (content) {
-                    resultArea.innerHTML = '<audio controls style="width:100%;max-width:400px"><source src="' + content + '"></audio><br><a href="' + content + '" download="converted.' + selectedAudioConvertFormat + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + selectedAudioConvertFormat.toUpperCase() + '</a>';
+                    const audioSrc = content.startsWith('http') ? content : 'data:audio/' + selectedAudioConvertFormat + ';base64,' + content;
+                    resultArea.innerHTML = '<audio controls style="width:100%;max-width:400px"><source src="' + audioSrc + '" type="audio/' + selectedAudioConvertFormat + '"></audio><br><a href="' + audioSrc + '" download="converted.' + selectedAudioConvertFormat + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + selectedAudioConvertFormat.toUpperCase() + '</a>';
                 } else throw new Error('Сервер не вернул аудио');
             } else {
                 const blob = await response.blob();
@@ -1971,9 +1977,11 @@
 
             if (contentType.includes('application/json')) {
                 const data = await response.json();
-                const audioUrl = data.data?.content || data.data?.url;
-                if (audioUrl) {
-                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioUrl + '"></audio><br><span style="color:var(--text-muted);font-size:11px">&#127909; Озвучено вашим голосом</span>';
+                if (!data.success) throw new Error(data.error || 'Ошибка клонирования');
+                const audioContent = data.data?.content;
+                if (audioContent) {
+                    const audioSrc = audioContent.startsWith('http') ? audioContent : 'data:audio/mp3;base64,' + audioContent;
+                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '" type="audio/mp3"></audio><br><a href="' + audioSrc + '" download="voice_clone.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
                 } else throw new Error('Сервер не вернул аудио');
                 if (data.credits_left !== undefined) credits = data.credits_left;
                 updateCreditsDisplay();
