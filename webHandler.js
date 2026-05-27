@@ -92,6 +92,44 @@ function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel,
     return null;
 }
 
+/**
+ * 🧠🧠 КЛЮЧЕВАЯ ФУНКЦИЯ: Находит модель ТЕГО ЖЕ СЕРВИСА для обработки вложений.
+ *
+ * Принцип: если юзер выбрал Gemini-чат, то и вижн/STT должны быть Gemini.
+ * Если выбрал Workers AI-чат — вижн/STT тоже Workers AI.
+ * НИКАКИХ ПЕРЕКРЁСТНЫХ ПОДМЕН МЕЖДУ СЕРВИСАМИ!
+ *
+ * @param {string} serviceType - Тип сервиса для вложения (IMAGE_TO_TEXT, AUDIO_TO_TEXT, VIDEO_TO_TEXT)
+ * @param {string} chatService - Сервис чат-модели (GEMINI, WORKERS_AI, BOTHUB и т.д.)
+ * @param {object} AI_MODELS - Все модели
+ * @param {object} AI_MODEL_MENU_CONFIG - Конфиг меню моделей
+ * @returns {{config, key}|null}
+ */
+function getModelForAttachmentByService(serviceType, chatService, AI_MODELS, AI_MODEL_MENU_CONFIG) {
+    // 1. Ищем модель нужного типа (IMAGE_TO_TEXT/AUDIO_TO_TEXT/VIDEO_TO_TEXT)
+    //    из ТЕГО ЖЕ сервиса что и чат-модель
+    const menuConfig = AI_MODEL_MENU_CONFIG[serviceType];
+    if (menuConfig && menuConfig.models) {
+        for (const [modelKey, friendlyName] of Object.entries(menuConfig.models)) {
+            const modelDetails = AI_MODELS[modelKey];
+            if (modelDetails && modelDetails.SERVICE === chatService) {
+                return { config: modelDetails, key: modelKey };
+            }
+        }
+    }
+
+    // 2. Если модель того же сервиса не найдена — берём первую из меню
+    //    (это НЕ подмена — это фолбэк внутри категории)
+    if (menuConfig && menuConfig.models) {
+        const firstKey = Object.keys(menuConfig.models)[0];
+        if (firstKey && AI_MODELS[firstKey]) {
+            return { config: AI_MODELS[firstKey], key: firstKey };
+        }
+    }
+
+    return null;
+}
+
 // ============================================================
 // ☁️ CLOUDFLARE REST API — Вызов Workers AI через HTTP
 // ============================================================
@@ -175,11 +213,42 @@ async function callWorkersAIWeb(config, ...args) {
     // === STT (Audio → Text / Video → Text) ===
     if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
         const [audioBuffer, env] = args;
-        const base64 = Buffer.isBuffer(audioBuffer) ? audioBuffer.toString('base64') : audioBuffer;
-        const result = await callCloudflareRestAPI(modelName, {
-            audio: base64
-        }, env);
-        return result.result?.text || result.result?.transcription || JSON.stringify(result.result || result);
+        const audioBase64 = Buffer.isBuffer(audioBuffer) ? audioBuffer.toString('base64') : audioBuffer;
+
+        // Cloudflare Whisper REST API: отправляем как multipart/form-data
+        const accountId = env.CLOUDFLARE_ACCOUNT_ID;
+        const apiToken = env.CLOUDFLARE_API_TOKEN;
+        if (!accountId || !apiToken) {
+            throw new Error('CLOUDFLARE_ACCOUNT_ID или CLOUDFLARE_API_TOKEN не заданы');
+        }
+
+        const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${modelName}`;
+        const audioBufferRaw = Buffer.from(audioBase64, 'base64');
+
+        // Формируем multipart/form-data
+        const boundary = '----FormBoundary' + Math.random().toString(36).substring(2);
+        const parts = [];
+        parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`));
+        parts.push(audioBufferRaw);
+        parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+        const body = Buffer.concat(parts);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiToken}`,
+                'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            },
+            body: body,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Cloudflare Whisper API error ${response.status}: ${errorText}`);
+        }
+
+        const json = await response.json();
+        return json.result?.text || json.result?.transcription || JSON.stringify(json.result || json);
     }
 
     // === TTS (Text → Audio) ===
@@ -282,109 +351,144 @@ async function handleChat(auth, payload, env, monolith) {
         }
     }
 
-    // Определяем тип сервиса по вложениям
+    // 🧠🧠 КЛЮЧЕВОЙ ПРИНЦИП: ВЫБРАННЫЙ ЧАТ-МОДЕЛЬ ОПРЕДЕЛЯЕТ СЕРВИС
+    // Если юзер выбрал Gemini — ВСЁ идёт через Gemini (текст, вижн, STT)
+    // Если выбрал Workers AI — ВСЁ идёт через Workers AI
+    // НИКАКИХ ПЕРЕКРЁСТНЫХ ПОДМЕН МЕЖДУ СЕРВИСАМИ!
+
     const hasAttachments = payload.attachments && payload.attachments.length > 0;
-    let serviceType = 'TEXT_TO_TEXT';
+    let attachmentServiceType = null; // IMAGE_TO_TEXT, AUDIO_TO_TEXT, VIDEO_TO_TEXT
 
     if (hasAttachments) {
         const hasImage = payload.attachments.some(a => a.type && a.type.startsWith('image/'));
         const hasAudio = payload.attachments.some(a => a.type && a.type.startsWith('audio/'));
         const hasVideo = payload.attachments.some(a => a.type && a.type.startsWith('video/'));
 
-        if (hasImage) serviceType = 'IMAGE_TO_TEXT';
-        else if (hasAudio) serviceType = 'AUDIO_TO_TEXT';
-        else if (hasVideo) serviceType = 'VIDEO_TO_TEXT';
-        // Остальные файлы (PDF, документы и т.д.) — тоже распознавание
-        else serviceType = 'IMAGE_TO_TEXT';
+        if (hasImage) attachmentServiceType = 'IMAGE_TO_TEXT';
+        else if (hasAudio) attachmentServiceType = 'AUDIO_TO_TEXT';
+        else if (hasVideo) attachmentServiceType = 'VIDEO_TO_TEXT';
+        else attachmentServiceType = 'IMAGE_TO_TEXT'; // документы — тоже через вижн
     }
 
-    // 🧠 ВЫБОР МОДЕЛИ — БЕЗ ПОДМЕН: выбрали Cloudflare = Cloudflare, выбрали Gemini = Gemini
+    // Шаг 1: Определяем чат-модель и её СЕРВИС
+    const chatModelInfo = getWebModel('TEXT_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+    if (!chatModelInfo) {
+        return formatResponse(false, 'Нет доступной модели для чата');
+    }
+    const chatService = chatModelInfo.config.SERVICE; // GEMINI, WORKERS_AI, BOTHUB и т.д.
+    console.log(`[WebHandler] Chat model: ${chatModelInfo.key} (SERVICE=${chatService})`);
+
+    // Шаг 2: Для вложений — находим модель ТЕГО ЖЕ СЕРВИСА
+    // Если чат = Gemini → вижн/STT тоже Gemini
+    // Если чат = Workers AI → вижн/STT тоже Workers AI
+    let attachmentModelInfo = null;
+    if (attachmentServiceType) {
+        attachmentModelInfo = getModelForAttachmentByService(
+            attachmentServiceType, chatService, AI_MODELS, AI_MODEL_MENU_CONFIG
+        );
+        if (attachmentModelInfo) {
+            console.log(`[WebHandler] Attachment model: ${attachmentModelInfo.key} (SERVICE=${attachmentModelInfo.config.SERVICE}, same as chat)`);
+        } else {
+            console.log(`[WebHandler] No ${attachmentServiceType} model for service ${chatService}, will use chat model`);
+        }
+    }
+
+    // Шаг 3: Вызываем модель. Для текста — чат-модель, для вложений — модель того же сервиса
     let finalResponse;
     try {
-        const modelInfo = getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
-        if (!modelInfo) {
-            return formatResponse(false, `Нет доступной модели для ${serviceType}`);
-        }
-        const config = modelInfo.config;
-        const isWorkersAI = config.SERVICE === 'WORKERS_AI';
-        console.log(`[WebHandler] Chat using model: ${modelInfo.key} (${config.SERVICE}${isWorkersAI ? ' via REST API' : ''})`);
-
-        // Вложение-изображение → Vision (все чат-модели умеют вижн)
+        // --- ВЛОЖЕНИЕ-ИЗОБРАЖЕНИЕ → Vision (модель того же сервиса что чат) ---
         if (hasAttachments && payload.attachments.some(a => a.type && a.type.startsWith('image/'))) {
             const imageAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('image/'));
             const imageBase64 = imageAttachments[0].base64;
             const imageBuffer = Buffer.from(imageBase64, 'base64');
+            const vModel = attachmentModelInfo || chatModelInfo;
+            const vConfig = vModel.config;
+            const vIsWorkersAI = vConfig.SERVICE === 'WORKERS_AI';
 
-            if (isWorkersAI) {
-                const visionResult = await callWorkersAIWeb(config, imageBuffer, env);
+            console.log(`[WebHandler] Vision using: ${vModel.key} (${vConfig.SERVICE})`);
+
+            if (vIsWorkersAI) {
+                const visionResult = await callWorkersAIWeb(vConfig, imageBuffer, env);
                 finalResponse = typeof visionResult === 'string' ? visionResult : String(visionResult);
-            } else if (config.FUNCTION.name === 'callGeminiVision' || config.FUNCTION.name === 'callGeminiChat') {
-                // Gemini чат И вижн — обе модели понимают изображения
-                const fn = config.FUNCTION;
-                const result = await fn(config, imageBuffer, env);
+            } else if (vConfig.FUNCTION.name === 'callGeminiVision' || vConfig.FUNCTION.name === 'callGeminiChat') {
+                const result = await vConfig.FUNCTION(vConfig, imageBuffer, env);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
-            } else if (config.FUNCTION.name === 'callPollinationsVision' || config.FUNCTION.name === 'callBotHubVisionChat') {
+            } else if (vConfig.FUNCTION.name === 'callPollinationsVision' || vConfig.FUNCTION.name === 'callBotHubVisionChat') {
                 const visionPrompt = userMessage || 'Опиши это изображение подробно';
-                const result = await config.FUNCTION(config, visionPrompt, env, imageBase64);
+                const result = await vConfig.FUNCTION(vConfig, visionPrompt, env, imageBase64);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
-            } else if (config.FUNCTION.name === 'callBotHubTextChat' || config.FUNCTION.name === 'callPollinationsChat') {
-                // Чат-модели BotHub/Pollinations тоже умеют вижн — передаём промпт с файлом
+            } else if (vConfig.FUNCTION.name === 'callBotHubTextChat' || vConfig.FUNCTION.name === 'callPollinationsChat') {
                 const visionPrompt = userMessage || 'Опиши это изображение подробно';
-                const result = await config.FUNCTION(config, visionPrompt, env, imageBase64);
+                const result = await vConfig.FUNCTION(vConfig, visionPrompt, env, imageBase64);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else {
                 // Прочие модели — пробуем вызвать напрямую
                 const fileInfo = payload.attachments.map(a => a.name).join(', ');
                 const combinedMessage = userMessage ? `${userMessage}\n\n[Прикреплены файлы: ${fileInfo}]` : `Пользователь прикрепил файлы: ${fileInfo}. Опиши их.`;
-                const modelResponse = await config.FUNCTION(config, historyForModel, combinedMessage, env);
+                const modelResponse = await vConfig.FUNCTION(vConfig, historyForModel, combinedMessage, env);
                 finalResponse = typeof modelResponse === 'string' ? modelResponse : extractAndCleanModelResponse(modelResponse).finalResponse;
             }
-        // Вложение-аудио → STT (все аудио2текст модели умеют транскрибацию)
+
+        // --- ВЛОЖЕНИЕ-АУДИО → STT (модель того же сервиса что чат) ---
         } else if (hasAttachments && payload.attachments.some(a => a.type && a.type.startsWith('audio/'))) {
             const audioAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('audio/'));
             const audioBase64 = audioAttachments[0].base64;
             const audioBuffer = Buffer.from(audioBase64, 'base64');
+            const sModel = attachmentModelInfo || chatModelInfo;
+            const sConfig = sModel.config;
+            const sIsWorkersAI = sConfig.SERVICE === 'WORKERS_AI';
+
+            console.log(`[WebHandler] STT using: ${sModel.key} (${sConfig.SERVICE})`);
+
             let result;
-            if (isWorkersAI) {
-                result = await callWorkersAIWeb(config, audioBuffer, env);
-            } else if (config.FUNCTION.name === 'callGeminiSpeechToText' || config.FUNCTION.name === 'callGeminiChat') {
-                result = await config.FUNCTION(config, audioBuffer, env);
+            if (sIsWorkersAI) {
+                result = await callWorkersAIWeb(sConfig, audioBuffer, env);
+            } else if (sConfig.FUNCTION.name === 'callGeminiSpeechToText' || sConfig.FUNCTION.name === 'callGeminiChat') {
+                result = await sConfig.FUNCTION(sConfig, audioBuffer, env);
             } else {
-                result = await config.FUNCTION(config, audioBase64, env);
+                result = await sConfig.FUNCTION(sConfig, audioBase64, env);
             }
             finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
-        // Вложение-видео → транскрибация (все видео2текст модели умеют транскрибацию)
+
+        // --- ВЛОЖЕНИЕ-ВИДЕО → транскрибация/анализ (модель того же сервиса что чат) ---
         } else if (hasAttachments && payload.attachments.some(a => a.type && a.type.startsWith('video/'))) {
             const videoAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('video/'));
             const videoBase64 = videoAttachments[0].base64;
             const videoBuffer = Buffer.from(videoBase64, 'base64');
+            const vModel = attachmentModelInfo || chatModelInfo;
+            const vConfig = vModel.config;
+            const vIsWorkersAI = vConfig.SERVICE === 'WORKERS_AI';
+
+            console.log(`[WebHandler] Video STT using: ${vModel.key} (${vConfig.SERVICE})`);
+
             let result;
-            if (isWorkersAI) {
-                result = await callWorkersAIWeb(config, videoBuffer, env);
-            } else if (config.FUNCTION.name === 'callGeminiSpeechToText' || config.FUNCTION.name === 'callGeminiVideoVision') {
-                result = await config.FUNCTION(config, videoBuffer, env);
+            if (vIsWorkersAI) {
+                result = await callWorkersAIWeb(vConfig, videoBuffer, env);
+            } else if (vConfig.FUNCTION.name === 'callGeminiSpeechToText' || vConfig.FUNCTION.name === 'callGeminiVideoVision') {
+                result = await vConfig.FUNCTION(vConfig, videoBuffer, env);
             } else {
-                result = await config.FUNCTION(config, videoBase64, env);
+                result = await vConfig.FUNCTION(vConfig, videoBase64, env);
             }
             finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
-        // Остальные файлы (PDF, документы) → пробуем вижн или текст
+
+        // --- Остальные файлы (PDF, документы) → чат-модель ---
         } else if (hasAttachments) {
             const fileInfo = payload.attachments.map(a => a.name).join(', ');
             const combinedMessage = userMessage ? `${userMessage}\n\n[Прикреплены файлы: ${fileInfo}]` : `Пользователь прикрепил файлы: ${fileInfo}. Опиши их.`;
             let modelResponse;
-            if (isWorkersAI) {
-                modelResponse = await callWorkersAIWeb(config, historyForModel, combinedMessage, env);
+            if (chatModelInfo.config.SERVICE === 'WORKERS_AI') {
+                modelResponse = await callWorkersAIWeb(chatModelInfo.config, historyForModel, combinedMessage, env);
             } else {
-                modelResponse = await config.FUNCTION(config, historyForModel, combinedMessage, env);
+                modelResponse = await chatModelInfo.config.FUNCTION(chatModelInfo.config, historyForModel, combinedMessage, env);
             }
             finalResponse = typeof modelResponse === 'string' ? modelResponse : extractAndCleanModelResponse(modelResponse).finalResponse;
         } else {
-            // Обычный текстовый чат
+            // --- Обычный текстовый чат ---
             let modelResponse;
-            if (isWorkersAI) {
-                modelResponse = await callWorkersAIWeb(config, historyForModel, userMessage, env);
+            if (chatModelInfo.config.SERVICE === 'WORKERS_AI') {
+                modelResponse = await callWorkersAIWeb(chatModelInfo.config, historyForModel, userMessage, env);
             } else {
-                modelResponse = await config.FUNCTION(config, historyForModel, userMessage, env);
+                modelResponse = await chatModelInfo.config.FUNCTION(chatModelInfo.config, historyForModel, userMessage, env);
             }
             if (typeof modelResponse === 'string') {
                 finalResponse = modelResponse;

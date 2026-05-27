@@ -1908,6 +1908,29 @@
                 }
             });
         }
+
+        // Drag-out: удаление вложения при перетаскивании за пределы приложения
+        document.querySelector('.app').addEventListener('dragover', function(e) {
+            // Если перетаскивают вложение (не внешний файл) — показываем подсказку
+            if (e.dataTransfer.types.includes('text/plain') && chatAttachments.length > 0) {
+                // Это внутреннее перетаскивание вложения
+            }
+        });
+        document.addEventListener('dragend', function(e) {
+            // Удаляем вложение если его перетащили наружу (drag-out)
+            const dragIdx = e.dataTransfer?.getData('text/plain');
+            if (dragIdx !== '' && dragIdx !== undefined && chatAttachments[parseInt(dragIdx)]) {
+                // Проверяем что элемент был перетащен за пределы приложения
+                const appEl = document.querySelector('.app');
+                const rect = appEl.getBoundingClientRect();
+                const x = e.clientX;
+                const y = e.clientY;
+                if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    removeChatAttachment(parseInt(dragIdx));
+                    showToast('Вложение удалено', 'info');
+                }
+            }
+        });
     }
 
     function handleChatFileUpload(input) {
@@ -1987,6 +2010,7 @@
         chatAttachments.forEach((att, i) => {
             const badge = document.createElement('div');
             badge.className = 'file-badge';
+            badge.draggable = true; // 🧠 Разрешаем перетаскивание обратно (drag-out)
             // Все файлы кликабельны для предпросмотра
             badge.style.cursor = 'pointer';
             badge.onclick = function(e) {
@@ -1994,6 +2018,16 @@
                 if (e.target.classList.contains('file-remove')) return;
                 previewAttachment(att, i);
             };
+
+            // Drag-out: убираем вложение при перетаскивании за пределы
+            badge.addEventListener('dragstart', function(e) {
+                e.dataTransfer.setData('text/plain', String(i));
+                e.dataTransfer.effectAllowed = 'move';
+                badge.style.opacity = '0.4';
+            });
+            badge.addEventListener('dragend', function() {
+                badge.style.opacity = '1';
+            });
 
             let icon = att.icon || '&#128196;'; // документ по умолчанию
             if (!att.icon) {
@@ -2155,48 +2189,21 @@
             const payload = {
                 prompt: text || 'Опиши прикреплённые файлы подробно',
                 history: chatHistory,
-                model: selected.chat
+                model: selected.chat  // 🧠 ВАЖНО: НЕ подменяем модель! Бэкенд сам найдёт модель того же СЕРВИСА для вложений
             };
 
-            // Прикрепляем файлы — классифицируем по типу и отправляем с правильным serviceType
+            // Прикрепляем файлы — классифицируем по типу
+            // БЭКЕНД САМ определяет правильную модель для вложений по сервису чат-модели:
+            // Если чат = Gemini → вижн/STT тоже Gemini
+            // Если чат = Workers AI → вижн/STT тоже Workers AI
+            // Никаких перекрёстных подмен!
             if (chatAttachments.length > 0) {
-                const hasImages = chatAttachments.some(a => a.type.startsWith('image/'));
-                const hasAudio = chatAttachments.some(a => a.type.startsWith('audio/'));
-                const hasVideo = chatAttachments.some(a => a.type.startsWith('video/'));
-                const hasDocuments = chatAttachments.some(a =>
-                    !a.type.startsWith('image/') && !a.type.startsWith('audio/') && !a.type.startsWith('video/')
-                );
-
                 payload.attachments = chatAttachments.map(a => ({
                     name: a.name,
                     type: a.type,
-                    base64: a.base64,
-                    // Send serviceType hint so the backend knows how to process each file
-                    serviceType: a.type.startsWith('image/') ? 'IMAGE_TO_TEXT' :
-                                 a.type.startsWith('video/') ? 'VIDEO_TO_TEXT' :
-                                 a.type.startsWith('audio/') ? 'AUDIO_TO_TEXT' :
-                                 'DOCUMENT'
+                    base64: a.base64
                 }));
 
-                // Determine the best model based on file types (priority: images > video > audio > docs)
-                if (hasImages) {
-                    // Images use Vision model
-                    payload.model = selected.image_vision || payload.model;
-                    payload.serviceType = 'IMAGE_TO_TEXT';
-                } else if (hasVideo) {
-                    // Video uses VIDEO_TO_TEXT recognition
-                    payload.model = selected.video_analysis || availableModels.video_analysis?.find(m => m.isFree)?.key || 'VIDEO_TO_ANALYSIS_GEMINI';
-                    payload.video_mode = 'convert';
-                    payload.serviceType = 'VIDEO_TO_TEXT';
-                } else if (hasAudio) {
-                    // Audio uses AUDIO_TO_TEXT recognition
-                    payload.model = selected.audio_stt || availableModels.audio_stt?.find(m => m.isFree)?.key || 'AUDIO_TO_TEXT_GEMINI';
-                    payload.audio_mode = 'stt';
-                    payload.serviceType = 'AUDIO_TO_TEXT';
-                } else if (hasDocuments) {
-                    // Documents — send file names for context (content extraction on backend)
-                    payload.serviceType = 'DOCUMENT';
-                }
                 if (!text) {
                     const types = chatAttachments.map(a => {
                         if (a.type.startsWith('image/')) return 'изображение';
@@ -3623,23 +3630,29 @@
             imgContainer.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-top:4px';
             imageAttachments.forEach(att => {
                 if (att.type.startsWith('image/') && att.previewUrl) {
-                    // Image preview
+                    // Image preview — КЛИКАБЕЛЬНО для предпросмотра
                     const img = document.createElement('img');
                     img.src = att.previewUrl;
                     img.className = 'chat-img-preview';
+                    img.style.cursor = 'pointer';
+                    img.onclick = function() { openLightbox(att.previewUrl, 'img'); };
                     imgContainer.appendChild(img);
                 } else if ((att.category === 'video' || att.type.startsWith('video/')) && att.previewUrl) {
-                    // Video thumbnail with play icon overlay
+                    // Video thumbnail with play icon overlay — КЛИКАБЕЛЬНО
                     const wrap = document.createElement('div');
                     wrap.style.cssText = 'position:relative;display:inline-block;width:60px;height:45px;cursor:pointer';
+                    const videoSrc = att.base64 ? ('data:' + att.type + ';base64,' + att.base64) : att.previewUrl;
                     wrap.innerHTML = '<img src="' + att.previewUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' +
                         '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:white">&#9654;</div>';
+                    wrap.onclick = function() { openLightbox(videoSrc, 'video'); };
                     imgContainer.appendChild(wrap);
                 } else if (att.category === 'audio' || att.type.startsWith('audio/')) {
-                    // Audio icon badge
+                    // Audio icon badge — КЛИКАБЕЛЬНО для предпросмотра
                     const badge = document.createElement('div');
-                    badge.style.cssText = 'display:flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(139,92,246,0.15);border-radius:8px;font-size:12px;color:var(--text-secondary)';
+                    badge.style.cssText = 'display:flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(139,92,246,0.15);border-radius:8px;font-size:12px;color:var(--text-secondary);cursor:pointer';
                     badge.innerHTML = '&#127925; ' + (att.name || 'audio');
+                    const audioSrc = att.base64 ? ('data:' + att.type + ';base64,' + att.base64) : att.previewUrl;
+                    badge.onclick = function() { openLightbox(audioSrc, 'audio'); };
                     imgContainer.appendChild(badge);
                 } else {
                     // Document icon badge
