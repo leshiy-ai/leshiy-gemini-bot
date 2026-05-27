@@ -20505,4 +20505,12 @@ ${historyText}`;
     }   // КОНЕЦ БЛОКА ГЛОБАЛЬНОЙ ОБРАБОТКИ ОШИБОК
 };
 
-module.exports = { worker_code_fetch };
+module.exports = {
+    worker_code_fetch,
+    AI_MODELS,
+    AI_MODEL_MENU_CONFIG,
+    extractAndCleanModelResponse,
+    syncS3Chat,
+    uploadBase64ImageToPublicUrl,
+    createTaskKieAi
+};

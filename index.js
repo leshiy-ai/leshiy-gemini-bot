@@ -4,8 +4,6 @@ const fs = require('fs');
 const path = require('path');
 
 // ВАЖНО: Удаляем FormData из зависимостей, берем нативную или фиксим через глобал
-// Если в Node 18+ есть глобальный FormData, используем его.
-// Если нет — заставляем всех использовать одну и ту же версию.
 const NativeFormData = global.FormData || require('form-data');
 
 // ЖЕСТКАЯ ПОДМЕНА для всего проекта
@@ -43,7 +41,6 @@ async function prepareMultipart(formData) {
 
     const finalBuffer = Buffer.concat(chunks);
 
-    // --- ВОТ ЭТА МАГИЯ ---
     // Прикидываемся стримом для старых библиотек типа node-fetch v2
     finalBuffer.on = () => {}; 
     finalBuffer.pause = () => {};
@@ -80,36 +77,42 @@ const smartFetch = async (url, opts) => {
     return originalFetch(url, opts);
 };
 
-// ГЛОБАЛЬНАЯ ПОДМЕНА (чтобы никто не ушел обиженным)
+// ГЛОБАЛЬНАЯ ПОДМЕНА
 global.fetch = smartFetch;
 global.FormData = FormData;
 global.crypto = nodeCrypto;
 
-// ПОДМЕНА МОДУЛЯ node-fetch (Критично для твоего воркера!)
-// Если воркер делает require('node-fetch'), он получит наш smartFetch
+// ПОДМЕНА МОДУЛЯ node-fetch (Критично для воркера!)
 require.cache[require.resolve('node-fetch')] = {
     exports: smartFetch
 };
 
-// Только ПОСЛЕ этого подключаем воркер
+// Только ПОСЛЕ этого подключаем воркер и webHandler
 const worker = require('./worker');
 const webHandler = require('./webHandler');
+
+// Строим monolith-контекст для webHandler — это функции и данные из worker.js
+const monolithContext = {
+    AI_MODELS: worker.AI_MODELS,
+    AI_MODEL_MENU_CONFIG: worker.AI_MODEL_MENU_CONFIG,
+    extractAndCleanModelResponse: worker.extractAndCleanModelResponse,
+    syncS3Chat: worker.syncS3Chat,
+    uploadBase64ImageToPublicUrl: worker.uploadBase64ImageToPublicUrl,
+    createTaskKieAi: worker.createTaskKieAi,
+};
 
 module.exports.handler = async (event, context) => {
     // ==========================================
     // 1. РАЗДАЧА ФРОНТЕНДА (HTML/CSS/JS)
     // ==========================================
-    // Надёжное извлечение пути: API Gateway может передавать полный URL в event.url
     let requestPath = event.path || '/';
     if (requestPath.startsWith('http')) {
         try { requestPath = new URL(requestPath).pathname; } catch(e) {}
     }
-    // Также проверяем заголовок оригинального пути
     if ((!requestPath || requestPath === '/') && event.headers) {
         const origPath = event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'];
         if (origPath) requestPath = origPath;
     }
-    // Если event.url содержит путь — извлекаем
     if (event.url && (!requestPath || requestPath === '/')) {
         try { requestPath = new URL(event.url).pathname; } catch(e) {}
     }
@@ -133,7 +136,7 @@ module.exports.handler = async (event, context) => {
         }
     }
 
-    // Раздача статических файлов: vk.html, tg.html, /images/*
+    // Раздача статических файлов: vk.html, tg.html, /images/*, /css/*, /js/*
     if (event.httpMethod === 'GET') {
         const staticFiles = {
             '/vk.html': { mime: 'text/html; charset=utf-8', file: 'vk.html' },
@@ -151,7 +154,7 @@ module.exports.handler = async (event, context) => {
             '.js': 'application/javascript; charset=utf-8',
         };
 
-        // Проверяем точное совпадение или совпадение по концу пути (API Gateway может добавлять префикс)
+        // Проверяем точное совпадение или совпадение по концу пути
         let matchedStatic = staticFiles[requestPath] || null;
         if (!matchedStatic) {
             for (const [spath, sconf] of Object.entries(staticFiles)) {
@@ -186,7 +189,6 @@ module.exports.handler = async (event, context) => {
             const ext = path.extname(requestPath).toLowerCase();
             if (staticExtensions[ext]) {
                 try {
-                    // Защита от path traversal
                     const safePath = requestPath.replace(/\.\./g, '').replace(/\/\/+/g, '/');
                     const filePath = path.join(__dirname, 'public', safePath);
                     if (fs.existsSync(filePath)) {
@@ -207,7 +209,6 @@ module.exports.handler = async (event, context) => {
                     console.error("Static file error:", requestPath, err);
                 }
             }
-            // Файл не найден
             return { statusCode: 404, body: 'Not Found' };
         }
     }
@@ -228,25 +229,99 @@ module.exports.handler = async (event, context) => {
     }
 
     // ==========================================
-    // 3. ТВОЙ СУЩЕСТВУЮЩИЙ КОД (без изменений)
+    // 3. WEB API — Маршрут /api для фронтенда
     // ==========================================
-    let body = {};
-    try {
-        body = typeof event.body === 'string' ? JSON.parse(event.body) : (event.body || {});
-    } catch (e) {
-        body = event.body;
+    // Фронтенд отправляет POST на /api с JSON { mode, auth, payload }
+    // Это направляется в webHandler.handleWebRequest()
+    if (event.httpMethod === 'POST' && (requestPath === '/api' || requestPath.endsWith('/api'))) {
+        try {
+            let requestBody = {};
+            try {
+                const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body;
+                requestBody = JSON.parse(rawBody);
+            } catch (e) {
+                console.error("[API] Failed to parse request body:", e.message);
+                return {
+                    statusCode: 400,
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*' 
+                    },
+                    body: JSON.stringify({ success: false, error: 'Невалидный JSON в запросе' })
+                };
+            }
+
+            console.log(`[API] mode=${requestBody.mode} auth=${requestBody.auth?.id || 'guest'}`);
+
+            // Собираем env для webHandler
+            const env = {
+                ...process.env,
+                LAST_PHOTO_STORAGE: USER_DB_ADAPTER, 
+                BOT_LOGS_STORAGE: USER_DB_ADAPTER,
+                FILES_DB: FILES_DB_ADAPTER,
+                TypedValues,
+                runQuery,
+                filesDriver,
+                nodeCrypto,
+                LESHIY_AI_PROXY: {
+                    toString: () => process.env.LESHIY_AI_PROXY || '',
+                    fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
+                },
+                LESHIY_CONVERTER: {
+                    toString: () => process.env.LESHIY_CONVERTER,
+                    fetch: async (url, opts) => {
+                        let finalOpts = { ...opts };
+                        if (opts.body && (opts.body instanceof FormData || opts.body.constructor.name === 'FormData')) {
+                            const { body, contentType } = await prepareMultipart(opts.body);
+                            finalOpts.body = body;
+                            finalOpts.headers = {
+                                ...(opts.headers || {}),
+                                'Content-Type': contentType,
+                                'Content-Length': body.length.toString()
+                            };
+                        }
+                        const finalUrl = (typeof url === 'string') ? url : process.env.LESHIY_CONVERTER;
+                        return fetch(finalUrl, finalOpts);
+                    }
+                }
+            };
+
+            // Вызываем webHandler
+            const result = await webHandler.handleWebRequest(requestBody, env, monolithContext);
+
+            console.log(`[API] result: success=${result.success} type=${result.data?.type || 'none'}`);
+
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify(result)
+            };
+        } catch (err) {
+            console.error("[API] WebHandler error:", err.message, err.stack);
+            return {
+                statusCode: 500,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({ success: false, error: 'Внутренняя ошибка: ' + err.message })
+            };
+        }
     }
 
+    // ==========================================
+    // 4. TELEGRAM WEBHOOK — всё остальное идёт в воркер
+    // ==========================================
     let uri = event.url || event.headers['x-envoy-original-path'] || '/';    
     const domain = process.env.WORKER_DOMAIN || "https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net";
     const origin = domain.startsWith('http') ? domain : `https://${domain}`;
 
-    // Используем конструктор URL для защиты от двойных слэшей и протоколов
     const urlObj = new URL(uri, origin);
     const fullUrl = urlObj.toString();
-    //console.log("🛠 URL ДЛЯ ВОРКЕРА:", fullUrl);
 
-    // 1. Формируем чистые заголовки
     const headers = new Headers();
     for (const [key, value] of Object.entries(event.headers || {})) {
         headers.set(key, value);
@@ -254,22 +329,17 @@ module.exports.handler = async (event, context) => {
 
     const requestOptions = {
         method: event.httpMethod,
-        headers: headers, // Используем объект Headers
+        headers: headers,
     };
 
-    // Обработка Body (бинарники из Telegram приходят в base64)
     if (event.httpMethod !== 'GET' && event.httpMethod !== 'HEAD' && event.body) {
         requestOptions.body = event.isBase64Encoded 
             ? Buffer.from(event.body, 'base64') 
             : event.body;
-            
-        // КРИТИЧНО: Если это POST, нам нужно убедиться, что Content-Length не конфликтует
-        // node-fetch сам пересчитает его для Buffer
         headers.delete('content-length'); 
     }
 
-    // ДЕБАГ-ЛОГ: Всё в одну строку для удобства чтения в Cloud Logs
-    console.log(`🛠 [WORKER_IN] URL ДЛЯ ВОРКЕРА ${fullUrl} -> ${requestOptions.method} | TYPE: ${headers.get('content-type') || 'none'}`);
+    console.log(`[TG] URL=${fullUrl} METHOD=${requestOptions.method}`);
 
     const env = {
         ...process.env,
@@ -280,7 +350,6 @@ module.exports.handler = async (event, context) => {
         runQuery,
         filesDriver,
         nodeCrypto,
-        // Функции с методом fetch:
         LESHIY_AI_PROXY: {
             toString: () => process.env.LESHIY_AI_PROXY || '',
             fetch: (url, opts) => fetch(process.env.LESHIY_AI_PROXY || url, opts)
@@ -289,27 +358,21 @@ module.exports.handler = async (event, context) => {
             toString: () => process.env.LESHIY_CONVERTER,
             fetch: async (url, opts) => {
                 let finalOpts = { ...opts };
-    
-                // Если пришел FormData — магия автоматизации
                 if (opts.body && (opts.body instanceof FormData || opts.body.constructor.name === 'FormData')) {
                     const { body, contentType } = await prepareMultipart(opts.body);
                     finalOpts.body = body;
-                    // Важно: перебиваем заголовки, чтобы был правильный boundary и длина
                     finalOpts.headers = {
                         ...(opts.headers || {}),
                         'Content-Type': contentType,
                         'Content-Length': body.length.toString()
                     };
                 }
-    
-                // Вызываем системный fetch с уже "правильным" телом
                 const finalUrl = (typeof url === 'string') ? url : process.env.LESHIY_CONVERTER;
                 return fetch(finalUrl, finalOpts);
             }
         }
     };
 
-    // Список для сбора обещаний, которые нужно дождаться
     const pendingPromises = [];
     const ctx = { 
         waitUntil: (promise) => {
@@ -318,20 +381,15 @@ module.exports.handler = async (event, context) => {
     };
 
     try {
-        // Пробуем вызвать воркер
-        //const response = await (worker.fetch ? worker.fetch(request, env, ctx) : worker.worker_code_fetch(request, env, ctx));
         const request = new Request(fullUrl, requestOptions);
         const responsePromise = worker.fetch ? 
             worker.fetch(request, env, ctx) : 
             worker.worker_code_fetch(request, env, ctx);
 
-        // Добавляем основной запрос в список ожидания
         ctx.waitUntil(responsePromise);
 
-        // Ждем выполнения самого воркера
         const response = await responsePromise;
 
-        // ВАЖНО: Читаем как ArrayBuffer, а не как текст!
         const responseArrayBuffer = await response.arrayBuffer();
         const responseBuffer = Buffer.from(responseArrayBuffer);
         
@@ -339,8 +397,6 @@ module.exports.handler = async (event, context) => {
         response.headers.forEach((v, k) => { responseHeaders[k] = v; });
         responseHeaders['Access-Control-Allow-Origin'] = '*';
     
-        // Ждем все остальные фоновые задачи воркера (логи, дебаги), 
-        // которые он мог накидать в waitUntil
         if (pendingPromises.length > 1) {
             await Promise.all(pendingPromises);
         }
@@ -348,7 +404,6 @@ module.exports.handler = async (event, context) => {
         return {
             statusCode: response.status || 200,
             headers: responseHeaders,
-            // Передаем как Base64, чтобы Яндекс не ломал бинарные данные
             body: responseBuffer.toString('base64'),
             isBase64Encoded: true 
         };
