@@ -719,12 +719,12 @@ async function handleKeys(auth, env) {
         DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY || '',
         VOICERSS_API_KEY: env.VOICERSS_API_KEY || '',
         // Прокси
-        PROXY_URL: proxyUrl,
-        PROXY_SECRET_KEY: env.PROXY_SECRET_KEY || '',
+        PROXY_URL: proxyUrl || 'https://d5dtt5rfr7nk66bbrec2.kf69zffa.apigw.yandexcloud.net/ai-proxy',
+        PROXY_SECRET_KEY: env.PROXY_SECRET_KEY || env.GEMINI_PROXY_KEY || '',
         FALLBACK_PROXY: env.FALLBACK_PROXY || 'https://leshiy-ai-proxy.leshiyalex.workers.dev',
         GEMINI_PROXY: env.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev',
-        GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY || '',
-        MP3_CONVERTER_URL: converterUrl
+        GEMINI_PROXY_KEY: env.GEMINI_PROXY_KEY || env.PROXY_SECRET_KEY || '',
+        MP3_CONVERTER_URL: converterUrl || 'https://d5dtt5rfr7nk66bbrec2.kf69zffa.apigw.yandexcloud.net/converter'
     };
     console.log('[handleKeys] PROXY_URL=' + proxyUrl.substring(0, 50) + '... KEYS=' + Object.keys(keys).filter(k => keys[k]).length);
     return formatResponse(true, null, null, keys);
