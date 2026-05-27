@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gemini-AI Premium</title>
+    <title>Gemini-AI</title>
     <meta name="description" content="Gemini-AI — чат с ИИ, генерация изображений, видео и аудио">
     <meta name="theme-color" content="#1a1a2e">
     <link rel="icon" type="image/svg+xml" href="/images/gemini_purple.svg">
@@ -16,7 +16,7 @@
         <div class="header">
             <div class="header-left">
                 <div class="header-logo">Gemini<span>-AI</span></div>
-                <div class="header-badge">Premium</div>
+                <div class="header-badge">Beta</div>
             </div>
             <div class="header-right">
                 <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()" title="Купить кредиты">
@@ -84,7 +84,7 @@
             <div class="chat-drop-overlay" id="chatDropOverlay">
                 <div class="drop-icon">&#128206;</div>
                 <div>Перетащите файлы сюда</div>
-                <div style="font-size:12px;color:var(--text-muted)">Изображения, аудио, видео, документы</div>
+                <div style="font-size:12px;color:var(--text-muted)">Любые файлы: изображения, аудио, видео, документы</div>
             </div>
             <div class="welcome" id="welcomeScreen">
                 <div class="logo-container">
@@ -495,6 +495,15 @@
         </div>
     </div>
 
+    <!-- MEDIA LIGHTBOX -->
+    <div class="lightbox-overlay" id="mediaLightbox" onclick="closeLightbox(event)">
+        <button class="lightbox-close" onclick="closeLightbox(event)" title="Закрыть">&times;</button>
+        <button class="lightbox-nav lightbox-prev" onclick="lightboxNav(-1, event)" title="Назад">&#8249;</button>
+        <div class="lightbox-content" id="lightboxContent"></div>
+        <button class="lightbox-nav lightbox-next" onclick="lightboxNav(1, event)" title="Вперёд">&#8250;</button>
+        <div class="lightbox-counter" id="lightboxCounter"></div>
+    </div>
+
     <!-- TOAST CONTAINER -->
     <div class="toast-container" id="toastContainer"></div>
 
@@ -511,8 +520,9 @@
             ? ''  // Тот же домен — относительный путь
             : 'https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net');
 
-    // ВСЕ AI-запросы идут через бэкенд /api — никаких ключей на клиенте!
-    // webHandler.js в воркере сам резолвит API_KEY из env и вызывает AI-сервисы
+    // ---- AI CONFIG (loaded from backend, like leshiy-ai config.js) ----
+    let AI_CONFIG = null; // Will be populated by loadAIConfig()
+    let AI_MODELS_CLIENT = null; // Client-side model configs (from /api/ai-config)
 
     // ---- STATE ----
     let currentMode = 'chat';
@@ -526,6 +536,7 @@
     let selectedImageConvertFormat = 'png';
     let selectedRotateAngle = '-90';
     let voiceCloneSample = null; // {base64, name} — образец голоса
+    let lastGeneratedImage = null; // { base64, url } — последнее сгенерированное изображение
 
     // НИКАКОГО ХАРДКОДА — модели загружаются ТОЛЬКО из /api (mode=models)
     // Пустые массивы = состояние загрузки, пока API не ответит
@@ -714,7 +725,7 @@
 
         autoResize(userInput);
         loadModels();
-        // loadAIConfig не нужна — всё через бэкенд /api
+        loadAIConfig(); // Load AI config for client-side calls
         initChatDragDrop();
     });
 
@@ -884,11 +895,197 @@
     }
 
     // ============================================================
-    //  ВСЕ AI-ЗАПРОСЫ ИДУТ ЧЕРЕЗ БЭКЕНД /api
-    //  webHandler.js в воркере резолвит API_KEY из env,
-    //  вызывает AI-сервисы и возвращает { success, error, credits_left, data: { type, content } }
-    //  Никаких ключей или прокси на клиенте!
+    //  AI CONFIG LOADING (from backend, like leshiy-ai config.js)
     // ============================================================
+    async function loadAIConfig() {
+        try {
+            // Fetch API keys
+            const keysResp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'keys', auth: getAuth(), payload: {} })
+            });
+            if (keysResp.ok) {
+                const keysData = await keysResp.json();
+                if (keysData.success && keysData.data) {
+                    AI_CONFIG = keysData.data;
+                    console.log('AI_CONFIG loaded: keys = ' + Object.keys(AI_CONFIG).filter(k => AI_CONFIG[k]).join(', '));
+                }
+            }
+            // Fetch AI model configs
+            const configResp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'ai-config', auth: getAuth(), payload: {} })
+            });
+            if (configResp.ok) {
+                const configData = await configResp.json();
+                if (configData.success && configData.data) {
+                    AI_MODELS_CLIENT = configData.data.AI_MODELS || {};
+                    console.log('AI_MODELS_CLIENT loaded: ' + Object.keys(AI_MODELS_CLIENT).length + ' models');
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load AI config:', e);
+        }
+    }
+
+    // ============================================================
+    //  CLIENT-SIDE AI REQUEST (ported from leshiy-core.js)
+    //  3-tier proxy fallback: Yandex → Cloudflare → Gemini proxy
+    // ============================================================
+    const SYSTEM_PROMPT = 'Ты — многофункциональный AI-ассистент Gemini AI от Leshiy, отвечающий на русском языке. Твоя задача — вести диалог, отвечать на вопросы и помогать пользователю с функциями приложения. Ответы должны быть информативными и доброжелательными на русском языке.';
+
+    async function sendAIRequest(config, url, body, authHeader, isRawBody) {
+        if (!AI_CONFIG) throw new Error('AI_CONFIG не загружен. Перезагрузите страницу.');
+
+        const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+        const isBinary = isRawBody && (body instanceof ArrayBuffer || body instanceof Uint8Array || body === null);
+
+        const commonProxyHeaders = {
+            'X-Target-URL': url,
+            'X-Proxy-Secret': AI_CONFIG.PROXY_SECRET_KEY || ''
+        };
+
+        // Content-Type
+        if (isFormData) {
+            // Don't set Content-Type, browser will set multipart/form-data with boundary
+        } else if (isBinary) {
+            commonProxyHeaders['Content-Type'] = body ? 'application/octet-stream' : 'text/plain';
+        } else {
+            commonProxyHeaders['Content-Type'] = 'application/json';
+        }
+
+        // Authorization
+        if (authHeader) {
+            commonProxyHeaders['X-Proxy-Authorization'] = authHeader;
+        }
+
+        // Request body
+        let requestBody;
+        if (isFormData) requestBody = body;
+        else if (body === null) requestBody = null;
+        else if (isBinary) requestBody = body;
+        else requestBody = JSON.stringify(body);
+
+        console.log("DEBUG AI REQUEST:", { proxy: AI_CONFIG.PROXY_URL, target: url, isFormData, isBinary });
+
+        let response;
+
+        // Attempt 1: Yandex proxy
+        try {
+            response = await fetch(AI_CONFIG.PROXY_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: commonProxyHeaders,
+                body: requestBody
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error('[Proxy 1] ' + response.status + ': ' + errorText);
+            }
+            return response;
+        } catch (error1) {
+            console.warn('Основной прокси не удался: ' + error1.message);
+
+            // Attempt 2: Cloudflare fallback
+            try {
+                response = await fetch(AI_CONFIG.FALLBACK_PROXY, {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: commonProxyHeaders,
+                    body: requestBody
+                });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error('[Proxy 2] ' + response.status + ': ' + errorText);
+                }
+                return response;
+            } catch (error2) {
+                console.warn('Резервный прокси не удался: ' + error2.message);
+
+                // Attempt 3: Gemini-specific proxy (only for Gemini service)
+                if (config && config.SERVICE === 'GEMINI' && AI_CONFIG.GEMINI_PROXY) {
+                    try {
+                        const geminiProxyUrl = url.replace(new URL(url).origin, AI_CONFIG.GEMINI_PROXY);
+                        response = await fetch(geminiProxyUrl, {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Proxy-Secret': AI_CONFIG.GEMINI_PROXY_KEY || ''
+                            },
+                            body: JSON.stringify(body)
+                        });
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error('[Proxy 3] ' + response.status + ': ' + errorText);
+                        }
+                        return response;
+                    } catch (error3) {
+                        throw new Error('Все 3 прокси не удались. Последняя ошибка: ' + error3.message);
+                    }
+                }
+                throw error2;
+            }
+        }
+    }
+
+    // Конвертация Base64 → ArrayBuffer
+    function base64ToArrayBuffer(base64) {
+        const binary_string = window.atob(base64);
+        const len = binary_string.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary_string.charCodeAt(i);
+        return bytes.buffer;
+    }
+
+    // Конвертация PCM → MP3 через сервер конвертер
+    async function convertPcmToMp3(pcmBuffer) {
+        if (!AI_CONFIG || !AI_CONFIG.MP3_CONVERTER_URL) {
+            throw new Error("URL конвертера не настроен");
+        }
+        const BASE_URL_CONV = AI_CONFIG.MP3_CONVERTER_URL.endsWith('/') ? AI_CONFIG.MP3_CONVERTER_URL.slice(0, -1) : AI_CONFIG.MP3_CONVERTER_URL;
+        const endpoint = '/pcm2mp3';
+        const queryParams = { sampleRate: 24000, channels: 1, format: 's16le' };
+        const urlParams = new URLSearchParams(queryParams);
+        const finalUrl = BASE_URL_CONV + endpoint + '?' + urlParams.toString();
+
+        const convResponse = await fetch(finalUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: pcmBuffer,
+            signal: AbortSignal.timeout(120000)
+        });
+        if (!convResponse.ok) throw new Error('Ошибка конвертера PCM→MP3: ' + convResponse.status);
+        return await convResponse.arrayBuffer();
+    }
+
+    // Обработчик ошибок AI
+    function handleAiError(error) {
+        let msg = 'Произошла неизвестная ошибка.';
+        const orig = (error && error.message) ? String(error.message) : '';
+        if (orig.includes('quota') || orig.includes('429')) msg = 'Исчерпан лимит запросов к модели.';
+        else if (orig.includes('402') || orig.includes('Balance')) msg = 'Закончились средства на балансе модели.';
+        else if (orig.includes('location is not supported')) msg = 'Доступ ограничен в вашем регионе.';
+        else if (orig.includes('API key')) msg = 'Ключ API недействителен.';
+        else if (orig.includes('Failed to fetch') || orig.includes('network')) msg = 'Сетевая ошибка. Проверьте интернет.';
+        else msg = orig;
+        return { type: 'error', text: msg };
+    }
+
+    // Получить конфиг модели для клиентского вызова, подставив реальные ключи
+    function getClientModelConfig(modelKey) {
+        if (!AI_MODELS_CLIENT || !AI_CONFIG) return null;
+        const m = AI_MODELS_CLIENT[modelKey];
+        if (!m) return null;
+        // Replace API_KEY name with actual value from AI_CONFIG
+        const resolved = { ...m };
+        if (resolved.API_KEY && AI_CONFIG[resolved.API_KEY]) {
+            resolved._apiKeyValue = AI_CONFIG[resolved.API_KEY];
+        }
+        return resolved;
+    }
 
     // ============================================================
     //  ЗАГРУЗКА МОДЕЛЕЙ ИЗ /api/models
@@ -952,7 +1149,24 @@
                 }
             }
 
+            // Фильтруем WORKERS_AI модели — они не работают на Yandex Cloud (нет env.AI.run)
+            for (const cat of Object.keys(categorized)) {
+                categorized[cat] = categorized[cat].filter(m => m.service !== 'WORKERS_AI');
+            }
+
             availableModels = categorized;
+
+            // Если ранее выбранная модель была WORKERS_AI — сбрасываем
+            for (const key of Object.keys(selected)) {
+                if (typeof selected[key] === 'string' && selected[key]) {
+                    const cat = key; // e.g. 'chat', 'image', 'video_t2v', etc.
+                    const modelList = availableModels[cat];
+                    if (modelList && !modelList.find(m => m.key === selected[key])) {
+                        selected[key] = null;
+                    }
+                }
+            }
+
             setModelDefaults();
             saveSelected();
             renderSubHeaders();
@@ -1592,7 +1806,6 @@
 
         // Drag-and-drop на всю область приложения
         document.querySelector('.app').addEventListener('dragenter', function(e) {
-            if (currentMode !== 'chat') return;
             e.preventDefault();
             dragCounter++;
             if (dragCounter === 1) overlay.classList.add('visible');
@@ -1612,7 +1825,6 @@
             e.preventDefault();
             dragCounter = 0;
             overlay.classList.remove('visible');
-            if (currentMode !== 'chat') return;
 
             const files = e.dataTransfer.files;
             if (!files.length) return;
@@ -1638,11 +1850,40 @@
                     name: file.name,
                     type: file.type,
                     base64: base64,
-                    previewUrl: null
+                    previewUrl: null,
+                    icon: null  // emoji icon for display
                 };
                 // Для изображений — создаем превью
                 if (file.type.startsWith('image/')) {
                     attachment.previewUrl = URL.createObjectURL(file);
+                    attachment.icon = '&#128247;'; // 📷
+                } else if (file.type.startsWith('video/')) {
+                    // Для видео — создаём превью-кадр
+                    attachment.icon = '&#127916;'; // 🎬
+                    try {
+                        const videoEl = document.createElement('video');
+                        videoEl.src = URL.createObjectURL(file);
+                        videoEl.muted = true;
+                        videoEl.onloadeddata = function() {
+                            // Делаем скриншот первого кадра
+                            try {
+                                const canvas = document.createElement('canvas');
+                                canvas.width = 80;
+                                canvas.height = 60;
+                                canvas.getContext('2d').drawImage(videoEl, 0, 0, 80, 60);
+                                attachment.previewUrl = canvas.toDataURL('image/jpeg', 0.6);
+                            } catch(e) {}
+                            URL.revokeObjectURL(videoEl.src);
+                            renderChatAttachments();
+                        };
+                        videoEl.onerror = function() { renderChatAttachments(); };
+                    } catch(e) { renderChatAttachments(); }
+                } else if (file.type.startsWith('audio/')) {
+                    attachment.icon = '&#127925;'; // 🎵
+                } else if (file.type.includes('pdf')) {
+                    attachment.icon = '&#128213;'; // 📕
+                } else {
+                    attachment.icon = '&#128196;'; // 📄
                 }
                 chatAttachments.push(attachment);
                 renderChatAttachments();
@@ -1661,15 +1902,25 @@
             const badge = document.createElement('div');
             badge.className = 'file-badge';
 
-            let icon = '&#128196;'; // документ
-            if (att.type.startsWith('image/')) icon = '&#128247;';
-            else if (att.type.startsWith('audio/')) icon = '&#127925;';
-            else if (att.type.startsWith('video/')) icon = '&#127916;';
+            let icon = att.icon || '&#128196;'; // документ по умолчанию
+            if (!att.icon) {
+                if (att.type.startsWith('image/')) icon = '&#128247;';
+                else if (att.type.startsWith('audio/')) icon = '&#127925;';
+                else if (att.type.startsWith('video/')) icon = '&#127916;';
+            }
+
+            // Определяем размер файла
+            let sizeStr = '';
+            if (att.base64) {
+                const bytes = Math.round(att.base64.length * 3 / 4);
+                if (bytes > 1024 * 1024) sizeStr = ' (' + (bytes / 1024 / 1024).toFixed(1) + ' МБ)';
+                else if (bytes > 1024) sizeStr = ' (' + (bytes / 1024).toFixed(0) + ' КБ)';
+            }
 
             if (att.previewUrl) {
-                badge.innerHTML = '<img class="file-thumb" src="' + att.previewUrl + '" alt=""><span class="file-name">' + att.name + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                badge.innerHTML = '<img class="file-thumb" src="' + att.previewUrl + '" alt=""><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
             } else {
-                badge.innerHTML = '<span class="file-icon">' + icon + '</span><span class="file-name">' + att.name + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                badge.innerHTML = '<span class="file-icon">' + icon + '</span><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
             }
             container.appendChild(badge);
         });
@@ -1771,6 +2022,7 @@
             if (chatAttachments.length > 0) {
                 const hasImages = chatAttachments.some(a => a.type.startsWith('image/'));
                 const hasAudio = chatAttachments.some(a => a.type.startsWith('audio/'));
+                const hasVideo = chatAttachments.some(a => a.type.startsWith('video/'));
 
                 payload.attachments = chatAttachments.map(a => ({
                     name: a.name,
@@ -1782,7 +2034,12 @@
                     payload.model = selected.image_vision || payload.model;
                 }
                 if (hasAudio && !hasImages) {
-                    payload.model = selected.audio_stt || availableModels.audio_stt?.find(m => m.isFree)?.key || 'AUDIO_TO_TEXT_WORKERS_AI';
+                    payload.model = selected.audio_stt || availableModels.audio_stt?.find(m => m.isFree)?.key || 'AUDIO_TO_TEXT_GEMINI';
+                    payload.audio_mode = 'stt';
+                }
+                if (hasVideo && !hasImages && !hasAudio) {
+                    payload.model = selected.video_analysis || availableModels.video_analysis?.find(m => m.isFree)?.key || 'VIDEO_TO_ANALYSIS_GEMINI';
+                    payload.video_mode = 'convert';
                 }
                 if (!text) {
                     const types = chatAttachments.map(a => {
@@ -1824,8 +2081,7 @@
             if (contentType && contentType.includes("application/json")) {
                 const data = await response.json();
                 if (data.success === false) throw new Error(data.error || 'Ошибка сервера');
-                // webHandler: { data: { type: 'text', content: '...' } }
-                reply = data.data?.content || data.data?.text || data.reply || data.content || reply;
+                reply = data.data?.content || data.reply || data.content || reply;
                 if (data.credits_left !== undefined && data.credits_left !== null) {
                     credits = typeof data.credits_left === 'number' ? data.credits_left : credits;
                     updateCreditsDisplay();
@@ -1913,15 +2169,50 @@
 
             if (contentType.includes('application/json')) {
                 const data = await response.json();
-                if (data.success === false) throw new Error(data.error || 'Ошибка генерации');
-                if (data.credits_left !== undefined && data.credits_left !== null) credits = data.credits_left;
+                if (data.credits_left !== undefined) credits = data.credits_left;
                 else if (!model?.isFree) credits -= cost;
 
-                // webHandler возвращает { data: { type, content } }
-                const content = data.data?.content || data.data?.url || data.content || data.url;
-                if (content) {
+                if (data.data?.content) {
+                    const content = data.data.content;
                     const imgSrc = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
-                    resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="' + prompt + '">';
+                    storeLastGeneratedImage(imgSrc);
+                    resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="' + prompt + '">' +
+                        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
+                        '<a href="' + imgSrc + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>' +
+                        '<button onclick="useImageInVideo()" style="color:var(--accent);font-size:13px;background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer">&#127916; Использовать в видео</button>' +
+                        '</div>';
+                } else if (data.data?.image) {
+                    const imgSrc = 'data:image/png;base64,' + data.data.image;
+                    storeLastGeneratedImage(imgSrc);
+                    resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="' + prompt + '">' +
+                        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
+                        '<a href="' + imgSrc + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>' +
+                        '<button onclick="useImageInVideo()" style="color:var(--accent);font-size:13px;background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer">&#127916; Использовать в видео</button>' +
+                        '</div>';
+                } else if (data.data?.url) {
+                    const imgSrc = data.data.url;
+                    storeLastGeneratedImage(imgSrc);
+                    resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="' + prompt + '">' +
+                        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
+                        '<a href="' + imgSrc + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>' +
+                        '<button onclick="useImageInVideo()" style="color:var(--accent);font-size:13px;background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer">&#127916; Использовать в видео</button>' +
+                        '</div>';
+                } else if (data.image) {
+                    const imgSrc = 'data:image/png;base64,' + data.image;
+                    storeLastGeneratedImage(imgSrc);
+                    resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="' + prompt + '">' +
+                        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
+                        '<a href="' + imgSrc + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>' +
+                        '<button onclick="useImageInVideo()" style="color:var(--accent);font-size:13px;background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer">&#127916; Использовать в видео</button>' +
+                        '</div>';
+                } else if (data.url) {
+                    const imgSrc = data.url;
+                    storeLastGeneratedImage(imgSrc);
+                    resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="' + prompt + '">' +
+                        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
+                        '<a href="' + imgSrc + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>' +
+                        '<button onclick="useImageInVideo()" style="color:var(--accent);font-size:13px;background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer">&#127916; Использовать в видео</button>' +
+                        '</div>';
                 } else {
                     throw new Error('Сервер не вернул изображение');
                 }
@@ -1930,7 +2221,12 @@
             } else {
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
-                resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">';
+                storeLastGeneratedImage(url);
+                resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="' + prompt + '">' +
+                    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
+                    '<a href="' + url + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>' +
+                    '<button onclick="useImageInVideo()" style="color:var(--accent);font-size:13px;background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer">&#127916; Использовать в видео</button>' +
+                    '</div>';
                 if (!model?.isFree) credits -= cost;
                 updateCreditsDisplay();
                 showToast('Изображение создано!', 'success');
@@ -2013,19 +2309,10 @@
 
             if (contentType.includes('application/json')) {
                 const data = await response.json();
-                if (data.success === false) throw new Error(data.error || 'Ошибка генерации');
-                // webHandler: { data: { type: 'video_task'|'video_url', content: 'url_or_taskId' } }
                 const videoUrl = data.data?.content || data.data?.url || data.url;
                 if (videoUrl) {
-                    if (videoUrl.startsWith('http')) {
-                        resultArea.innerHTML = '<video controls autoplay loop><source src="' + videoUrl + '" type="video/mp4"></video>';
-                    } else {
-                        // Это taskId от KIE.AI — видео генерируется асинхронно
-                        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--warning)">&#9883; Видео генерируется (taskId: ' + videoUrl.substring(0, 12) + '...)... Дождитесь завершения.</span>';
-                        // Опрашиваем результат каждые 10 секунд
-                        pollVideoTask(videoUrl, resultArea, cost);
-                        return; // Не сбрасываем isProcessing сразу
-                    }
+                    resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + videoUrl + '" type="video/mp4"></video>' +
+                        '<div style="margin-top:8px;text-align:center"><a href="' + videoUrl + '" download="video.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать видео</a></div>';
                     credits = data.credits_left !== undefined ? data.credits_left : credits - cost;
                     updateCreditsDisplay();
                     showToast('Видео создано!', 'success');
@@ -2035,7 +2322,8 @@
             } else {
                 const rawUrl = await response.text();
                 if (rawUrl && rawUrl.startsWith('http')) {
-                    resultArea.innerHTML = '<video controls autoplay loop><source src="' + rawUrl.trim() + '" type="video/mp4"></video>';
+                    resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + rawUrl.trim() + '" type="video/mp4"></video>' +
+                        '<div style="margin-top:8px;text-align:center"><a href="' + rawUrl.trim() + '" download="video.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать видео</a></div>';
                     credits -= cost;
                     updateCreditsDisplay();
                     showToast('Видео создано!', 'success');
@@ -2053,56 +2341,6 @@
 
         isProcessing = false;
         sendBtn.disabled = false;
-    }
-
-    // ---- Опрос асинхронной видео-задачи KIE.AI ----
-    async function pollVideoTask(taskId, resultArea, cost) {
-        let attempts = 0;
-        const maxAttempts = 60; // 10 минут максимум
-        const interval = 10000; // 10 секунд
-
-        const poll = async () => {
-            attempts++;
-            try {
-                const resp = await fetch(API_URL + '/api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        mode: 'video',
-                        auth: getAuth(),
-                        payload: { video_mode: 'check', task_id: taskId }
-                    })
-                });
-                if (!resp.ok) throw new Error('Ошибка проверки задачи');
-                const data = await resp.json();
-                
-                if (data.data?.content && data.data.content.startsWith('http')) {
-                    // Видео готово
-                    resultArea.innerHTML = '<video controls autoplay loop><source src="' + data.data.content + '" type="video/mp4"></video>';
-                    if (data.credits_left !== undefined) credits = data.credits_left;
-                    updateCreditsDisplay();
-                    showToast('Видео создано!', 'success');
-                    isProcessing = false;
-                    sendBtn.disabled = false;
-                    return;
-                } else if (data.data?.status === 'failed' || data.success === false) {
-                    throw new Error(data.error || data.data?.error || 'Генерация видео не удалась');
-                }
-                // Ещё не готово — продолжаем опрос
-                if (attempts < maxAttempts) {
-                    resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--warning)">&#9883; Видео генерируется... (' + (attempts * 10) + ' сек)</span>';
-                    setTimeout(poll, interval);
-                } else {
-                    throw new Error('Таймаут генерации видео (10 минут)');
-                }
-            } catch (err) {
-                resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-                showToast('Ошибка: ' + err.message, 'error');
-                isProcessing = false;
-                sendBtn.disabled = false;
-            }
-        };
-        setTimeout(poll, interval);
     }
 
     // ---- VIDEO CONVERT (бесплатно) ----
@@ -2242,7 +2480,7 @@
                 body: JSON.stringify({
                     mode: 'audio',
                     auth: getAuth(),
-                    payload: { audio_base64: audioBase64, model: selected.audio_stt || 'AUDIO_TO_TEXT_WORKERS_AI', audio_mode: 'stt' }
+                    payload: { audio_base64: audioBase64, model: selected.audio_stt || 'AUDIO_TO_TEXT_GEMINI', audio_mode: 'stt' }
                 })
             });
 
@@ -3206,7 +3444,7 @@
         if (sender === 'bot') {
             // Проверяем — может это картинка (data:image или URL)
             if (text.match(/^data:image\/[a-z]+;base64,/i) || (text.match(/^https?:\/\/.*\.(png|jpg|jpeg|webp|gif)/i) && text.length < 500)) {
-                bubble.innerHTML = '<img src="' + text + '" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src,\'_blank\')">';
+                bubble.innerHTML = '<img src="' + text + '" class="generated-image" style="max-width:100%;border-radius:8px;cursor:pointer">';
             } else {
                 bubble.innerHTML = formatBotMessage(text);
             }
@@ -3225,7 +3463,6 @@
                 const img = document.createElement('img');
                 img.src = att.previewUrl;
                 img.className = 'chat-img-preview';
-                img.onclick = () => window.open(img.src, '_blank');
                 imgContainer.appendChild(img);
             });
             bubble.appendChild(imgContainer);
@@ -3339,6 +3576,352 @@
     initSlashCommands();
     initChatSwipe();
     initPullToRefresh();
+
+    // ============================================================
+    //  LIGHTBOX — полноэкранный просмотр изображений/видео/аудио
+    // ============================================================
+    let lightboxItems = []; // массив URL для навигации
+    let lightboxIndex = 0;
+
+    function openLightbox(src, type) {
+        const lightbox = document.getElementById('mediaLightbox');
+        const content = document.getElementById('lightboxContent');
+        const counter = document.getElementById('lightboxCounter');
+
+        // Собираем все медиа на странице для навигации
+        lightboxItems = [];
+        document.querySelectorAll('.generated-image, .result-area img, .result-area video, .result-area audio, .chat-img-preview, .message img.chat-img-preview').forEach(el => {
+            const srcItem = el.src || el.currentSrc;
+            if (srcItem) lightboxItems.push({ src: srcItem, type: el.tagName.toLowerCase() });
+        });
+        // Если не нашли — добавляем текущий
+        if (lightboxItems.length === 0) {
+            lightboxItems.push({ src: src, type: type || 'img' });
+        }
+        // Находим индекс текущего
+        lightboxIndex = lightboxItems.findIndex(item => item.src === src);
+        if (lightboxIndex < 0) lightboxIndex = 0;
+
+        renderLightboxContent();
+        lightbox.classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function renderLightboxContent() {
+        const content = document.getElementById('lightboxContent');
+        const counter = document.getElementById('lightboxCounter');
+        const item = lightboxItems[lightboxIndex];
+        if (!item) return;
+
+        content.innerHTML = '';
+        if (item.type === 'video') {
+            content.innerHTML = '<video controls autoplay loop style="max-width:90vw;max-height:80vh;border-radius:8px"><source src="' + item.src + '" type="video/mp4"></video>';
+        } else if (item.type === 'audio') {
+            content.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:16px"><div style="font-size:64px">&#127925;</div><audio controls autoplay style="width:80vw;max-width:400px"><source src="' + item.src + '"></audio></div>';
+        } else {
+            content.innerHTML = '<img src="' + item.src + '" style="max-width:90vw;max-height:80vh;border-radius:8px;object-fit:contain" onclick="event.stopPropagation()">';
+        }
+
+        // Счётчик
+        if (lightboxItems.length > 1) {
+            counter.textContent = (lightboxIndex + 1) + ' / ' + lightboxItems.length;
+            counter.style.display = 'block';
+        } else {
+            counter.style.display = 'none';
+        }
+
+        // Кнопки навигации
+        document.querySelector('.lightbox-prev').style.display = lightboxItems.length > 1 ? 'flex' : 'none';
+        document.querySelector('.lightbox-next').style.display = lightboxItems.length > 1 ? 'flex' : 'none';
+    }
+
+    function closeLightbox(e) {
+        if (e && e.target && (e.target.closest('.lightbox-content') || e.target.closest('.lightbox-nav'))) return;
+        const lightbox = document.getElementById('mediaLightbox');
+        lightbox.classList.remove('open');
+        document.body.style.overflow = '';
+        // Останавливаем видео/аудио
+        const video = lightbox.querySelector('video');
+        const audio = lightbox.querySelector('audio');
+        if (video) video.pause();
+        if (audio) audio.pause();
+    }
+
+    function lightboxNav(dir, e) {
+        if (e) { e.stopPropagation(); e.preventDefault(); }
+        lightboxIndex = (lightboxIndex + dir + lightboxItems.length) % lightboxItems.length;
+        renderLightboxContent();
+    }
+
+    // Навигация клавиатурой в лайтбоксе
+    document.addEventListener('keydown', function(e) {
+        const lightbox = document.getElementById('mediaLightbox');
+        if (!lightbox.classList.contains('open')) return;
+        if (e.key === 'Escape') closeLightbox();
+        else if (e.key === 'ArrowLeft') lightboxNav(-1);
+        else if (e.key === 'ArrowRight') lightboxNav(1);
+    });
+
+    // Делегирование кликов — открываем лайтбокс по клику на медиа
+    document.addEventListener('click', function(e) {
+        const img = e.target.closest('.generated-image, .result-area img, .result-area video, .chat-img-preview, .message img[onclick]');
+        if (img) {
+            e.preventDefault();
+            e.stopPropagation();
+            const src = img.src || img.currentSrc;
+            if (src) openLightbox(src, img.tagName.toLowerCase());
+        }
+    });
+
+    // ============================================================
+    //  СОХРАНЕНИЕ ПОСЛЕДНЕГО СГЕНЕРИРОВАННОГО ИЗОБРАЖЕНИЯ
+    //  И ПЕРЕНОС МЕЖДУ ПОДРЕЖИМАМИ
+    // ============================================================
+
+    // Обновлённая функция: после генерации изображения сохраняем его
+    function storeLastGeneratedImage(src) {
+        if (!src) return;
+        // Определяем base64 или URL
+        if (src.startsWith('data:')) {
+            const base64 = src.split(',')[1] || src;
+            lastGeneratedImage = { base64: base64, url: null };
+        } else {
+            lastGeneratedImage = { base64: null, url: src };
+        }
+    }
+
+    // Обновлённая switchImageSubMode — переносим изображение в upscale/rotate/convert
+    const _origSwitchImageSubMode = switchImageSubMode;
+    switchImageSubMode = function(mode) {
+        _origSwitchImageSubMode(mode);
+
+        // Если переключаемся в upscale/rotate/convert и есть lastGeneratedImage — подставляем
+        if (lastGeneratedImage && mode !== 'generate') {
+            const src = lastGeneratedImage.url || (lastGeneratedImage.base64 ? 'data:image/png;base64,' + lastGeneratedImage.base64 : null);
+            if (!src) return;
+
+            if (mode === 'upscale') {
+                upscaleImageBase64 = lastGeneratedImage.base64;
+                const zone = document.getElementById('imageUpscaleZone');
+                if (zone) {
+                    zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для апскейла">' +
+                        '<input type="file" id="imageUpscaleInput" accept="image/*" style="display:none" onchange="handleImageUpscale(this)">' +
+                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение перенесено из генерации</div>';
+                    zone.onclick = function() { document.getElementById('imageUpscaleInput').click(); };
+                }
+            } else if (mode === 'rotate') {
+                rotateImageBase64 = lastGeneratedImage.base64;
+                document.getElementById('imageRotateControls').style.display = 'block';
+                const zone = document.getElementById('imageRotateZone');
+                if (zone) {
+                    zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для поворота">' +
+                        '<input type="file" id="imageRotateInput" accept="image/*" style="display:none" onchange="handleImageRotateUpload(this)">' +
+                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение перенесено. Выберите угол и отправьте.</div>';
+                    zone.onclick = function() { document.getElementById('imageRotateInput').click(); };
+                }
+            } else if (mode === 'convert') {
+                convertImageBase64 = lastGeneratedImage.base64;
+                document.getElementById('imageConvertFormat').style.display = 'block';
+                const zone = document.getElementById('imageConvertZone');
+                if (zone) {
+                    zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для конвертации">' +
+                        '<input type="file" id="imageConvertInput" accept="image/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение перенесено. Выберите формат и отправьте.</div>';
+                    zone.onclick = function() { document.getElementById('imageConvertInput').click(); };
+                }
+            }
+        }
+    };
+
+    // ============================================================
+    //  КНОПКА «ИСПОЛЬЗОВАТЬ В ВИДЕО» ПОД СГЕНЕРИРОВАННЫМИ КАРТИНКАМИ
+    // ============================================================
+    function useImageInVideo() {
+        if (!lastGeneratedImage) return;
+        switchMode('video');
+        selected.videoSubMode = 'i2v';
+        renderVideoSubHeader();
+        switchVideoSubMode('i2v');
+
+        // Подставляем картинку в i2v референс
+        const base64 = lastGeneratedImage.base64;
+        videoRefs.image = base64;
+
+        const src = lastGeneratedImage.url || (base64 ? 'data:image/png;base64,' + base64 : '');
+        const slot = document.getElementById('videoI2VRefImg');
+        if (slot && src) {
+            slot.innerHTML = '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" alt="Референс">' +
+                '<button onclick="event.stopPropagation();removeVideoRef(\'image\',\'videoI2VRefImg\')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
+        }
+        showToast('Изображение перенесено в режим Картинка→Видео', 'success');
+    }
+
+    // ============================================================
+    //  DRAG-AND-DROP НА INPUT AREA ДЛЯ ЛЮБЫХ ФАЙЛОВ
+    // ============================================================
+    function initInputAreaDragDrop() {
+        const inputArea = document.querySelector('.input-area');
+        const overlay = document.getElementById('chatDropOverlay');
+        let dragCounter = 0;
+
+        inputArea.addEventListener('dragenter', function(e) {
+            e.preventDefault();
+            dragCounter++;
+            if (dragCounter === 1 && overlay) overlay.classList.add('visible');
+        });
+
+        inputArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0 && overlay) overlay.classList.remove('visible');
+        });
+
+        inputArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+        });
+
+        inputArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dragCounter = 0;
+            if (overlay) overlay.classList.remove('visible');
+
+            const files = e.dataTransfer.files;
+            if (!files.length) return;
+
+            // Роутинг по текущему режиму
+            if (currentMode === 'chat') {
+                processChatFiles(files);
+            } else if (currentMode === 'image') {
+                // В режиме генерации — как референс
+                if (selected.imageSubMode === 'generate') {
+                    if (files[0].type.startsWith('image/')) {
+                        handleImageRef(0, { files: files, value: '' });
+                    }
+                } else if (selected.imageSubMode === 'upscale') {
+                    handleImageUpscale({ files: files, value: '' });
+                } else if (selected.imageSubMode === 'rotate') {
+                    handleImageRotateUpload({ files: files, value: '' });
+                } else if (selected.imageSubMode === 'convert') {
+                    handleImageConvertUpload({ files: files, value: '' });
+                }
+            } else if (currentMode === 'video') {
+                if (selected.videoSubMode === 'i2v' && files[0].type.startsWith('image/')) {
+                    handleVideoRef('image', { files: files, value: '' });
+                } else if (selected.videoSubMode === 'v2v' && files[0].type.startsWith('video/')) {
+                    handleVideoRef('video', { files: files, value: '' });
+                } else if (selected.videoSubMode === 'a2v' && files[0].type.startsWith('audio/')) {
+                    handleVideoRef('audio', { files: files, value: '' });
+                } else if (selected.videoSubMode === 'analysis' && files[0].type.startsWith('video/')) {
+                    handleVideoConvert({ files: files, value: '' });
+                } else {
+                    // Автоопределение: пробуем подставить куда подходит
+                    const file = files[0];
+                    if (file.type.startsWith('image/')) {
+                        selected.videoSubMode = 'i2v';
+                        renderVideoSubHeader();
+                        switchVideoSubMode('i2v');
+                        handleVideoRef('image', { files: files, value: '' });
+                    } else if (file.type.startsWith('video/')) {
+                        selected.videoSubMode = 'analysis';
+                        renderVideoSubHeader();
+                        switchVideoSubMode('analysis');
+                        handleVideoConvert({ files: files, value: '' });
+                    } else if (file.type.startsWith('audio/')) {
+                        selected.videoSubMode = 'a2v';
+                        renderVideoSubHeader();
+                        switchVideoSubMode('a2v');
+                        handleVideoRef('audio', { files: files, value: '' });
+                    }
+                }
+            } else if (currentMode === 'audio') {
+                if (selected.audioSubMode === 'stt' && files[0].type.startsWith('audio/')) {
+                    handleAudioUpload({ files: files, value: '' });
+                } else if (selected.audioSubMode === 'convert' && files[0].type.startsWith('audio/')) {
+                    handleAudioConvert({ files: files, value: '' });
+                } else if (selected.audioSubMode === 'voice_clone' && files[0].type.startsWith('audio/')) {
+                    handleVoiceClone({ files: files, value: '' });
+                } else if (files[0].type.startsWith('audio/')) {
+                    // Авто: переключаемся на STT
+                    selected.audioSubMode = 'stt';
+                    renderAudioSubHeader();
+                    switchAudioSubMode('stt');
+                    handleAudioUpload({ files: files, value: '' });
+                }
+            }
+        });
+    }
+
+    initInputAreaDragDrop();
+
+    // ============================================================
+    //  PINCH-TO-ZOOM ДЛЯ ИЗОБРАЖЕНИЙ В ЛАЙТБОКСЕ
+    // ============================================================
+    (function() {
+        const lightbox = document.getElementById('mediaLightbox');
+        let scale = 1;
+        let lastTouchDist = 0;
+
+        lightbox.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 2) {
+                lastTouchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        }, { passive: true });
+
+        lightbox.addEventListener('touchmove', function(e) {
+            if (e.touches.length === 2) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                if (lastTouchDist > 0) {
+                    scale *= dist / lastTouchDist;
+                    scale = Math.max(0.5, Math.min(5, scale));
+                    const content = document.getElementById('lightboxContent');
+                    const img = content.querySelector('img');
+                    if (img) {
+                        img.style.transform = 'scale(' + scale + ')';
+                    }
+                }
+                lastTouchDist = dist;
+            }
+        }, { passive: true });
+
+        lightbox.addEventListener('touchend', function(e) {
+            if (e.touches.length < 2) lastTouchDist = 0;
+        }, { passive: true });
+    })();
+
+    // ============================================================
+    //  SWIPE НАВИГАЦИЯ В ЛАЙТБОКСЕ
+    // ============================================================
+    (function() {
+        const lightbox = document.getElementById('mediaLightbox');
+        let startX = 0;
+        let startY = 0;
+
+        lightbox.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 1) {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+
+        lightbox.addEventListener('touchend', function(e) {
+            if (lightboxItems.length <= 1) return;
+            const endX = e.changedTouches[0].clientX;
+            const endY = e.changedTouches[0].clientY;
+            const diffX = endX - startX;
+            const diffY = endY - startY;
+            // Горизонтальный свайп
+            if (Math.abs(diffX) > 60 && Math.abs(diffX) > Math.abs(diffY)) {
+                if (diffX < 0) lightboxNav(1);  // влево → следующее
+                else lightboxNav(-1);  // вправо → предыдущее
+            }
+        }, { passive: true });
+    })();
     </script>
 </body>
 </html>
