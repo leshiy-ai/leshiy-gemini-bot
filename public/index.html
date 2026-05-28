@@ -546,6 +546,47 @@
     let voiceCloneSample = null; // {base64, name} — образец голоса
     let lastGeneratedImage = null; // { base64, url } — последнее сгенерированное изображение
 
+    // 🧠 Глобальное состояние перетаскивания — надёжнее чем dataTransfer.files
+    // При dragstart бейджа сохраняем вложение сюда, при drop в upload-zone читаем отсюда
+    let _dragState = null; // { attachment: {name, type, base64, ...}, sourceIndex: number }
+
+    // 🧠 Вспомогательная функция: получить FileList из drop-события
+    // Проверяет _dragState (перетаскивание из вложений) и dataTransfer.files (перетаскивание с десктопа)
+    function getDropFiles(e) {
+        // Способ 1: файлы с десктопа — dataTransfer.files всегда заполнен
+        const dtFiles = e.dataTransfer.files;
+        if (dtFiles && dtFiles.length > 0) return dtFiles;
+
+        // Способ 2: внутреннее перетаскивание из вложений — используем _dragState
+        if (_dragState && _dragState.attachment && _dragState.attachment.base64) {
+            const att = _dragState.attachment;
+            try {
+                const byteString = atob(att.base64);
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let j = 0; j < byteString.length; j++) {
+                    ia[j] = byteString.charCodeAt(j);
+                }
+                const blob = new Blob([ab], { type: att.type || 'application/octet-stream' });
+                const file = new File([blob], att.name || 'file', { type: att.type || 'application/octet-stream' });
+                // Возвращаем объект похожий на FileList
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                return dt.files;
+            } catch(err) {
+                console.warn('[DragDrop] getDropFiles: failed to create File from _dragState:', err);
+            }
+        }
+
+        return null;
+    }
+
+    // 🧠 Вспомогательная функция: получить файлы в формате { files: FileList-like } для handleXxx функций
+    function getDropInput(e) {
+        const files = getDropFiles(e);
+        return files ? { files: files, value: '' } : null;
+    }
+
     // ---- KIEAI TASK POLLING ----
     // Polls the backend for KieAI async task status (image/video generation)
     // Returns: { completed: true, data } or { completed: false, state } or throws on error
@@ -2143,8 +2184,15 @@
             dragCounter = 0;
             overlay.classList.remove('visible');
 
-            const files = e.dataTransfer.files;
-            if (!files.length) return;
+            // 🧠 Проверяем — если дроп попал на .upload-zone, НЕ обрабатываем здесь
+            // (upload-zone сама обработает через свой drop handler)
+            const target = e.target;
+            if (target.closest && target.closest('.upload-zone')) return;
+
+            // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
+            const input = getDropInput(e);
+            if (!input) return;
+            const files = input.files;
             const file = files[0];
             const fileType = file.type || '';
 
@@ -2156,28 +2204,28 @@
                     processChatFiles(files);
                 } else if (currentMode === 'image') {
                     if (selected.imageSubMode === 'upscale') {
-                        handleImageUpscale({ files: files, value: '' });
+                        handleImageUpscale(input);
                     } else if (selected.imageSubMode === 'rotate') {
-                        handleImageRotateUpload({ files: files, value: '' });
+                        handleImageRotateUpload(input);
                     } else if (selected.imageSubMode === 'convert') {
-                        handleImageConvertUpload({ files: files, value: '' });
+                        handleImageConvertUpload(input);
                     } else {
                         // Generate mode: add as reference
-                        handleImageRef(0, { files: files, value: '' });
+                        handleImageRef(0, input);
                     }
                 } else if (currentMode === 'video') {
                     // In video mode, image → i2v
                     selected.videoSubMode = 'i2v';
                     renderVideoSubHeader();
                     switchVideoSubMode('i2v');
-                    handleVideoRef('image', { files: files, value: '' });
+                    handleVideoRef('image', input);
                 } else {
                     // In any other mode → switch to image generate
                     switchMode('image');
                     selected.imageSubMode = 'generate';
                     renderImageSubHeader();
                     switchImageSubMode('generate');
-                    handleImageRef(0, { files: files, value: '' });
+                    handleImageRef(0, input);
                 }
             } else if (fileType.startsWith('video/')) {
                 // Video files → video analysis or chat
@@ -2185,13 +2233,13 @@
                     processChatFiles(files);
                 } else if (currentMode === 'video') {
                     if (selected.videoSubMode === 'v2v') {
-                        handleVideoRef('video', { files: files, value: '' });
+                        handleVideoRef('video', input);
                     } else {
                         // Default: analysis (free)
                         selected.videoSubMode = 'analysis';
                         renderVideoSubHeader();
                         switchVideoSubMode('analysis');
-                        handleVideoConvert({ files: files, value: '' });
+                        handleVideoConvert(input);
                     }
                 } else {
                     // Switch to video analysis
@@ -2199,35 +2247,35 @@
                     selected.videoSubMode = 'analysis';
                     renderVideoSubHeader();
                     switchVideoSubMode('analysis');
-                    handleVideoConvert({ files: files, value: '' });
+                    handleVideoConvert(input);
                 }
             } else if (fileType.startsWith('audio/')) {
                 // Audio files → audio STT (в любом режиме, кроме чата где тоже можно)
                 if (currentMode === 'audio') {
                     if (selected.audioSubMode === 'convert') {
-                        handleAudioConvert({ files: files, value: '' });
+                        handleAudioConvert(input);
                     } else if (selected.audioSubMode === 'voice_clone') {
-                        handleVoiceClone({ files: files, value: '' });
+                        handleVoiceClone(input);
                     } else {
                         // Default: STT (free)
                         selected.audioSubMode = 'stt';
                         renderAudioSubHeader();
                         switchAudioSubMode('stt');
-                        handleAudioUpload({ files: files, value: '' });
+                        handleAudioUpload(input);
                     }
                 } else if (currentMode === 'video') {
                     // Audio in video mode → a2v
                     selected.videoSubMode = 'a2v';
                     renderVideoSubHeader();
                     switchVideoSubMode('a2v');
-                    handleVideoRef('audio', { files: files, value: '' });
+                    handleVideoRef('audio', input);
                 } else {
                     // ✅ В ЛЮБОМ другом режиме (включая чат, картинки) — переключаемся в аудио STT
                     switchMode('audio');
                     selected.audioSubMode = 'stt';
                     renderAudioSubHeader();
                     switchAudioSubMode('stt');
-                    handleAudioUpload({ files: files, value: '' });
+                    handleAudioUpload(input);
                 }
             } else {
                 // Other files → chat (vision/document analysis)
@@ -2239,6 +2287,8 @@
                     processChatFiles(files);
                 }
             }
+
+            _dragState = null; // Сбрасываем после обработки
         });
 
         // Drag-out: удаление вложения при перетаскивании за пределы приложения
@@ -2352,14 +2402,37 @@
                 previewAttachment(att, i);
             };
 
-            // Drag-out: убираем вложение при перетаскивании за пределы
+            // Drag-out: перетаскивание вложения в дроп-зоны (референсы, STT, конвертация и т.д.)
             badge.addEventListener('dragstart', function(e) {
                 e.dataTransfer.setData('text/plain', String(i));
-                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.effectAllowed = 'copy';
+
+                // 🧠 Способ 1: Глобальное состояние — НАДЁЖНЫЙ способ передачи данных
+                // dataTransfer.files не всегда заполняется корректно при внутреннем перетаскивании
+                _dragState = { attachment: att, sourceIndex: i };
+
+                // 🧠 Способ 2: Пробуем добавить File в dataTransfer (работает не во всех браузерах)
+                if (att.base64) {
+                    try {
+                        const byteString = atob(att.base64);
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let j = 0; j < byteString.length; j++) {
+                            ia[j] = byteString.charCodeAt(j);
+                        }
+                        const blob = new Blob([ab], { type: att.type || 'application/octet-stream' });
+                        const file = new File([blob], att.name || 'file', { type: att.type || 'application/octet-stream' });
+                        e.dataTransfer.items.add(file);
+                    } catch(err) {
+                        console.warn('[DragDrop] Could not create File from attachment:', err);
+                    }
+                }
+
                 badge.style.opacity = '0.4';
             });
             badge.addEventListener('dragend', function() {
                 badge.style.opacity = '1';
+                _dragState = null; // Сбрасываем состояние перетаскивания
             });
 
             let icon = att.icon || '&#128196;'; // документ по умолчанию
@@ -3986,6 +4059,15 @@
 
     // ---- DRAG-AND-DROP для upload-zone ----
     document.querySelectorAll('.upload-zone').forEach(zone => {
+        // ✅ dragenter — скрываем глобальный оверлей, чтобы не перекрывал зону
+        zone.addEventListener('dragenter', function(e) {
+            e.preventDefault();
+            e.stopPropagation(); // Не даём .app показать оверлей
+            this.classList.add('drag-over');
+            // Скрываем глобальный оверлей если он показан
+            const overlay = document.getElementById('chatDropOverlay');
+            if (overlay) overlay.classList.remove('visible');
+        });
         zone.addEventListener('dragover', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -4001,34 +4083,38 @@
             e.stopPropagation();
             this.classList.remove('drag-over');
 
-            const files = e.dataTransfer.files;
-            if (!files.length) return;
+            // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
+            const input = getDropInput(e);
+            if (!input || !input.files.length) return;
 
             const id = this.id;
             if (id.startsWith('imageRef')) {
                 const index = parseInt(id.replace('imageRef', ''));
-                handleImageRef(index, { files: files, value: '' });
+                handleImageRef(index, input);
             } else if (id === 'imageUpscaleZone') {
-                handleImageUpscale({ files: files, value: '' });
+                handleImageUpscale(input);
             } else if (id === 'imageRotateZone') {
-                handleImageRotateUpload({ files: files, value: '' });
+                handleImageRotateUpload(input);
             } else if (id === 'imageConvertZone') {
-                handleImageConvertUpload({ files: files, value: '' });
+                handleImageConvertUpload(input);
             } else if (id === 'audioUploadZone') {
-                handleAudioUpload({ files: files, value: '' });
+                handleAudioUpload(input);
             } else if (id === 'videoI2VRefImg') {
-                handleVideoRef('image', { files: files, value: '' });
+                handleVideoRef('image', input);
             } else if (id === 'videoV2VRefVideo') {
-                handleVideoRef('video', { files: files, value: '' });
+                handleVideoRef('video', input);
             } else if (id === 'videoA2VRefAudio') {
-                handleVideoRef('audio', { files: files, value: '' });
+                handleVideoRef('audio', input);
             } else if (id === 'videoConvertZone') {
-                handleVideoConvert({ files: files, value: '' });
+                handleVideoConvert(input);
             } else if (id === 'audioConvertZone') {
-                handleAudioConvert({ files: files, value: '' });
+                handleAudioConvert(input);
             } else if (id === 'voiceCloneZone') {
-                handleVoiceClone({ files: files, value: '' });
+                handleVoiceClone(input);
             }
+
+            // Сбрасываем _dragState после успешного дропа
+            _dragState = null;
         });
     });
 
@@ -4706,8 +4792,10 @@
             dragCounter = 0;
             if (overlay) overlay.classList.remove('visible');
 
-            const files = e.dataTransfer.files;
-            if (!files.length) return;
+            // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
+            const input = getDropInput(e);
+            if (!input) return;
+            const files = input.files;
             const file = files[0];
             const fileType = file.type || '';
 
@@ -4717,63 +4805,63 @@
                 if (currentMode === 'chat') {
                     processChatFiles(files);
                 } else if (currentMode === 'image') {
-                    if (selected.imageSubMode === 'upscale') handleImageUpscale({ files: files, value: '' });
-                    else if (selected.imageSubMode === 'rotate') handleImageRotateUpload({ files: files, value: '' });
-                    else if (selected.imageSubMode === 'convert') handleImageConvertUpload({ files: files, value: '' });
-                    else handleImageRef(0, { files: files, value: '' });
+                    if (selected.imageSubMode === 'upscale') handleImageUpscale(input);
+                    else if (selected.imageSubMode === 'rotate') handleImageRotateUpload(input);
+                    else if (selected.imageSubMode === 'convert') handleImageConvertUpload(input);
+                    else handleImageRef(0, input);
                 } else if (currentMode === 'video') {
                     selected.videoSubMode = 'i2v';
                     renderVideoSubHeader();
                     switchVideoSubMode('i2v');
-                    handleVideoRef('image', { files: files, value: '' });
+                    handleVideoRef('image', input);
                 } else {
                     switchMode('image');
                     selected.imageSubMode = 'generate';
                     renderImageSubHeader();
                     switchImageSubMode('generate');
-                    handleImageRef(0, { files: files, value: '' });
+                    handleImageRef(0, input);
                 }
             } else if (fileType.startsWith('video/')) {
                 if (currentMode === 'chat') {
                     processChatFiles(files);
                 } else if (currentMode === 'video') {
                     if (selected.videoSubMode === 'v2v') {
-                        handleVideoRef('video', { files: files, value: '' });
+                        handleVideoRef('video', input);
                     } else {
                         selected.videoSubMode = 'analysis';
                         renderVideoSubHeader();
                         switchVideoSubMode('analysis');
-                        handleVideoConvert({ files: files, value: '' });
+                        handleVideoConvert(input);
                     }
                 } else {
                     switchMode('video');
                     selected.videoSubMode = 'analysis';
                     renderVideoSubHeader();
                     switchVideoSubMode('analysis');
-                    handleVideoConvert({ files: files, value: '' });
+                    handleVideoConvert(input);
                 }
             } else if (fileType.startsWith('audio/')) {
                 if (currentMode === 'audio') {
-                    if (selected.audioSubMode === 'convert') handleAudioConvert({ files: files, value: '' });
-                    else if (selected.audioSubMode === 'voice_clone') handleVoiceClone({ files: files, value: '' });
+                    if (selected.audioSubMode === 'convert') handleAudioConvert(input);
+                    else if (selected.audioSubMode === 'voice_clone') handleVoiceClone(input);
                     else {
                         selected.audioSubMode = 'stt';
                         renderAudioSubHeader();
                         switchAudioSubMode('stt');
-                        handleAudioUpload({ files: files, value: '' });
+                        handleAudioUpload(input);
                     }
                 } else if (currentMode === 'video') {
                     selected.videoSubMode = 'a2v';
                     renderVideoSubHeader();
                     switchVideoSubMode('a2v');
-                    handleVideoRef('audio', { files: files, value: '' });
+                    handleVideoRef('audio', input);
                 } else {
                     // ✅ В любом режиме (включая чат) — переключаемся в аудио STT
                     switchMode('audio');
                     selected.audioSubMode = 'stt';
                     renderAudioSubHeader();
                     switchAudioSubMode('stt');
-                    handleAudioUpload({ files: files, value: '' });
+                    handleAudioUpload(input);
                 }
             } else {
                 // Other files → chat (vision/document analysis)
@@ -4784,6 +4872,8 @@
                     processChatFiles(files);
                 }
             }
+
+            _dragState = null; // Сбрасываем после обработки
         });
     }
 

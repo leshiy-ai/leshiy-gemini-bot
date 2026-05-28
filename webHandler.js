@@ -247,53 +247,13 @@ async function callWorkersAIWeb(config, ...args) {
         }
 
         const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${modelName}`;
-        const audioBufferRaw = Buffer.isBuffer(audioBuffer) ? audioBuffer : Buffer.from(audioBase64, 'base64');
-
-        // ✅ ФИКС: Cloudflare Whisper требует корректный audio формат
-        // Принимает: audio/wav, audio/mp3, audio/mpeg, audio/webm, audio/ogg
-        // Если аудио не wav — конвертируем в wav PCM (16kHz, mono, 16-bit)
-        // т.к. Cloudflare Whisper лучше всего работает с wav
-        let wavBuffer;
-        try {
-            // Пробуем отправить как есть — большинство форматов поддерживаются
-            wavBuffer = audioBufferRaw;
-        } catch(e) {
-            wavBuffer = audioBufferRaw;
-        }
-
-        // Определяем MIME из размера и сигнатуры
-        let audioMime = 'audio/wav'; // По умолчанию wav — самый надёжный
-        let filename = 'audio.wav';
-        
-        // Определяем реальный формат по сигнатуре файла
-        if (audioBufferRaw.length > 4) {
-            const header = audioBufferRaw.slice(0, 4).toString('hex');
-            if (header.startsWith('fff3') || header.startsWith('fff2') || header.startsWith('494433')) {
-                // MP3: ff f3 (MPEG frame) или 49 44 33 (ID3 tag)
-                audioMime = 'audio/mpeg';
-                filename = 'audio.mp3';
-            } else if (header.startsWith('52494646')) {
-                // RIFF = WAV
-                audioMime = 'audio/wav';
-                filename = 'audio.wav';
-            } else if (header.startsWith('4f676753')) {
-                // OggS = OGG
-                audioMime = 'audio/ogg';
-                filename = 'audio.ogg';
-            } else if (header.startsWith('1a45dfa3')) {
-                // WebM/Matroska
-                audioMime = 'audio/webm';
-                filename = 'audio.webm';
-            }
-        }
-
-        console.log(`[WebHandler] Whisper STT: detected format ${audioMime}, size=${audioBufferRaw.length}`);
+        const audioBufferRaw = Buffer.from(audioBase64, 'base64');
 
         // Формируем multipart/form-data
         const boundary = '----FormBoundary' + Math.random().toString(36).substring(2);
         const parts = [];
-        parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="${filename}"\r\nContent-Type: ${audioMime}\r\n\r\n`));
-        parts.push(wavBuffer);
+        parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`));
+        parts.push(audioBufferRaw);
         parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
         const body = Buffer.concat(parts);
 
@@ -369,37 +329,6 @@ function getConverterUrl(env) {
     if (typeof raw === 'string') return raw;
     if (typeof raw.toString === 'function') return raw.toString();
     return '';
-}
-
-// ✅ Хелпер: вызвать конвертер через fetch — учитывает что LESHIY_CONVERTER
-// может быть объектом с .fetch() (обёртка) или строкой (URL)
-async function callConverter(path, body, env, contentType) {
-    const raw = env.LESHIY_CONVERTER;
-    if (!raw) throw new Error('Конвертер недоступен');
-
-    // Если есть .fetch() — используем его (обёртка из index.js)
-    if (raw && typeof raw.fetch === 'function') {
-        const converterBase = getConverterUrl(env);
-        const baseUrl = converterBase.endsWith('/') ? converterBase.slice(0, -1) : converterBase;
-        const url = `${baseUrl}${path}`;
-        const fetchOpts = {
-            method: 'POST',
-            headers: { 'Content-Type': contentType || 'application/octet-stream' },
-            body: body,
-        };
-        return await raw.fetch(url, fetchOpts);
-    }
-
-    // Иначе — обычный fetch по URL
-    const converterBase = getConverterUrl(env);
-    if (!converterBase) throw new Error('Конвертер недоступен');
-    const baseUrl = converterBase.endsWith('/') ? converterBase.slice(0, -1) : converterBase;
-    const url = `${baseUrl}${path}`;
-    return await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': contentType || 'application/octet-stream' },
-        body: body,
-    });
 }
 
 // Хелпер: получить URL прокси
@@ -528,28 +457,20 @@ async function handleChat(auth, payload, env, monolith) {
         } else if (hasAttachments && payload.attachments.some(a => a.type && a.type.startsWith('audio/'))) {
             const audioAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('audio/'));
             const audioBase64 = audioAttachments[0].base64;
-            const audioMimeType = audioAttachments[0].type || 'audio/mpeg';
             const audioBuffer = Buffer.from(audioBase64, 'base64');
             const sModel = attachmentModelInfo || chatModelInfo;
             const sConfig = sModel.config;
             const sIsWorkersAI = sConfig.SERVICE === 'WORKERS_AI';
 
-            console.log(`[WebHandler] STT using: ${sModel.key} (${sConfig.SERVICE}), audioMime: ${audioMimeType}`);
+            console.log(`[WebHandler] STT using: ${sModel.key} (${sConfig.SERVICE})`);
 
             let result;
             if (sIsWorkersAI) {
                 result = await callWorkersAIWeb(sConfig, audioBuffer, env);
-            } else if (sConfig.FUNCTION.name === 'callGeminiSpeechToText') {
-                // ✅ Gemini STT: (config, audioBuffer, envData)
+            } else if (sConfig.FUNCTION.name === 'callGeminiSpeechToText' || sConfig.FUNCTION.name === 'callGeminiChat') {
                 result = await sConfig.FUNCTION(sConfig, audioBuffer, env);
-            } else if (sConfig.FUNCTION.name === 'callBotHubAudioToText') {
-                result = await callBotHubSTTWeb(sConfig, audioBuffer, env, audioMimeType);
-            } else if (sConfig.FUNCTION.name === 'callPollinationsSTT') {
-                result = await callPollinationsSTTWeb(sConfig, audioBuffer, env, audioMimeType);
             } else {
-                // Прочие модели — пробуем с buffer, потом с base64
-                try { result = await sConfig.FUNCTION(sConfig, audioBuffer, env); }
-                catch(_) { result = await sConfig.FUNCTION(sConfig, audioBase64, env); }
+                result = await sConfig.FUNCTION(sConfig, audioBase64, env);
             }
             finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
 
@@ -557,33 +478,20 @@ async function handleChat(auth, payload, env, monolith) {
         } else if (hasAttachments && payload.attachments.some(a => a.type && a.type.startsWith('video/'))) {
             const videoAttachments = payload.attachments.filter(a => a.type && a.type.startsWith('video/'));
             const videoBase64 = videoAttachments[0].base64;
-            const videoMimeType = videoAttachments[0].type || 'video/mp4';
             const videoBuffer = Buffer.from(videoBase64, 'base64');
             const vModel = attachmentModelInfo || chatModelInfo;
             const vConfig = vModel.config;
             const vIsWorkersAI = vConfig.SERVICE === 'WORKERS_AI';
 
-            console.log(`[WebHandler] Video STT using: ${vModel.key} (${vConfig.SERVICE}), videoMime: ${videoMimeType}`);
+            console.log(`[WebHandler] Video STT using: ${vModel.key} (${vConfig.SERVICE})`);
 
             let result;
             if (vIsWorkersAI) {
                 result = await callWorkersAIWeb(vConfig, videoBuffer, env);
-            } else if (vConfig.FUNCTION.name === 'callGeminiVideoVision') {
-                // ✅ Gemini Video Vision: (config, videoBuffer, mimeType, envData)
-                result = await vConfig.FUNCTION(vConfig, videoBuffer, videoMimeType, env);
-            } else if (vConfig.FUNCTION.name === 'callGeminiSpeechToText') {
-                // ✅ Gemini STT: (config, audioBuffer, envData)
+            } else if (vConfig.FUNCTION.name === 'callGeminiSpeechToText' || vConfig.FUNCTION.name === 'callGeminiVideoVision') {
                 result = await vConfig.FUNCTION(vConfig, videoBuffer, env);
-            } else if (vConfig.FUNCTION.name === 'callBothubVideoVision') {
-                result = await vConfig.FUNCTION(vConfig, videoBuffer, videoMimeType, env);
-            } else if (vConfig.FUNCTION.name === 'callBotHubAudioToText') {
-                result = await callBotHubSTTWeb(vConfig, videoBuffer, env, videoMimeType);
-            } else if (vConfig.FUNCTION.name === 'callPollinationsSTT') {
-                result = await callPollinationsSTTWeb(vConfig, videoBuffer, env, videoMimeType);
             } else {
-                // Прочие модели — пробуем buffer, потом base64
-                try { result = await vConfig.FUNCTION(vConfig, videoBuffer, env); }
-                catch(_) { result = await vConfig.FUNCTION(vConfig, videoBase64, env); }
+                result = await vConfig.FUNCTION(vConfig, videoBase64, env);
             }
             finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
 
@@ -699,12 +607,21 @@ async function handleImage(auth, payload, env, monolith) {
         const angle = payload.angle || '-90';
 
         try {
-            const imageBuffer = Buffer.from(payload.image_base64, 'base64');
-            const response = await callConverter(`/rotate?angle=${angle}`, imageBuffer, env);
-            if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
-            const resultBuffer = Buffer.from(await response.arrayBuffer());
-            const resultBase64 = resultBuffer.toString('base64');
-            return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
+            const converterUrl = getConverterUrl(env);
+            if (converterUrl) {
+                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+                const imageBuffer = Buffer.from(payload.image_base64, 'base64');
+                const response = await fetch(`${baseUrl}/rotate?angle=${angle}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: imageBuffer
+                });
+                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                const resultBuffer = Buffer.from(await response.arrayBuffer());
+                const resultBase64 = resultBuffer.toString('base64');
+                return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
+            }
+            return formatResponse(false, 'Конвертер недоступен');
         } catch (e) {
             console.error("[WebHandler] Rotate error:", e.message);
             return formatResponse(false, "Ошибка поворота: " + e.message);
@@ -717,12 +634,21 @@ async function handleImage(auth, payload, env, monolith) {
         const targetFormat = payload.target_format || 'png';
 
         try {
-            const imageBuffer = Buffer.from(payload.image_base64, 'base64');
-            const response = await callConverter(`/convert-image?format=${targetFormat}`, imageBuffer, env);
-            if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
-            const resultBuffer = Buffer.from(await response.arrayBuffer());
-            const resultBase64 = resultBuffer.toString('base64');
-            return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
+            const converterUrl = getConverterUrl(env);
+            if (converterUrl) {
+                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+                const imageBuffer = Buffer.from(payload.image_base64, 'base64');
+                const response = await fetch(`${baseUrl}/convert-image?format=${targetFormat}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: imageBuffer
+                });
+                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                const resultBuffer = Buffer.from(await response.arrayBuffer());
+                const resultBase64 = resultBuffer.toString('base64');
+                return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
+            }
+            return formatResponse(false, 'Конвертер недоступен');
         } catch (e) {
             console.error("[WebHandler] Image convert error:", e.message);
             return formatResponse(false, "Ошибка конвертации: " + e.message);
@@ -931,11 +857,11 @@ async function handleVideo(auth, payload, env, monolith) {
 
             // Different video analysis functions have different signatures
             if (config.FUNCTION.name === 'callGeminiVideoVision') {
-                // ✅ Gemini Video Vision: (config, videoBuffer, mimeType, envData)
-                const videoMime = payload.video_mime_type || 'video/mp4';
-                result = await config.FUNCTION(config, videoBuffer, videoMime, env);
+                // Gemini Video Vision: (config, prompt, env, videoBase64)
+                result = await config.FUNCTION(config, prompt, env, payload.video_base64);
             } else if (config.FUNCTION.name === 'callBothubVideoVision') {
                 // BotHub Video Vision: (config, videoDataBuffer, videoMimeType, env)
+                // videoMimeType определяем по расширению или по умолчанию video/mp4
                 const videoMime = payload.video_mime_type || 'video/mp4';
                 result = await config.FUNCTION(config, videoBuffer, videoMime, env);
             } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
@@ -981,12 +907,21 @@ async function handleVideo(auth, payload, env, monolith) {
         if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для поворота');
         const angle = payload.angle || '-90';
         try {
-            const videoBuffer = Buffer.from(payload.video_base64, 'base64');
-            const response = await callConverter(`/rotate-video?angle=${angle}`, videoBuffer, env);
-            if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
-            const resultBuffer = Buffer.from(await response.arrayBuffer());
-            const resultBase64 = resultBuffer.toString('base64');
-            return formatResponse(true, null, null, { type: 'video_base64', content: resultBase64 });
+            const converterUrl = getConverterUrl(env);
+            if (converterUrl) {
+                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+                const videoBuffer = Buffer.from(payload.video_base64, 'base64');
+                const response = await fetch(`${baseUrl}/rotate-video?angle=${angle}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: videoBuffer
+                });
+                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                const resultBuffer = Buffer.from(await response.arrayBuffer());
+                const resultBase64 = resultBuffer.toString('base64');
+                return formatResponse(true, null, null, { type: 'video_base64', content: resultBase64 });
+            }
+            return formatResponse(false, 'Конвертер недоступен');
         } catch (e) {
             console.error("[WebHandler] Video rotate error:", e.message);
             return formatResponse(false, "Ошибка поворота видео: " + e.message);
@@ -1112,7 +1047,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
             // Different STT functions have different signatures
             if (config.FUNCTION.name === 'callGeminiSpeechToText') {
-                // ✅ Gemini STT: (config, audioBuffer, envData) — 3 params
+                // Gemini STT: (config, audioBuffer, env)
                 result = await config.FUNCTION(config, audioBuffer, env);
             } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
                 // Workers AI Whisper: (config, audioBuffer, env)
@@ -1153,12 +1088,21 @@ async function handleAudio(auth, payload, env, monolith) {
         const targetFormat = payload.target_format || 'mp3';
 
         try {
-            const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
-            const response = await callConverter(`/convert-audio?format=${targetFormat}`, audioBuffer, env);
-            if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
-            const resultBuffer = Buffer.from(await response.arrayBuffer());
-            const resultBase64 = resultBuffer.toString('base64');
-            return formatResponse(true, null, null, { type: 'audio_base64', content: resultBase64 });
+            const converterUrl = getConverterUrl(env);
+            if (converterUrl) {
+                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+                const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
+                const response = await fetch(`${baseUrl}/convert-audio?format=${targetFormat}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: audioBuffer
+                });
+                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                const resultBuffer = Buffer.from(await response.arrayBuffer());
+                const resultBase64 = resultBuffer.toString('base64');
+                return formatResponse(true, null, null, { type: 'audio_base64', content: resultBase64 });
+            }
+            return formatResponse(false, 'Конвертер недоступен');
         } catch (e) {
             console.error("[WebHandler] Audio convert error:", e.message);
             return formatResponse(false, "Ошибка конвертации: " + e.message);
@@ -1219,35 +1163,22 @@ async function handleAudio(auth, payload, env, monolith) {
     let audioResult;
     try {
         const config = ttsModelInfo.config;
-        let voice = payload.voice || 'Female';
+        const voice = payload.voice || 'Female';
 
-        // ✅ Если выбран "Свой голос" (user_voice) — нужен образец голоса
-        if (voice === 'user_voice') {
-            if (!payload.voice_sample) {
-                return formatResponse(false, 'Для "Свой голос" нужно загрузить образец голоса в поле ввода');
-            }
-            // Передаём как voice_clone — используем образец голоса
-            if (config.FUNCTION.name === 'callGeminiTextToAudio') {
-                audioResult = await config.FUNCTION(config, text, env, 'user_voice', payload.voice_sample);
-            } else {
-                try { audioResult = await config.FUNCTION(config, text, env, payload.voice_sample); }
-                catch(_) { audioResult = await config.FUNCTION(config, text, env, voice); }
-            }
+        console.log(`[WebHandler] TTS using: ${ttsModelInfo.key} (${config.SERVICE}), voice: ${voice}`);
+
+        // Вызываем TTS-функцию с правильной сигнатурой
+        if (config.SERVICE === 'WORKERS_AI') {
+            // Workers AI TTS через Cloudflare REST API
+            audioResult = await callWorkersAIWeb(config, text, env, voice);
+        } else if (config.SERVICE === 'GEMINI' || config.FUNCTION.name === 'callGeminiTextToAudio') {
+            audioResult = await config.FUNCTION(config, text, env, voice);
+        } else if (config.SERVICE === 'VOICERSS' || config.FUNCTION.name === 'callVoiceRSSTextToAudio') {
+            audioResult = await config.FUNCTION(config, text, env, voice);
         } else {
-            // Обычный голос — вызываем TTS-функцию
-            console.log(`[WebHandler] TTS using: ${ttsModelInfo.key} (${config.SERVICE}), voice: ${voice}`);
-
-            if (config.SERVICE === 'WORKERS_AI') {
-                audioResult = await callWorkersAIWeb(config, text, env, voice);
-            } else if (config.SERVICE === 'GEMINI' || config.FUNCTION.name === 'callGeminiTextToAudio') {
-                audioResult = await config.FUNCTION(config, text, env, voice);
-            } else if (config.SERVICE === 'VOICERSS' || config.FUNCTION.name === 'callVoiceRSSTextToAudio') {
-                audioResult = await config.FUNCTION(config, text, env, voice);
-            } else {
-                // KIE.AI, BotHub и прочие — пробуем с voice
-                try { audioResult = await config.FUNCTION(config, text, env, voice); }
-                catch(_) { audioResult = await config.FUNCTION(config, text, env); }
-            }
+            // KIE.AI, BotHub и прочие — пробуем с voice
+            try { audioResult = await config.FUNCTION(config, text, env, voice); }
+            catch(_) { audioResult = await config.FUNCTION(config, text, env); }
         }
     } catch (e) {
         console.error("[WebHandler] Audio gen error:", e.message);
@@ -1776,7 +1707,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
 
         const result = await response.json();
         // ✅ Логируем полный ответ KieAI для дебага (безопасно)
-        const safeLogResult = result != null ? JSON.stringify(result).substring(0, 2000) : 'null';
+        const safeLogResult = result != null ? (JSON.stringify(result) || '').substring(0, 2000) : 'null';
         console.log(`[WebHandler] KieAI task ${taskId} response:`, safeLogResult);
 
         if (result.code !== 200 && result.code !== undefined) {
@@ -1786,24 +1717,22 @@ async function handleTaskStatus(auth, payload, env, monolith) {
         const state = result.data?.state;
         const output = result.data?.output;
 
-        // ✅ Улучшенное извлечение результата: проверяем все возможные форматы ответа KieAI
         if (state === 'success' || state === 'succeeded') {
-            // Extract result URL from output — проверяем ВСЕ возможные поля
+            // ✅ Улучшенное извлечение результата: проверяем все возможные форматы ответа KieAI
             let resultUrl = null;
 
-            // 0. ✅ НОВОЕ: KieAI часто возвращает output как массив строк-URL
+            // 0. KieAI часто возвращает output как массив строк-URL
             if (Array.isArray(output) && output.length > 0) {
                 for (const item of output) {
                     if (typeof item === 'string' && item.startsWith('http')) {
                         resultUrl = item;
-                        console.log(`[WebHandler] Found URL in output array: ${String(resultUrl).substring(0, 100)}`);
+                        console.log(`[WebHandler] Found URL in output array: ${String(resultUrl || '').substring(0, 100)}`);
                         break;
                     } else if (typeof item === 'object' && item !== null) {
-                        // Объект внутри массива — ищем URL поля
                         for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src', 'source_url']) {
                             if (item[field] && typeof item[field] === 'string' && item[field].startsWith('http')) {
                                 resultUrl = item[field];
-                                console.log(`[WebHandler] Found URL in output[].${field}: ${String(resultUrl).substring(0, 100)}`);
+                                console.log(`[WebHandler] Found URL in output[].${field}: ${String(resultUrl || '').substring(0, 100)}`);
                                 break;
                             }
                         }
@@ -1813,25 +1742,27 @@ async function handleTaskStatus(auth, payload, env, monolith) {
             }
 
             // 1. Прямые URL поля
-            const urlFields = ['videoUrl', 'url', 'video_url', 'imageUrl', 'image_url', 'outputUrl', 'output_url', 'downloadUrl', 'download_url', 'resultUrl', 'result_url', 'source_url', 'src'];
-            for (const field of urlFields) {
-                if (output?.[field] && typeof output[field] === 'string' && output[field].startsWith('http')) {
-                    resultUrl = output[field];
-                    console.log(`[WebHandler] Found URL in output.${field}: ${String(resultUrl).substring(0, 100)}`);
-                    break;
+            if (!resultUrl) {
+                const urlFields = ['videoUrl', 'url', 'video_url', 'imageUrl', 'image_url', 'outputUrl', 'output_url', 'downloadUrl', 'download_url', 'resultUrl', 'result_url', 'source_url', 'src'];
+                for (const field of urlFields) {
+                    if (output?.[field] && typeof output[field] === 'string' && output[field].startsWith('http')) {
+                        resultUrl = output[field];
+                        console.log(`[WebHandler] Found URL in output.${field}: ${String(resultUrl || '').substring(0, 100)}`);
+                        break;
+                    }
                 }
             }
 
             // 2. Массивы URL
-            const arrayFields = ['videos', 'images', 'urls', 'outputs', 'results', 'files'];
             if (!resultUrl) {
+                const arrayFields = ['videos', 'images', 'urls', 'outputs', 'results', 'files'];
                 for (const field of arrayFields) {
                     if (Array.isArray(output?.[field]) && output[field].length > 0) {
                         const item = output[field][0];
                         if (typeof item === 'string' && item.startsWith('http')) {
                             resultUrl = item;
                         } else if (typeof item === 'object') {
-                            // Объект с URL внутри
+                            const urlFields = ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src'];
                             for (const subField of urlFields) {
                                 if (item[subField] && typeof item[subField] === 'string' && item[subField].startsWith('http')) {
                                     resultUrl = item[subField];
@@ -1855,6 +1786,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
             // 4. Проверяем data.result/data.output на верхнем уровне
             if (!resultUrl) {
                 const topLevel = result.data || result;
+                const urlFields = ['videoUrl', 'url', 'video_url', 'imageUrl', 'image_url', 'outputUrl', 'output_url', 'downloadUrl', 'download_url', 'resultUrl', 'result_url', 'source_url', 'src'];
                 for (const field of urlFields) {
                     if (topLevel?.[field] && typeof topLevel[field] === 'string' && topLevel[field].startsWith('http')) {
                         resultUrl = topLevel[field];
@@ -1863,7 +1795,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 }
             }
 
-            // 5. ✅ НОВОЕ: Проверяем data.images / data.videos (KieAI T2I/I2I формат)
+            // 5. Проверяем data.images / data.videos (KieAI T2I/I2I формат)
             if (!resultUrl && result.data) {
                 const imgOrVidFields = ['images', 'videos', 'results', 'output_images', 'output_videos'];
                 for (const field of imgOrVidFields) {
@@ -1893,9 +1825,8 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 return formatResponse(true, null, null, { type: resultType, content: resultUrl });
             } else {
                 // Output exists but no recognizable URL — логируем полный ответ для дебага
-                // ✅ ФИКС: JSON.stringify(undefined) возвращает undefined, а не строку — .substring() падает
-                const safeOutput = output != null ? JSON.stringify(output).substring(0, 1000) : 'null';
-                const safeResult = result != null ? JSON.stringify(result).substring(0, 1000) : 'null';
+                const safeOutput = output != null ? (JSON.stringify(output) || '').substring(0, 1000) : 'null';
+                const safeResult = result != null ? (JSON.stringify(result) || '').substring(0, 1000) : 'null';
                 console.log(`[WebHandler] KieAI success but no URL found. Full output:`, safeOutput);
                 console.log(`[WebHandler] Full result:`, safeResult);
                 return formatResponse(false, 'Задача выполнена, но результат не найден в ответе');
