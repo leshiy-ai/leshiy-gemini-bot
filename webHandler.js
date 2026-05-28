@@ -18,6 +18,17 @@
 // Это позволяет использовать Cloudflare AI с любого хостинга.
 // ============================================================
 
+/**
+ * 🛑 КРИТИЧЕСКАЯ ВАЛИДАЦИЯ: Проверяет, что auth.id — реальный идентификатор,
+ * а не мусор вроде "undefined", "null", пустой строки.
+ * Без этого chatId в callback'ах KieAI становится "undefined".
+ */
+function isValidAuthId(id) {
+    if (!id) return false;
+    const s = String(id).trim();
+    return s !== '' && s !== 'undefined' && s !== 'null' && s !== 'guest' && s !== 'NaN';
+}
+
 module.exports.handleWebRequest = async function(body, env, ctx) {
     const { mode, auth, payload } = body;
 
@@ -53,6 +64,8 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handleAdmin(auth, payload, env, monolith);
             case 'credit_history':
                 return await handleCreditHistory(auth, env, monolith);
+            case 'task_status':
+                return await handleTaskStatus(auth, payload, env, monolith);
             default:
                 return formatResponse(false, "Неизвестный режим: " + mode);
         }
@@ -84,7 +97,14 @@ function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel,
         return { config: AI_MODELS[payloadModel], key: payloadModel };
     }
 
-    // 2. По умолчанию — первая модель из меню (как loadActiveConfig в телеграм-боте)
+    // 2. По умолчанию — для TEXT_TO_AUDIO приоритет VoiceRSS (бесплатно, без авторизации)
+    if (serviceType === 'TEXT_TO_AUDIO') {
+        if (AI_MODELS['TEXT_TO_AUDIO_VOICERSS']) {
+            return { config: AI_MODELS['TEXT_TO_AUDIO_VOICERSS'], key: 'TEXT_TO_AUDIO_VOICERSS' };
+        }
+    }
+
+    // 3. По умолчанию — первая модель из меню (как loadActiveConfig в телеграм-боте)
     const menuConfig = AI_MODEL_MENU_CONFIG[serviceType];
     if (menuConfig && menuConfig.models) {
         const firstKey = Object.keys(menuConfig.models)[0];
@@ -337,7 +357,7 @@ async function handleChat(auth, payload, env, monolith) {
         text: m.content
     }));
 
-    const isAuth = !!(auth && auth.id);
+    const isAuth = !!(auth && isValidAuthId(auth.id));
     const chatId = isAuth ? String(auth.id) : 'guest';
 
     // Авторизованный — сохраняем в S3
@@ -526,7 +546,7 @@ async function handleChat(auth, payload, env, monolith) {
 // ============================================================
 async function handleImage(auth, payload, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG, uploadBase64ImageToPublicUrl } = monolith;
-    const isAuth = !!(auth && auth.id);
+    const isAuth = !!(auth && isValidAuthId(auth.id));
     const chatId = isAuth ? String(auth.id) : 'guest';
     const imageMode = payload.image_mode || 't2i';
 
@@ -542,7 +562,35 @@ async function handleImage(auth, payload, env, monolith) {
         try {
             const modelInfo = getWebModel('IMAGE_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла');
-            console.log(`[WebHandler] Upscale using: ${modelInfo.key}`);
+            console.log(`[WebHandler] Upscale using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
+
+            if (modelInfo.config.SERVICE === 'KIEAI') {
+                // 🛑 KIEAI: вызываем createTaskKieAi напрямую с chatId в callbackUrl
+                const { createTaskKieAi } = monolith;
+                if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
+
+                // Загружаем изображение в публичный URL для KIEAI
+                let imageUrl;
+                try {
+                    imageUrl = await uploadBase64ImageToPublicUrl(payload.image_base64, env, chatId);
+                    if (!imageUrl) throw new Error('Не удалось загрузить изображение');
+                } catch (e) {
+                    return formatResponse(false, 'Ошибка загрузки изображения: ' + e.message);
+                }
+
+                const workerDomain = env.WORKER_DOMAIN || '';
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+
+                const input = { image: imageUrl };
+
+                const taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
+                if (!taskId) return formatResponse(false, 'Не удалось создать задачу апскейла');
+
+                const creditsLeft = await deductCredits(chatId, 2, env, monolith);
+                return formatResponse(true, null, creditsLeft, { type: 'image_task', content: taskId });
+            }
+
+            // Другие сервисы (STABILITY и т.д.) — вызываем напрямую
             imageResult = await modelInfo.config.FUNCTION(modelInfo.config, payload.image_base64, env);
         } catch (e) {
             console.error("[WebHandler] Upscale error:", e.message);
@@ -626,7 +674,38 @@ async function handleImage(auth, payload, env, monolith) {
             console.log(`[WebHandler] I2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
             const refImage = payload.reference_images[0];
-            if (modelInfo.config.SERVICE === 'WORKERS_AI') {
+            const isKieAi = modelInfo.config.SERVICE === 'KIEAI';
+
+            if (isKieAi) {
+                // 🛑 KIEAI: вызываем createTaskKieAi напрямую с chatId в callbackUrl
+                const { createTaskKieAi } = monolith;
+                if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
+
+                // Загружаем референсное изображение в публичный URL
+                let imageUrl;
+                try {
+                    imageUrl = await uploadBase64ImageToPublicUrl(refImage, env, chatId);
+                    if (!imageUrl) throw new Error('Не удалось загрузить изображение');
+                } catch (e) {
+                    return formatResponse(false, 'Ошибка загрузки изображения: ' + e.message);
+                }
+
+                const workerDomain = env.WORKER_DOMAIN || '';
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+
+                const input = {
+                    prompt: prompt,
+                    image_urls: [imageUrl],
+                    output_format: 'png',
+                    image_size: payload.aspect_ratio || '1:1'
+                };
+
+                const taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
+                if (!taskId) return formatResponse(false, 'Не удалось создать задачу I2I');
+
+                const creditsLeft = await deductCredits(chatId, 4, env, monolith);
+                return formatResponse(true, null, creditsLeft, { type: 'image_task', content: taskId });
+            } else if (modelInfo.config.SERVICE === 'WORKERS_AI') {
                 imageResult = await callWorkersAIWeb(modelInfo.config, prompt, env, refImage);
             } else {
                 imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env, refImage);
@@ -649,6 +728,7 @@ async function handleImage(auth, payload, env, monolith) {
     if (!modelInfo) return formatResponse(false, 'Нет доступной модели для генерации изображений');
 
     const isFreeModel = modelInfo.config.SERVICE === 'WORKERS_AI' || !modelInfo.config.pricing;
+    const isKieAi = modelInfo.config.SERVICE === 'KIEAI';
 
     if (!isFreeModel) {
         if (!isAuth) return formatResponse(false, 'Для платных моделей нужна авторизация');
@@ -659,7 +739,32 @@ async function handleImage(auth, payload, env, monolith) {
     let imageResult;
     try {
         console.log(`[WebHandler] T2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
-        if (modelInfo.config.SERVICE === 'WORKERS_AI') {
+
+        if (isKieAi) {
+            // 🛑 KIEAI: вызываем createTaskKieAi напрямую с chatId в callbackUrl
+            // НЕ вызываем startKieAiTextToImage — она Telegram-специфичная
+            const { createTaskKieAi } = monolith;
+            if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
+
+            const workerDomain = env.WORKER_DOMAIN || '';
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+
+            const input = {
+                prompt: prompt,
+                output_format: 'png',
+                aspect_ratio: payload.aspect_ratio || '1:1',
+                image_size: payload.aspect_ratio || '1:1'
+            };
+
+            const taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
+            if (!taskId) return formatResponse(false, 'Не удалось создать задачу генерации изображения');
+
+            let creditsLeft = null;
+            if (!isFreeModel && isAuth) {
+                creditsLeft = await deductCredits(chatId, 4, env, monolith);
+            }
+            return formatResponse(true, null, creditsLeft, { type: 'image_task', content: taskId });
+        } else if (modelInfo.config.SERVICE === 'WORKERS_AI') {
             imageResult = await callWorkersAIWeb(modelInfo.config, prompt, env);
         } else {
             imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env);
@@ -732,7 +837,7 @@ function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUr
 // ============================================================
 async function handleVideo(auth, payload, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse } = monolith;
-    const isAuth = !!(auth && auth.id);
+    const isAuth = !!(auth && isValidAuthId(auth.id));
     const chatId = isAuth ? String(auth.id) : 'guest';
     const videoMode = payload.video_mode || 'generate';
 
@@ -754,19 +859,22 @@ async function handleVideo(auth, payload, env, monolith) {
             if (config.FUNCTION.name === 'callGeminiVideoVision') {
                 // Gemini Video Vision: (config, prompt, env, videoBase64)
                 result = await config.FUNCTION(config, prompt, env, payload.video_base64);
+            } else if (config.FUNCTION.name === 'callBothubVideoVision') {
+                // BotHub Video Vision: (config, videoDataBuffer, videoMimeType, env)
+                // videoMimeType определяем по расширению или по умолчанию video/mp4
+                const videoMime = payload.video_mime_type || 'video/mp4';
+                result = await config.FUNCTION(config, videoBuffer, videoMime, env);
             } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
                 // Workers AI Whisper for video: (config, videoBuffer, env)
                 result = await callWorkersAIWeb(config, videoBuffer, env);
             } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
-                // BotHub Whisper for video: (config, videoBase64String, env)
-                result = await config.FUNCTION(config, payload.video_base64, env);
+                // BotHub Whisper for video: используем веб-обёртку с правильным MIME
+                const videoMime = payload.video_mime_type || 'video/mp4';
+                result = await callBotHubSTTWeb(config, videoBuffer, env, videoMime);
             } else if (config.FUNCTION.name === 'callPollinationsSTT') {
-                // Pollinations STT for video: (config, videoBufferOrBase64, env)
-                try {
-                    result = await config.FUNCTION(config, videoBuffer, env);
-                } catch(_) {
-                    result = await config.FUNCTION(config, payload.video_base64, env);
-                }
+                // Pollinations STT for video: используем веб-обёртку без Blob
+                const videoMime = payload.video_mime_type || 'video/mp4';
+                result = await callPollinationsSTTWeb(config, videoBuffer, env, videoMime);
             } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
                 // Gemini STT for video: (config, videoBuffer, env)
                 result = await config.FUNCTION(config, videoBuffer, env);
@@ -919,7 +1027,7 @@ async function handleVideo(auth, payload, env, monolith) {
 // ============================================================
 async function handleAudio(auth, payload, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse } = monolith;
-    const isAuth = !!(auth && auth.id);
+    const isAuth = !!(auth && isValidAuthId(auth.id));
     const chatId = isAuth ? String(auth.id) : 'guest';
     const audioMode = payload.audio_mode || 'tts';
 
@@ -935,6 +1043,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
             const config = modelInfo.config;
             const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
+            const audioMimeType = payload.audio_mime_type || 'audio/mpeg';
 
             // Different STT functions have different signatures
             if (config.FUNCTION.name === 'callGeminiSpeechToText') {
@@ -944,15 +1053,15 @@ async function handleAudio(auth, payload, env, monolith) {
                 // Workers AI Whisper: (config, audioBuffer, env)
                 result = await callWorkersAIWeb(config, audioBuffer, env);
             } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
-                // BotHub Whisper: (config, audioBase64String, env)
-                result = await config.FUNCTION(config, payload.audio_base64, env);
+                // BotHub Whisper: (config, audioDataBuffer, env)
+                // 🛑 ФИКС: Передаём корректный MIME-тип, а не хардкод 'audio/ogg'
+                // BotHub функция использует хардкод 'audio/ogg' для Telegram,
+                // но для веб-фронтенда аудио приходит как MP3/WAV/OGG — надо передать MIME
+                result = await callBotHubSTTWeb(config, audioBuffer, env, audioMimeType);
             } else if (config.FUNCTION.name === 'callPollinationsSTT') {
-                // Pollinations STT: (config, audioBufferOrBase64, env)
-                try {
-                    result = await config.FUNCTION(config, audioBuffer, env);
-                } catch(_) {
-                    result = await config.FUNCTION(config, payload.audio_base64, env);
-                }
+                // Pollinations STT: 🛑 ФИКС — используем manual multipart вместо Blob/FormData
+                // (Blob недоступен в Node.js < 18, FormData может быть несовместим)
+                result = await callPollinationsSTTWeb(config, audioBuffer, env, audioMimeType);
             } else {
                 // Generic: try buffer first, then base64
                 try {
@@ -1133,6 +1242,95 @@ function extractAudioBase64(result) {
 }
 
 // ============================================================
+// 🎤 BotHub STT для веба — с правильным MIME-типом
+// ============================================================
+async function callBotHubSTTWeb(config, audioBuffer, env, mimeType) {
+    const endpoint = '/audio/transcriptions';
+    const apiUrl = `${config.BASE_URL}${endpoint}`;
+    const tokenKey = config.API_KEY;
+    const token = env[tokenKey];
+    if (!token) throw new Error(`API Token (${tokenKey}) не настроен`);
+
+    // Определяем расширение и MIME из переданного типа (для веба — реальный формат, не хардкод ogg)
+    const effectiveMime = mimeType || 'audio/mpeg';
+    const ext = effectiveMime.includes('ogg') ? 'ogg' : effectiveMime.includes('wav') ? 'wav' : effectiveMime.includes('webm') ? 'webm' : 'mp3';
+    const filename = `audio_file.${ext}`;
+
+    // Manual multipart/form-data (как в callBotHubAudioToText, но с правильным MIME)
+    const boundary = '----BothubWebSTT' + Math.random().toString(16).slice(2);
+    const parts = [];
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${config.MODEL}\r\n`));
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${effectiveMime}\r\n\r\n`));
+    parts.push(Buffer.isBuffer(audioBuffer) ? audioBuffer : Buffer.from(audioBuffer));
+    parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+    const body = Buffer.concat(parts);
+
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`
+        },
+        body: body,
+        signal: AbortSignal.timeout(30000)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`BotHub Whisper API Error (${response.status}): ${errorText.substring(0, 500)}`);
+    }
+
+    const data = await response.json();
+    return data.text ? data.text.trim() : JSON.stringify(data);
+}
+
+// ============================================================
+// 🎤 Pollinations STT для веба — manual multipart (без Blob/FormData)
+// ============================================================
+async function callPollinationsSTTWeb(config, audioBuffer, env, mimeType) {
+    const API_KEY = env[config.API_KEY];
+    const BASE_URL = config.BASE_URL;
+    const MODEL = config.MODEL || 'whisper';
+
+    if (!API_KEY) throw new Error(`Pollinations API key is missing (${config.API_KEY})`);
+
+    const url = `${BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/'}v1/audio/transcriptions`;
+
+    const effectiveMime = mimeType || 'audio/mpeg';
+    const ext = effectiveMime.includes('ogg') ? 'ogg' : effectiveMime.includes('wav') ? 'wav' : 'mp3';
+
+    // Manual multipart/form-data (не используем Blob/FormData — их может не быть в Node.js)
+    const boundary = '----PollinationsWebSTT' + Math.random().toString(16).slice(2);
+    const parts = [];
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${MODEL}\r\n`));
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nru\r\n`));
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson\r\n`));
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.${ext}"\r\nContent-Type: ${effectiveMime}\r\n\r\n`));
+    parts.push(Buffer.isBuffer(audioBuffer) ? audioBuffer : Buffer.from(audioBuffer));
+    parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+    const body = Buffer.concat(parts);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${API_KEY}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`
+        },
+        body: body,
+        signal: AbortSignal.timeout(30000)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations STT Error: ${response.status} - ${errorText.substring(0, 200)}`);
+    }
+
+    const data = await response.json();
+    if (!data.text) throw new Error("Pollinations STT вернул пустой результат");
+    return data.text.trim();
+}
+
+// ============================================================
 // 📋 МОДЕЛИ — Возврат списка доступных моделей
 // ============================================================
 async function handleModels(auth, env, monolith) {
@@ -1156,7 +1354,7 @@ async function handleModels(auth, env, monolith) {
         'AUDIO_TO_VIDEO':   { target: 'video_a2v',     freeByDefault: false },
         'VIDEO_TO_UPSCALE': { target: 'video_upscale', freeByDefault: false },
         'VIDEO_TO_ANALYSIS':{ target: 'video_analysis', freeByDefault: true  },
-        'TEXT_TO_AUDIO':    { target: 'audio_tts',     freeByDefault: false },
+        'TEXT_TO_AUDIO':    { target: 'audio_tts',     freeByDefault: true  }, // VoiceRSS бесплатный!
         'AUDIO_TO_TEXT':    { target: 'audio_stt',     freeByDefault: true  },
         'VIDEO_TO_TEXT':    { target: 'audio_stt',     freeByDefault: true  },
         'AUDIO_TO_AUDIO':   { target: 'audio_stt',     freeByDefault: true  },
@@ -1205,6 +1403,31 @@ async function handleModels(auth, env, monolith) {
         }
         arr.length = 0;
         arr.push(...unique);
+    }
+
+    // 🛑 ФИКС: VoiceRSS — бесплатный TTS, ставим ПЕРВЫМ в audio_tts
+    // Чтобы юзер по умолчанию получал бесплатную озвучку без авторизации
+    if (models.audio_tts && models.audio_tts.length > 0) {
+        const voicerssIdx = models.audio_tts.findIndex(m => m.service === 'VOICERSS');
+        if (voicerssIdx > 0) {
+            const [voicerss] = models.audio_tts.splice(voicerssIdx, 1);
+            models.audio_tts.unshift(voicerss);
+        } else if (voicerssIdx === -1) {
+            // VoiceRSS нет в списке — добавляем первой (бесплатная!)
+            const voicerssConfig = AI_MODELS['TEXT_TO_AUDIO_VOICERSS'];
+            if (voicerssConfig) {
+                models.audio_tts.unshift({
+                    key: 'TEXT_TO_AUDIO_VOICERSS',
+                    displayName: 'VoiceRSS: TTS-Model',
+                    modelShort: 'TTS-Model',
+                    service: 'VOICERSS',
+                    serviceLabel: 'VoiceRSS',
+                    isFree: true,
+                    cost: 0,
+                    isDynamicPricing: false
+                });
+            }
+        }
     }
 
     return formatResponse(true, null, null, models);
@@ -1286,11 +1509,12 @@ async function handleAIConfig(auth, env, monolith) {
 // Доступ только для ADMIN_CHAT_ID (как в телеграм-боте)
 async function handleAdmin(auth, payload, env, monolith) {
     // Проверка прав админа
-    if (!auth || !auth.id) {
+    if (!auth || !isValidAuthId(auth.id)) {
         return formatResponse(false, 'Не авторизован');
     }
     const chatId = String(auth.id);
-    if (!checkAdminStatus(chatId, env)) {
+    const isAdmin = await checkAdminStatusAsync(chatId, env);
+    if (!isAdmin) {
         return formatResponse(false, 'Доступ запрещён: вы не админ');
     }
 
@@ -1369,20 +1593,186 @@ async function handleAdmin(auth, payload, env, monolith) {
         }
     }
 
+    // === ДОБАВИТЬ АДМИНА ===
+    if (action === 'add_admin') {
+        const targetId = payload.target_id;
+        if (!targetId) {
+            return formatResponse(false, 'Укажите target_id');
+        }
+        if (!env.LAST_PHOTO_STORAGE) {
+            return formatResponse(false, 'База данных недоступна');
+        }
+        try {
+            const stored = await env.LAST_PHOTO_STORAGE.get('admin_ids');
+            let adminIds = stored ? stored.split(',').map(id => id.trim()).filter(id => id) : [];
+            if (adminIds.includes(String(targetId))) {
+                return formatResponse(true, null, null, { type: 'admin', action: 'add_admin', target_id: targetId, message: 'Уже админ' });
+            }
+            adminIds.push(String(targetId));
+            await env.LAST_PHOTO_STORAGE.put('admin_ids', adminIds.join(','), { expirationTtl: 86400 * 365 * 10 });
+            console.log(`[Admin] Admin added: ${targetId}. Current admins: ${adminIds.join(',')}`);
+            return formatResponse(true, null, null, { type: 'admin', action: 'add_admin', target_id: targetId, admin_ids: adminIds });
+        } catch (e) {
+            return formatResponse(false, 'Ошибка добавления админа: ' + e.message);
+        }
+    }
+
+    // === УДАЛИТЬ АДМИНА ===
+    if (action === 'remove_admin') {
+        const targetId = payload.target_id;
+        if (!targetId) {
+            return formatResponse(false, 'Укажите target_id');
+        }
+        if (!env.LAST_PHOTO_STORAGE) {
+            return formatResponse(false, 'База данных недоступна');
+        }
+        try {
+            // Don't allow removing the ADMIN_CHAT_ID from env
+            const adminChatId = env.ADMIN_CHAT_ID;
+            if (adminChatId && String(targetId) === String(adminChatId)) {
+                return formatResponse(false, 'Нельзя удалить основного админа (ADMIN_CHAT_ID)');
+            }
+            const stored = await env.LAST_PHOTO_STORAGE.get('admin_ids');
+            let adminIds = stored ? stored.split(',').map(id => id.trim()).filter(id => id) : [];
+            if (!adminIds.includes(String(targetId))) {
+                return formatResponse(true, null, null, { type: 'admin', action: 'remove_admin', target_id: targetId, message: 'Не был админом' });
+            }
+            adminIds = adminIds.filter(id => id !== String(targetId));
+            await env.LAST_PHOTO_STORAGE.put('admin_ids', adminIds.join(','), { expirationTtl: 86400 * 365 * 10 });
+            console.log(`[Admin] Admin removed: ${targetId}. Current admins: ${adminIds.join(',')}`);
+            return formatResponse(true, null, null, { type: 'admin', action: 'remove_admin', target_id: targetId, admin_ids: adminIds });
+        } catch (e) {
+            return formatResponse(false, 'Ошибка удаления админа: ' + e.message);
+        }
+    }
+
+    // === СПИСОК АДМИНОВ ===
+    if (action === 'list_admins') {
+        if (!env.LAST_PHOTO_STORAGE) {
+            return formatResponse(false, 'База данных недоступна');
+        }
+        try {
+            const stored = await env.LAST_PHOTO_STORAGE.get('admin_ids');
+            const kvAdmins = stored ? stored.split(',').map(id => id.trim()).filter(id => id) : [];
+            const envAdmin = env.ADMIN_CHAT_ID ? [String(env.ADMIN_CHAT_ID)] : [];
+            return formatResponse(true, null, null, { type: 'admin', action: 'list_admins', env_admin: envAdmin, kv_admins: kvAdmins, all_admins: [...new Set([...envAdmin, ...kvAdmins])] });
+        } catch (e) {
+            return formatResponse(false, 'Ошибка чтения списка админов: ' + e.message);
+        }
+    }
+
     return formatResponse(false, 'Неизвестное действие админа: ' + action);
 }
 
 // ============================================================
 // 💰 БАЛАНС — Запрос текущего баланса
 // ============================================================
+// ============================================================
+// 🔄 TASK STATUS — Polling KieAI task results
+// ============================================================
+// Web frontend polls this endpoint to check if an async KieAI
+// task (image/video generation) has completed.
+async function handleTaskStatus(auth, payload, env, monolith) {
+    if (!auth || !isValidAuthId(auth.id)) {
+        return formatResponse(false, 'Не авторизован');
+    }
+    const taskId = payload?.task_id;
+    const taskType = payload?.task_type || 'image'; // 'image' or 'video'
+
+    if (!taskId) {
+        return formatResponse(false, 'Не указан task_id');
+    }
+
+    // Get the KieAI API key
+    const apiKey = env.KIEAI_API_KEY;
+    if (!apiKey) {
+        return formatResponse(false, 'KieAI API ключ не настроен');
+    }
+
+    try {
+        const url = `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[WebHandler] KieAI recordInfo error: ${response.status}`, errorText);
+            return formatResponse(false, 'Ошибка проверки статуса задачи: ' + response.status);
+        }
+
+        const result = await response.json();
+        console.log(`[WebHandler] KieAI task ${taskId} state: ${result.data?.state}`);
+
+        if (result.code !== 200 && result.code !== undefined) {
+            return formatResponse(false, 'KieAI API ошибка: ' + (result.msg || result.message || 'Unknown error'));
+        }
+
+        const state = result.data?.state;
+        const output = result.data?.output;
+
+        if (state === 'success') {
+            // Extract result URL from output
+            let resultUrl = null;
+
+            if (taskType === 'video') {
+                // Video tasks: output.videoUrl or output.url
+                resultUrl = output?.videoUrl || output?.url || output?.video_url || null;
+                // Some KieAI models return array of URLs
+                if (!resultUrl && Array.isArray(output?.videos) && output.videos.length > 0) {
+                    resultUrl = output.videos[0];
+                }
+                if (!resultUrl && Array.isArray(output?.urls) && output.urls.length > 0) {
+                    resultUrl = output.urls[0];
+                }
+            } else {
+                // Image tasks: output.imageUrl or output.url
+                resultUrl = output?.imageUrl || output?.url || output?.image_url || null;
+                // Some KieAI models return array of URLs
+                if (!resultUrl && Array.isArray(output?.images) && output.images.length > 0) {
+                    resultUrl = output.images[0];
+                }
+                if (!resultUrl && Array.isArray(output?.urls) && output.urls.length > 0) {
+                    resultUrl = output.urls[0];
+                }
+            }
+
+            if (resultUrl) {
+                const resultType = taskType === 'video' ? 'video_url' : 'image_url';
+                return formatResponse(true, null, null, { type: resultType, content: resultUrl });
+            } else {
+                // Output exists but no recognizable URL — return raw output for debugging
+                console.log(`[WebHandler] KieAI success but no URL found in output:`, JSON.stringify(output).substring(0, 500));
+                return formatResponse(false, 'Задача выполнена, но результат не найден в ответе');
+            }
+        } else if (state === 'waiting' || state === 'processing' || state === 'queued') {
+            // Task still in progress
+            return formatResponse(true, null, null, { type: 'task_pending', state: state });
+        } else if (state === 'failed') {
+            const errorMsg = output?.error || output?.message || result.data?.error || 'Задача не удалась';
+            return formatResponse(false, 'Задача не удалась: ' + errorMsg);
+        } else {
+            // Unknown state — treat as pending
+            return formatResponse(true, null, null, { type: 'task_pending', state: state || 'unknown' });
+        }
+    } catch (e) {
+        console.error("[WebHandler] Task status check error:", e.message);
+        return formatResponse(false, 'Ошибка проверки статуса: ' + e.message);
+    }
+}
+
 async function handleBalance(auth, env, monolith) {
-    if (!auth || !auth.id) {
+    if (!auth || !isValidAuthId(auth.id)) {
         return formatResponse(false, 'Не авторизован');
     }
     const chatId = String(auth.id);
     const balance = await getUserBalance(chatId, env, monolith);
     const isVip = await checkVipStatus(chatId, env);
-    const isAdmin = checkAdminStatus(chatId, env);
+    const isAdmin = await checkAdminStatusAsync(chatId, env);
     const history = await getCreditHistory(chatId, env);
 
     return formatResponse(true, null, balance, { 
@@ -1395,14 +1785,14 @@ async function handleBalance(auth, env, monolith) {
 }
 
 async function handleCreditHistory(auth, env, monolith) {
-    if (!auth || !auth.id) {
+    if (!auth || !isValidAuthId(auth.id)) {
         return formatResponse(false, 'Не авторизован');
     }
     const chatId = String(auth.id);
     const history = await getCreditHistory(chatId, env);
     const balance = await getUserBalance(chatId, env, monolith);
     const isVip = await checkVipStatus(chatId, env);
-    const isAdmin = checkAdminStatus(chatId, env);
+    const isAdmin = await checkAdminStatusAsync(chatId, env);
     return formatResponse(true, null, balance, {
         type: 'credit_history',
         balance: balance,
@@ -1436,13 +1826,49 @@ async function checkVipStatus(chatId, env) {
 }
 
 // ============================================================
-// 🔑 ADMIN — Проверка прав администратора через ADMIN_CHAT_ID
+// 🔑 ADMIN — Проверка прав администратора
 // ============================================================
-// Как в телеграм-боте: если chatId совпадает с ADMIN_CHAT_ID из env — это админ
+// Проверяет:
+// 1. ADMIN_CHAT_ID из env (как в телеграм-боте)
+// 2. Список admin_ids из KV (для VK/TG веб-пользователей)
 function checkAdminStatus(chatId, env) {
     const adminChatId = env.ADMIN_CHAT_ID;
-    if (!adminChatId) return false;
-    return String(chatId) === String(adminChatId);
+    // Check env.ADMIN_CHAT_ID (single admin, as in Telegram bot)
+    if (adminChatId && String(chatId) === String(adminChatId)) {
+        return true;
+    }
+    // Check KV storage for admin_ids list (supports VK/TG web users)
+    if (env.LAST_PHOTO_STORAGE) {
+        try {
+            // Synchronous check — we'll load from KV via a separate async version
+            // For now, the sync check covers the env variable
+        } catch(e) {}
+    }
+    return false;
+}
+
+// Async version that also checks KV storage for admin IDs list
+async function checkAdminStatusAsync(chatId, env) {
+    // First check env.ADMIN_CHAT_ID
+    const adminChatId = env.ADMIN_CHAT_ID;
+    if (adminChatId && String(chatId) === String(adminChatId)) {
+        return true;
+    }
+    // Then check KV storage for admin_ids list
+    if (env.LAST_PHOTO_STORAGE) {
+        try {
+            const stored = await env.LAST_PHOTO_STORAGE.get('admin_ids');
+            if (stored) {
+                const adminIds = stored.split(',').map(id => id.trim()).filter(id => id);
+                if (adminIds.includes(String(chatId))) {
+                    return true;
+                }
+            }
+        } catch(e) {
+            console.error("[WebHandler] Admin IDs read error:", e.message);
+        }
+    }
+    return false;
 }
 
 // ============================================================

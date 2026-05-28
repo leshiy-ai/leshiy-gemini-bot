@@ -12,6 +12,13 @@
 </head>
 <body>
     <div class="app">
+        <!-- DRAG-DROP OVERLAY — на уровне .app, работает во всех режимах -->
+        <div class="chat-drop-overlay" id="chatDropOverlay">
+            <div class="drop-icon">&#128206;</div>
+            <div>Перетащите файлы сюда</div>
+            <div style="font-size:12px;color:var(--text-muted)">Любые файлы: изображения, аудио, видео, документы</div>
+        </div>
+
         <!-- HEADER -->
         <div class="header">
             <div class="header-left">
@@ -81,11 +88,6 @@
 
         <!-- CHAT AREA -->
         <div class="chat-area" id="chatArea">
-            <div class="chat-drop-overlay" id="chatDropOverlay">
-                <div class="drop-icon">&#128206;</div>
-                <div>Перетащите файлы сюда</div>
-                <div style="font-size:12px;color:var(--text-muted)">Любые файлы: изображения, аудио, видео, документы</div>
-            </div>
             <div class="welcome" id="welcomeScreen">
                 <div class="logo-container">
                     <div class="logo-box">
@@ -542,6 +544,73 @@
     let selectedRotateAngle = '-90';
     let voiceCloneSample = null; // {base64, name} — образец голоса
     let lastGeneratedImage = null; // { base64, url } — последнее сгенерированное изображение
+
+    // ---- KIEAI TASK POLLING ----
+    // Polls the backend for KieAI async task status (image/video generation)
+    // Returns: { completed: true, data } or { completed: false, state } or throws on error
+    async function pollTaskStatus(taskId, taskType, maxAttempts, intervalMs) {
+        maxAttempts = maxAttempts || 60;
+        intervalMs = intervalMs || 5000;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                const resp = await fetch(API_URL + '/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'task_status',
+                        auth: getAuth(),
+                        payload: { task_id: taskId, task_type: taskType }
+                    })
+                });
+
+                if (!resp.ok) {
+                    throw new Error('Ошибка проверки статуса: ' + resp.status);
+                }
+
+                const data = await resp.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Задача не удалась');
+                }
+
+                // Task completed successfully
+                if (data.data?.type === 'image_url' || data.data?.type === 'video_url') {
+                    return { completed: true, url: data.data.content, type: data.data.type };
+                }
+
+                // Task still pending
+                if (data.data?.type === 'task_pending') {
+                    const state = data.data.state || 'processing';
+                    const progress = Math.min(Math.round(((attempt + 1) / maxAttempts) * 100), 95);
+                    if (this?._updateProgress) {
+                        this._updateProgress(state, attempt + 1, maxAttempts, progress);
+                    }
+                    // Wait before next poll
+                    await new Promise(resolve => setTimeout(resolve, intervalMs));
+                    continue;
+                }
+
+                // Unknown response — treat as pending
+                await new Promise(resolve => setTimeout(resolve, intervalMs));
+                continue;
+
+            } catch (err) {
+                // If it's a real failure (not a network blip), throw
+                if (err.message && (err.message.includes('не удалась') || err.message.includes('failed'))) {
+                    throw err;
+                }
+                // Network error — retry
+                if (attempt < maxAttempts - 1) {
+                    await new Promise(resolve => setTimeout(resolve, intervalMs));
+                    continue;
+                }
+                throw err;
+            }
+        }
+
+        throw new Error('Таймаут: задача не завершена за отведённое время');
+    }
 
     // НИКАКОГО ХАРДКОДА — модели загружаются ТОЛЬКО из /api (mode=models)
     // Пустые массивы = состояние загрузки, пока API не ответит
@@ -1099,7 +1168,9 @@
 
     // ---- AUTH HELPER для унифицированного API ----
     function getAuth() {
-        if (user) return { provider: user.provider, id: String(user.id), hash: user.hash || null };
+        if (user && user.id && String(user.id) !== 'undefined' && String(user.id) !== 'null' && String(user.id) !== '') {
+            return { provider: user.provider, id: String(user.id), hash: user.hash || null };
+        }
         return { provider: null, id: null, hash: null };
     }
 
@@ -1986,8 +2057,14 @@
         userInput.placeholder = placeholders[mode];
         inputHint.textContent = hints[mode];
 
-        // Кнопка прикрепления файлов — видна в чате и для референсов в видео
-        document.getElementById('chatFileBtn').style.display = (mode === 'chat') ? 'flex' : 'none';
+        // Кнопка прикрепления файлов — видна в чате и для референсов в видео/аудио
+        // Show the attach button in all modes — files are useful everywhere
+        document.getElementById('chatFileBtn').style.display = 'flex';
+
+        // Also handle chat file button clicks based on current mode
+        document.getElementById('chatFileBtn').onclick = function() {
+            document.getElementById('chatFileInput').click();
+        };
 
         if (mode === 'image') updateImagePlaceholder();
         if (mode === 'video') updateVideoPlaceholder();
@@ -2605,6 +2682,61 @@
                 if (data.credits_left !== undefined) credits = data.credits_left;
                 else if (!model?.isFree) credits -= cost;
 
+                // 🛑 KIEAI async task — poll for result instead of showing "go to Telegram"
+                if (data.data?.type === 'image_task') {
+                    const taskId = data.data.content;
+                    updateCreditsDisplay();
+                    // Show progress indicator and start polling
+                    resultArea.innerHTML = '<div style="text-align:center;padding:20px">' +
+                        '<div style="font-size:24px;margin-bottom:8px">&#9203;</div>' +
+                        '<div style="color:var(--accent);font-weight:600">Изображение генерируется...</div>' +
+                        '<div id="taskPollProgress" style="margin-top:8px;font-size:12px;color:var(--text-muted)">Ожидание результата (0%)</div>' +
+                        '<div style="margin-top:8px;width:100%;height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden">' +
+                        '<div id="taskPollBar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width 0.5s ease"></div>' +
+                        '</div></div>';
+                    showToast('Задача генерации запущена! Ожидайте результат...', 'success');
+
+                    // Start polling in background
+                    (async () => {
+                        try {
+                            const progressEl = document.getElementById('taskPollProgress');
+                            const barEl = document.getElementById('taskPollBar');
+                            const pollCtx = {
+                                _updateProgress: function(state, attempt, maxAttempts, pct) {
+                                    if (progressEl) {
+                                        const stateLabel = { waiting: 'В очереди', processing: 'Обработка', queued: 'В очереди' }[state] || state;
+                                        progressEl.textContent = stateLabel + ' (' + pct + '%)';
+                                    }
+                                    if (barEl) {
+                                        barEl.style.width = pct + '%';
+                                    }
+                                }
+                            };
+
+                            const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 60, 5000);
+
+                            // Display the result
+                            if (result.url) {
+                                const imgSrc = result.url;
+                                storeLastGeneratedImage(imgSrc);
+                                resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="Generated image">' +
+                                    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
+                                    '<a href="' + imgSrc + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>' +
+                                    '<button onclick="useImageInVideo()" style="color:var(--accent);font-size:13px;background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer">&#127916; Использовать в видео</button>' +
+                                    '</div>';
+                                showToast('Изображение создано!', 'success');
+                            }
+                        } catch (err) {
+                            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+                            showToast('Ошибка генерации: ' + err.message, 'error');
+                        } finally {
+                            isProcessing = false;
+                            sendBtn.disabled = false;
+                        }
+                    })();
+                    return;
+                }
+
                 if (data.data?.content) {
                     const content = data.data.content;
                     const imgSrc = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
@@ -2748,6 +2880,60 @@
 
             if (contentType.includes('application/json')) {
                 const data = await response.json();
+
+                // 🛑 KIEAI async video task — poll for result
+                if (data.data?.type === 'video_task') {
+                    const taskId = data.data.content;
+                    if (data.credits_left !== undefined) credits = data.credits_left;
+                    else credits -= cost;
+                    updateCreditsDisplay();
+
+                    // Show progress indicator and start polling
+                    resultArea.innerHTML = '<div style="text-align:center;padding:20px">' +
+                        '<div style="font-size:24px;margin-bottom:8px">&#9203;</div>' +
+                        '<div style="color:var(--accent);font-weight:600">Видео генерируется...</div>' +
+                        '<div id="videoTaskPollProgress" style="margin-top:8px;font-size:12px;color:var(--text-muted)">Ожидание результата (0%)</div>' +
+                        '<div style="margin-top:8px;width:100%;height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden">' +
+                        '<div id="videoTaskPollBar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width 0.5s ease"></div>' +
+                        '</div></div>';
+                    showToast('Задача генерации видео запущена! Ожидайте результат...', 'success');
+
+                    // Start polling in background
+                    (async () => {
+                        try {
+                            const progressEl = document.getElementById('videoTaskPollProgress');
+                            const barEl = document.getElementById('videoTaskPollBar');
+                            const pollCtx = {
+                                _updateProgress: function(state, attempt, maxAttempts, pct) {
+                                    if (progressEl) {
+                                        const stateLabel = { waiting: 'В очереди', processing: 'Обработка', queued: 'В очереди' }[state] || state;
+                                        progressEl.textContent = stateLabel + ' (' + pct + '%)';
+                                    }
+                                    if (barEl) {
+                                        barEl.style.width = pct + '%';
+                                    }
+                                }
+                            };
+
+                            const result = await pollTaskStatus.call(pollCtx, taskId, 'video', 60, 5000);
+
+                            // Display the result
+                            if (result.url) {
+                                resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + result.url + '" type="video/mp4"></video>' +
+                                    '<div style="margin-top:8px;text-align:center"><a href="' + result.url + '" download="video.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать видео</a></div>';
+                                showToast('Видео создано!', 'success');
+                            }
+                        } catch (err) {
+                            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+                            showToast('Ошибка генерации видео: ' + err.message, 'error');
+                        } finally {
+                            isProcessing = false;
+                            sendBtn.disabled = false;
+                        }
+                    })();
+                    return;
+                }
+
                 const videoUrl = data.data?.content || data.data?.url || data.url;
                 if (videoUrl) {
                     resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + videoUrl + '" type="video/mp4"></video>' +
@@ -2804,6 +2990,7 @@
                     payload: {
                         prompt: prompt,
                         video_base64: base64,
+                        video_mime_type: file.type || 'video/mp4',
                         video_mode: 'convert',  // бэкенд использует 'convert' для анализа
                         model: analysisModel
                     }
@@ -2923,7 +3110,7 @@
                 body: JSON.stringify({
                     mode: 'audio',
                     auth: getAuth(),
-                    payload: { audio_base64: audioBase64, model: selected.audio_stt || 'AUDIO_TO_TEXT_GEMINI', audio_mode: 'stt' }
+                    payload: { audio_base64: audioBase64, audio_mime_type: file.type || 'audio/mpeg', model: selected.audio_stt || 'AUDIO_TO_TEXT_GEMINI', audio_mode: 'stt' }
                 })
             });
 
@@ -3462,6 +3649,9 @@
     }
 
     function showProfileDialog() {
+        // Refresh credit history from server before showing
+        loadServerData();
+
         // Показываем диалог профиля с кнопкой выхода
         const profileDialog = document.getElementById('profileDialog');
         const profileName = document.getElementById('profileName');
@@ -3645,6 +3835,12 @@
             if (id.startsWith('imageRef')) {
                 const index = parseInt(id.replace('imageRef', ''));
                 handleImageRef(index, { files: files, value: '' });
+            } else if (id === 'imageUpscaleZone') {
+                handleImageUpscale({ files: files, value: '' });
+            } else if (id === 'imageRotateZone') {
+                handleImageRotateUpload({ files: files, value: '' });
+            } else if (id === 'imageConvertZone') {
+                handleImageConvertUpload({ files: files, value: '' });
             } else if (id === 'audioUploadZone') {
                 handleAudioUpload({ files: files, value: '' });
             } else if (id === 'videoI2VRefImg') {
@@ -4333,71 +4529,81 @@
 
         inputArea.addEventListener('drop', function(e) {
             e.preventDefault();
-            e._handled = true; // Mark as handled so .app handler doesn't double-process
             dragCounter = 0;
             if (overlay) overlay.classList.remove('visible');
 
             const files = e.dataTransfer.files;
             if (!files.length) return;
+            const file = files[0];
+            const fileType = file.type || '';
 
-            // Роутинг по текущему режиму
-            if (currentMode === 'chat') {
-                processChatFiles(files);
-            } else if (currentMode === 'image') {
-                // В режиме генерации — как референс
-                if (selected.imageSubMode === 'generate') {
-                    if (files[0].type.startsWith('image/')) {
-                        handleImageRef(0, { files: files, value: '' });
-                    }
-                } else if (selected.imageSubMode === 'upscale') {
-                    handleImageUpscale({ files: files, value: '' });
-                } else if (selected.imageSubMode === 'rotate') {
-                    handleImageRotateUpload({ files: files, value: '' });
-                } else if (selected.imageSubMode === 'convert') {
-                    handleImageConvertUpload({ files: files, value: '' });
-                }
-            } else if (currentMode === 'video') {
-                if (selected.videoSubMode === 'i2v' && files[0].type.startsWith('image/')) {
+            // Smart cross-mode routing — same logic as the main .app drop handler
+            // This ensures drag-and-drop works correctly regardless of current mode
+            if (fileType.startsWith('image/')) {
+                if (currentMode === 'chat') {
+                    processChatFiles(files);
+                } else if (currentMode === 'image') {
+                    if (selected.imageSubMode === 'upscale') handleImageUpscale({ files: files, value: '' });
+                    else if (selected.imageSubMode === 'rotate') handleImageRotateUpload({ files: files, value: '' });
+                    else if (selected.imageSubMode === 'convert') handleImageConvertUpload({ files: files, value: '' });
+                    else handleImageRef(0, { files: files, value: '' });
+                } else if (currentMode === 'video') {
+                    selected.videoSubMode = 'i2v';
+                    renderVideoSubHeader();
+                    switchVideoSubMode('i2v');
                     handleVideoRef('image', { files: files, value: '' });
-                } else if (selected.videoSubMode === 'v2v' && files[0].type.startsWith('video/')) {
-                    handleVideoRef('video', { files: files, value: '' });
-                } else if (selected.videoSubMode === 'a2v' && files[0].type.startsWith('audio/')) {
-                    handleVideoRef('audio', { files: files, value: '' });
-                } else if (selected.videoSubMode === 'analysis' && files[0].type.startsWith('video/')) {
-                    handleVideoConvert({ files: files, value: '' });
                 } else {
-                    // Автоопределение: пробуем подставить куда подходит
-                    const file = files[0];
-                    if (file.type.startsWith('image/')) {
-                        selected.videoSubMode = 'i2v';
-                        renderVideoSubHeader();
-                        switchVideoSubMode('i2v');
-                        handleVideoRef('image', { files: files, value: '' });
-                    } else if (file.type.startsWith('video/')) {
+                    switchMode('image');
+                    selected.imageSubMode = 'generate';
+                    renderImageSubHeader();
+                    switchImageSubMode('generate');
+                    handleImageRef(0, { files: files, value: '' });
+                }
+            } else if (fileType.startsWith('video/')) {
+                if (currentMode === 'chat') {
+                    processChatFiles(files);
+                } else if (currentMode === 'video') {
+                    if (selected.videoSubMode === 'v2v') {
+                        handleVideoRef('video', { files: files, value: '' });
+                    } else {
                         selected.videoSubMode = 'analysis';
                         renderVideoSubHeader();
                         switchVideoSubMode('analysis');
                         handleVideoConvert({ files: files, value: '' });
-                    } else if (file.type.startsWith('audio/')) {
-                        selected.videoSubMode = 'a2v';
-                        renderVideoSubHeader();
-                        switchVideoSubMode('a2v');
-                        handleVideoRef('audio', { files: files, value: '' });
                     }
+                } else {
+                    switchMode('video');
+                    selected.videoSubMode = 'analysis';
+                    renderVideoSubHeader();
+                    switchVideoSubMode('analysis');
+                    handleVideoConvert({ files: files, value: '' });
                 }
-            } else if (currentMode === 'audio') {
-                if (selected.audioSubMode === 'stt' && files[0].type.startsWith('audio/')) {
-                    handleAudioUpload({ files: files, value: '' });
-                } else if (selected.audioSubMode === 'convert' && files[0].type.startsWith('audio/')) {
-                    handleAudioConvert({ files: files, value: '' });
-                } else if (selected.audioSubMode === 'voice_clone' && files[0].type.startsWith('audio/')) {
-                    handleVoiceClone({ files: files, value: '' });
-                } else if (files[0].type.startsWith('audio/')) {
-                    // Авто: переключаемся на STT
+            } else if (fileType.startsWith('audio/')) {
+                if (currentMode === 'chat') {
+                    processChatFiles(files);
+                } else if (currentMode === 'audio') {
+                    if (selected.audioSubMode === 'convert') handleAudioConvert({ files: files, value: '' });
+                    else if (selected.audioSubMode === 'voice_clone') handleVoiceClone({ files: files, value: '' });
+                    else handleAudioUpload({ files: files, value: '' });
+                } else if (currentMode === 'video') {
+                    selected.videoSubMode = 'a2v';
+                    renderVideoSubHeader();
+                    switchVideoSubMode('a2v');
+                    handleVideoRef('audio', { files: files, value: '' });
+                } else {
+                    switchMode('audio');
                     selected.audioSubMode = 'stt';
                     renderAudioSubHeader();
                     switchAudioSubMode('stt');
                     handleAudioUpload({ files: files, value: '' });
+                }
+            } else {
+                // Other files → chat (vision/document analysis)
+                if (currentMode === 'chat') {
+                    processChatFiles(files);
+                } else {
+                    switchMode('chat');
+                    processChatFiles(files);
                 }
             }
         });
