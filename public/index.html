@@ -588,6 +588,89 @@
         return files ? { files: files, value: '' } : null;
     }
 
+    // 🧠 Сделать картинку перетаскиваемой в поле ввода (drag to chat input)
+    // Применяется ко ВСЕМ result-area картинкам: сгенерированным, повёрнутым, сконвертированным
+    function makeResultImageDraggable(imgEl, base64Data) {
+        if (!imgEl) return;
+        imgEl.draggable = true;
+        imgEl.style.cursor = 'grab';
+        imgEl.addEventListener('dragstart', function(e) {
+            e.dataTransfer.effectAllowed = 'copy';
+            // Создаём вложение для drag state
+            const att = {
+                name: 'image.png',
+                type: 'image/png',
+                base64: base64Data,
+                previewUrl: imgEl.src,
+                icon: '&#128247;',
+                category: 'image'
+            };
+            // Если base64 нет — пробуем извлечь из src
+            if (!att.base64 && imgEl.src.startsWith('data:')) {
+                att.base64 = imgEl.src.split(',')[1] || '';
+            }
+            _dragState = { attachment: att, sourceIndex: -1 };
+            // Пробуем добавить File в dataTransfer
+            const b64 = att.base64;
+            if (b64) {
+                try {
+                    const byteString = atob(b64);
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+                    const blob = new Blob([ab], { type: 'image/png' });
+                    const file = new File([blob], 'image.png', { type: 'image/png' });
+                    e.dataTransfer.items.add(file);
+                } catch(err) {
+                    console.warn('[DragDrop] Could not add file to dataTransfer:', err);
+                }
+            }
+            imgEl.style.opacity = '0.5';
+        });
+        imgEl.addEventListener('dragend', function() {
+            imgEl.style.opacity = '1';
+            _dragState = null;
+        });
+    }
+
+    // 🧠 MutationObserver: автоматически делает ВСЕ появляющиеся .generated-image перетаскиваемыми
+    // Работает для генерации, апскейла, поворота, конвертации — везде где появляются картинки
+    (function() {
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(m) {
+                m.addedNodes.forEach(function(node) {
+                    if (node.nodeType !== 1) return;
+                    // Проверяем сам элемент и дочерние
+                    const imgs = node.querySelectorAll ? node.querySelectorAll('.generated-image, .result-area img') : [];
+                    imgs.forEach(function(img) {
+                        if (!img._dragEnabled) {
+                            img._dragEnabled = true;
+                            let b64 = null;
+                            if (img.src && img.src.startsWith('data:')) {
+                                b64 = img.src.split(',')[1] || '';
+                            }
+                            makeResultImageDraggable(img, b64);
+                        }
+                    });
+                    // Если сам узел — картинка
+                    if (node.tagName === 'IMG' && !node._dragEnabled) {
+                        node._dragEnabled = true;
+                        let b64 = null;
+                        if (node.src && node.src.startsWith('data:')) {
+                            b64 = node.src.split(',')[1] || '';
+                        }
+                        makeResultImageDraggable(node, b64);
+                    }
+                });
+            });
+        });
+        // Наблюдаем за .chat-area и .media-panel
+        const chatArea = document.getElementById('chatArea');
+        if (chatArea) observer.observe(chatArea, { childList: true, subtree: true });
+        const imagePanel = document.getElementById('imagePanel');
+        if (imagePanel) observer.observe(imagePanel, { childList: true, subtree: true });
+    })();
+
     // ---- KIEAI TASK POLLING ----
     // Polls the backend for KieAI async task status (image/video generation)
     // Returns: { completed: true, data } or { completed: false, state } or throws on error
@@ -2296,6 +2379,66 @@
             _dragState = null; // Сбрасываем после обработки
         });
 
+        // 🧠 INPUT AREA как drop-target: перетаскивание картинок из result-area в поле ввода
+        const inputArea = document.querySelector('.input-area');
+        if (inputArea) {
+            inputArea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                inputArea.style.outline = '2px dashed var(--accent)';
+                inputArea.style.outlineOffset = '-2px';
+            });
+            inputArea.addEventListener('dragleave', function(e) {
+                inputArea.style.outline = '';
+            });
+            inputArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                inputArea.style.outline = '';
+                // Если есть _dragState с картинкой — добавляем как вложение в чат
+                if (_dragState && _dragState.attachment) {
+                    const att = _dragState.attachment;
+                    // Переключаемся в чат если не в нём
+                    if (currentMode !== 'chat') switchMode('chat');
+                    // Добавляем вложение
+                    const attachment = {
+                        name: att.name || 'image.png',
+                        type: att.type || 'image/png',
+                        base64: att.base64,
+                        previewUrl: att.previewUrl || null,
+                        icon: '&#128247;',
+                        category: 'image'
+                    };
+                    if (!attachment.previewUrl && att.base64) {
+                        attachment.previewUrl = 'data:' + attachment.type + ';base64,' + att.base64.substring(0, 100);
+                    }
+                    // Загружаем previewUrl через URL.createObjectURL если base64 есть
+                    if (att.base64) {
+                        try {
+                            const byteString = atob(att.base64);
+                            const ab = new ArrayBuffer(byteString.length);
+                            const ia = new Uint8Array(ab);
+                            for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+                            const blob = new Blob([ab], { type: attachment.type });
+                            attachment.previewUrl = URL.createObjectURL(blob);
+                        } catch(err) {}
+                    }
+                    chatAttachments.push(attachment);
+                    renderChatAttachments();
+                    showToast('Картинка добавлена как вложение', 'success');
+                    _dragState = null;
+                    return;
+                }
+                // Файлы с десктопа
+                const input = getDropInput(e);
+                if (input && input.files) {
+                    if (currentMode !== 'chat') switchMode('chat');
+                    processChatFiles(input.files);
+                    _dragState = null;
+                }
+            });
+        }
+
         // Drag-out: удаление вложения при перетаскивании за пределы приложения
         document.querySelector('.app').addEventListener('dragover', function(e) {
             // Если перетаскивают вложение (не внешний файл) — показываем подсказку
@@ -2725,7 +2868,13 @@
 
     async function sendOrGenerate() {
         const text = userInput.value.trim();
-        if ((!text && chatAttachments.length === 0) || isProcessing) return;
+        // 🧠 Для upscale/rotate/convert промпт не нужен — проверяем только isProcessing
+        const isImageToolMode = currentMode === 'image' && ['upscale', 'rotate', 'convert'].includes(selected.imageSubMode);
+        const isVideoAnalysis = currentMode === 'video' && selected.videoSubMode === 'analysis';
+        const isAudioToolMode = currentMode === 'audio' && ['stt', 'convert', 'voice_clone'].includes(selected.audioSubMode);
+        if (isProcessing) return;
+        // Требуем текст или вложения ТОЛЬКО для режимов где промпт нужен
+        if (!isImageToolMode && !isVideoAnalysis && !isAudioToolMode && !text && chatAttachments.length === 0) return;
 
         if (currentMode === 'chat') {
             await sendChat(text);
@@ -3726,7 +3875,16 @@
         if (!file) return;
         try {
             upscaleImageBase64 = await fileToBase64(file);
-            document.getElementById('imageUpscaleResult').innerHTML = '<span class="result-placeholder" style="color:var(--success)">&#10003; Изображение загружено. Нажмите отправить для увеличения.</span>';
+            // Показываем предпросмотр изображения в зоне загрузки
+            const src = 'data:' + (file.type || 'image/png') + ';base64,' + upscaleImageBase64;
+            const zone = document.getElementById('imageUpscaleZone');
+            if (zone) {
+                zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для апскейла">' +
+                    '<input type="file" id="imageUpscaleInput" accept="image/*" style="display:none" onchange="handleImageUpscale(this)">' +
+                    '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Нажмите отправить для увеличения.</div>';
+                zone.onclick = function() { document.getElementById('imageUpscaleInput').click(); };
+            }
+            document.getElementById('imageUpscaleResult').innerHTML = '<span class="result-placeholder">Здесь появится увеличенное изображение</span>';
             showToast('Фото загружено. Нажмите отправить для апскейла.', 'info');
         } catch (err) {
             showToast('Ошибка загрузки фото', 'error');
@@ -3811,7 +3969,16 @@
         try {
             rotateImageBase64 = await fileToBase64(file);
             document.getElementById('imageRotateControls').style.display = 'block';
-            document.getElementById('imageRotateResult').innerHTML = '<span class="result-placeholder" style="color:var(--success)">&#10003; Изображение загружено. Выберите угол и отправьте.</span>';
+            // Показываем предпросмотр изображения в зоне загрузки
+            const src = 'data:' + (file.type || 'image/png') + ';base64,' + rotateImageBase64;
+            const zone = document.getElementById('imageRotateZone');
+            if (zone) {
+                zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для поворота">' +
+                    '<input type="file" id="imageRotateInput" accept="image/*" style="display:none" onchange="handleImageRotateUpload(this)">' +
+                    '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Выберите угол и отправьте.</div>';
+                zone.onclick = function() { document.getElementById('imageRotateInput').click(); };
+            }
+            document.getElementById('imageRotateResult').innerHTML = '<span class="result-placeholder">Здесь появится повёрнутое изображение</span>';
             showToast('Фото загружено. Выберите угол поворота и нажмите отправить.', 'info');
         } catch (err) {
             showToast('Ошибка загрузки фото', 'error');
@@ -3915,7 +4082,16 @@
         try {
             convertImageBase64 = await fileToBase64(file);
             document.getElementById('imageConvertFormat').style.display = 'block';
-            document.getElementById('imageConvertResult').innerHTML = '<span class="result-placeholder" style="color:var(--success)">&#10003; Изображение загружено. Выберите формат и отправьте.</span>';
+            // Показываем предпросмотр изображения в зоне загрузки
+            const src = 'data:' + (file.type || 'image/png') + ';base64,' + convertImageBase64;
+            const zone = document.getElementById('imageConvertZone');
+            if (zone) {
+                zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для конвертации">' +
+                    '<input type="file" id="imageConvertInput" accept="image/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                    '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Выберите формат и отправьте.</div>';
+                zone.onclick = function() { document.getElementById('imageConvertInput').click(); };
+            }
+            document.getElementById('imageConvertResult').innerHTML = '<span class="result-placeholder">Здесь появится сконвертированное изображение</span>';
         } catch (err) {
             showToast('Ошибка загрузки фото', 'error');
         }
@@ -4583,12 +4759,14 @@
         let touchStartX = 0;
         let touchCurrentX = 0;
         let swipingEl = null;
+        let swipingHeight = 0;
 
         chatArea.addEventListener('touchstart', function(e) {
             const row = e.target.closest('.msg-row');
             if (!row) return;
             touchStartX = e.touches[0].clientX;
             swipingEl = row;
+            swipingHeight = row.offsetHeight;
             row.style.transition = 'none';
         }, { passive: true });
 
@@ -4608,17 +4786,31 @@
             if (!swipingEl) return;
             const deltaX = touchCurrentX - touchStartX;
             const threshold = 100;
-            swipingEl.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
 
             if (Math.abs(deltaX) > threshold) {
-                // Удаляем сообщение со свайпом
-                swipingEl.style.transform = 'translateX(' + (deltaX > 0 ? '200px' : '-200px') + ')';
-                swipingEl.style.opacity = '0';
+                // Удаляем сообщение со свайпом — схлопываем высоту
+                const el = swipingEl;
+                el.style.transition = 'transform 0.3s ease, opacity 0.3s ease, height 0.3s ease, margin 0.3s ease, padding 0.3s ease';
+                el.style.transform = 'translateX(' + (deltaX > 0 ? '200px' : '-200px') + ')';
+                el.style.opacity = '0';
+                // Схлопываем высоту чтобы не было дыры
+                el.style.height = swipingHeight + 'px';
+                el.style.overflow = 'hidden';
+                // Запускаем схлопывание на следующем кадре
+                requestAnimationFrame(function() {
+                    requestAnimationFrame(function() {
+                        el.style.height = '0px';
+                        el.style.marginBottom = '0px';
+                        el.style.paddingTop = '0px';
+                        el.style.paddingBottom = '0px';
+                    });
+                });
                 setTimeout(() => {
-                    swipingEl.remove();
-                }, 300);
+                    el.remove();
+                }, 350);
             } else {
                 // Возвращаем обратно
+                swipingEl.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
                 swipingEl.style.transform = '';
                 swipingEl.style.opacity = '';
             }

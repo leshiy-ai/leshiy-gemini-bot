@@ -857,19 +857,17 @@ async function handleVideo(auth, payload, env, monolith) {
 
             // Different video analysis functions have different signatures
             try {
+                const videoMime = payload.video_mime_type || 'video/mp4';
                 if (config.FUNCTION.name === 'callGeminiVideoVision') {
-                    // Gemini Video Vision: (config, prompt, env, videoBase64)
-                    result = await config.FUNCTION(config, prompt, env, payload.video_base64);
+                    // Gemini Video Vision: (config, videoBuffer, mimeType, envData)
+                    result = await config.FUNCTION(config, videoBuffer, videoMime, env);
                 } else if (config.FUNCTION.name === 'callBothubVideoVision') {
-                    const videoMime = payload.video_mime_type || 'video/mp4';
                     result = await config.FUNCTION(config, videoBuffer, videoMime, env);
                 } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
                     result = await callWorkersAIWeb(config, videoBuffer, env);
                 } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
-                    const videoMime = payload.video_mime_type || 'video/mp4';
                     result = await callBotHubSTTWeb(config, videoBuffer, env, videoMime);
                 } else if (config.FUNCTION.name === 'callPollinationsSTT') {
-                    const videoMime = payload.video_mime_type || 'video/mp4';
                     result = await callPollinationsSTTWeb(config, videoBuffer, env, videoMime);
                 } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
                     result = await config.FUNCTION(config, videoBuffer, env);
@@ -908,9 +906,9 @@ async function handleVideo(auth, payload, env, monolith) {
                                 } else if (fallbackModel.FUNCTION.name === 'callGeminiSpeechToText') {
                                     result = await fallbackModel.FUNCTION(fallbackModel, videoBuffer, env);
                                 } else if (fallbackModel.FUNCTION.name === 'callGeminiVideoVision') {
-                                    result = await fallbackModel.FUNCTION(fallbackModel, prompt, env, payload.video_base64);
+                                    result = await fallbackModel.FUNCTION(fallbackModel, videoBuffer, videoMime, env);
                                 } else {
-                                    result = await fallbackModel.FUNCTION(fallbackModel, prompt, env, payload.video_base64);
+                                    result = await fallbackModel.FUNCTION(fallbackModel, videoBuffer, env);
                                 }
                                 // Если успешно — выходим из цикла
                                 if (result) break;
