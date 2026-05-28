@@ -848,7 +848,7 @@ async function handleVideo(auth, payload, env, monolith) {
 
         let result;
         try {
-            const modelInfo = getWebModel('VIDEO_TO_ANALYSIS', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+            let modelInfo = getWebModel('VIDEO_TO_ANALYSIS', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для анализа видео');
             console.log(`[WebHandler] Video analysis using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
@@ -856,38 +856,73 @@ async function handleVideo(auth, payload, env, monolith) {
             const videoBuffer = Buffer.from(payload.video_base64, 'base64');
 
             // Different video analysis functions have different signatures
-            if (config.FUNCTION.name === 'callGeminiVideoVision') {
-                // Gemini Video Vision: (config, prompt, env, videoBase64)
-                result = await config.FUNCTION(config, prompt, env, payload.video_base64);
-            } else if (config.FUNCTION.name === 'callBothubVideoVision') {
-                // BotHub Video Vision: (config, videoDataBuffer, videoMimeType, env)
-                // videoMimeType определяем по расширению или по умолчанию video/mp4
-                const videoMime = payload.video_mime_type || 'video/mp4';
-                result = await config.FUNCTION(config, videoBuffer, videoMime, env);
-            } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
-                // Workers AI Whisper for video: (config, videoBuffer, env)
-                result = await callWorkersAIWeb(config, videoBuffer, env);
-            } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
-                // BotHub Whisper for video: используем веб-обёртку с правильным MIME
-                const videoMime = payload.video_mime_type || 'video/mp4';
-                result = await callBotHubSTTWeb(config, videoBuffer, env, videoMime);
-            } else if (config.FUNCTION.name === 'callPollinationsSTT') {
-                // Pollinations STT for video: используем веб-обёртку без Blob
-                const videoMime = payload.video_mime_type || 'video/mp4';
-                result = await callPollinationsSTTWeb(config, videoBuffer, env, videoMime);
-            } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
-                // Gemini STT for video: (config, videoBuffer, env)
-                result = await config.FUNCTION(config, videoBuffer, env);
-            } else {
-                // Generic: try with prompt + base64 first, then buffer
-                try {
+            try {
+                if (config.FUNCTION.name === 'callGeminiVideoVision') {
+                    // Gemini Video Vision: (config, prompt, env, videoBase64)
                     result = await config.FUNCTION(config, prompt, env, payload.video_base64);
-                } catch(_) {
+                } else if (config.FUNCTION.name === 'callBothubVideoVision') {
+                    const videoMime = payload.video_mime_type || 'video/mp4';
+                    result = await config.FUNCTION(config, videoBuffer, videoMime, env);
+                } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
+                    result = await callWorkersAIWeb(config, videoBuffer, env);
+                } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
+                    const videoMime = payload.video_mime_type || 'video/mp4';
+                    result = await callBotHubSTTWeb(config, videoBuffer, env, videoMime);
+                } else if (config.FUNCTION.name === 'callPollinationsSTT') {
+                    const videoMime = payload.video_mime_type || 'video/mp4';
+                    result = await callPollinationsSTTWeb(config, videoBuffer, env, videoMime);
+                } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
+                    result = await config.FUNCTION(config, videoBuffer, env);
+                } else {
                     try {
-                        result = await config.FUNCTION(config, videoBuffer, env);
-                    } catch(__) {
-                        result = await config.FUNCTION(config, payload.video_base64, env);
+                        result = await config.FUNCTION(config, prompt, env, payload.video_base64);
+                    } catch(_) {
+                        try {
+                            result = await config.FUNCTION(config, videoBuffer, env);
+                        } catch(__) {
+                            result = await config.FUNCTION(config, payload.video_base64, env);
+                        }
                     }
+                }
+            } catch (modelErr) {
+                // 🛑 Фоллбэк: если основная модель не работает (нет API ключа) — пробуем другую
+                if (modelErr.message && modelErr.message.includes('key is missing')) {
+                    console.warn(`[WebHandler] Video analysis model ${modelInfo.key} failed (missing key), trying fallback models...`);
+                    // Пробуем все модели VIDEO_TO_ANALYSIS по очереди
+                    const menuConfig = AI_MODEL_MENU_CONFIG['VIDEO_TO_ANALYSIS'];
+                    if (menuConfig && menuConfig.models) {
+                        for (const [fallbackKey] of Object.entries(menuConfig.models)) {
+                            if (fallbackKey === modelInfo.key) continue; // Пропускаем уже пробованную
+                            const fallbackModel = AI_MODELS[fallbackKey];
+                            if (!fallbackModel) continue;
+                            console.log(`[WebHandler] Trying fallback: ${fallbackKey} (${fallbackModel.SERVICE})`);
+                            try {
+                                if (fallbackModel.FUNCTION.name === 'callWorkersAISpeechToText') {
+                                    result = await callWorkersAIWeb(fallbackModel, videoBuffer, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callBotHubAudioToText') {
+                                    const videoMime = payload.video_mime_type || 'video/mp4';
+                                    result = await callBotHubSTTWeb(fallbackModel, videoBuffer, env, videoMime);
+                                } else if (fallbackModel.FUNCTION.name === 'callPollinationsSTT') {
+                                    const videoMime = payload.video_mime_type || 'video/mp4';
+                                    result = await callPollinationsSTTWeb(fallbackModel, videoBuffer, env, videoMime);
+                                } else if (fallbackModel.FUNCTION.name === 'callGeminiSpeechToText') {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, videoBuffer, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callGeminiVideoVision') {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, prompt, env, payload.video_base64);
+                                } else {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, prompt, env, payload.video_base64);
+                                }
+                                // Если успешно — выходим из цикла
+                                if (result) break;
+                            } catch (fallbackErr) {
+                                console.warn(`[WebHandler] Fallback ${fallbackKey} also failed:`, fallbackErr.message);
+                                continue;
+                            }
+                        }
+                    }
+                    if (!result) throw modelErr; // Если все фоллбэки не сработали — бросаем оригинальную ошибку
+                } else {
+                    throw modelErr;
                 }
             }
 
@@ -1037,37 +1072,64 @@ async function handleAudio(auth, payload, env, monolith) {
 
         let result;
         try {
-            const modelInfo = getWebModel('AUDIO_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+            let modelInfo = getWebModel('AUDIO_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для распознавания');
             console.log(`[WebHandler] STT using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
-            const config = modelInfo.config;
             const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
             const audioMimeType = payload.audio_mime_type || 'audio/mpeg';
 
             // Different STT functions have different signatures
-            if (config.FUNCTION.name === 'callGeminiSpeechToText') {
-                // Gemini STT: (config, audioBuffer, env)
-                result = await config.FUNCTION(config, audioBuffer, env);
-            } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
-                // Workers AI Whisper: (config, audioBuffer, env)
-                result = await callWorkersAIWeb(config, audioBuffer, env);
-            } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
-                // BotHub Whisper: (config, audioDataBuffer, env)
-                // 🛑 ФИКС: Передаём корректный MIME-тип, а не хардкод 'audio/ogg'
-                // BotHub функция использует хардкод 'audio/ogg' для Telegram,
-                // но для веб-фронтенда аудио приходит как MP3/WAV/OGG — надо передать MIME
-                result = await callBotHubSTTWeb(config, audioBuffer, env, audioMimeType);
-            } else if (config.FUNCTION.name === 'callPollinationsSTT') {
-                // Pollinations STT: 🛑 ФИКС — используем manual multipart вместо Blob/FormData
-                // (Blob недоступен в Node.js < 18, FormData может быть несовместим)
-                result = await callPollinationsSTTWeb(config, audioBuffer, env, audioMimeType);
-            } else {
-                // Generic: try buffer first, then base64
-                try {
+            try {
+                const config = modelInfo.config;
+                if (config.FUNCTION.name === 'callGeminiSpeechToText') {
                     result = await config.FUNCTION(config, audioBuffer, env);
-                } catch(_) {
-                    result = await config.FUNCTION(config, payload.audio_base64, env);
+                } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
+                    result = await callWorkersAIWeb(config, audioBuffer, env);
+                } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
+                    result = await callBotHubSTTWeb(config, audioBuffer, env, audioMimeType);
+                } else if (config.FUNCTION.name === 'callPollinationsSTT') {
+                    result = await callPollinationsSTTWeb(config, audioBuffer, env, audioMimeType);
+                } else {
+                    try {
+                        result = await config.FUNCTION(config, audioBuffer, env);
+                    } catch(_) {
+                        result = await config.FUNCTION(config, payload.audio_base64, env);
+                    }
+                }
+            } catch (modelErr) {
+                // 🛑 Фоллбэк: если основная модель не работает (нет API ключа / Invalid audio input) — пробуем другую
+                if (modelErr.message && (modelErr.message.includes('key is missing') || modelErr.message.includes('Invalid audio'))) {
+                    console.warn(`[WebHandler] STT model ${modelInfo.key} failed: ${modelErr.message}, trying fallback...`);
+                    const menuConfig = AI_MODEL_MENU_CONFIG['AUDIO_TO_TEXT'];
+                    if (menuConfig && menuConfig.models) {
+                        for (const [fallbackKey] of Object.entries(menuConfig.models)) {
+                            if (fallbackKey === modelInfo.key) continue;
+                            const fallbackModel = AI_MODELS[fallbackKey];
+                            if (!fallbackModel) continue;
+                            console.log(`[WebHandler] Trying STT fallback: ${fallbackKey} (${fallbackModel.SERVICE})`);
+                            try {
+                                if (fallbackModel.FUNCTION.name === 'callWorkersAISpeechToText') {
+                                    result = await callWorkersAIWeb(fallbackModel, audioBuffer, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callBotHubAudioToText') {
+                                    result = await callBotHubSTTWeb(fallbackModel, audioBuffer, env, audioMimeType);
+                                } else if (fallbackModel.FUNCTION.name === 'callPollinationsSTT') {
+                                    result = await callPollinationsSTTWeb(fallbackModel, audioBuffer, env, audioMimeType);
+                                } else if (fallbackModel.FUNCTION.name === 'callGeminiSpeechToText') {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, audioBuffer, env);
+                                } else {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, audioBuffer, env);
+                                }
+                                if (result) break;
+                            } catch (fallbackErr) {
+                                console.warn(`[WebHandler] STT fallback ${fallbackKey} also failed:`, fallbackErr.message);
+                                continue;
+                            }
+                        }
+                    }
+                    if (!result) throw modelErr;
+                } else {
+                    throw modelErr;
                 }
             }
 
@@ -1829,7 +1891,8 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 const safeResult = result != null ? (JSON.stringify(result) || '').substring(0, 1000) : 'null';
                 console.log(`[WebHandler] KieAI success but no URL found. Full output:`, safeOutput);
                 console.log(`[WebHandler] Full result:`, safeResult);
-                return formatResponse(false, 'Задача выполнена, но результат не найден в ответе');
+                // 🛑 ФАТАЛЬНАЯ ошибка — НЕ повторять! Задача выполнена но результат не найден
+                return formatResponse(false, 'Задача не удалась: результат не найден в ответе KieAI');
             }
         } else if (state === 'waiting' || state === 'processing' || state === 'queued') {
             // Task still in progress

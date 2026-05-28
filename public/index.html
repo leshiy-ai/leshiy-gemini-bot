@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gemini-AI</title>
+    <title>Gemini-AI Premium</title>
     <meta name="description" content="Gemini-AI — чат с ИИ, генерация изображений, видео и аудио">
     <meta name="theme-color" content="#1a1a2e">
     <link rel="icon" type="image/svg+xml" href="/images/gemini_purple.svg">
@@ -23,7 +23,7 @@
         <div class="header">
             <div class="header-left">
                 <div class="header-logo">Gemini<span>-AI</span></div>
-                <div class="header-badge">Beta</div>
+                <div class="header-badge">Premium</div>
             </div>
             <div class="header-right">
                 <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()" title="Купить кредиты">
@@ -127,22 +127,22 @@
                 <div>
                     <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Референсные изображения (до 4):</label>
                     <div id="imageRefSlots" style="display:flex;gap:8px;flex-wrap:wrap">
-                        <div class="upload-zone" id="imageRef0" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('imageRefInput0').click()">
+                        <div class="upload-zone" id="imageRef0" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="if(!_dropJustHappened)document.getElementById('imageRefInput0').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
                             <div class="hint" style="margin:0;font-size:11px">Реф. 1</div>
                             <input type="file" id="imageRefInput0" accept="image/*" style="display:none" onchange="handleImageRef(0,this)">
                         </div>
-                        <div class="upload-zone" id="imageRef1" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput1').click()">
+                        <div class="upload-zone" id="imageRef1" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="if(!_dropJustHappened)document.getElementById('imageRefInput1').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
                             <div class="hint" style="margin:0;font-size:11px">Реф. 2</div>
                             <input type="file" id="imageRefInput1" accept="image/*" style="display:none" onchange="handleImageRef(1,this)">
                         </div>
-                        <div class="upload-zone" id="imageRef2" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput2').click()">
+                        <div class="upload-zone" id="imageRef2" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="if(!_dropJustHappened)document.getElementById('imageRefInput2').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
                             <div class="hint" style="margin:0;font-size:11px">Реф. 3</div>
                             <input type="file" id="imageRefInput2" accept="image/*" style="display:none" onchange="handleImageRef(2,this)">
                         </div>
-                        <div class="upload-zone" id="imageRef3" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="document.getElementById('imageRefInput3').click()">
+                        <div class="upload-zone" id="imageRef3" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;flex-direction:column;align-items:center;justify-content:center;position:relative;display:none" onclick="if(!_dropJustHappened)document.getElementById('imageRefInput3').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
                             <div class="hint" style="margin:0;font-size:11px">Реф. 4</div>
                             <input type="file" id="imageRefInput3" accept="image/*" style="display:none" onchange="handleImageRef(3,this)">
@@ -160,7 +160,7 @@
                     <h3>&#128269; Увеличение разрешения</h3>
                     <p>Загрузите фото — я увеличу разрешение в 4 раза. Стоимость: 2&#162;.</p>
                 </div>
-                <div class="upload-zone" id="imageUpscaleZone" onclick="document.getElementById('imageUpscaleInput').click()">
+                <div class="upload-zone" id="imageUpscaleZone" onclick="if(!_dropJustHappened)document.getElementById('imageUpscaleInput').click()">
                     <div class="icon">&#128247;</div>
                     <div class="label">Загрузить изображение для апскейла</div>
                     <div class="hint">JPG, PNG, WebP — до 10 МБ</div>
@@ -177,7 +177,7 @@
                     <h3>&#128260; Поворот изображения</h3>
                     <p>Загрузите фото и выберите угол поворота. Бесплатно.</p>
                 </div>
-                <div class="upload-zone" id="imageRotateZone" onclick="document.getElementById('imageRotateInput').click()">
+                <div class="upload-zone" id="imageRotateZone" onclick="if(!_dropJustHappened)document.getElementById('imageRotateInput').click()">
                     <div class="icon">&#128247;</div>
                     <div class="label">Загрузить изображение для поворота</div>
                     <div class="hint">JPG, PNG, WebP — до 10 МБ</div>
@@ -202,7 +202,7 @@
                     <h3>&#128260; Конвертация изображения</h3>
                     <p>Загрузите изображение и выберите формат. Бесплатно.</p>
                 </div>
-                <div class="upload-zone" id="imageConvertZone" onclick="document.getElementById('imageConvertInput').click()">
+                <div class="upload-zone" id="imageConvertZone" onclick="if(!_dropJustHappened)document.getElementById('imageConvertInput').click()">
                     <div class="icon">&#128247;</div>
                     <div class="label">Загрузить изображение для конвертации</div>
                     <div class="hint">Любой формат — JPG, PNG, WebP, GIF</div>
@@ -246,7 +246,7 @@
                 <div>
                     <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Референсное изображение (обязательно):</label>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <div class="upload-zone ref-required" id="videoI2VRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoI2VRefImgInput').click()">
+                        <div class="upload-zone ref-required" id="videoI2VRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="if(!_dropJustHappened)document.getElementById('videoI2VRefImgInput').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
                             <div class="hint" style="margin:0;font-size:11px">Картинка</div>
                             <input type="file" id="videoI2VRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRef('image',this)">
@@ -267,7 +267,7 @@
                 <div>
                     <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Исходное видео (обязательно):</label>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <div class="upload-zone ref-required" id="videoV2VRefVideo" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoV2VRefVideoInput').click()">
+                        <div class="upload-zone ref-required" id="videoV2VRefVideo" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="if(!_dropJustHappened)document.getElementById('videoV2VRefVideoInput').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#127916;</div>
                             <div class="hint" style="margin:0;font-size:11px">Видео</div>
                             <input type="file" id="videoV2VRefVideoInput" accept="video/*" style="display:none" onchange="handleVideoRef('video',this)">
@@ -288,7 +288,7 @@
                 <div>
                     <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Аудиофайл (обязательно):</label>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <div class="upload-zone ref-required" id="videoA2VRefAudio" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="document.getElementById('videoA2VRefAudioInput').click()">
+                        <div class="upload-zone ref-required" id="videoA2VRefAudio" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="if(!_dropJustHappened)document.getElementById('videoA2VRefAudioInput').click()">
                             <div class="icon" style="font-size:20px;margin:0">&#127925;</div>
                             <div class="hint" style="margin:0;font-size:11px">Аудио</div>
                             <input type="file" id="videoA2VRefAudioInput" accept="audio/*" style="display:none" onchange="handleVideoRef('audio',this)">
@@ -549,12 +549,13 @@
     // 🧠 Глобальное состояние перетаскивания — надёжнее чем dataTransfer.files
     // При dragstart бейджа сохраняем вложение сюда, при drop в upload-zone читаем отсюда
     let _dragState = null; // { attachment: {name, type, base64, ...}, sourceIndex: number }
+    let _dropJustHappened = false; // 🧠 Флаг: только что был дроп, не открывать файловый диалог по onclick
 
     // 🧠 Вспомогательная функция: получить FileList из drop-события
     // Проверяет _dragState (перетаскивание из вложений) и dataTransfer.files (перетаскивание с десктопа)
     function getDropFiles(e) {
         // Способ 1: файлы с десктопа — dataTransfer.files всегда заполнен
-        const dtFiles = e.dataTransfer.files;
+        const dtFiles = e.dataTransfer && e.dataTransfer.files;
         if (dtFiles && dtFiles.length > 0) return dtFiles;
 
         // Способ 2: внутреннее перетаскивание из вложений — используем _dragState
@@ -618,6 +619,10 @@
                 if (!data.success) {
                     // Если задача реально провалилась — бросаем ошибку
                     if (data.error && (data.error.includes('не удалась') || data.error.includes('failed') || data.error.includes('Задача не удалась'))) {
+                        throw new Error(data.error);
+                    }
+                    // 🛑 "Задача выполнена, но результат не найден" — ФАТАЛЬНАЯ ошибка, НЕ retry!
+                    if (data.error && data.error.includes('результат не найден')) {
                         throw new Error(data.error);
                     }
                     // Иначе — временная ошибка, пробуем снова
@@ -2726,8 +2731,7 @@
             await sendChat(text);
         } else if (currentMode === 'image') {
             if (selected.imageSubMode === 'upscale') {
-                if (upscaleImageBase64) { showToast('Апскейл уже запущен при загрузке', 'info'); return; }
-                showToast('Загрузите изображение для апскейла', 'info'); return;
+                await executeImageUpscale(); return;
             } else if (selected.imageSubMode === 'rotate') {
                 await executeImageRotate(); return;
             } else if (selected.imageSubMode === 'convert') {
@@ -3720,11 +3724,21 @@
     async function handleImageUpscale(input) {
         const file = (input.files && input.files[0]) || null;
         if (!file) return;
+        try {
+            upscaleImageBase64 = await fileToBase64(file);
+            document.getElementById('imageUpscaleResult').innerHTML = '<span class="result-placeholder" style="color:var(--success)">&#10003; Изображение загружено. Нажмите отправить для увеличения.</span>';
+            showToast('Фото загружено. Нажмите отправить для апскейла.', 'info');
+        } catch (err) {
+            showToast('Ошибка загрузки фото', 'error');
+        }
+        input.value = '';
+    }
+
+    async function executeImageUpscale() {
+        if (!upscaleImageBase64) { showToast('Сначала загрузите фото', 'info'); return; }
         const resultArea = document.getElementById('imageUpscaleResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Увеличиваю разрешение...</span>';
         try {
-            const base64 = await fileToBase64(file);
-            upscaleImageBase64 = base64;
             const upscaleModel = selected.image_upscale || 'IMAGE_TO_UPSCALE_KIEAI';
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
@@ -3733,16 +3747,49 @@
                     mode: 'image',
                     auth: getAuth(),
                     payload: {
-                        image_base64: base64,
+                        image_base64: upscaleImageBase64,
                         image_mode: 'upscale',
-                        model: upscaleModel,
-                        source_name: file.name
+                        model: upscaleModel
                     }
                 })
             });
             if (!response.ok) throw new Error('Ошибка апскейла');
             const data = await response.json();
             if (!data.success) throw new Error(data.error || 'Ошибка');
+            // KIEAI async task — poll for result
+            if (data.data?.type === 'image_task') {
+                const taskId = data.data.content;
+                if (data.credits_left !== undefined) { credits = data.credits_left; updateCreditsDisplay(); }
+                resultArea.innerHTML = '<div style="text-align:center;padding:20px">' +
+                    '<div style="font-size:24px;margin-bottom:8px">&#9203;</div>' +
+                    '<div style="color:var(--accent);font-weight:600">Увеличиваю разрешение...</div>' +
+                    '<div id="upscalePollProgress" style="margin-top:8px;font-size:12px;color:var(--text-muted)">Ожидание результата (0%)</div>' +
+                    '<div style="margin-top:8px;width:100%;height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden">' +
+                    '<div id="upscalePollBar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width 0.5s ease"></div>' +
+                    '</div></div>';
+                (async () => {
+                    try {
+                        const progressEl = document.getElementById('upscalePollProgress');
+                        const barEl = document.getElementById('upscalePollBar');
+                        const pollCtx = {
+                            _updateProgress: function(state, attempt, maxAttempts, pct) {
+                                if (progressEl) progressEl.textContent = 'Обработка (' + pct + '%)';
+                                if (barEl) barEl.style.width = pct + '%';
+                            }
+                        };
+                        const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 120, 5000);
+                        if (result.url) {
+                            storeLastGeneratedImage(result.url);
+                            resultArea.innerHTML = '<img class="generated-image" src="' + result.url + '" alt="Upscaled"><br><a href="' + result.url + '" download="upscaled.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
+                            showToast('Разрешение увеличено!', 'success');
+                        }
+                    } catch (err) {
+                        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+                        showToast('Ошибка апскейла: ' + err.message, 'error');
+                    }
+                })();
+                return;
+            }
             const content = data.data?.content;
             if (content) {
                 const src = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
@@ -3754,7 +3801,6 @@
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка: ' + err.message, 'error');
         }
-        input.value = '';
     }
 
     // ---- IMAGE ROTATE ----
@@ -3778,6 +3824,7 @@
         const resultArea = document.getElementById('imageRotateResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Поворачиваю...</span>';
         try {
+            // Сначала пробуем серверный конвертер
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -3801,9 +3848,63 @@
                 showToast('Изображение повёрнуто!', 'success');
             } else throw new Error('Сервер не вернул изображение');
         } catch (err) {
-            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-            showToast('Ошибка: ' + err.message, 'error');
+            // Фоллбэк: поворот через Canvas на клиенте (бесплатно, без сервера)
+            console.log('[Rotate] Server failed, trying client-side Canvas fallback:', err.message);
+            try {
+                const result = await clientSideRotate(rotateImageBase64, selectedRotateAngle);
+                if (result) {
+                    resultArea.innerHTML = '<img class="generated-image" src="' + result + '" alt="Rotated"><br><a href="' + result + '" download="rotated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
+                    showToast('Изображение повёрнуто (клиент)!', 'success');
+                } else throw new Error('Canvas fallback failed');
+            } catch (fallbackErr) {
+                resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+                showToast('Ошибка: ' + err.message, 'error');
+            }
         }
+    }
+
+    // 🧠 Клиентский поворот через Canvas (фоллбэк когда серверный конвертер недоступен)
+    async function clientSideRotate(base64, angle) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const a = parseInt(angle) || -90;
+                if (a === 90 || a === -90 || a === 270 || a === -270) {
+                    canvas.width = img.height;
+                    canvas.height = img.width;
+                } else {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                }
+                ctx.translate(canvas.width / 2, canvas.height / 2);
+                ctx.rotate(a * Math.PI / 180);
+                ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = () => reject(new Error('Не удалось загрузить изображение'));
+            img.src = 'data:image/png;base64,' + base64;
+        });
+    }
+
+    // 🧠 Клиентская конвертация через Canvas (фоллбэк когда серверный конвертер недоступен)
+    async function clientSideConvert(base64, format) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const mimeMap = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' };
+                const mime = mimeMap[format] || 'image/png';
+                resolve(canvas.toDataURL(mime, 0.92));
+            };
+            img.onerror = () => reject(new Error('Не удалось загрузить изображение'));
+            img.src = 'data:image/png;base64,' + base64;
+        });
     }
 
     // ---- IMAGE CONVERT ----
@@ -3826,6 +3927,7 @@
         const resultArea = document.getElementById('imageConvertResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Конвертирую...</span>';
         try {
+            // Сначала пробуем серверный конвертер
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -3849,8 +3951,18 @@
                 showToast('Конвертация выполнена!', 'success');
             } else throw new Error('Сервер не вернул изображение');
         } catch (err) {
-            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-            showToast('Ошибка: ' + err.message, 'error');
+            // Фоллбэк: конвертация через Canvas на клиенте (бесплатно, без сервера)
+            console.log('[Convert] Server failed, trying client-side Canvas fallback:', err.message);
+            try {
+                const result = await clientSideConvert(convertImageBase64, selectedImageConvertFormat);
+                if (result) {
+                    resultArea.innerHTML = '<img class="generated-image" src="' + result + '" alt="Converted"><br><a href="' + result + '" download="converted.' + selectedImageConvertFormat + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + selectedImageConvertFormat.toUpperCase() + '</a>';
+                    showToast('Конвертация выполнена (клиент)!', 'success');
+                } else throw new Error('Canvas fallback failed');
+            } catch (fallbackErr) {
+                resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+                showToast('Ошибка: ' + err.message, 'error');
+            }
         }
     }
 
@@ -4083,9 +4195,18 @@
             e.stopPropagation();
             this.classList.remove('drag-over');
 
+            // 🧠 Флаг: только что был дроп — блокируем onclick (чтобы не открывался файловый диалог)
+            _dropJustHappened = true;
+            setTimeout(() => { _dropJustHappened = false; }, 300);
+
             // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
             const input = getDropInput(e);
-            if (!input || !input.files.length) return;
+            if (!input || !input.files.length) {
+                console.warn('[DragDrop] No files in drop event on zone:', this.id);
+                return;
+            }
+
+            console.log('[DragDrop] Drop on zone:', this.id, 'files:', input.files.length);
 
             const id = this.id;
             if (id.startsWith('imageRef')) {
