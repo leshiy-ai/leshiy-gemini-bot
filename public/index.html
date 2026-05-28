@@ -406,11 +406,12 @@
                         onkeydown="handleKeyDown(event)"
                         oninput="autoResize(this)"></textarea>
                 </div>
+                <button class="mic-btn" id="micBtn" title="🎤 Диктовка (нажмите) / Запись голоса (удержите)" onmousedown="micStart(event)" onmouseup="micStop(event)" ontouchstart="micStart(event)" ontouchend="micStop(event)">&#127908;</button>
                 <button class="send-btn" id="sendBtn" onclick="sendOrGenerate()" title="Отправить">
                     &#10148;
                 </button>
             </div>
-            <div class="input-hint" id="inputHint">Enter — отправить, Shift+Enter — новая строка</div>
+            <div class="input-hint" id="inputHint">Enter — отправить · 🎤 короткое — диктовка · 🎤 долгое — запись</div>
         </div>
     </div>
 
@@ -549,7 +550,7 @@
     // Polls the backend for KieAI async task status (image/video generation)
     // Returns: { completed: true, data } or { completed: false, state } or throws on error
     async function pollTaskStatus(taskId, taskType, maxAttempts, intervalMs) {
-        maxAttempts = maxAttempts || 60;
+        maxAttempts = maxAttempts || 120; // ✅ Увеличено до 120 попыток (10 минут при 5сек интервале)
         intervalMs = intervalMs || 5000;
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -565,13 +566,23 @@
                 });
 
                 if (!resp.ok) {
-                    throw new Error('Ошибка проверки статуса: ' + resp.status);
+                    // Серверная ошибка — ждём и пробуем снова, не падаем
+                    console.warn(`[Poll] HTTP ${resp.status}, retrying... (attempt ${attempt + 1}/${maxAttempts})`);
+                    await new Promise(resolve => setTimeout(resolve, intervalMs));
+                    continue;
                 }
 
                 const data = await resp.json();
 
                 if (!data.success) {
-                    throw new Error(data.error || 'Задача не удалась');
+                    // Если задача реально провалилась — бросаем ошибку
+                    if (data.error && (data.error.includes('не удалась') || data.error.includes('failed') || data.error.includes('Задача не удалась'))) {
+                        throw new Error(data.error);
+                    }
+                    // Иначе — временная ошибка, пробуем снова
+                    console.warn(`[Poll] API error: ${data.error}, retrying... (attempt ${attempt + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, intervalMs));
+                    continue;
                 }
 
                 // Task completed successfully
@@ -579,28 +590,37 @@
                     return { completed: true, url: data.data.content, type: data.data.type };
                 }
 
-                // Task still pending
+                // Task still pending — показываем реальный прогресс
                 if (data.data?.type === 'task_pending') {
                     const state = data.data.state || 'processing';
-                    const progress = Math.min(Math.round(((attempt + 1) / maxAttempts) * 100), 95);
+                    // ✅ Более реалистичный прогресс: быстрый до 30%, медленный до 90%
+                    let progress;
+                    if (attempt < 10) progress = Math.round(10 + attempt * 2);
+                    else if (attempt < 30) progress = Math.round(30 + (attempt - 10) * 1.5);
+                    else if (attempt < 60) progress = Math.round(60 + (attempt - 30) * 0.5);
+                    else progress = Math.min(Math.round(75 + (attempt - 60) * 0.3), 95);
+                    
                     if (this?._updateProgress) {
                         this._updateProgress(state, attempt + 1, maxAttempts, progress);
                     }
-                    // Wait before next poll
-                    await new Promise(resolve => setTimeout(resolve, intervalMs));
+                    // ✅ Адаптивный интервал: чаще в начале, реже потом
+                    const nextInterval = attempt < 20 ? 5000 : attempt < 40 ? 8000 : 10000;
+                    await new Promise(resolve => setTimeout(resolve, nextInterval));
                     continue;
                 }
 
-                // Unknown response — treat as pending
+                // Unknown response — логируем и пробуем снова
+                console.log(`[Poll] Unknown response type: ${data.data?.type}, data:`, JSON.stringify(data.data).substring(0, 200));
                 await new Promise(resolve => setTimeout(resolve, intervalMs));
                 continue;
 
             } catch (err) {
-                // If it's a real failure (not a network blip), throw
-                if (err.message && (err.message.includes('не удалась') || err.message.includes('failed'))) {
+                // Если это фатальная ошибка — бросаем
+                if (err.message && (err.message.includes('не удалась') || err.message.includes('failed') || err.message.includes('Задача не удалась'))) {
                     throw err;
                 }
-                // Network error — retry
+                // Сетевая ошибка — пробуем снова (не падаем!)
+                console.warn(`[Poll] Network error: ${err.message}, retrying... (attempt ${attempt + 1})`);
                 if (attempt < maxAttempts - 1) {
                     await new Promise(resolve => setTimeout(resolve, intervalMs));
                     continue;
@@ -626,33 +646,40 @@
             { id: 'Kore', label: '\u2640 Кора', group: 'Female' },
             { id: 'Enceladus', label: '\u2642 Энцеладус', group: 'Male' },
             { id: 'Luna', label: '\u2640 Луна', group: 'Female' },
+            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
         ],
         'WORKERS_AI': [
             { id: 'orpheus', label: '\u2642 Орфей', group: 'Male' },
             { id: 'zeus', label: '\u2642 Зевс', group: 'Male' },
             { id: 'athena', label: '\u2640 Афина', group: 'Female' },
             { id: 'luna', label: '\u2640 Луна', group: 'Female' },
+            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
         ],
         'KIEAI': [
             { id: 'Roger', label: '\u2642 Роджер', group: 'Male' },
             { id: 'Rachel', label: '\u2640 Рейчел', group: 'Female' },
+            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
         ],
         'BOTHUB': [
             { id: 'echo', label: '\u2642 Эхо', group: 'Male' },
             { id: 'nova', label: '\u2640 Нова', group: 'Female' },
+            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
         ],
         'VOICERSS': [
             { id: 'Peter', label: '\u2642 Пётр', group: 'Male' },
             { id: 'Marina', label: '\u2640 Марина', group: 'Female' },
             { id: 'Olga', label: '\u2640 Ольга', group: 'Female' },
+            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
         ],
         'POLLINATIONS': [
             { id: 'Female', label: '\u2640 Женский', group: 'Female' },
             { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
+            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
         ],
         'STABILITY': [
             { id: 'Female', label: '\u2640 Женский', group: 'Female' },
             { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
+            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
         ],
     };
     // Дефолтный набор голосов если сервис неизвестен
@@ -1832,8 +1859,7 @@
         [
             { key: 'tts', label: '🔊 Озвучка', cls: '' },
             { key: 'stt', label: '🎧 Распознавание', cls: 'free' },
-            { key: 'convert', label: '🔄 Конвертация', cls: 'free' },
-            { key: 'voice_clone', label: '🎤 Свой голос' }
+            { key: 'convert', label: '🔄 Конвертация', cls: 'free' }
         ].forEach(am => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.audioSubMode === am.key ? ' active' : '') + (am.cls ? ' ' + am.cls : '');
@@ -1869,6 +1895,21 @@
             if (voices.length > 0 && !voices.find(v => v.id === selected.voice)) {
                 selected.voice = voices[0].id;
                 saveSelected();
+            }
+            
+            // ✅ Если выбран "Свой голос" — показываем зону загрузки образца
+            const voiceCloneHint = document.getElementById('voiceCloneHint');
+            if (voiceCloneHint) voiceCloneHint.remove();
+            if (selected.voice === 'user_voice' && selected.audioSubMode === 'tts') {
+                const hint = document.createElement('div');
+                hint.id = 'voiceCloneHint';
+                hint.style.cssText = 'padding:8px;background:var(--bg-tertiary);border-radius:8px;margin-top:4px;font-size:13px;color:var(--text-secondary)';
+                if (voiceCloneSample) {
+                    hint.innerHTML = '❤️ Образец голоса загружен · <span style="color:var(--success)">Готово к озвучке</span> · <button onclick="voiceCloneSample=null;renderAudioSubHeader()" style="color:var(--danger);background:none;border:none;cursor:pointer;text-decoration:underline">Убрать</button>';
+                } else {
+                    hint.innerHTML = '🎤 Загрузите образец голоса (от 10 сек): <button onclick="document.getElementById(\'voiceCloneInput\').click()" style="color:var(--accent);background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer;margin-left:8px">Выбрать файл</button>';
+                }
+                voicesContainer.parentNode.insertBefore(hint, voicesContainer.nextSibling);
             }
         }
 
@@ -2472,6 +2513,183 @@
         el.style.height = Math.min(el.scrollHeight, 120) + 'px';
     }
 
+    // ============================================
+    // 🎤 МИКРОФОН — Диктовка (короткое) / Запись (долгое)
+    // ============================================
+    let micState = { mode: null, timer: null, mediaRecorder: null, chunks: [], stream: null, recognition: null };
+    const LONG_PRESS_MS = 400; // Порог долгого нажатия
+
+    function micStart(e) {
+        e.preventDefault();
+        if (micState.mode) return; // Уже активен
+        
+        // Определяем: короткое нажатие = диктовка, долгое = запись
+        micState.timer = setTimeout(() => {
+            // Долгое нажатие — запись голоса в файл
+            micState.timer = null;
+            startVoiceRecording();
+        }, LONG_PRESS_MS);
+    }
+
+    function micStop(e) {
+        e.preventDefault();
+        if (micState.timer) {
+            // Короткое нажатие — диктовка (speech-to-text)
+            clearTimeout(micState.timer);
+            micState.timer = null;
+            startDictation();
+        } else if (micState.mode === 'recording') {
+            // Отпустили долгое нажатие — останавливаем запись
+            stopVoiceRecording();
+        }
+    }
+
+    // 🎙️ ДИКТОВКА — Speech Recognition API (браузерная)
+    function startDictation() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            showToast('Диктовка не поддерживается вашим браузером', 'error');
+            return;
+        }
+        
+        if (micState.mode === 'dictating') {
+            stopDictation();
+            return;
+        }
+        
+        micState.mode = 'dictating';
+        const micBtn = document.getElementById('micBtn');
+        micBtn.classList.add('dictating');
+        
+        micState.recognition = new SpeechRecognition();
+        micState.recognition.lang = 'ru-RU';
+        micState.recognition.continuous = true;
+        micState.recognition.interimResults = true;
+        
+        let finalTranscript = '';
+        let interimTranscript = '';
+        
+        micState.recognition.onresult = (event) => {
+            interimTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+            userInput.value = finalTranscript + interimTranscript;
+            autoResize(userInput);
+        };
+        
+        micState.recognition.onerror = (event) => {
+            console.warn('[Mic] Dictation error:', event.error);
+            if (event.error !== 'aborted') {
+                showToast('Ошибка диктовки: ' + event.error, 'error');
+            }
+            stopDictation();
+        };
+        
+        micState.recognition.onend = () => {
+            // Автоматический перезапуск если ещё в режиме диктовки
+            if (micState.mode === 'dictating') {
+                try { micState.recognition.start(); } catch(e) { stopDictation(); }
+            } else {
+                stopDictation();
+            }
+        };
+        
+        try {
+            micState.recognition.start();
+            showToast('Диктовка активна — говорите...', 'info');
+        } catch(e) {
+            showToast('Не удалось запустить диктовку', 'error');
+            stopDictation();
+        }
+    }
+
+    function stopDictation() {
+        if (micState.recognition) {
+            try { micState.recognition.stop(); } catch(e) {}
+            micState.recognition = null;
+        }
+        micState.mode = null;
+        const micBtn = document.getElementById('micBtn');
+        if (micBtn) micBtn.classList.remove('dictating');
+    }
+
+    // 🔴 ЗАПИСЬ ГОЛОСА — MediaRecorder API → MP3 файл
+    async function startVoiceRecording() {
+        try {
+            micState.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micState.mode = 'recording';
+            micState.chunks = [];
+            
+            const micBtn = document.getElementById('micBtn');
+            micBtn.classList.add('recording');
+            showToast('🎙 Запись голоса... Удерживайте кнопку', 'info');
+            
+            // Используем webm/opus — самый поддерживаемый формат
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+                ? 'audio/webm;codecs=opus' 
+                : 'audio/webm';
+            
+            micState.mediaRecorder = new MediaRecorder(micState.stream, { mimeType });
+            
+            micState.mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) micState.chunks.push(e.data);
+            };
+            
+            micState.mediaRecorder.onstop = () => {
+                const blob = new Blob(micState.chunks, { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                
+                // Конвертируем в base64 и добавляем как вложение в чат
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = reader.result.split(',')[1];
+                    const ext = mimeType.includes('webm') ? 'webm' : 'ogg';
+                    const audioType = mimeType.includes('webm') ? 'audio/webm' : 'audio/ogg';
+                    
+                    const attachment = {
+                        name: 'voice_message.' + ext,
+                        type: audioType,
+                        base64: base64,
+                        previewUrl: url,
+                        icon: '&#127908;',
+                        category: 'audio'
+                    };
+                    chatAttachments.push(attachment);
+                    renderChatAttachments();
+                    if (welcomeScreen) welcomeScreen.style.display = 'none';
+                    showToast('Голосовое сообщение записано!', 'success');
+                };
+                reader.readAsDataURL(blob);
+            };
+            
+            micState.mediaRecorder.start();
+        } catch(e) {
+            console.error('[Mic] Recording error:', e.message);
+            showToast('Не удалось записать голос: ' + e.message, 'error');
+            micState.mode = null;
+            const micBtn = document.getElementById('micBtn');
+            if (micBtn) micBtn.classList.remove('recording');
+        }
+    }
+
+    function stopVoiceRecording() {
+        if (micState.mediaRecorder && micState.mediaRecorder.state === 'recording') {
+            micState.mediaRecorder.stop();
+        }
+        if (micState.stream) {
+            micState.stream.getTracks().forEach(t => t.stop());
+            micState.stream = null;
+        }
+        micState.mode = null;
+        const micBtn = document.getElementById('micBtn');
+        if (micBtn) micBtn.classList.remove('recording');
+    }
+
     async function sendOrGenerate() {
         const text = userInput.value.trim();
         if ((!text && chatAttachments.length === 0) || isProcessing) return;
@@ -3057,7 +3275,7 @@
                 body: JSON.stringify({
                     mode: 'audio',
                     auth: getAuth(),
-                    payload: { text, model: selected.audio_tts, voice: selected.voice, audio_mode: 'tts' }
+                    payload: { text, model: selected.audio_tts, voice: selected.voice, audio_mode: 'tts', ...(selected.voice === 'user_voice' && voiceCloneSample ? { voice_sample: voiceCloneSample } : {}) }
                 })
             });
 
