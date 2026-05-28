@@ -522,6 +522,16 @@ body {
     background: var(--accent-light);
 }
 .file-badge .file-icon { font-size: 13px; flex-shrink: 0; }
+.file-badge .file-icon.audio-badge-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(139, 92, 246, 0.2);
+    font-size: 13px;
+}
 .file-badge .file-name { overflow: hidden; text-overflow: ellipsis; }
 .file-badge .file-remove {
     cursor: pointer;

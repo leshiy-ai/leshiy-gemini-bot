@@ -2243,60 +2243,6 @@
             }
         });
 
-        // Также добавляем drag-and-drop на область ввода (input-area)
-        const inputArea = document.querySelector('.input-area');
-        if (inputArea) {
-            inputArea.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'copy';
-                inputArea.style.borderColor = 'var(--accent)';
-                inputArea.style.background = 'var(--accent-light)';
-            });
-            inputArea.addEventListener('dragleave', function(e) {
-                inputArea.style.borderColor = '';
-                inputArea.style.background = '';
-            });
-            inputArea.addEventListener('drop', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                inputArea.style.borderColor = '';
-                inputArea.style.background = '';
-                dragCounter = 0;
-                overlay.classList.remove('visible');
-                const files = e.dataTransfer.files;
-                if (files.length) {
-                    // Same smart routing as the main drop handler
-                    const file = files[0];
-                    const fileType = file.type || '';
-                    if (currentMode === 'chat') {
-                        processChatFiles(files);
-                    } else if (currentMode === 'image') {
-                        if (fileType.startsWith('image/')) {
-                            if (selected.imageSubMode === 'upscale') handleImageUpscale({ files: files, value: '' });
-                            else if (selected.imageSubMode === 'rotate') handleImageRotateUpload({ files: files, value: '' });
-                            else if (selected.imageSubMode === 'convert') handleImageConvertUpload({ files: files, value: '' });
-                            else handleImageRef(0, { files: files, value: '' });
-                        } else {
-                            processChatFiles(files);
-                        }
-                    } else if (currentMode === 'video') {
-                        if (fileType.startsWith('image/')) { handleVideoRef('image', { files: files, value: '' }); }
-                        else if (fileType.startsWith('video/')) { handleVideoConvert({ files: files, value: '' }); }
-                        else if (fileType.startsWith('audio/')) { handleVideoRef('audio', { files: files, value: '' }); }
-                        else processChatFiles(files);
-                    } else if (currentMode === 'audio') {
-                        if (fileType.startsWith('audio/')) {
-                            if (selected.audioSubMode === 'convert') handleAudioConvert({ files: files, value: '' });
-                            else if (selected.audioSubMode === 'voice_clone') handleVoiceClone({ files: files, value: '' });
-                            else handleAudioUpload({ files: files, value: '' });
-                        } else {
-                            processChatFiles(files);
-                        }
-                    }
-                }
-            });
-        }
-
         // Drag-out: удаление вложения при перетаскивании за пределы приложения
         document.querySelector('.app').addEventListener('dragover', function(e) {
             // Если перетаскивают вложение (не внешний файл) — показываем подсказку
@@ -2373,8 +2319,9 @@
                 } else if (file.type.startsWith('audio/')) {
                     attachment.icon = '&#127925;'; // 🎵
                     attachment.category = 'audio';
-                    // Создаём URL для предпросмотра аудио
-                    attachment.previewUrl = URL.createObjectURL(file);
+                    // ✅ Не ставим audio blob URL как previewUrl — это НЕ картинка
+                    attachment.previewUrl = null;
+                    attachment.audioUrl = URL.createObjectURL(file);
                 } else if (file.type.includes('pdf')) {
                     attachment.icon = '&#128213;'; // 📕
                     attachment.category = 'document';
@@ -2435,7 +2382,13 @@
             if (att.previewUrl) {
                 // Video thumbnails get a play icon overlay
                 const isVideo = att.category === 'video' || att.type.startsWith('video/');
-                if (isVideo) {
+                const isAudio = att.category === 'audio' || att.type.startsWith('audio/');
+                if (isAudio) {
+                    // ✅ Аудио: стилизованная иконка микрофона + аудиоплеер, НЕ img
+                    const audioIcon = att.name && att.name.startsWith('voice_') ? '&#127908;' : '&#127925;';
+                    badge.innerHTML = '<span class="file-icon audio-badge-icon" style="background:rgba(139,92,246,0.2);border-radius:8px;padding:3px 7px;font-size:15px">' + audioIcon + '</span>' +
+                        '<span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                } else if (isVideo) {
                     badge.innerHTML = '<div style="position:relative;display:inline-block">' +
                         '<img class="file-thumb" src="' + att.previewUrl + '" alt="">' +
                         '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:24px;height:24px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:white">&#9654;</div>' +
@@ -2445,10 +2398,11 @@
                     badge.innerHTML = '<img class="file-thumb" src="' + att.previewUrl + '" alt=""><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
                 }
             } else {
-                // Audio files get a styled icon badge
+                // No preview — use styled icon badge
                 const isAudio = att.category === 'audio' || att.type.startsWith('audio/');
                 if (isAudio) {
-                    badge.innerHTML = '<span class="file-icon" style="background:rgba(139,92,246,0.15);border-radius:8px;padding:4px 8px">' + icon + '</span><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
+                    const audioIcon = att.name && att.name.startsWith('voice_') ? '&#127908;' : '&#127925;';
+                    badge.innerHTML = '<span class="file-icon audio-badge-icon" style="background:rgba(139,92,246,0.2);border-radius:8px;padding:3px 7px;font-size:15px">' + audioIcon + '</span><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
                 } else {
                     badge.innerHTML = '<span class="file-icon">' + icon + '</span><span class="file-name">' + att.name + sizeStr + '</span><span class="file-remove" onclick="removeChatAttachment(' + i + ')">&times;</span>';
                 }
@@ -2473,9 +2427,10 @@
             lightboxItems.push({ src: src, type: 'video' });
             content.innerHTML = '<video src="' + src + '" controls autoplay style="max-width:90vw;max-height:80vh;border-radius:8px"></video>';
         } else if (att.type.startsWith('audio/')) {
-            const src = 'data:' + att.type + ';base64,' + att.base64;
+            const src = att.audioUrl || ('data:' + att.type + ';base64,' + att.base64);
+            const audioIcon = att.name && att.name.startsWith('voice_') ? '&#127908;' : '&#127925;';
             lightboxItems.push({ src: src, type: 'audio' });
-            content.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:20px">&#127925;</div><div style="color:var(--text-primary);margin-bottom:16px;font-size:16px">' + att.name + '</div><audio src="' + src + '" controls autoplay style="width:100%;max-width:400px"></audio></div>';
+            content.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:20px">' + audioIcon + '</div><div style="color:var(--text-primary);margin-bottom:16px;font-size:16px">' + att.name + '</div><audio src="' + src + '" controls autoplay style="width:100%;max-width:400px"></audio></div>';
         } else {
             // Документы — показываем информацию
             content.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:20px">&#128196;</div><div style="color:var(--text-primary);margin-bottom:8px;font-size:16px">' + att.name + '</div><div style="color:var(--text-secondary);font-size:14px">' + att.type + '</div></div>';
@@ -2490,6 +2445,7 @@
 
     function removeChatAttachment(index) {
         if (chatAttachments[index]?.previewUrl) URL.revokeObjectURL(chatAttachments[index].previewUrl);
+        if (chatAttachments[index]?.audioUrl) URL.revokeObjectURL(chatAttachments[index].audioUrl);
         chatAttachments.splice(index, 1);
         renderChatAttachments();
     }
@@ -2655,9 +2611,10 @@
                         name: 'voice_message.' + ext,
                         type: audioType,
                         base64: base64,
-                        previewUrl: url,
+                        previewUrl: null, // ✅ Не ставим audio blob URL как previewUrl — это НЕ картинка
                         icon: '&#127908;',
-                        category: 'audio'
+                        category: 'audio',
+                        audioUrl: url  // ✅ Сохраняем URL для прослушивания
                     };
                     chatAttachments.push(attachment);
                     renderChatAttachments();
@@ -4747,6 +4704,7 @@
 
         inputArea.addEventListener('drop', function(e) {
             e.preventDefault();
+            e.stopPropagation(); // ✅ Не даём событию всплыть к .app — иначе двойная обработка
             dragCounter = 0;
             if (overlay) overlay.classList.remove('visible');
 
