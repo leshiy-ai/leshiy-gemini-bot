@@ -11202,9 +11202,9 @@ async function getBothubBalance(envData) {
         const data = await response.json();
         let balance = null;
 
-        // ✅ ИСПРАВЛЕННОЕ ИЗВЛЕЧЕНИЕ: data -> subscription -> available_balance
-        if (data && data.subscription && typeof data.subscription.available_balance === 'number') {
-            balance = data.subscription.available_balance;
+        // ✅ ИСПРАВЛЕННОЕ ИЗВЛЕЧЕНИЕ: data -> subscription -> availableBalance
+        if (data && data.subscription && typeof data.subscription.availableBalance === 'number') {
+            balance = data.subscription.availableBalance;
         }
 
         // Возвращаем баланс или null, если он не найден или не является числом
