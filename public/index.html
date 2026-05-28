@@ -2202,10 +2202,8 @@
                     handleVideoConvert({ files: files, value: '' });
                 }
             } else if (fileType.startsWith('audio/')) {
-                // Audio files → audio STT or chat
-                if (currentMode === 'chat') {
-                    processChatFiles(files);
-                } else if (currentMode === 'audio') {
+                // Audio files → audio STT (в любом режиме, кроме чата где тоже можно)
+                if (currentMode === 'audio') {
                     if (selected.audioSubMode === 'convert') {
                         handleAudioConvert({ files: files, value: '' });
                     } else if (selected.audioSubMode === 'voice_clone') {
@@ -2224,7 +2222,7 @@
                     switchVideoSubMode('a2v');
                     handleVideoRef('audio', { files: files, value: '' });
                 } else {
-                    // Switch to audio STT
+                    // ✅ В ЛЮБОМ другом режиме (включая чат, картинки) — переключаемся в аудио STT
                     switchMode('audio');
                     selected.audioSubMode = 'stt';
                     renderAudioSubHeader();
@@ -4755,18 +4753,22 @@
                     handleVideoConvert({ files: files, value: '' });
                 }
             } else if (fileType.startsWith('audio/')) {
-                if (currentMode === 'chat') {
-                    processChatFiles(files);
-                } else if (currentMode === 'audio') {
+                if (currentMode === 'audio') {
                     if (selected.audioSubMode === 'convert') handleAudioConvert({ files: files, value: '' });
                     else if (selected.audioSubMode === 'voice_clone') handleVoiceClone({ files: files, value: '' });
-                    else handleAudioUpload({ files: files, value: '' });
+                    else {
+                        selected.audioSubMode = 'stt';
+                        renderAudioSubHeader();
+                        switchAudioSubMode('stt');
+                        handleAudioUpload({ files: files, value: '' });
+                    }
                 } else if (currentMode === 'video') {
                     selected.videoSubMode = 'a2v';
                     renderVideoSubHeader();
                     switchVideoSubMode('a2v');
                     handleVideoRef('audio', { files: files, value: '' });
                 } else {
+                    // ✅ В любом режиме (включая чат) — переключаемся в аудио STT
                     switchMode('audio');
                     selected.audioSubMode = 'stt';
                     renderAudioSubHeader();

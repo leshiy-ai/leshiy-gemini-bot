@@ -1775,7 +1775,9 @@ async function handleTaskStatus(auth, payload, env, monolith) {
         }
 
         const result = await response.json();
-        console.log(`[WebHandler] KieAI task ${taskId} response: code=${result.code}, state=${result.data?.state}`);
+        // ✅ Логируем полный ответ KieAI для дебага (безопасно)
+        const safeLogResult = result != null ? JSON.stringify(result).substring(0, 2000) : 'null';
+        console.log(`[WebHandler] KieAI task ${taskId} response:`, safeLogResult);
 
         if (result.code !== 200 && result.code !== undefined) {
             return formatResponse(false, 'KieAI API ошибка: ' + (result.msg || result.message || 'Unknown error'));
@@ -1789,12 +1791,33 @@ async function handleTaskStatus(auth, payload, env, monolith) {
             // Extract result URL from output — проверяем ВСЕ возможные поля
             let resultUrl = null;
 
+            // 0. ✅ НОВОЕ: KieAI часто возвращает output как массив строк-URL
+            if (Array.isArray(output) && output.length > 0) {
+                for (const item of output) {
+                    if (typeof item === 'string' && item.startsWith('http')) {
+                        resultUrl = item;
+                        console.log(`[WebHandler] Found URL in output array: ${String(resultUrl).substring(0, 100)}`);
+                        break;
+                    } else if (typeof item === 'object' && item !== null) {
+                        // Объект внутри массива — ищем URL поля
+                        for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src', 'source_url']) {
+                            if (item[field] && typeof item[field] === 'string' && item[field].startsWith('http')) {
+                                resultUrl = item[field];
+                                console.log(`[WebHandler] Found URL in output[].${field}: ${String(resultUrl).substring(0, 100)}`);
+                                break;
+                            }
+                        }
+                        if (resultUrl) break;
+                    }
+                }
+            }
+
             // 1. Прямые URL поля
             const urlFields = ['videoUrl', 'url', 'video_url', 'imageUrl', 'image_url', 'outputUrl', 'output_url', 'downloadUrl', 'download_url', 'resultUrl', 'result_url', 'source_url', 'src'];
             for (const field of urlFields) {
                 if (output?.[field] && typeof output[field] === 'string' && output[field].startsWith('http')) {
                     resultUrl = output[field];
-                    console.log(`[WebHandler] Found URL in output.${field}: ${resultUrl.substring(0, 100)}`);
+                    console.log(`[WebHandler] Found URL in output.${field}: ${String(resultUrl).substring(0, 100)}`);
                     break;
                 }
             }
@@ -1840,13 +1863,41 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 }
             }
 
+            // 5. ✅ НОВОЕ: Проверяем data.images / data.videos (KieAI T2I/I2I формат)
+            if (!resultUrl && result.data) {
+                const imgOrVidFields = ['images', 'videos', 'results', 'output_images', 'output_videos'];
+                for (const field of imgOrVidFields) {
+                    const arr = result.data[field];
+                    if (Array.isArray(arr) && arr.length > 0) {
+                        const first = arr[0];
+                        if (typeof first === 'string' && first.startsWith('http')) {
+                            resultUrl = first;
+                            console.log(`[WebHandler] Found URL in data.${field}[0]`);
+                            break;
+                        } else if (typeof first === 'object' && first !== null) {
+                            for (const subField of ['url', 'imageUrl', 'videoUrl', 'downloadUrl', 'src']) {
+                                if (first[subField] && typeof first[subField] === 'string' && first[subField].startsWith('http')) {
+                                    resultUrl = first[subField];
+                                    console.log(`[WebHandler] Found URL in data.${field}[0].${subField}`);
+                                    break;
+                                }
+                            }
+                            if (resultUrl) break;
+                        }
+                    }
+                }
+            }
+
             if (resultUrl) {
                 const resultType = taskType === 'video' ? 'video_url' : 'image_url';
                 return formatResponse(true, null, null, { type: resultType, content: resultUrl });
             } else {
                 // Output exists but no recognizable URL — логируем полный ответ для дебага
-                console.log(`[WebHandler] KieAI success but no URL found. Full output:`, JSON.stringify(output).substring(0, 1000));
-                console.log(`[WebHandler] Full result:`, JSON.stringify(result).substring(0, 1000));
+                // ✅ ФИКС: JSON.stringify(undefined) возвращает undefined, а не строку — .substring() падает
+                const safeOutput = output != null ? JSON.stringify(output).substring(0, 1000) : 'null';
+                const safeResult = result != null ? JSON.stringify(result).substring(0, 1000) : 'null';
+                console.log(`[WebHandler] KieAI success but no URL found. Full output:`, safeOutput);
+                console.log(`[WebHandler] Full result:`, safeResult);
                 return formatResponse(false, 'Задача выполнена, но результат не найден в ответе');
             }
         } else if (state === 'waiting' || state === 'processing' || state === 'queued') {
