@@ -51,6 +51,8 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handleAIConfig(auth, env, monolith);
             case 'admin':
                 return await handleAdmin(auth, payload, env, monolith);
+            case 'credit_history':
+                return await handleCreditHistory(auth, env, monolith);
             default:
                 return formatResponse(false, "Неизвестный режим: " + mode);
         }
@@ -743,14 +745,44 @@ async function handleVideo(auth, payload, env, monolith) {
         try {
             const modelInfo = getWebModel('VIDEO_TO_ANALYSIS', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для анализа видео');
-            console.log(`[WebHandler] Video analysis using: ${modelInfo.key}`);
+            console.log(`[WebHandler] Video analysis using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
             const config = modelInfo.config;
+            const videoBuffer = Buffer.from(payload.video_base64, 'base64');
+
+            // Different video analysis functions have different signatures
             if (config.FUNCTION.name === 'callGeminiVideoVision') {
+                // Gemini Video Vision: (config, prompt, env, videoBase64)
                 result = await config.FUNCTION(config, prompt, env, payload.video_base64);
+            } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
+                // Workers AI Whisper for video: (config, videoBuffer, env)
+                result = await callWorkersAIWeb(config, videoBuffer, env);
+            } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
+                // BotHub Whisper for video: (config, videoBase64String, env)
+                result = await config.FUNCTION(config, payload.video_base64, env);
+            } else if (config.FUNCTION.name === 'callPollinationsSTT') {
+                // Pollinations STT for video: (config, videoBufferOrBase64, env)
+                try {
+                    result = await config.FUNCTION(config, videoBuffer, env);
+                } catch(_) {
+                    result = await config.FUNCTION(config, payload.video_base64, env);
+                }
+            } else if (config.FUNCTION.name === 'callGeminiSpeechToText') {
+                // Gemini STT for video: (config, videoBuffer, env)
+                result = await config.FUNCTION(config, videoBuffer, env);
             } else {
-                result = await config.FUNCTION(config, prompt, env, payload.video_base64);
+                // Generic: try with prompt + base64 first, then buffer
+                try {
+                    result = await config.FUNCTION(config, prompt, env, payload.video_base64);
+                } catch(_) {
+                    try {
+                        result = await config.FUNCTION(config, videoBuffer, env);
+                    } catch(__) {
+                        result = await config.FUNCTION(config, payload.video_base64, env);
+                    }
+                }
             }
+
             if (typeof result === 'string') {
                 return formatResponse(true, null, null, { type: 'text', content: result });
             }
@@ -899,23 +931,44 @@ async function handleAudio(auth, payload, env, monolith) {
         try {
             const modelInfo = getWebModel('AUDIO_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для распознавания');
-            console.log(`[WebHandler] STT using: ${modelInfo.key}`);
+            console.log(`[WebHandler] STT using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
             const config = modelInfo.config;
+            const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
+
+            // Different STT functions have different signatures
             if (config.FUNCTION.name === 'callGeminiSpeechToText') {
-                // Gemini STT принимает Buffer
-                const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
+                // Gemini STT: (config, audioBuffer, env)
                 result = await config.FUNCTION(config, audioBuffer, env);
-            } else {
+            } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
+                // Workers AI Whisper: (config, audioBuffer, env)
+                result = await callWorkersAIWeb(config, audioBuffer, env);
+            } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
+                // BotHub Whisper: (config, audioBase64String, env)
                 result = await config.FUNCTION(config, payload.audio_base64, env);
+            } else if (config.FUNCTION.name === 'callPollinationsSTT') {
+                // Pollinations STT: (config, audioBufferOrBase64, env)
+                try {
+                    result = await config.FUNCTION(config, audioBuffer, env);
+                } catch(_) {
+                    result = await config.FUNCTION(config, payload.audio_base64, env);
+                }
+            } else {
+                // Generic: try buffer first, then base64
+                try {
+                    result = await config.FUNCTION(config, audioBuffer, env);
+                } catch(_) {
+                    result = await config.FUNCTION(config, payload.audio_base64, env);
+                }
             }
+
             if (typeof result === 'string') {
                 return formatResponse(true, null, null, { type: 'text', content: result });
             }
             const cleaned = extractAndCleanModelResponse(result);
             return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || String(result) });
         } catch (e) {
-            console.error("[WebHandler] STT error:", e.message);
+            console.error("[WebHandler] STT error:", e.message, e.stack);
             return formatResponse(false, "Ошибка распознавания: " + e.message);
         }
     }
@@ -984,18 +1037,26 @@ async function handleAudio(auth, payload, env, monolith) {
     const text = (payload.text || payload.prompt || '').trim();
     if (!text) return formatResponse(false, 'Пустой текст');
 
-    if (!isAuth) return formatResponse(false, 'Для озвучки нужна авторизация');
-    const balance = await getUserBalance(chatId, env, monolith);
-    if (balance < 2) return formatResponse(false, 'Недостаточно кредитов. Нужно 2¢.', balance);
+    // Determine model first to check if it's free (VoiceRSS)
+    const ttsModelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+    if (!ttsModelInfo) return formatResponse(false, 'Нет модели для TTS');
+
+    // VoiceRSS is free — no auth needed. Other TTS models require auth.
+    const isFreeTTS = ttsModelInfo.config.SERVICE === 'VOICERSS';
+    if (!isFreeTTS && !isAuth) return formatResponse(false, 'Для этой модели озвучки нужна авторизация');
+    
+    // Check credits only for paid models
+    if (!isFreeTTS && isAuth) {
+        const balance = await getUserBalance(chatId, env, monolith);
+        if (balance < 2) return formatResponse(false, 'Недостаточно кредитов. Нужно 2¢.', balance);
+    }
 
     let audioResult;
     try {
-        const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
-        if (!modelInfo) return formatResponse(false, 'Нет модели для TTS');
-        const config = modelInfo.config;
+        const config = ttsModelInfo.config;
         const voice = payload.voice || 'Female';
 
-        console.log(`[WebHandler] TTS using: ${modelInfo.key} (${config.SERVICE}), voice: ${voice}`);
+        console.log(`[WebHandler] TTS using: ${ttsModelInfo.key} (${config.SERVICE}), voice: ${voice}`);
 
         // Вызываем TTS-функцию с правильной сигнатурой
         if (config.SERVICE === 'WORKERS_AI') {
@@ -1016,7 +1077,7 @@ async function handleAudio(auth, payload, env, monolith) {
     }
 
     let creditsLeft = null;
-    if (isAuth) {
+    if (!isFreeTTS && isAuth) {
         creditsLeft = await deductCredits(chatId, 2, env, monolith);
     }
 
@@ -1115,7 +1176,7 @@ async function handleModels(auth, env, monolith) {
 
             // Показываем ВСЕ модели — юзер сам выбирает. Никакого скрытия!
 
-            const isFree = mapping.freeByDefault || !modelDetails.pricing || modelDetails.SERVICE === 'WORKERS_AI';
+            const isFree = mapping.freeByDefault || !modelDetails.pricing || modelDetails.SERVICE === 'WORKERS_AI' || modelDetails.SERVICE === 'VOICERSS';
             const cost = typeof modelDetails.pricing === 'number' ? modelDetails.pricing : (modelDetails.pricing ? 'дин.' : 0);
             const isDynamicPricing = typeof modelDetails.pricing === 'object' && modelDetails.pricing !== null;
 
@@ -1250,6 +1311,7 @@ async function handleAdmin(auth, payload, env, monolith) {
             const balanceKey = targetId + '_credit_balance';
             await env.LAST_PHOTO_STORAGE.put(balanceKey, String(amount), { expirationTtl: 86400 * 365 });
             console.log(`[Admin] Balance set: ${targetId} → ${amount}`);
+            await logCreditTransaction(targetId, amount, 'admin_set', env, 'Админ установил баланс: ' + amount);
             return formatResponse(true, null, null, { type: 'admin', action: 'set_balance', target_id: targetId, new_balance: amount });
         } catch (e) {
             return formatResponse(false, 'Ошибка записи баланса: ' + e.message);
@@ -1272,6 +1334,7 @@ async function handleAdmin(auth, payload, env, monolith) {
             const endTime = Date.now() + (days * 86400 * 1000);
             await env.LAST_PHOTO_STORAGE.put(subEndKey, String(endTime), { expirationTtl: 86400 * 365 });
             console.log(`[Admin] VIP set: ${targetId} → ${days} days (until ${new Date(endTime).toISOString()})`);
+            await logCreditTransaction(targetId, 0, 'admin_vip', env, 'Админ установил VIP на ' + days + ' дней');
             return formatResponse(true, null, null, { type: 'admin', action: 'set_vip', target_id: targetId, days: days, until: endTime });
         } catch (e) {
             return formatResponse(false, 'Ошибка установки VIP: ' + e.message);
@@ -1320,12 +1383,32 @@ async function handleBalance(auth, env, monolith) {
     const balance = await getUserBalance(chatId, env, monolith);
     const isVip = await checkVipStatus(chatId, env);
     const isAdmin = checkAdminStatus(chatId, env);
+    const history = await getCreditHistory(chatId, env);
 
     return formatResponse(true, null, balance, { 
         type: 'balance', 
         balance: balance, 
         isVip: isVip,
-        isAdmin: isAdmin
+        isAdmin: isAdmin,
+        history: history
+    });
+}
+
+async function handleCreditHistory(auth, env, monolith) {
+    if (!auth || !auth.id) {
+        return formatResponse(false, 'Не авторизован');
+    }
+    const chatId = String(auth.id);
+    const history = await getCreditHistory(chatId, env);
+    const balance = await getUserBalance(chatId, env, monolith);
+    const isVip = await checkVipStatus(chatId, env);
+    const isAdmin = checkAdminStatus(chatId, env);
+    return formatResponse(true, null, balance, {
+        type: 'credit_history',
+        balance: balance,
+        isVip: isVip,
+        isAdmin: isAdmin,
+        history: history
     });
 }
 
@@ -1382,6 +1465,7 @@ async function getUserBalance(chatId, env, monolith) {
             }
             // Если баланса нет в базе — создаём начальный (80 бесплатных кредитов)
             await env.LAST_PHOTO_STORAGE.put(balanceKey, '80', { expirationTtl: 86400 * 365 });
+            await logCreditTransaction(chatId, 80, 'registration', env, 'Начальные бесплатные кредиты');
             return 80;
         } catch (e) {
             console.error("[WebHandler] Balance read error:", e.message);
@@ -1402,11 +1486,53 @@ async function deductCredits(chatId, amount, env, monolith) {
         const current = await getUserBalance(chatId, env, monolith);
         const newBalance = Math.max(0, current - amount);
         await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
+        // Log the transaction
+        await logCreditTransaction(chatId, -amount, 'spend', env, 'Списание ' + amount + ' кредитов');
         return newBalance;
     } catch (e) {
         console.error("[WebHandler] Credit deduction error:", e.message);
         return null;
     }
+}
+
+// Логирование транзакций в KV (ключ = {chatId}_credit_log)
+async function logCreditTransaction(chatId, amount, operation, env, details = '') {
+    if (!env.LAST_PHOTO_STORAGE) return;
+    try {
+        const logKey = chatId + '_credit_log';
+        let log = [];
+        const stored = await env.LAST_PHOTO_STORAGE.get(logKey);
+        if (stored) {
+            try { log = JSON.parse(stored); } catch(_) {}
+        }
+        log.unshift({
+            ts: Date.now(),
+            amount: amount,         // positive = credit, negative = debit
+            operation: operation,   // 'purchase', 'spend', 'admin_set', 'vip_daily', 'registration'
+            details: details,
+            balance_after: null     // will be filled if possible
+        });
+        // Keep last 100 transactions
+        if (log.length > 100) log = log.slice(0, 100);
+        await env.LAST_PHOTO_STORAGE.put(logKey, JSON.stringify(log), { expirationTtl: 86400 * 365 });
+    } catch (e) {
+        console.error("[WebHandler] Credit log error:", e.message);
+    }
+}
+
+// Get credit transaction history
+async function getCreditHistory(chatId, env) {
+    if (!env.LAST_PHOTO_STORAGE) return [];
+    try {
+        const logKey = chatId + '_credit_log';
+        const stored = await env.LAST_PHOTO_STORAGE.get(logKey);
+        if (stored) {
+            try { return JSON.parse(stored); } catch(_) {}
+        }
+    } catch (e) {
+        console.error("[WebHandler] Credit history read error:", e.message);
+    }
+    return [];
 }
 
 // ============================================================

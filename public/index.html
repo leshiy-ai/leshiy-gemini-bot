@@ -324,7 +324,7 @@
             <div class="panel-subsection active" id="audioTTSSection">
                 <div>
                     <h3>&#127925; Озвучка текста</h3>
-                    <p id="audioTTSDesc">Напиши текст, и я озвучу его с помощью ИИ.</p>
+                    <p id="audioTTSDesc">Напиши текст, и я озвучу его. VoiceRSS — бесплатно, без авторизации.</p>
                 </div>
                 <div class="result-area" id="audioTTSResult">
                     <span class="result-placeholder">Здесь появится аудиоплеер</span>
@@ -487,6 +487,7 @@
             <div id="profileCredits" style="padding:10px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:12px">
                 <div style="font-size:12px;color:var(--text-secondary)">Баланс</div>
                 <div style="font-size:18px;font-weight:700;color:var(--warning)" id="profileCreditsAmount">--&#162;</div>
+                <div id="profileCreditHistory" style="margin-top:8px;max-height:200px;overflow-y:auto;font-size:12px"></div>
             </div>
             <div id="profileAdminSection" style="display:none;margin-bottom:12px">
                 <button class="btn-secondary" onclick="closeProfileDialog();openAdminDialog()" style="width:100%;border-color:var(--warning);color:var(--warning)">&#128081; Админ-панель</button>
@@ -843,6 +844,7 @@
     }
 
     // ---- ЗАГРУЗКА ДАННЫХ ДЛЯ АВТОРИЗОВАННОГО ЮЗЕРА ----
+    let creditHistory = []; // История списаний/пополнений
     async function loadServerData() {
         try {
             const resp = await fetch(API_URL + '/api', {
@@ -873,6 +875,10 @@
                     } else {
                         display.classList.remove('is-admin');
                         hideAdminPanel();
+                    }
+                    // Сохраняем историю транзакций если есть
+                    if (data.data.history) {
+                        creditHistory = data.data.history;
                     }
                 } else {
                     credits = 0;
@@ -943,6 +949,15 @@
                         <input type="number" id="adminVipDays" placeholder="Дней" value="30" style="width:70px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
                         <button class="btn-primary" onclick="adminSetVip()" style="padding:8px 16px;font-size:13px">VIP</button>
                     </div>
+                </div>
+
+                <div style="margin-top:16px">
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:8px">Информация о пользователе</label>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <input type="text" id="adminInfoId" placeholder="ID пользователя" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
+                        <button class="btn-primary" onclick="adminGetUserInfo()" style="padding:8px 16px;font-size:13px">Найти</button>
+                    </div>
+                    <div id="adminUserInfoResult" style="margin-top:8px;font-size:13px;color:var(--text-secondary)"></div>
                 </div>
 
                 <div class="dialog-actions" style="margin-top:20px">
@@ -1031,6 +1046,36 @@
             }
         } catch(e) {
             showToast('Сетевая ошибка', 'error');
+        }
+    }
+
+    async function adminGetUserInfo() {
+        const targetId = document.getElementById('adminInfoId')?.value?.trim();
+        if (!targetId) {
+            showToast('Укажите ID пользователя', 'error');
+            return;
+        }
+        const resultEl = document.getElementById('adminUserInfoResult');
+        if (resultEl) resultEl.innerHTML = '<span style="color:var(--accent)">Загрузка...</span>';
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'admin', auth: getAuth(), payload: { action: 'get_user_info', target_id: targetId } })
+            });
+            const data = await resp.json();
+            if (data.success && data.data) {
+                const info = data.data;
+                const vipStr = info.isVip ? '<span style="color:var(--accent)">Активен до ' + (info.vipUntil ? new Date(info.vipUntil).toLocaleString('ru-RU') : 'N/A') + '</span>' : '<span style="color:var(--text-muted)">Не активен</span>';
+                if (resultEl) resultEl.innerHTML = '<div style="padding:8px;background:var(--bg-tertiary);border-radius:8px">' +
+                    '<div><b>Баланс:</b> ' + (info.balance ?? 0) + '\u00A2</div>' +
+                    '<div><b>VIP:</b> ' + vipStr + '</div>' +
+                    '</div>';
+            } else {
+                if (resultEl) resultEl.innerHTML = '<span style="color:var(--danger)">' + (data.error || 'Ошибка') + '</span>';
+            }
+        } catch(e) {
+            if (resultEl) resultEl.innerHTML = '<span style="color:var(--danger)">Сетевая ошибка</span>';
         }
     }
 
@@ -1351,8 +1396,11 @@
             selected.video_analysis = availableModels.video_analysis?.find(m => m.isFree)?.key || availableModels.video_analysis?.[0]?.key;
         if (!selected.video_upscale || !availableModels.video_upscale?.find(m => m.key === selected.video_upscale))
             selected.video_upscale = availableModels.video_upscale?.[0]?.key;
-        if (!selected.audio_tts || !availableModels.audio_tts?.find(m => m.key === selected.audio_tts))
-            selected.audio_tts = availableModels.audio_tts?.find(m => m.isFree)?.key || availableModels.audio_tts?.[0]?.key;
+        if (!selected.audio_tts || !availableModels.audio_tts?.find(m => m.key === selected.audio_tts)) {
+            // VoiceRSS — бесплатный, без авторизации, должен быть по умолчанию
+            const voicerss = availableModels.audio_tts?.find(m => m.service === 'VOICERSS');
+            selected.audio_tts = voicerss?.key || availableModels.audio_tts?.find(m => m.isFree)?.key || availableModels.audio_tts?.[0]?.key;
+        }
         if (!selected.audio_stt || !availableModels.audio_stt?.find(m => m.key === selected.audio_stt))
             selected.audio_stt = availableModels.audio_stt?.[0]?.key;
     }
@@ -1862,7 +1910,7 @@
     function updateAudioPlaceholder() {
         if (currentMode === 'audio') {
             const ph = { tts: 'Введите текст для озвучки...', stt: 'Загрузите аудиофайл выше', convert: 'Загрузите аудиофайл выше', voice_clone: 'Введите текст для озвучки вашим голосом...' };
-            const hints = { tts: 'Стоимость озвучки зависит от модели', stt: 'Распознавание речи — бесплатно', convert: 'Конвертация — бесплатно', voice_clone: 'Клонирование голоса' };
+            const hints = { tts: 'VoiceRSS — бесплатно без авторизации', stt: 'Распознавание речи — бесплатно', convert: 'Конвертация — бесплатно', voice_clone: 'Клонирование голоса' };
             userInput.placeholder = ph[selected.audioSubMode] || 'Введите текст...';
             inputHint.textContent = hints[selected.audioSubMode] || '';
         }
@@ -1979,69 +2027,100 @@
 
             const files = e.dataTransfer.files;
             if (!files.length) return;
+            const file = files[0];
+            const fileType = file.type || '';
 
-            // Route dropped files based on current mode
-            if (currentMode === 'chat') {
-                processChatFiles(files);
-            } else if (currentMode === 'image') {
-                if (selected.imageSubMode === 'generate') {
-                    if (files[0].type.startsWith('image/')) {
-                        handleImageRef(0, { files: files, value: '' });
+            // Smart routing: switch to appropriate mode based on file type, regardless of current mode
+            // This makes drag-and-drop work across ALL modes
+            if (fileType.startsWith('image/')) {
+                // Image files → image mode (or chat with vision)
+                if (currentMode === 'chat') {
+                    processChatFiles(files);
+                } else if (currentMode === 'image') {
+                    if (selected.imageSubMode === 'upscale') {
+                        handleImageUpscale({ files: files, value: '' });
+                    } else if (selected.imageSubMode === 'rotate') {
+                        handleImageRotateUpload({ files: files, value: '' });
+                    } else if (selected.imageSubMode === 'convert') {
+                        handleImageConvertUpload({ files: files, value: '' });
                     } else {
-                        // Non-image file in generate mode — switch to chat and process there
-                        processChatFiles(files);
+                        // Generate mode: add as reference
+                        handleImageRef(0, { files: files, value: '' });
                     }
-                } else if (selected.imageSubMode === 'upscale') {
-                    handleImageUpscale({ files: files, value: '' });
-                } else if (selected.imageSubMode === 'rotate') {
-                    handleImageRotateUpload({ files: files, value: '' });
-                } else if (selected.imageSubMode === 'convert') {
-                    handleImageConvertUpload({ files: files, value: '' });
-                }
-            } else if (currentMode === 'video') {
-                const file = files[0];
-                if (selected.videoSubMode === 'i2v' && file.type.startsWith('image/')) {
+                } else if (currentMode === 'video') {
+                    // In video mode, image → i2v
+                    selected.videoSubMode = 'i2v';
+                    renderVideoSubHeader();
+                    switchVideoSubMode('i2v');
                     handleVideoRef('image', { files: files, value: '' });
-                } else if (selected.videoSubMode === 'v2v' && file.type.startsWith('video/')) {
-                    handleVideoRef('video', { files: files, value: '' });
-                } else if (selected.videoSubMode === 'a2v' && file.type.startsWith('audio/')) {
-                    handleVideoRef('audio', { files: files, value: '' });
-                } else if (selected.videoSubMode === 'analysis' && file.type.startsWith('video/')) {
-                    handleVideoConvert({ files: files, value: '' });
                 } else {
-                    // Auto-detect: switch to appropriate sub-mode
-                    if (file.type.startsWith('image/')) {
-                        selected.videoSubMode = 'i2v';
-                        renderVideoSubHeader();
-                        switchVideoSubMode('i2v');
-                        handleVideoRef('image', { files: files, value: '' });
-                    } else if (file.type.startsWith('video/')) {
+                    // In any other mode → switch to image generate
+                    switchMode('image');
+                    selected.imageSubMode = 'generate';
+                    renderImageSubHeader();
+                    switchImageSubMode('generate');
+                    handleImageRef(0, { files: files, value: '' });
+                }
+            } else if (fileType.startsWith('video/')) {
+                // Video files → video analysis or chat
+                if (currentMode === 'chat') {
+                    processChatFiles(files);
+                } else if (currentMode === 'video') {
+                    if (selected.videoSubMode === 'v2v') {
+                        handleVideoRef('video', { files: files, value: '' });
+                    } else {
+                        // Default: analysis (free)
                         selected.videoSubMode = 'analysis';
                         renderVideoSubHeader();
                         switchVideoSubMode('analysis');
                         handleVideoConvert({ files: files, value: '' });
-                    } else if (file.type.startsWith('audio/')) {
-                        selected.videoSubMode = 'a2v';
-                        renderVideoSubHeader();
-                        switchVideoSubMode('a2v');
-                        handleVideoRef('audio', { files: files, value: '' });
                     }
+                } else {
+                    // Switch to video analysis
+                    switchMode('video');
+                    selected.videoSubMode = 'analysis';
+                    renderVideoSubHeader();
+                    switchVideoSubMode('analysis');
+                    handleVideoConvert({ files: files, value: '' });
                 }
-            } else if (currentMode === 'audio') {
-                if (files[0].type.startsWith('audio/')) {
-                    if (selected.audioSubMode === 'stt') {
-                        handleAudioUpload({ files: files, value: '' });
-                    } else if (selected.audioSubMode === 'convert') {
+            } else if (fileType.startsWith('audio/')) {
+                // Audio files → audio STT or chat
+                if (currentMode === 'chat') {
+                    processChatFiles(files);
+                } else if (currentMode === 'audio') {
+                    if (selected.audioSubMode === 'convert') {
                         handleAudioConvert({ files: files, value: '' });
                     } else if (selected.audioSubMode === 'voice_clone') {
                         handleVoiceClone({ files: files, value: '' });
                     } else {
-                        // Default: switch to STT
+                        // Default: STT (free)
                         selected.audioSubMode = 'stt';
                         renderAudioSubHeader();
                         switchAudioSubMode('stt');
                         handleAudioUpload({ files: files, value: '' });
                     }
+                } else if (currentMode === 'video') {
+                    // Audio in video mode → a2v
+                    selected.videoSubMode = 'a2v';
+                    renderVideoSubHeader();
+                    switchVideoSubMode('a2v');
+                    handleVideoRef('audio', { files: files, value: '' });
+                } else {
+                    // Switch to audio STT
+                    switchMode('audio');
+                    selected.audioSubMode = 'stt';
+                    renderAudioSubHeader();
+                    switchAudioSubMode('stt');
+                    handleAudioUpload({ files: files, value: '' });
+                }
+            } else {
+                // Other files → chat (vision/document analysis)
+                if (currentMode === 'chat') {
+                    processChatFiles(files);
+                } else {
+                    // Switch to chat and process
+                    switchMode('chat');
+                    processChatFiles(files);
                 }
             }
         });
@@ -2067,8 +2146,35 @@
                 dragCounter = 0;
                 overlay.classList.remove('visible');
                 const files = e.dataTransfer.files;
-                if (files.length && currentMode === 'chat') {
-                    processChatFiles(files);
+                if (files.length) {
+                    // Same smart routing as the main drop handler
+                    const file = files[0];
+                    const fileType = file.type || '';
+                    if (currentMode === 'chat') {
+                        processChatFiles(files);
+                    } else if (currentMode === 'image') {
+                        if (fileType.startsWith('image/')) {
+                            if (selected.imageSubMode === 'upscale') handleImageUpscale({ files: files, value: '' });
+                            else if (selected.imageSubMode === 'rotate') handleImageRotateUpload({ files: files, value: '' });
+                            else if (selected.imageSubMode === 'convert') handleImageConvertUpload({ files: files, value: '' });
+                            else handleImageRef(0, { files: files, value: '' });
+                        } else {
+                            processChatFiles(files);
+                        }
+                    } else if (currentMode === 'video') {
+                        if (fileType.startsWith('image/')) { handleVideoRef('image', { files: files, value: '' }); }
+                        else if (fileType.startsWith('video/')) { handleVideoConvert({ files: files, value: '' }); }
+                        else if (fileType.startsWith('audio/')) { handleVideoRef('audio', { files: files, value: '' }); }
+                        else processChatFiles(files);
+                    } else if (currentMode === 'audio') {
+                        if (fileType.startsWith('audio/')) {
+                            if (selected.audioSubMode === 'convert') handleAudioConvert({ files: files, value: '' });
+                            else if (selected.audioSubMode === 'voice_clone') handleVoiceClone({ files: files, value: '' });
+                            else handleAudioUpload({ files: files, value: '' });
+                        } else {
+                            processChatFiles(files);
+                        }
+                    }
                 }
             });
         }
@@ -2736,7 +2842,9 @@
     async function generateAudioTTS(text) {
         const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
         const cost = model?.cost || 2;
-        if (!model?.isFree && !checkAuth(cost)) return;
+        const isFreeTTS = model?.service === 'VOICERSS';
+        // VoiceRSS бесплатен — не требует авторизации и кредитов
+        if (!isFreeTTS && !checkAuth(cost)) return;
 
         isProcessing = true;
         sendBtn.disabled = true;
@@ -2778,15 +2886,17 @@
                     resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '" type="audio/mp3"></audio><br><a href="' + audioSrc + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
                 } else throw new Error('Сервер не вернул аудио');
                 if (data.credits_left !== undefined) credits = data.credits_left;
-                else if (!model?.isFree) credits -= cost;
+                else if (!model?.isFree && !isFreeTTS) credits -= cost;
                 updateCreditsDisplay();
+                loadServerData(); // Refresh balance from server
                 showToast('Аудио создано!', 'success');
             } else {
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
                 resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio>';
-                if (!model?.isFree) credits -= cost;
+                if (!model?.isFree && !isFreeTTS) credits -= cost;
                 updateCreditsDisplay();
+                loadServerData(); // Refresh balance from server
                 showToast('Аудио создано!', 'success');
             }
         } catch (err) {
@@ -3401,6 +3511,24 @@
             const display = document.getElementById('creditsDisplay');
             profileAdminSection.style.display = display.classList.contains('is-admin') ? 'block' : 'none';
         }
+        // История транзакций
+        const historyEl = document.getElementById('profileCreditHistory');
+        if (historyEl) {
+            if (creditHistory.length > 0) {
+                let histHtml = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600">История операций:</div>';
+                creditHistory.slice(0, 20).forEach(h => {
+                    const date = new Date(h.ts);
+                    const timeStr = date.toLocaleDateString('ru-RU', {day:'2-digit',month:'2-digit'}) + ' ' + date.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+                    const amountStr = h.amount > 0 ? '<span style="color:var(--success)">+' + h.amount + '\u00A2</span>' : '<span style="color:var(--danger)">' + h.amount + '\u00A2</span>';
+                    const opLabels = { registration: 'Регистрация', spend: 'Списание', purchase: 'Пополнение', admin_set: 'Админ: баланс', admin_vip: 'Админ: VIP', vip_daily: 'VIP бонус' };
+                    const opLabel = opLabels[h.operation] || h.operation;
+                    histHtml += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(168,85,247,0.1)"><span style="color:var(--text-secondary)">' + timeStr + ' ' + opLabel + '</span>' + amountStr + '</div>';
+                });
+                historyEl.innerHTML = histHtml;
+            } else {
+                historyEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">Нет операций</div>';
+            }
+        }
         profileDialog.classList.add('open');
     }
 
@@ -3744,7 +3872,21 @@
         welcomeScreen.style.display = 'flex';
         showToast('Состояние сброшено', 'info');
     }
-    function cmdAdmin(arg) { addMessage('\uD83D\uDD27 Админ-панель доступна только администраторам бота.', 'bot'); }
+    function cmdAdmin(arg) {
+        // Проверяем статус админа через бэкенд
+        if (!user) {
+            addMessage('\uD83D\uDD27 Для доступа к админ-панели нужно авторизоваться.', 'bot');
+            return;
+        }
+        loadServerData().then(() => {
+            const display = document.getElementById('creditsDisplay');
+            if (display.classList.contains('is-admin')) {
+                openAdminDialog();
+            } else {
+                addMessage('\uD83D\uDD27 Доступ запрещён: вы не администратор.', 'bot');
+            }
+        });
+    }
 
     // Перехват sendOrGenerate для слэш-команд
     const _origSendOrGenerate = sendOrGenerate;
