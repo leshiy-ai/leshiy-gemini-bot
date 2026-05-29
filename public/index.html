@@ -3136,7 +3136,7 @@
         mode: 'photo',
         capturedData: null,
         _closing: false,
-        _stopPromise: null      // Резолвится когда onstop создал blob
+        _chunksCollected: 0     // Диагностика: сколько чанков собрано
     };
 
     // ── Свайп вниз для закрытия ──
@@ -3264,36 +3264,34 @@
         if (cameraState._closing) return;
         cameraState._closing = true;
 
-        if (cameraState.recording) {
-            await _stopRecordingAndWait();
+        if (cameraState.recording && cameraState.mediaRecorder) {
+            // Останавливаем и ЖДЁМ пока onstop создаст blob
+            const mr = cameraState.mediaRecorder;
+            const stopPromise = new Promise(function(resolve) {
+                var origOnstop = mr.onstop;
+                mr.onstop = function(e) {
+                    if (origOnstop) origOnstop.call(this, e);
+                    resolve();
+                };
+            });
+            // Останавливаем
+            if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+            if (mr.state === 'recording') {
+                mr.stop();
+            }
+            // Ждём максимум 3 секунды
+            await Promise.race([stopPromise, new Promise(function(r) { setTimeout(r, 3000); })]);
         }
 
         _saveAndClose();
     }
 
-    // ── Остановка записи ──
-    // 1. requestData() — ПРИНУДИТЕЛЬНЫЙ сброс буфера → ondataavailable с реальными данными
-    // 2. stop() — финальный сброс + onstop
+    // ── Остановка записи (кнопка стоп, не закрытие модалки) ──
     function _stopRecording() {
         if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
         const mr = cameraState.mediaRecorder;
-        if (!mr) return;
-        if (mr.state === 'recording') {
-            try { mr.requestData(); } catch(e) { console.warn('[Camera] requestData err:', e); }
+        if (mr && mr.state === 'recording') {
             mr.stop();
-        } else if (mr.state === 'paused') {
-            mr.resume();
-            try { mr.requestData(); } catch(e) {}
-            mr.stop();
-        }
-    }
-
-    // ── Асинхронная остановка с ожиданием onstop (для закрытия модалки) ──
-    async function _stopRecordingAndWait() {
-        _stopRecording();
-        if (cameraState._stopPromise) {
-            await cameraState._stopPromise;
-            cameraState._stopPromise = null;
         }
     }
 
@@ -3354,7 +3352,7 @@
         cameraState.mediaRecorder = null;
         cameraState.capturedData = null;
         cameraState._closing = false;
-        cameraState._stopPromise = null;
+        cameraState._chunksCollected = 0;
         document.getElementById('cameraRecTime').textContent = '00:00';
         document.getElementById('cameraRecIndicator').style.display = 'none';
         document.getElementById('cameraSavedBadge').style.display = 'none';
@@ -3432,110 +3430,104 @@
     }
 
     // ── Запись видео ──
-    // НАДЁЖНАЯ схема для мобильных браузеров:
-    // 1. recorder.start(1000) — timeslice 1 сек → ondataavailable каждую секунду
-    //    Без timeslice на многих мобильных браузерах ondataavailable НЕ вызывается
-    // 2. При остановке: requestData() (сброс буфера) → stop() (финальный сброс + onstop)
-    // 3. onstop собирает ВСЕ чанки в blob, резолвит _stopPromise
-    // 4. Каждый вызов = НОВЫЙ MediaRecorder (старый после stop() уже мёртв)
+    // МИНИМАЛЬНЫЙ И НАДЁЖНЫЙ код:
+    // - recorder.start(timeslice) → ondataavailable раз в timeslice мс
+    // - stop() → финальный ondataavailable → onstop
+    // - НЕТ requestData() — stop() сам сбрасывает буфер
+    // - Диагностика прямо в toast — видно что происходит
     function _startRecording() {
-        if (!cameraState.stream) {
+        if (!cameraState.stream || !cameraState.stream.active) {
             showToast('Камера не готова', 'error');
             return;
         }
-        if (!cameraState.stream.active) {
-            showToast('Поток камеры неактивен — переоткройте камеру', 'error');
+        if (typeof MediaRecorder === 'undefined') {
+            showToast('Браузер не поддерживает запись видео', 'error');
             return;
         }
 
         cameraState.capturedData = null;
-        cameraState._stopPromise = null;
+        cameraState._chunksCollected = 0;
 
         try {
-            const hasAudio = cameraState.stream.getAudioTracks().length > 0;
-            console.log('[Camera] Start recording, tracks: video=' +
-                cameraState.stream.getVideoTracks().length + ' audio=' + hasAudio +
-                ', stream.active=' + cameraState.stream.active);
-
-            // Выбираем mimeType — с аудио кодеком если есть аудио трек
-            let mimeType = '';
-            if (hasAudio) {
-                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) mimeType = 'video/webm;codecs=vp8,opus';
-                else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) mimeType = 'video/webm;codecs=vp9,opus';
-                else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) mimeType = 'video/webm;codecs=h264,opus';
-            }
-            if (!mimeType) {
-                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) mimeType = 'video/webm;codecs=vp8';
-                else if (MediaRecorder.isTypeSupported('video/webm')) mimeType = 'video/webm';
-                else if (MediaRecorder.isTypeSupported('video/mp4')) mimeType = 'video/mp4';
+            // Определяем поддерживаемый mimeType
+            var mimeType = '';
+            var tryTypes = [
+                'video/webm;codecs=vp8,opus',
+                'video/webm;codecs=vp9,opus',
+                'video/webm;codecs=vp8',
+                'video/webm',
+                'video/mp4'
+            ];
+            for (var i = 0; i < tryTypes.length; i++) {
+                if (MediaRecorder.isTypeSupported(tryTypes[i])) {
+                    mimeType = tryTypes[i];
+                    break;
+                }
             }
 
-            const options = mimeType ? { mimeType } : {};
-            const recorder = new MediaRecorder(cameraState.stream, options);
-            console.log('[Camera] MediaRecorder created, mimeType=' + (mimeType || 'default') +
-                ', state=' + recorder.state);
+            var options = mimeType ? { mimeType: mimeType } : {};
+            var recorder = new MediaRecorder(cameraState.stream, options);
 
-            // ЛОКАЛЬНЫЙ массив чанков — в замыкании, никто не затрёт
-            const localChunks = [];
-            const usedMime = mimeType;
+            // ДИАГНОСТИКА: показываем что создалось
+            var hasAudio = cameraState.stream.getAudioTracks().length > 0;
+            showToast('Запись: ' + (mimeType || 'default') + ' audio=' + hasAudio, 'info');
+
+            // Локальный массив чанков в замыкании
+            var chunks = [];
+            var finalMime = mimeType;
 
             recorder.ondataavailable = function(e) {
-                // Принимаем ВСЕ чанки с размером > 0
                 if (e.data && e.data.size > 0) {
-                    localChunks.push(e.data);
-                    console.log('[Camera] Chunk: ' + e.data.size + ' bytes, total=' + localChunks.length);
+                    chunks.push(e.data);
+                    cameraState._chunksCollected = chunks.length;
                 }
             };
 
-            recorder.onerror = function(e) {
-                console.error('[Camera] MediaRecorder error:', e.error || e);
-                showToast('Ошибка записи: ' + (e.error ? e.error.message : 'unknown'), 'error');
+            recorder.onstop = function() {
+                var mime = recorder.mimeType || finalMime || 'video/webm';
+
+                // ДИАГНОСТИКА: показываем сколько чанков собрано
+                showToast('onstop: chunks=' + chunks.length + ' size=' + (chunks.reduce(function(s,c){return s+c.size;},0)) + 'B', 'info');
+
+                if (chunks.length === 0) {
+                    showToast('НЕТ ДАННЫХ! Запись пуста. Попробуйте ещё раз.', 'error');
+                    cameraState.recording = false;
+                    cameraState.mediaRecorder = null;
+                    _updateCameraUI('idle');
+                    return;
+                }
+
+                var blob = new Blob(chunks, { type: mime });
+                cameraState.capturedData = {
+                    blob: blob,
+                    mimeType: mime,
+                    category: 'video',
+                    thumbnail: _grabThumbnail(),
+                    duration: cameraState.seconds
+                };
                 cameraState.recording = false;
                 cameraState.mediaRecorder = null;
-                cameraState._stopPromise = null;
+                _updateCameraUI('done');
+                document.getElementById('cameraSavedText').textContent = 'Видео записано';
+                showToast('Видео: ' + Math.round(blob.size/1024) + ' КБ, нажмите ✓', 'info');
+            };
+
+            recorder.onerror = function(e) {
+                showToast('Ошибка записи: ' + (e.error ? e.error.message : '?'), 'error');
+                cameraState.recording = false;
+                cameraState.mediaRecorder = null;
                 _updateCameraUI('idle');
             };
 
-            // Promise резолвится когда onstop создал blob
-            cameraState._stopPromise = new Promise(function(resolve) {
-                recorder.onstop = function() {
-                    console.log('[Camera] onstop fired, chunks=' + localChunks.length);
+            // СТАРТ с timeslice 500мс — без этого на мобильных ondataavailable не вызывается
+            recorder.start(500);
 
-                    const recordedMime = recorder.mimeType || usedMime || 'video/webm';
-                    const totalSize = localChunks.reduce(function(s, c) { return s + c.size; }, 0);
-                    console.log('[Camera] Total chunks data: ' + totalSize + ' bytes');
+            // Проверяем что запись реально началась
+            if (recorder.state !== 'recording') {
+                showToast('recorder.state=' + recorder.state + ' — не записывает!', 'error');
+                return;
+            }
 
-                    if (localChunks.length === 0 || totalSize === 0) {
-                        showToast('Запись пуста — попробуйте ещё раз', 'error');
-                        cameraState.recording = false;
-                        cameraState.mediaRecorder = null;
-                        _updateCameraUI('idle');
-                        resolve();
-                        return;
-                    }
-
-                    const blob = new Blob(localChunks, { type: recordedMime });
-                    console.log('[Camera] Blob created: ' + blob.size + ' bytes, type=' + recordedMime);
-
-                    cameraState.capturedData = {
-                        blob: blob,
-                        mimeType: recordedMime,
-                        category: 'video',
-                        thumbnail: _grabThumbnail(),
-                        duration: cameraState.seconds
-                    };
-                    cameraState.recording = false;
-                    cameraState.mediaRecorder = null;
-                    _updateCameraUI('done');
-                    document.getElementById('cameraSavedText').textContent = 'Видео записано';
-                    showToast('Видео записано! (' + formatRecTime(cameraState.seconds) + ', ' + Math.round(blob.size/1024) + ' КБ) Нажмите ✓', 'info');
-                    resolve();
-                };
-            });
-
-            // TIMESLICE 1000ms — КРИТИЧЕСКИ для мобильных!
-            // Без timeslice ondataavailable может НЕ вызываться на многих мобильных браузерах
-            recorder.start(1000);
             cameraState.mediaRecorder = recorder;
             cameraState.recording = true;
             cameraState.seconds = 0;
@@ -3545,10 +3537,8 @@
                 cameraState.seconds++;
                 document.getElementById('cameraRecTime').textContent = formatRecTime(cameraState.seconds);
             }, 1000);
-            console.log('[Camera] Recording started with timeslice=1000');
         } catch(err) {
-            console.error('[Camera] _startRecording error:', err);
-            showToast('Ошибка записи: ' + err.message, 'error');
+            showToast('Ошибка: ' + err.message, 'error');
         }
     }
 
