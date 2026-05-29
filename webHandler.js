@@ -707,7 +707,7 @@ async function handleImage(auth, payload, env, monolith) {
                     prompt: prompt,
                     image_urls: [imageUrl],
                     output_format: 'png',
-                    image_size: payload.aspect_ratio || '1:1'
+                    aspect_ratio: payload.aspect_ratio || '1:1'
                 };
 
                 const taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
@@ -759,13 +759,12 @@ async function handleImage(auth, payload, env, monolith) {
             const workerDomain = env.WORKER_DOMAIN || '';
             const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
-            // KieAI image_size принимает ratio: "1:1", "16:9", "9:16", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9", "auto"
-            const kieRatio = payload.aspect_ratio || payload.image_size || '1:1';
+            // KieAI: aspect_ratio — основной параметр (image_size deprecated)
+            const kieRatio = payload.aspect_ratio || '1:1';
             const input = {
                 prompt: prompt,
                 output_format: 'png',
-                aspect_ratio: kieRatio,
-                image_size: kieRatio
+                aspect_ratio: kieRatio
             };
 
             const taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
@@ -1761,6 +1760,159 @@ async function handleAdmin(auth, payload, env, monolith) {
 // 💰 БАЛАНС — Запрос текущего баланса
 // ============================================================
 // ============================================================
+// 🔄 СКАЧИВАНИЕ ИЗОБРАЖЕНИЯ С ПРОКСИ-ФОЛЛБЭКОМ
+// ============================================================
+// Пробуем скачать изображение напрямую, затем через прокси.
+// Возвращает base64 строку или null если все попытки провалились.
+async function downloadImageWithProxy(imageUrl, env) {
+    console.log(`[WebHandler] downloadImageWithProxy: ${imageUrl.substring(0, 100)}`);
+
+    // --- ПОПЫТКА 1: Прямой fetch ---
+    try {
+        const imgResponse = await fetch(imageUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'image/*,*/*;q=0.8'
+            },
+            signal: AbortSignal.timeout(30000)
+        });
+        if (imgResponse.ok) {
+            const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+            if (imgBuffer.length > 500) {
+                console.log(`[WebHandler] Direct download OK: ${imgBuffer.length} bytes`);
+                return imgBuffer.toString('base64');
+            }
+            console.warn(`[WebHandler] Direct download suspicious: only ${imgBuffer.length} bytes`);
+        } else {
+            console.warn(`[WebHandler] Direct download failed: HTTP ${imgResponse.status}`);
+        }
+    } catch (e) {
+        console.warn(`[WebHandler] Direct download error: ${e.message}`);
+    }
+
+    // --- ПОПЫТКА 2: Через Yandex Cloud Proxy (LESHIY_AI_PROXY) ---
+    const yandexProxy = env.LESHIY_AI_PROXY;
+    if (yandexProxy && typeof yandexProxy.fetch === 'function') {
+        try {
+            console.log(`[WebHandler] Trying Yandex proxy download...`);
+            const proxyResponse = await yandexProxy.fetch(imageUrl, {
+                method: 'GET',
+                headers: {
+                    'X-Target-URL': imageUrl,
+                    'X-Proxy-Secret': env.PROXY_SECRET_KEY || env.GEMINI_PROXY_KEY || '',
+                    'Accept': 'image/*,*/*;q=0.8'
+                }
+            });
+            if (proxyResponse.ok) {
+                const imgBuffer = Buffer.from(await proxyResponse.arrayBuffer());
+                if (imgBuffer.length > 500) {
+                    console.log(`[WebHandler] Yandex proxy download OK: ${imgBuffer.length} bytes`);
+                    return imgBuffer.toString('base64');
+                }
+            }
+            console.warn(`[WebHandler] Yandex proxy returned: ${proxyResponse.status}`);
+        } catch (e) {
+            console.warn(`[WebHandler] Yandex proxy error: ${e.message}`);
+        }
+    }
+
+    // --- ПОПЫТКА 3: Через Cloudflare Fallback Proxy ---
+    const fallbackProxy = env.FALLBACK_PROXY || 'https://leshiy-ai-proxy.leshiyalex.workers.dev';
+    if (fallbackProxy) {
+        try {
+            console.log(`[WebHandler] Trying CF fallback proxy download...`);
+            const proxyResponse = await fetch(fallbackProxy, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Target-URL': imageUrl,
+                    'X-Proxy-Secret': env.PROXY_SECRET_KEY || env.GEMINI_PROXY_KEY || '',
+                    'X-HTTP-Method': 'GET'
+                },
+                body: JSON.stringify({ _proxy_target: imageUrl })
+            });
+            if (proxyResponse.ok) {
+                const ct = proxyResponse.headers.get('content-type') || '';
+                // Если вернулся JSON с URL — пробуем скачать по нему
+                if (ct.includes('json')) {
+                    try {
+                        const jsonData = await proxyResponse.json();
+                        const proxyUrl = jsonData.url || jsonData.data?.url || jsonData.image_url;
+                        if (proxyUrl) {
+                            console.log(`[WebHandler] CF proxy returned URL: ${proxyUrl.substring(0, 80)}`);
+                            const imgResponse = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
+                            if (imgResponse.ok) {
+                                const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+                                if (imgBuffer.length > 500) return imgBuffer.toString('base64');
+                            }
+                        }
+                    } catch (_) {}
+                } else {
+                    // Бинарный ответ — это само изображение
+                    const imgBuffer = Buffer.from(await proxyResponse.arrayBuffer());
+                    if (imgBuffer.length > 500) {
+                        console.log(`[WebHandler] CF proxy binary download OK: ${imgBuffer.length} bytes`);
+                        return imgBuffer.toString('base64');
+                    }
+                }
+            }
+            console.warn(`[WebHandler] CF fallback proxy returned: ${proxyResponse.status}`);
+        } catch (e) {
+            console.warn(`[WebHandler] CF fallback proxy error: ${e.message}`);
+        }
+    }
+
+    // --- ПОПЫТКА 4: Через Gemini Proxy ---
+    const geminiProxy = env.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev';
+    const geminiProxyKey = env.GEMINI_PROXY_KEY || env.PROXY_SECRET_KEY || '';
+    if (geminiProxy) {
+        try {
+            console.log(`[WebHandler] Trying Gemini proxy download...`);
+            const proxyUrl = `${geminiProxy.startsWith('http') ? geminiProxy : 'https://' + geminiProxy}/proxy-image`;
+            const proxyResponse = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Proxy-Secret': geminiProxyKey,
+                    'X-Target-URL': imageUrl
+                },
+                body: JSON.stringify({ url: imageUrl })
+            });
+            if (proxyResponse.ok) {
+                const imgBuffer = Buffer.from(await proxyResponse.arrayBuffer());
+                if (imgBuffer.length > 500) {
+                    console.log(`[WebHandler] Gemini proxy download OK: ${imgBuffer.length} bytes`);
+                    return imgBuffer.toString('base64');
+                }
+            }
+        } catch (e) {
+            console.warn(`[WebHandler] Gemini proxy error: ${e.message}`);
+        }
+    }
+
+    // --- ПОПЫТКА 5: Повторный прямой fetch с другими заголовками ---
+    try {
+        console.log(`[WebHandler] Final retry with minimal headers...`);
+        const imgResponse = await fetch(imageUrl, {
+            redirect: 'follow',
+            signal: AbortSignal.timeout(15000)
+        });
+        if (imgResponse.ok) {
+            const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+            if (imgBuffer.length > 500) {
+                console.log(`[WebHandler] Final retry OK: ${imgBuffer.length} bytes`);
+                return imgBuffer.toString('base64');
+            }
+        }
+    } catch (e) {
+        console.warn(`[WebHandler] Final retry failed: ${e.message}`);
+    }
+
+    console.error(`[WebHandler] All 5 download attempts failed for: ${imageUrl.substring(0, 100)}`);
+    return null;
+}
+
+// ============================================================
 // 🔄 TASK STATUS — Polling KieAI task results
 // ============================================================
 // Web frontend polls this endpoint to check if an async KieAI
@@ -1968,39 +2120,30 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 // 🧠 Для изображений — скачиваем на сервере и возвращаем base64,
                 // т.к. временные URL (tempfile.aiquickdraw.com) часто недоступны с клиента
                 if (taskType !== 'video') {
-                    try {
-                        console.log(`[WebHandler] Downloading image from KieAI: ${resultUrl.substring(0, 100)}`);
-                        const imgResponse = await fetch(resultUrl, {
-                            headers: { 'User-Agent': 'LeshiyAI/1.0' },
-                            signal: AbortSignal.timeout(30000)
-                        });
-                        if (imgResponse.ok) {
-                            const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
-                            const imgBase64 = imgBuffer.toString('base64');
-                            console.log(`[WebHandler] Downloaded image: ${imgBuffer.length} bytes, base64 length: ${imgBase64.length}`);
-                            // Пробуем загрузить в публичный URL
-                            if (uploadBase64ImageToPublicUrl) {
-                                try {
-                                    const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId);
-                                    if (uploadedUrl && typeof uploadedUrl === 'string') {
-                                        console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
-                                        return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
-                                    }
-                                } catch (e) {
-                                    console.warn(`[WebHandler] Re-upload failed: ${e.message}, returning base64`);
+                    const downloaded = await downloadImageWithProxy(resultUrl, env);
+                    if (downloaded) {
+                        const imgBase64 = downloaded;
+                        console.log(`[WebHandler] Downloaded image: base64 length=${imgBase64.length}`);
+                        // Пробуем загрузить в публичный URL
+                        if (uploadBase64ImageToPublicUrl) {
+                            try {
+                                const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId);
+                                if (uploadedUrl && typeof uploadedUrl === 'string') {
+                                    console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
+                                    return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
                                 }
+                            } catch (e) {
+                                console.warn(`[WebHandler] Re-upload failed: ${e.message}, returning base64`);
                             }
-                            return formatResponse(true, null, null, { type: 'image_base64', content: imgBase64 });
-                        } else {
-                            console.warn(`[WebHandler] Failed to download image: HTTP ${imgResponse.status}, returning URL anyway`);
                         }
-                    } catch (e) {
-                        console.warn(`[WebHandler] Error downloading image: ${e.message}, returning URL anyway`);
+                        return formatResponse(true, null, null, { type: 'image_base64', content: imgBase64 });
                     }
+                    // Все способы скачивания не удаллись — для изображений это фатально
+                    console.error(`[WebHandler] All download methods failed for: ${resultUrl.substring(0, 100)}`);
+                    return formatResponse(false, 'Не удалось скачать изображение. Попробуйте другую модель.');
                 }
-                // Для видео или если скачивание не удалось — возвращаем URL как есть
-                const resultType = taskType === 'video' ? 'video_url' : 'image_url';
-                return formatResponse(true, null, null, { type: resultType, content: resultUrl });
+                // Для видео — возвращаем URL как есть
+                return formatResponse(true, null, null, { type: 'video_url', content: resultUrl });
             } else {
                 // 6. Глубокий рекурсивный поиск URL во всём ответе
                 const deepFindUrl = (obj, depth) => {

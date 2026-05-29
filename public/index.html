@@ -942,7 +942,7 @@
 
                 if (!data.success) {
                     // Если задача реально провалилась — бросаем ошибку
-                    if (data.error && (data.error.includes('не удалась') || data.error.includes('failed') || data.error.includes('Задача не удалась'))) {
+                    if (data.error && (data.error.includes('не удалась') || data.error.includes('failed') || data.error.includes('Задача не удалась') || data.error.includes('Не удалось скачать'))) {
                         throw new Error(data.error);
                     }
                     // 🛑 "Задача выполнена, но результат не найден" — ФАТАЛЬНАЯ ошибка, НЕ retry!
@@ -958,6 +958,12 @@
                 // Task completed successfully
                 if (data.data?.type === 'image_url' || data.data?.type === 'video_url') {
                     return { completed: true, url: data.data.content, type: data.data.type };
+                }
+
+                // KieAI может вернуть base64 напрямую
+                if (data.data?.type === 'image_base64' && data.data.content) {
+                    const dataUrl = 'data:image/png;base64,' + data.data.content;
+                    return { completed: true, url: dataUrl, type: 'image_url' };
                 }
 
                 // Task still pending — показываем реальный прогресс
@@ -4235,6 +4241,11 @@
                 const data = await response.json();
                 if (data.credits_left !== undefined) credits = data.credits_left;
                 else if (!model?.isFree) credits -= cost;
+
+                // Проверяем ошибку от сервера
+                if (data.success === false) {
+                    throw new Error(data.error || 'Ошибка генерации изображения');
+                }
 
                 // 🛑 KIEAI async task — poll for result instead of showing "go to Telegram"
                 if (data.data?.type === 'image_task') {
