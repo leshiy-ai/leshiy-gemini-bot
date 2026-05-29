@@ -785,34 +785,35 @@ body {
 
 /* ===== INPUT AREA ===== */
 .input-area {
-    padding: 10px 12px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border);
+    padding: 8px 12px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    background: transparent;
+    border-top: none;
     flex-shrink: 0;
     transition: border-color 0.2s ease, background 0.2s ease;
 }
 
-/* Pill-style input bar — все элементы внутри одной скруглённой строки */
+/* Pill-style input bar — премиальная скруглённая строка */
 .input-pill {
     display: flex;
     align-items: flex-end;
-    gap: 2px;
+    gap: 0px;
     background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: 28px;
-    padding: 4px 4px 4px 4px;
-    transition: border-color var(--transition), box-shadow var(--transition);
+    border: 1.5px solid var(--border);
+    border-radius: 24px;
+    padding: 5px 6px 5px 6px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 .input-pill:focus-within {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.15);
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.12), 0 2px 8px rgba(168, 85, 247, 0.15);
 }
 
 .input-pill textarea {
     flex: 1;
     min-width: 0;
-    padding: 8px 12px;
+    padding: 7px 8px;
     border: none;
     border-radius: 20px;
     background: transparent;
@@ -826,14 +827,14 @@ body {
 }
 .input-pill textarea::placeholder { color: var(--text-muted); }
 
-/* Pill buttons — компактные, внутри строки */
+/* Pill buttons — компактные внутри строки */
 .pill-btn {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -844,16 +845,17 @@ body {
     user-select: none;
 }
 .pill-btn:hover { color: var(--accent); background: var(--accent-light); }
-.pill-btn:active { transform: scale(0.9); }
+.pill-btn:active { transform: scale(0.88); }
 
-/* Send — акцентная */
+/* Send — акцентная градиентная */
 .pill-send {
     background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
     color: white;
-    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.25);
+    transition: all 0.2s ease;
 }
-.pill-send:hover { background: linear-gradient(135deg, #9333ea 0%, #6d28d9 100%); transform: scale(1.08); box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4); }
-.pill-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+.pill-send:hover { background: linear-gradient(135deg, #9333ea 0%, #6d28d9 100%); transform: scale(1.05); box-shadow: 0 4px 12px rgba(168, 85, 247, 0.35); }
+.pill-send:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; background: var(--bg-secondary); color: var(--text-muted); }
 
 /* Mic recording state */
 .pill-mic.recording {

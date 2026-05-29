@@ -413,7 +413,7 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                 </button>
                 <button class="pill-btn pill-send" id="sendBtn" onclick="sendOrGenerate()" title="Отправить">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M3.4 20.4l17.45-7.48a1 1 0 0 0 0-1.84L3.4 3.6a.993.993 0 0 0-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"/></svg>
                 </button>
             </div>
             <div class="voice-commands-bar" id="voiceCommandsBar" style="display:none">
@@ -535,10 +535,6 @@
             </div>
             <div class="camera-preview-container">
                 <video id="cameraPreview" autoplay playsinline muted></video>
-                <!-- Видеопревью после записи -->
-                <video id="cameraPlayback" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:5" controls playsinline></video>
-                <!-- Отладочная инфа -->
-                <div id="cameraDebugInfo" style="display:none;position:absolute;top:8px;left:8px;z-index:10;background:rgba(0,0,0,0.8);color:#0f0;font:11px monospace;padding:4px 8px;border-radius:4px;max-width:90%;word-break:break-all"></div>
                 <!-- Индикатор записи (видео) -->
                 <div class="camera-recording-indicator" id="cameraRecIndicator" style="display:none">
                     <span class="rec-dot"></span> REC <span id="cameraRecTime">00:00</span>
@@ -606,6 +602,8 @@
     let selectedRotateAngle = '-90';
     let voiceCloneSample = null; // {base64, name} — образец голоса
     let lastGeneratedImage = null; // { base64, url } — последнее сгенерированное изображение
+    let lightboxItems = []; // массив URL для навигации
+    let lightboxIndex = 0;
 
     // 🧠 Глобальное состояние перетаскивания — надёжнее чем dataTransfer.files
     // При dragstart бейджа сохраняем вложение сюда, при drop в upload-zone читаем отсюда
@@ -3301,10 +3299,6 @@
     function _saveAndClose() {
         var data = cameraState.capturedData;
 
-        // Показываем отладку
-        var dbg = document.getElementById('cameraDebugInfo');
-        if (dbg) dbg.style.display = 'none';
-
         if (data && data.blob && data.blob.size > 0) {
             // ОЧИСТКА mimeType: убираем ;codecs=... иначе data URI ломается
             // "video/webm;codecs=vp8,opus" → запятая ломает data:video/webm;codecs=vp8,opus;base64,...
@@ -3348,9 +3342,8 @@
             };
             reader.readAsDataURL(data.blob);
         } else {
-            // Нет данных — показываем почему
             if (data) {
-                showToast('blob=' + (data.blob ? data.blob.size : 'null') + ' байт', 'error');
+                showToast('Ошибка: пустые данные', 'error');
             }
             cameraState.capturedData = null;
             _cleanupCameraModal();
@@ -3360,19 +3353,10 @@
     function _cleanupCameraModal() {
         var modal = document.getElementById('cameraModal');
         var preview = document.getElementById('cameraPreview');
-        var playback = document.getElementById('cameraPlayback');
-        var dbg = document.getElementById('cameraDebugInfo');
         if (cameraState.stream) {
             cameraState.stream.getTracks().forEach(function(t) { t.stop(); });
             cameraState.stream = null;
         }
-        // Очищаем превью записи
-        if (playback) {
-            playback.pause();
-            playback.src = '';
-            playback.style.display = 'none';
-        }
-        if (dbg) dbg.style.display = 'none';
         preview.srcObject = null;
         modal.classList.remove('open');
         document.body.style.overflow = '';
@@ -3396,11 +3380,6 @@
             if (cameraState.recording) {
                 _stopRecording();
             } else {
-                // Скрываем превью предыдущей записи
-                var playback = document.getElementById('cameraPlayback');
-                if (playback) { playback.style.display = 'none'; playback.src = ''; }
-                var dbg = document.getElementById('cameraDebugInfo');
-                if (dbg) dbg.style.display = 'none';
                 if (cameraState.capturedData) {
                     cameraState.capturedData = null;
                     document.getElementById('cameraSavedBadge').style.display = 'none';
@@ -3457,7 +3436,6 @@
                 _updateCameraUI('done');
                 document.getElementById('cameraSavedText').textContent = 'Фото сохранено';
                 if (navigator.vibrate) navigator.vibrate(50);
-                showToast('Фото: ' + cw + 'x' + ch + ', ' + Math.round(blob.size/1024) + 'KB', 'info');
             }, 'image/jpeg', 0.92);
         } catch(err) {
             showToast('Ошибка фото: ' + err.message, 'error');
@@ -3479,12 +3457,6 @@
 
         cameraState.capturedData = null;
         cameraState._onstopResolve = null;
-
-        // Скрываем превью предыдущей записи
-        var playback = document.getElementById('cameraPlayback');
-        if (playback) { playback.style.display = 'none'; playback.src = ''; }
-        var dbg = document.getElementById('cameraDebugInfo');
-        if (dbg) dbg.style.display = 'none';
 
         try {
             var mimeType = '';
@@ -3528,16 +3500,8 @@
             recorder.onstop = function() {
                 var finalMime = recorder.mimeType || usedMime || 'video/webm';
 
-                // ДИАГНОСТИКА: показываем инфу прямо на экране
-                var dbgEl = document.getElementById('cameraDebugInfo');
-                var totalBytes = 0;
-                for (var j = 0; j < chunks.length; j++) totalBytes += chunks[j].size;
-                var info = 'onstop: ' + chunks.length + ' chk, ' + totalBytes + 'B, mime=' + finalMime;
-
                 if (chunks.length === 0) {
-                    info += ' | НЕТ ЧАНКОВ!';
-                    if (dbgEl) { dbgEl.textContent = info; dbgEl.style.display = 'block'; }
-                    showToast('НЕТ ЧАНКОВ! Запись пуста', 'error');
+                    showToast('Запись пуста', 'error');
                     cameraState.recording = false;
                     cameraState.mediaRecorder = null;
                     _updateCameraUI('idle');
@@ -3546,12 +3510,9 @@
                 }
 
                 var blob = new Blob(chunks, { type: finalMime });
-                info += ' | blob=' + blob.size + 'B';
 
                 if (blob.size === 0) {
-                    info += ' | BLOB ПУСТОЙ!';
-                    if (dbgEl) { dbgEl.textContent = info; dbgEl.style.display = 'block'; }
-                    showToast('Blob=0 байт!', 'error');
+                    showToast('Запись пуста', 'error');
                     cameraState.recording = false;
                     cameraState.mediaRecorder = null;
                     _updateCameraUI('idle');
@@ -3559,7 +3520,6 @@
                     return;
                 }
 
-                // Сохраняем blob в capturedData
                 cameraState.capturedData = {
                     blob: blob,
                     mimeType: finalMime,
@@ -3570,33 +3530,13 @@
                 cameraState.recording = false;
                 cameraState.mediaRecorder = null;
 
-                // ПОКАЗЫВАЕМ ВИДЕОПРЕВЬЮ — если видео играет тут, значит запись ОК
-                var pb = document.getElementById('cameraPlayback');
-                if (pb && blob.size > 0) {
-                    try {
-                        var objUrl = URL.createObjectURL(blob);
-                        pb.src = objUrl;
-                        pb.style.display = 'block';
-                        pb.play().catch(function() {});
-                        info += ' | ПРЕВЬЮ ОК';
-                    } catch(pe) {
-                        info += ' | preview err: ' + pe.message;
-                    }
-                }
-
-                if (dbgEl) { dbgEl.textContent = info; dbgEl.style.display = 'block'; }
-
                 _updateCameraUI('done');
                 document.getElementById('cameraSavedText').textContent = 'Видео записано';
-                showToast('Видео: ' + Math.round(blob.size/1024) + 'KB, нажмите ✓', 'info');
 
-                // Резолвим промис ожидания
                 if (cameraState._onstopResolve) { cameraState._onstopResolve(); cameraState._onstopResolve = null; }
             };
 
             recorder.onerror = function(e) {
-                var dbgEl = document.getElementById('cameraDebugInfo');
-                if (dbgEl) { dbgEl.textContent = 'REC ERROR: ' + (e.error ? e.error.message : '?'); dbgEl.style.display = 'block'; }
                 showToast('Ошибка записи', 'error');
                 cameraState.recording = false;
                 cameraState.mediaRecorder = null;
@@ -3607,7 +3547,7 @@
             recorder.start(500);
 
             if (recorder.state !== 'recording') {
-                showToast('state=' + recorder.state, 'error');
+                showToast('Ошибка: запись не началась', 'error');
                 return;
             }
 
@@ -5754,8 +5694,7 @@
     // ============================================================
     //  LIGHTBOX — полноэкранный просмотр изображений/видео/аудио
     // ============================================================
-    let lightboxItems = []; // массив URL для навигации
-    let lightboxIndex = 0;
+    // lightboxItems и lightboxIndex объявлены выше вместе с глобальными переменными
 
     function openLightbox(src, type) {
         const lightbox = document.getElementById('mediaLightbox');
