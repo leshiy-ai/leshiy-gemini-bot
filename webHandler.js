@@ -221,17 +221,15 @@ async function callWorkersAIWeb(config, ...args) {
     // === VISION (Image → Text) ===
     if (config.FUNCTION.name === 'callWorkersAIVision') {
         const [imageBuffer, env] = args;
+        // Uform-Gen2 ожидает { prompt, image: [byte_array] }, НЕ messages-формат!
         const base64 = Buffer.isBuffer(imageBuffer) ? imageBuffer.toString('base64') : imageBuffer;
+        const imageBytes = [...new Uint8Array(Buffer.from(base64, 'base64'))];
         const prompt = 'Опиши это изображение подробно на русском языке';
-        const messages = [{
-            role: 'user',
-            content: [
-                { type: 'text', text: prompt },
-                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } }
-            ]
-        }];
-        const result = await callCloudflareRestAPI(modelName, { messages }, env);
-        return result.result?.response || result.result?.description || JSON.stringify(result.result || result);
+        const result = await callCloudflareRestAPI(modelName, {
+            prompt: prompt,
+            image: imageBytes
+        }, env);
+        return result.result?.description || result.result?.response || JSON.stringify(result.result || result);
     }
 
     // === STT (Audio → Text / Video → Text) ===
@@ -445,12 +443,17 @@ async function handleChat(auth, payload, env, monolith) {
                 const result = await vConfig.FUNCTION(vConfig, imageBuffer, env);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else if (vConfig.FUNCTION.name === 'callPollinationsVision' || vConfig.FUNCTION.name === 'callBotHubVisionChat') {
-                const visionPrompt = userMessage || 'Опиши это изображение подробно';
-                const result = await vConfig.FUNCTION(vConfig, visionPrompt, env, imageBase64);
+                // callPollinationsVision(config, imageBuffer, envData)
+                // callBotHubVisionChat(config, imageData, envData)
+                // Обе функции ожидают (config, buffer, env)
+                const result = await vConfig.FUNCTION(vConfig, imageBuffer, env);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else if (vConfig.FUNCTION.name === 'callBotHubTextChat' || vConfig.FUNCTION.name === 'callPollinationsChat') {
+                // callBotHubTextChat(config, history, messageText, envData)
+                // callPollinationsChat(config, history, messageText, envData)
+                // Для чат-моделей с картинкой — добавляем описание картинки в сообщение
                 const visionPrompt = userMessage || 'Опиши это изображение подробно';
-                const result = await vConfig.FUNCTION(vConfig, visionPrompt, env, imageBase64);
+                const result = await vConfig.FUNCTION(vConfig, historyForModel, visionPrompt, env);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else {
                 // Прочие модели — пробуем вызвать напрямую
