@@ -443,7 +443,7 @@ body {
     padding: 10px 14px;
     border-radius: var(--radius);
     line-height: 1.5;
-    font-size: 15px;
+    font-size: 16px;
     word-wrap: break-word;
     animation: fadeIn 0.3s ease;
 }
@@ -1074,7 +1074,7 @@ body {
     .header-logo { font-size: 21px; }
     
     .mode-tabs { padding: 7px 10px; gap: 4px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 8px 12px; font-size: 13px; min-height: 38px; }
+    .mode-tab { padding: 8px 12px; font-size: 15px; min-height: 38px; }
     .mode-tab .mode-emoji { font-size: 14px; }
     
     .sub-header { 
@@ -1086,8 +1086,8 @@ body {
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { padding: 5px 10px; font-size: 12px; min-height: 32px; }
-    .model-select { font-size: 12px; padding: 5px 24px 5px 10px; max-width: 180px; }
+    .sub-option { padding: 5px 10px; font-size: 14px; min-height: 32px; }
+    .model-select { font-size: 14px; padding: 5px 24px 5px 10px; max-width: 180px; }
     
     .media-panel { padding: 16px 12px; gap: 14px; }
     
@@ -1099,7 +1099,7 @@ body {
     .result-area { min-height: 170px; }
     
     .input-wrapper textarea { font-size: 16px; padding: 10px 14px; }
-    .input-area { padding: 10px 10px; }
+    .input-area { padding: 10px 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
     
     .dialog { padding: 24px; max-width: 420px; }
     .dialog p { font-size: 14px; }
@@ -1389,3 +1389,42 @@ body {
     color: white !important;
     transform: translateY(-1px);
 }
+
+/* ===== MOBILE DRAG OVER STATE ===== */
+.upload-zone.mobile-drag-over, .input-area.mobile-drag-over {
+    outline: 2px dashed var(--accent) !important;
+    outline-offset: -2px;
+    background: rgba(168, 85, 247, 0.1) !important;
+}
+
+/* ===== VOICE COMMANDS BAR ===== */
+.voice-commands-bar { display: flex; gap: 6px; padding: 6px 10px; background: var(--bg-tertiary); border-radius: 20px; margin: 0 10px; }
+.vc-btn { padding: 4px 10px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; cursor: pointer; }
+.vc-btn:active { background: var(--accent); color: white; }
+.vc-btn.vc-send { background: var(--success); color: white; border-color: var(--success); }
+
+/* ===== CAMERA BUTTON ===== */
+.cam-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s ease; }
+.cam-btn.recording { border-color: var(--danger); color: white; background: var(--danger); animation: micPulse 1s infinite; }
+.cam-btn:active { transform: scale(0.9); }
+
+/* ===== ADMIN PANEL MODEL BUTTONS ===== */
+.admin-section { margin-bottom: 16px; }
+.admin-section-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+.admin-model-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-model-btn { padding: 6px 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.2s ease; }
+.admin-model-btn.active { background: var(--accent); color: white; border-color: var(--accent); font-weight: 600; }
+.admin-model-btn:hover { border-color: var(--accent); }
+
+/* ===== IMPROVED CREDIT HISTORY ===== */
+.credit-history-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(168,85,247,0.1); }
+.credit-history-item:last-child { border-bottom: none; }
+.credit-history-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.credit-history-icon.positive { background: rgba(34,197,94,0.15); }
+.credit-history-icon.negative { background: rgba(239,68,68,0.15); }
+.credit-history-details { flex: 1; min-width: 0; }
+.credit-history-label { font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.credit-history-date { font-size: 10px; color: var(--text-muted); }
+.credit-history-amount { font-size: 13px; font-weight: 600; flex-shrink: 0; }
+.credit-history-amount.positive { color: var(--success); }
+.credit-history-amount.negative { color: var(--danger); }

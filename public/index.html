@@ -406,10 +406,20 @@
                         onkeydown="handleKeyDown(event)"
                         oninput="autoResize(this)"></textarea>
                 </div>
-                <button class="mic-btn" id="micBtn" title="🎤 Диктовка (нажмите) / Запись голоса (удержите)" onmousedown="micStart(event)" onmouseup="micStop(event)" ontouchstart="micStart(event)" ontouchend="micStop(event)">&#127908;</button>
+                <button class="cam-btn" id="camBtn" title="&#128249; Камера (запись видео)" onclick="toggleCamera()">&#128249;</button>
+                <button class="mic-btn" id="micBtn" title="&#127908; Диктовка (нажмите) / Запись голоса (удержите)" onmousedown="micStart(event)" onmouseup="micStop(event)" ontouchstart="micStart(event)" ontouchend="micStop(event)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </button>
                 <button class="send-btn" id="sendBtn" onclick="sendOrGenerate()" title="Отправить">
                     &#10148;
                 </button>
+            </div>
+            <div class="voice-commands-bar" id="voiceCommandsBar" style="display:none">
+                <button class="vc-btn" onclick="vcToggleCase()" title="Сменить регистр">Aa</button>
+                <button class="vc-btn" onclick="vcNewLine()" title="Новая строка">&#8629;</button>
+                <button class="vc-btn" onclick="vcUndoWord()" title="Удалить последнее слово">&#9003;</button>
+                <button class="vc-btn" onclick="vcClear()" title="Очистить">&#128465;</button>
+                <button class="vc-btn vc-send" onclick="vcSend()" title="Отправить">&#10003;</button>
             </div>
             <div class="input-hint" id="inputHint">Enter — отправить · 🎤 короткое — диктовка · 🎤 долгое — запись</div>
         </div>
@@ -551,6 +561,13 @@
     let _dragState = null; // { attachment: {name, type, base64, ...}, sourceIndex: number }
     let _dropJustHappened = false; // 🧠 Флаг: только что был дроп, не открывать файловый диалог по onclick
 
+    // 📱 Mobile DnD state — HTML5 DnD doesn't work on touch devices
+    let _mobileDragFile = null;     // The file being dragged on mobile
+    let _mobileDragGhost = null;    // The ghost element following the finger
+    let _isMobileDragging = false;  // Flag for active mobile drag
+    let _mobileLongPressTimer = null;
+    let _mobileTouchStartCoords = { x: 0, y: 0 };
+
     // 🧠 Вспомогательная функция: получить FileList из drop-события
     // Проверяет _dragState (перетаскивание из вложений) и dataTransfer.files (перетаскивание с десктопа)
     function getDropFiles(e) {
@@ -588,12 +605,183 @@
         return files ? { files: files, value: '' } : null;
     }
 
+    // 📱 Mobile DnD helper functions — touch-based drag and drop
+    function initMobileDrag(element, getData) {
+        let timer = null;
+        let startX, startY;
+        let longPressFired = false;
+
+        element.addEventListener('touchstart', function(e) {
+            if (e.touches.length !== 1) return;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            longPressFired = false;
+            timer = setTimeout(function() {
+                longPressFired = true;
+                const data = getData();
+                if (!data) return;
+                _mobileDragFile = data;
+                _isMobileDragging = true;
+                if (navigator.vibrate) navigator.vibrate(50);
+                // Create ghost
+                const ghost = document.createElement('div');
+                ghost.style.cssText = 'position:fixed;z-index:10000;pointer-events:none;opacity:0.85;padding:8px 12px;border-radius:12px;background:var(--bg-secondary);border:2px solid var(--accent);color:var(--text-primary);font-size:13px;display:flex;align-items:center;gap:6px;box-shadow:0 4px 16px rgba(0,0,0,0.3);white-space:nowrap';
+                ghost.innerHTML = (data.icon || '&#128196;') + ' ' + (data.name || 'file');
+                document.body.appendChild(ghost);
+                _mobileDragGhost = ghost;
+                element.style.opacity = '0.4';
+            }, 400);
+        }, { passive: true });
+
+        element.addEventListener('touchmove', function(e) {
+            if (timer && !longPressFired) {
+                const dx = e.touches[0].clientX - startX;
+                const dy = e.touches[0].clientY - startY;
+                if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                    clearTimeout(timer);
+                    timer = null;
+                }
+            }
+            if (_isMobileDragging && _mobileDragGhost) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                _mobileDragGhost.style.left = (touch.clientX - 40) + 'px';
+                _mobileDragGhost.style.top = (touch.clientY - 20) + 'px';
+                // Highlight drop zones
+                const dropTarget = findMobileDropTarget(touch.clientX, touch.clientY);
+                document.querySelectorAll('.upload-zone, .input-area').forEach(function(z) { z.classList.remove('mobile-drag-over'); });
+                if (dropTarget) dropTarget.classList.add('mobile-drag-over');
+            }
+        }, { passive: false });
+
+        element.addEventListener('touchend', function(e) {
+            clearTimeout(timer);
+            timer = null;
+            if (_isMobileDragging) {
+                const touch = e.changedTouches[0];
+                const dropTarget = findMobileDropTarget(touch.clientX, touch.clientY);
+                if (dropTarget) {
+                    handleMobileDrop(dropTarget, _mobileDragFile);
+                }
+                cleanupMobileDrag();
+            }
+            element.style.opacity = '';
+        }, { passive: true });
+
+        element.addEventListener('touchcancel', function() {
+            clearTimeout(timer);
+            timer = null;
+            cleanupMobileDrag();
+            element.style.opacity = '';
+        }, { passive: true });
+    }
+
+    function findMobileDropTarget(x, y) {
+        // Check upload-zones first
+        const uploadZones = document.querySelectorAll('.upload-zone');
+        for (var i = 0; i < uploadZones.length; i++) {
+            var zone = uploadZones[i];
+            var rect = zone.getBoundingClientRect();
+            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                return zone;
+            }
+        }
+        // Then check input-area
+        var inputArea = document.querySelector('.input-area');
+        if (inputArea) {
+            var rect = inputArea.getBoundingClientRect();
+            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                return inputArea;
+            }
+        }
+        return null;
+    }
+
+    function handleMobileDrop(target, fileData) {
+        if (!fileData) return;
+        // If dropped on input-area → add as chat attachment
+        if (target.classList.contains('input-area') || target.closest('.input-area')) {
+            if (currentMode !== 'chat') switchMode('chat');
+            var attachment = Object.assign({}, fileData);
+            if (attachment.base64 && !attachment.previewUrl && attachment.type && attachment.type.startsWith('image/')) {
+                try {
+                    var byteString = atob(attachment.base64);
+                    var ab = new ArrayBuffer(byteString.length);
+                    var ia = new Uint8Array(ab);
+                    for (var j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+                    var blob = new Blob([ab], { type: attachment.type });
+                    attachment.previewUrl = URL.createObjectURL(blob);
+                } catch(e) {}
+            }
+            chatAttachments.push(attachment);
+            renderChatAttachments();
+            showToast('Файл добавлен как вложение', 'success');
+            return;
+        }
+        // If dropped on upload-zone → route based on zone type
+        if (target.classList.contains('upload-zone') || target.closest('.upload-zone')) {
+            var zone = target.classList.contains('upload-zone') ? target : target.closest('.upload-zone');
+            var zoneId = zone.id;
+            // Create File from base64 for the handler functions
+            if (fileData.base64) {
+                try {
+                    var byteString = atob(fileData.base64);
+                    var ab = new ArrayBuffer(byteString.length);
+                    var ia = new Uint8Array(ab);
+                    for (var j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+                    var blob = new Blob([ab], { type: fileData.type || 'application/octet-stream' });
+                    var file = new File([blob], fileData.name || 'file', { type: fileData.type || 'application/octet-stream' });
+                    var dt = new DataTransfer();
+                    dt.items.add(file);
+                    var fakeInput = { files: dt.files, value: '' };
+
+                    // Route to correct handler based on zone ID
+                    if (zoneId === 'imageRef0' || zoneId === 'imageRef1' || zoneId === 'imageRef2' || zoneId === 'imageRef3') {
+                        var refIdx = parseInt(zoneId.replace('imageRef', ''));
+                        handleImageRef(refIdx, fakeInput);
+                    } else if (zoneId === 'imageUpscaleZone') {
+                        handleImageUpscale(fakeInput);
+                    } else if (zoneId === 'imageRotateZone') {
+                        handleImageRotateUpload(fakeInput);
+                    } else if (zoneId === 'imageConvertZone') {
+                        handleImageConvertUpload(fakeInput);
+                    } else if (zoneId === 'audioUploadZone') {
+                        handleAudioUpload(fakeInput);
+                    } else if (zoneId === 'audioConvertZone') {
+                        handleAudioConvert(fakeInput);
+                    } else if (zoneId === 'voiceCloneZone') {
+                        handleVoiceClone(fakeInput);
+                    } else if (zoneId && zoneId.startsWith('videoI2V')) {
+                        handleVideoRef('image', fakeInput);
+                    } else if (zoneId && zoneId.startsWith('videoV2V')) {
+                        handleVideoRef('video', fakeInput);
+                    } else if (zoneId && zoneId.startsWith('videoA2V')) {
+                        handleVideoRef('audio', fakeInput);
+                    } else if (zoneId === 'videoConvertZone') {
+                        handleVideoConvert(fakeInput);
+                    }
+                } catch(e) {
+                    console.warn('[MobileDnD] Failed to create File:', e);
+                }
+            }
+        }
+    }
+
+    function cleanupMobileDrag() {
+        if (_mobileDragGhost) { _mobileDragGhost.remove(); _mobileDragGhost = null; }
+        _isMobileDragging = false;
+        _mobileDragFile = null;
+        document.querySelectorAll('.mobile-drag-over').forEach(function(z) { z.classList.remove('mobile-drag-over'); });
+    }
+
     // 🧠 Сделать картинку перетаскиваемой в поле ввода (drag to chat input)
     // Применяется ко ВСЕМ result-area картинкам: сгенерированным, повёрнутым, сконвертированным
     function makeResultImageDraggable(imgEl, base64Data) {
         if (!imgEl) return;
         imgEl.draggable = true;
         imgEl.style.cursor = 'grab';
+        // 📱 Mobile DnD for result images
+        initMobileDrag(imgEl, function() { return { name: 'image.png', type: 'image/png', base64: imgEl.src.startsWith('data:') ? imgEl.src.split(',')[1] : (base64Data || null), previewUrl: imgEl.src, icon: '&#128247;', category: 'image' }; });
         imgEl.addEventListener('dragstart', function(e) {
             e.dataTransfer.effectAllowed = 'copy';
             // Создаём вложение для drag state
@@ -1144,84 +1332,78 @@
     }
 
     function openAdminDialog() {
-        // Простая админ-панель: управление моделями, балансом
+        let existing = document.getElementById('adminDialog');
+        if (existing) { existing.remove(); return; }
+
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay open';
         overlay.id = 'adminDialog';
-        overlay.innerHTML = `
-            <div class="dialog" style="max-width:600px">
-                <h3>👑 Админ-панель</h3>
-                <p style="font-size:13px;color:var(--text-secondary)">Управление моделями и балансом</p>
-                
-                <div style="margin-top:16px">
-                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:8px">Активные модели (сервис → тип → модель)</label>
-                    <div id="adminModelList" style="max-height:300px;overflow-y:auto;font-size:13px"></div>
-                </div>
 
-                <div style="margin-top:16px">
-                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:8px">Управление балансом</label>
-                    <div style="display:flex;gap:8px;align-items:center">
-                        <input type="text" id="adminTargetId" placeholder="ID пользователя" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
-                        <input type="number" id="adminCreditsAmount" placeholder="Кредиты" style="width:80px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
-                        <button class="btn-primary" onclick="adminSetBalance()" style="padding:8px 16px;font-size:13px">Задать</button>
-                    </div>
-                </div>
+        // Build model sections from availableModels
+        let sectionsHtml = '';
+        const serviceGroups = {
+            'chat': { label: '&#128172; Чат', models: availableModels.chat || [] },
+            'image': { label: '&#10024; Генерация картинок', models: availableModels.image || [] },
+            'image_i2i': { label: '&#127912; Картинка&#8594;Картинка', models: availableModels.image_i2i || [] },
+            'image_upscale': { label: '&#128269; Апскейл', models: availableModels.image_upscale || [] },
+            'video_t2v': { label: '&#127916; Текст&#8594;Видео', models: availableModels.video_t2v || [] },
+            'video_i2v': { label: '&#128444; Картинка&#8594;Видео', models: availableModels.video_i2v || [] },
+            'video_v2v': { label: '&#127909; Видео&#8594;Видео', models: availableModels.video_v2v || [] },
+            'video_a2v': { label: '&#128483; Аудио&#8594;Аватар', models: availableModels.video_a2v || [] },
+            'video_analysis': { label: '&#128065; Анализ видео', models: availableModels.video_analysis || [] },
+            'audio_tts': { label: '&#128266; Озвучка (TTS)', models: availableModels.audio_tts || [] },
+            'audio_stt': { label: '&#127908; Распознавание (STT)', models: availableModels.audio_stt || [] }
+        };
 
-                <div style="margin-top:16px">
-                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:8px">VIP подписка</label>
-                    <div style="display:flex;gap:8px;align-items:center">
-                        <input type="text" id="adminVipId" placeholder="ID пользователя" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
-                        <input type="number" id="adminVipDays" placeholder="Дней" value="30" style="width:70px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
-                        <button class="btn-primary" onclick="adminSetVip()" style="padding:8px 16px;font-size:13px">VIP</button>
-                    </div>
-                </div>
+        for (const [typeKey, group] of Object.entries(serviceGroups)) {
+            if (!group.models || group.models.length === 0) continue;
+            const currentKey = selected[typeKey] || group.models[0]?.key;
+            let btnsHtml = group.models.map(m =>
+                `<button class="admin-model-btn ${m.key === currentKey ? 'active' : ''}" data-type="${typeKey}" data-key="${m.key}" onclick="adminSelectModel(this)">${m.name || m.key}${m.isFree ? ' &#127381;' : ''}${m.cost ? ' ' + m.cost + '\u00A2' : ''}</button>`
+            ).join('');
+            sectionsHtml += `<div class="admin-section"><div class="admin-section-title">${group.label}</div><div class="admin-model-btns">${btnsHtml}</div></div>`;
+        }
 
-                <div style="margin-top:16px">
-                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:8px">Информация о пользователе</label>
-                    <div style="display:flex;gap:8px;align-items:center">
-                        <input type="text" id="adminInfoId" placeholder="ID пользователя" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px">
-                        <button class="btn-primary" onclick="adminGetUserInfo()" style="padding:8px 16px;font-size:13px">Найти</button>
-                    </div>
-                    <div id="adminUserInfoResult" style="margin-top:8px;font-size:13px;color:var(--text-secondary)"></div>
-                </div>
-
-                <div class="dialog-actions" style="margin-top:20px">
-                    <button class="btn-secondary" onclick="document.getElementById('adminDialog').remove()" style="width:100%">Закрыть</button>
-                </div>
+        overlay.innerHTML = `<div class="dialog" style="max-width:600px;max-height:85vh;overflow-y:auto">
+            <h3>&#128081; Админ-панель</h3>
+            <div id="adminSections">${sectionsHtml}</div>
+            <div class="dialog-actions" style="margin-top:16px">
+                <button class="btn-secondary" onclick="document.getElementById('adminDialog').remove()">Закрыть</button>
             </div>
-        `;
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+                <h4 style="font-size:14px;margin-bottom:8px">&#128176; Управление балансом</h4>
+                <div style="display:flex;gap:8px;margin-bottom:8px">
+                    <input type="text" id="adminTargetId" placeholder="ID пользователя" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
+                    <input type="number" id="adminCreditsAmount" placeholder="Кредиты" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
+                    <button class="btn-primary" onclick="adminSetBalance()" style="padding:8px 16px">Задать</button>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:8px">
+                    <input type="text" id="adminVipId" placeholder="ID пользователя" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
+                    <input type="number" id="adminVipDays" placeholder="Дней VIP" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
+                    <button class="btn-primary" onclick="adminSetVip()" style="padding:8px 16px">VIP</button>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <input type="text" id="adminInfoId" placeholder="ID пользователя" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
+                    <button class="btn-secondary" onclick="adminGetUserInfo()" style="padding:8px 16px">Найти</button>
+                </div>
+                <div id="adminUserInfo" style="margin-top:8px;font-size:13px;color:var(--text-secondary)"></div>
+            </div>
+        </div>`;
+
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
         document.body.appendChild(overlay);
-        overlay.addEventListener('click', function(e) {
-            if (e.target === overlay) overlay.remove();
-        });
-        loadAdminModelList();
     }
 
-    async function loadAdminModelList() {
-        const container = document.getElementById('adminModelList');
-        if (!container) return;
-        try {
-            const resp = await fetch(API_URL + '/api', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'models', auth: getAuth(), payload: {} })
-            });
-            const data = await resp.json();
-            if (data.success && data.data) {
-                let html = '';
-                for (const [cat, models] of Object.entries(data.data)) {
-                    if (!Array.isArray(models) || models.length === 0) continue;
-                    html += `<div style="margin-bottom:12px"><div style="font-weight:600;color:var(--accent);margin-bottom:4px">${cat}</div>`;
-                    models.forEach(m => {
-                        html += `<div style="padding:4px 8px;color:var(--text-secondary);border-left:2px solid var(--border);margin-left:8px">${m.service}: ${m.modelShort || m.displayName || m.key} ${m.isFree ? '✓' : (m.cost ? m.cost + '¢' : '')}</div>`;
-                    });
-                    html += '</div>';
-                }
-                container.innerHTML = html || '<span style="color:var(--text-muted)">Нет моделей</span>';
-            }
-        } catch(e) {
-            container.innerHTML = '<span style="color:var(--danger)">Ошибка загрузки</span>';
-        }
+    function adminSelectModel(btn) {
+        const type = btn.dataset.type;
+        const key = btn.dataset.key;
+        // Deactivate all siblings
+        btn.parentNode.querySelectorAll('.admin-model-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        // Save selection
+        selected[type] = key;
+        saveSelected();
+        showToast('Модель ' + key + ' выбрана для ' + type, 'success');
     }
 
     async function adminSetBalance() {
@@ -1280,7 +1462,7 @@
             showToast('Укажите ID пользователя', 'error');
             return;
         }
-        const resultEl = document.getElementById('adminUserInfoResult');
+        const resultEl = document.getElementById('adminUserInfo') || document.getElementById('adminUserInfoResult');
         if (resultEl) resultEl.innerHTML = '<span style="color:var(--accent)">Загрузка...</span>';
         try {
             const resp = await fetch(API_URL + '/api', {
@@ -2542,6 +2724,8 @@
             const badge = document.createElement('div');
             badge.className = 'file-badge';
             badge.draggable = true; // 🧠 Разрешаем перетаскивание обратно (drag-out)
+            // 📱 Mobile DnD: long-press to drag on touch devices
+            initMobileDrag(badge, function() { return { name: att.name, type: att.type, base64: att.base64, previewUrl: att.previewUrl, icon: att.icon, category: att.category }; });
             // Все файлы кликабельны для предпросмотра
             badge.style.cursor = 'pointer';
             badge.onclick = function(e) {
@@ -2696,11 +2880,18 @@
 
     function micStart(e) {
         e.preventDefault();
-        if (micState.mode) return; // Уже активен
-        
-        // Определяем: короткое нажатие = диктовка, долгое = запись
-        micState.timer = setTimeout(() => {
-            // Долгое нажатие — запись голоса в файл
+        if (micState.mode === 'dictating') {
+            // Toggle off — stop dictation
+            stopDictation();
+            return;
+        }
+        if (micState.mode === 'recording') {
+            // Stop recording
+            stopVoiceRecording();
+            return;
+        }
+        // Start timer for long press detection
+        micState.timer = setTimeout(function() {
             micState.timer = null;
             startVoiceRecording();
         }, LONG_PRESS_MS);
@@ -2709,12 +2900,17 @@
     function micStop(e) {
         e.preventDefault();
         if (micState.timer) {
-            // Короткое нажатие — диктовка (speech-to-text)
+            // Short tap — start/stop dictation
             clearTimeout(micState.timer);
             micState.timer = null;
-            startDictation();
-        } else if (micState.mode === 'recording') {
-            // Отпустили долгое нажатие — останавливаем запись
+            if (micState.mode === 'dictating') {
+                stopDictation();
+            } else {
+                startDictation();
+            }
+        }
+        // If long press was started and still recording, stop on release
+        if (micState.mode === 'recording') {
             stopVoiceRecording();
         }
     }
@@ -2735,6 +2931,8 @@
         micState.mode = 'dictating';
         const micBtn = document.getElementById('micBtn');
         micBtn.classList.add('dictating');
+        const vcBar = document.getElementById('voiceCommandsBar');
+        if (vcBar) vcBar.style.display = 'flex';
         
         micState.recognition = new SpeechRecognition();
         micState.recognition.lang = 'ru-RU';
@@ -2791,7 +2989,16 @@
         micState.mode = null;
         const micBtn = document.getElementById('micBtn');
         if (micBtn) micBtn.classList.remove('dictating');
+        const vcBar = document.getElementById('voiceCommandsBar');
+        if (vcBar) vcBar.style.display = 'none';
     }
+
+    // 🎤 Voice command helpers
+    function vcToggleCase() { const v = userInput.value; const words = v.trim().split(/\s+/); if (words.length > 0 && words[0] !== '') { const last = words[words.length-1]; words[words.length-1] = last === last.toUpperCase() ? last.toLowerCase() : last.toUpperCase(); userInput.value = words.join(' '); } }
+    function vcNewLine() { userInput.value += '\n'; autoResize(userInput); }
+    function vcUndoWord() { const v = userInput.value.trim(); const lastSpace = v.lastIndexOf(' '); userInput.value = lastSpace > 0 ? v.substring(0, lastSpace) : ''; }
+    function vcClear() { userInput.value = ''; autoResize(userInput); }
+    function vcSend() { stopDictation(); sendOrGenerate(); }
 
     // 🔴 ЗАПИСЬ ГОЛОСА — MediaRecorder API → MP3 файл
     async function startVoiceRecording() {
@@ -2864,6 +3071,89 @@
         micState.mode = null;
         const micBtn = document.getElementById('micBtn');
         if (micBtn) micBtn.classList.remove('recording');
+    }
+
+    // 📹 CAMERA — Video recording via getUserMedia
+    let cameraState = { stream: null, mediaRecorder: null, chunks: [], recording: false };
+
+    async function toggleCamera() {
+        if (cameraState.recording) {
+            stopCameraRecording();
+            return;
+        }
+        try {
+            cameraState.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: true });
+            cameraState.mediaRecorder = new MediaRecorder(cameraState.stream, { mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm' });
+            cameraState.chunks = [];
+
+            cameraState.mediaRecorder.ondataavailable = function(e) {
+                if (e.data.size > 0) cameraState.chunks.push(e.data);
+            };
+
+            cameraState.mediaRecorder.onstop = async function() {
+                const blob = new Blob(cameraState.chunks, { type: 'video/webm' });
+                // Stop all tracks
+                cameraState.stream.getTracks().forEach(t => t.stop());
+
+                // Convert to base64
+                const reader = new FileReader();
+                reader.onloadend = function() {
+                    const base64 = reader.result.split(',')[1];
+                    const attachment = {
+                        name: 'camera_video_' + Date.now() + '.webm',
+                        type: 'video/webm',
+                        base64: base64,
+                        previewUrl: null,
+                        icon: '&#127916;',
+                        category: 'video'
+                    };
+                    // Create thumbnail
+                    const videoEl = document.createElement('video');
+                    videoEl.src = URL.createObjectURL(blob);
+                    videoEl.muted = true;
+                    videoEl.onloadeddata = function() {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = 160; canvas.height = 120;
+                            canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
+                            attachment.previewUrl = canvas.toDataURL('image/jpeg', 0.6);
+                        } catch(e) {}
+                        URL.revokeObjectURL(videoEl.src);
+                        chatAttachments.push(attachment);
+                        renderChatAttachments();
+                    };
+                    videoEl.onerror = function() {
+                        chatAttachments.push(attachment);
+                        renderChatAttachments();
+                    };
+                };
+                reader.readAsDataURL(blob);
+
+                cameraState.recording = false;
+                cameraState.stream = null;
+                cameraState.mediaRecorder = null;
+                const camBtn = document.getElementById('camBtn');
+                camBtn.classList.remove('recording');
+                camBtn.innerHTML = '&#128249;';
+                showToast('Видео записано!', 'success');
+            };
+
+            cameraState.mediaRecorder.start();
+            cameraState.recording = true;
+            const camBtn = document.getElementById('camBtn');
+            camBtn.classList.add('recording');
+            camBtn.innerHTML = '&#9209;';
+            if (navigator.vibrate) navigator.vibrate(100);
+            showToast('Запись видео... Нажмите ⏹ для остановки', 'info');
+        } catch(err) {
+            showToast('Ошибка доступа к камере: ' + err.message, 'error');
+        }
+    }
+
+    function stopCameraRecording() {
+        if (cameraState.mediaRecorder && cameraState.mediaRecorder.state === 'recording') {
+            cameraState.mediaRecorder.stop();
+        }
     }
 
     async function sendOrGenerate() {
@@ -4240,13 +4530,20 @@
         if (historyEl) {
             if (creditHistory.length > 0) {
                 let histHtml = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600">История операций:</div>';
-                creditHistory.slice(0, 20).forEach(h => {
+                creditHistory.slice(0, 30).forEach(h => {
                     const date = new Date(h.ts);
                     const timeStr = date.toLocaleDateString('ru-RU', {day:'2-digit',month:'2-digit'}) + ' ' + date.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
-                    const amountStr = h.amount > 0 ? '<span style="color:var(--success)">+' + h.amount + '\u00A2</span>' : '<span style="color:var(--danger)">' + h.amount + '\u00A2</span>';
+                    const isPositive = h.amount > 0;
+                    const amountStr = isPositive ? '+' + h.amount + '\u00A2' : h.amount + '\u00A2';
                     const opLabels = { registration: 'Регистрация', spend: 'Списание', purchase: 'Пополнение', admin_set: 'Админ: баланс', admin_vip: 'Админ: VIP', vip_daily: 'VIP бонус' };
                     const opLabel = opLabels[h.operation] || h.operation;
-                    histHtml += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(168,85,247,0.1)"><span style="color:var(--text-secondary)">' + timeStr + ' ' + opLabel + '</span>' + amountStr + '</div>';
+                    const opIcons = { registration: '&#127381;', spend: '&#128176;', purchase: '&#128179;', admin_set: '&#128272;', admin_vip: '&#128081;', vip_daily: '&#11088;' };
+                    const opIcon = opIcons[h.operation] || '&#128196;';
+                    histHtml += '<div class="credit-history-item">' +
+                        '<div class="credit-history-icon ' + (isPositive ? 'positive' : 'negative') + '">' + opIcon + '</div>' +
+                        '<div class="credit-history-details"><div class="credit-history-label">' + opLabel + '</div><div class="credit-history-date">' + timeStr + '</div></div>' +
+                        '<div class="credit-history-amount ' + (isPositive ? 'positive' : 'negative') + '">' + amountStr + '</div>' +
+                        '</div>';
                 });
                 historyEl.innerHTML = histHtml;
             } else {
