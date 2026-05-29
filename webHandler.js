@@ -759,11 +759,13 @@ async function handleImage(auth, payload, env, monolith) {
             const workerDomain = env.WORKER_DOMAIN || '';
             const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
+            // KieAI image_size принимает ratio: "1:1", "16:9", "9:16", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9", "auto"
+            const kieRatio = payload.aspect_ratio || payload.image_size || '1:1';
             const input = {
                 prompt: prompt,
                 output_format: 'png',
-                aspect_ratio: payload.aspect_ratio || '1:1',
-                image_size: payload.aspect_ratio || '1:1'
+                aspect_ratio: kieRatio,
+                image_size: kieRatio
             };
 
             const taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
@@ -1767,8 +1769,10 @@ async function handleTaskStatus(auth, payload, env, monolith) {
     if (!auth || !isValidAuthId(auth.id)) {
         return formatResponse(false, 'Не авторизован');
     }
+    const chatId = String(auth.id);
     const taskId = payload?.task_id;
     const taskType = payload?.task_type || 'image'; // 'image' or 'video'
+    const { uploadBase64ImageToPublicUrl } = monolith || {};
 
     if (!taskId) {
         return formatResponse(false, 'Не указан task_id');
@@ -1961,6 +1965,40 @@ async function handleTaskStatus(auth, payload, env, monolith) {
             }
 
             if (resultUrl) {
+                // 🧠 Для изображений — скачиваем на сервере и возвращаем base64,
+                // т.к. временные URL (tempfile.aiquickdraw.com) часто недоступны с клиента
+                if (taskType !== 'video') {
+                    try {
+                        console.log(`[WebHandler] Downloading image from KieAI: ${resultUrl.substring(0, 100)}`);
+                        const imgResponse = await fetch(resultUrl, {
+                            headers: { 'User-Agent': 'LeshiyAI/1.0' },
+                            signal: AbortSignal.timeout(30000)
+                        });
+                        if (imgResponse.ok) {
+                            const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+                            const imgBase64 = imgBuffer.toString('base64');
+                            console.log(`[WebHandler] Downloaded image: ${imgBuffer.length} bytes, base64 length: ${imgBase64.length}`);
+                            // Пробуем загрузить в публичный URL
+                            if (uploadBase64ImageToPublicUrl) {
+                                try {
+                                    const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId);
+                                    if (uploadedUrl && typeof uploadedUrl === 'string') {
+                                        console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
+                                        return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
+                                    }
+                                } catch (e) {
+                                    console.warn(`[WebHandler] Re-upload failed: ${e.message}, returning base64`);
+                                }
+                            }
+                            return formatResponse(true, null, null, { type: 'image_base64', content: imgBase64 });
+                        } else {
+                            console.warn(`[WebHandler] Failed to download image: HTTP ${imgResponse.status}, returning URL anyway`);
+                        }
+                    } catch (e) {
+                        console.warn(`[WebHandler] Error downloading image: ${e.message}, returning URL anyway`);
+                    }
+                }
+                // Для видео или если скачивание не удалось — возвращаем URL как есть
                 const resultType = taskType === 'video' ? 'video_url' : 'image_url';
                 return formatResponse(true, null, null, { type: resultType, content: resultUrl });
             } else {
