@@ -800,8 +800,8 @@ body {
     gap: 0px;
     background: var(--bg-input);
     border: 1.5px solid var(--border);
-    border-radius: 24px;
-    padding: 5px 6px 5px 6px;
+    border-radius: 28px;
+    padding: 6px 8px 6px 8px;
     transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
@@ -813,7 +813,7 @@ body {
 .input-pill textarea {
     flex: 1;
     min-width: 0;
-    padding: 7px 8px;
+    padding: 9px 10px;
     border: none;
     border-radius: 20px;
     background: transparent;
@@ -827,10 +827,10 @@ body {
 }
 .input-pill textarea::placeholder { color: var(--text-muted); }
 
-/* Pill buttons — компактные внутри строки */
+/* Pill buttons — внутри строки */
 .pill-btn {
-    width: 34px;
-    height: 34px;
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
     border: none;
     background: transparent;
@@ -876,7 +876,7 @@ body {
 .input-hint {
     font-size: 12px;
     color: var(--text-muted);
-    margin-top: 4px;
+    margin-top: 5px;
     text-align: center;
 }
 
@@ -1090,11 +1090,17 @@ body {
     
     .result-area { min-height: 170px; }
     
-    .input-pill textarea { font-size: 16px; padding: 8px 10px; }
-    .input-area { padding: 8px 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
-    .pill-btn { width: 34px; height: 34px; }
-    .pill-send { width: 36px; height: 36px; }
-    
+    .input-pill { border-radius: 28px; padding: 6px 8px; }
+    .input-pill textarea { font-size: 16px; padding: 10px 12px; }
+    .input-area { padding: 10px 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .pill-btn { width: 40px; height: 40px; }
+    .pill-btn svg { width: 20px; height: 20px; }
+    .pill-send { width: 42px; height: 42px; }
+    .pill-send svg { width: 20px; height: 20px; }
+    .vc-btn { padding: 6px 12px; font-size: 14px; }
+    .vc-rec-label { font-size: 12px; }
+    .input-hint { font-size: 12px; }
+
     .dialog { padding: 24px; max-width: 420px; }
     .dialog p { font-size: 14px; }
     
@@ -1147,13 +1153,15 @@ body {
     .result-area { min-height: 150px; }
     .result-placeholder { font-size: 13px; }
     
-    .input-pill textarea { font-size: 16px; padding: 7px 10px; }
-    .input-area { padding: 8px 8px; }
-    .pill-btn { width: 32px; height: 32px; }
-    .pill-btn svg { width: 16px; height: 16px; }
-    .pill-send { width: 34px; height: 34px; }
-    .pill-send svg { width: 16px; height: 16px; }
-    .input-hint { font-size: 10px; }
+    .input-pill { border-radius: 26px; padding: 5px 6px; }
+    .input-pill textarea { font-size: 16px; padding: 9px 10px; }
+    .input-area { padding: 10px 8px; }
+    .pill-btn { width: 38px; height: 38px; }
+    .pill-btn svg { width: 18px; height: 18px; }
+    .pill-send { width: 40px; height: 40px; }
+    .pill-send svg { width: 18px; height: 18px; }
+    .vc-btn { padding: 5px 10px; font-size: 13px; }
+    .input-hint { font-size: 11px; }
     
     .message { font-size: 15px; padding: 9px 12px; }
     .message.bot code { font-size: 13px; }
@@ -1187,11 +1195,12 @@ body {
     .sub-option { font-size: 11px; padding: 3px 6px; min-height: 28px; }
     .sub-divider { height: 18px; }
     .model-select { max-width: 120px; font-size: 11px; }
-    .input-pill textarea { font-size: 14px; padding: 6px 8px; }
-    .pill-btn { width: 30px; height: 30px; }
-    .pill-btn svg { width: 14px; height: 14px; }
-    .pill-send { width: 32px; height: 32px; }
-    .pill-send svg { width: 14px; height: 14px; }
+    .input-pill { border-radius: 24px; }
+    .input-pill textarea { font-size: 16px; padding: 8px 10px; }
+    .pill-btn { width: 36px; height: 36px; }
+    .pill-btn svg { width: 18px; height: 18px; }
+    .pill-send { width: 38px; height: 38px; }
+    .pill-send svg { width: 18px; height: 18px; }
 }
 
 /* Результат-область для аудио — вертикальная компоновка */
