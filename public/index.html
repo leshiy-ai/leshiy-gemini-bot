@@ -3659,7 +3659,7 @@
     // 🎤 Mic toggle — tap to toggle dictation on/off
     function micToggle(e) {
         if (e) e.preventDefault();
-        if (micState.mode === 'dictation') {
+        if (micState.mode === 'dictating') {
             // Stop dictation on second tap
             if (micState.recognition) {
                 micState.recognition.stop();
