@@ -528,17 +528,24 @@
         <div class="lightbox-counter" id="lightboxCounter"></div>
     </div>
 
-    <!-- CAMERA MODAL -->
+    <!-- CAMERA MODAL — bottom sheet on mobile -->
     <div class="camera-modal-overlay" id="cameraModal">
-        <div class="camera-modal">
+        <div class="camera-modal" id="cameraSheet">
+            <div class="camera-modal-handle" id="cameraSheetHandle">
+                <div class="camera-modal-handle-bar"></div>
+            </div>
             <div class="camera-modal-header">
                 <h3>&#128249; Камера</h3>
                 <button class="camera-modal-close" onclick="closeCameraModal()">&times;</button>
             </div>
             <div class="camera-preview-container">
-                <video id="cameraPreview" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;object-fit:cover"></video>
+                <video id="cameraPreview" autoplay playsinline muted></video>
                 <div class="camera-recording-indicator" id="cameraRecIndicator" style="display:none">
                     <span class="rec-dot"></span> REC <span id="cameraRecTime">00:00</span>
+                </div>
+                <div class="camera-video-saved-badge" id="cameraSavedBadge" style="display:none">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Видео записано
                 </div>
             </div>
             <div class="camera-controls">
@@ -3107,11 +3114,75 @@
     }
 
     // 📹 CAMERA — Video recording via getUserMedia with modal preview
-    let cameraState = { stream: null, mediaRecorder: null, chunks: [], recording: false, facingMode: 'user', timerInterval: null, seconds: 0 };
+    let cameraState = {
+        stream: null,
+        mediaRecorder: null,
+        chunks: [],
+        recording: false,
+        facingMode: 'user',
+        timerInterval: null,
+        seconds: 0,
+        pendingVideo: null,  // { blob, mimeType, thumbnail } — готовое видео, ожидает сохранения
+        _closing: false      // флаг предотвращает повторный вызов closeCameraModal
+    };
+
+    // ── Swipe-down-to-dismiss for camera bottom sheet ──
+    (function initCameraSheetSwipe() {
+        let startY = 0, currentY = 0, isDragging = false;
+        const sheet = () => document.getElementById('cameraSheet');
+        const overlay = () => document.getElementById('cameraModal');
+
+        document.addEventListener('touchstart', function(e) {
+            const s = sheet();
+            if (!s || !overlay().classList.contains('open')) return;
+            const handle = document.getElementById('cameraSheetHandle');
+            const header = s.querySelector('.camera-modal-header');
+            // Start drag only from handle or header area
+            if (handle && (handle.contains(e.target) || (header && header.contains(e.target)))) {
+                isDragging = true;
+                startY = e.touches[0].clientY;
+                s.style.transition = 'none';
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchmove', function(e) {
+            if (!isDragging) return;
+            currentY = e.touches[0].clientY;
+            const dy = currentY - startY;
+            if (dy < 0) {
+                // Swiping up — don't go above original position
+                sheet().style.transform = 'translateY(0)';
+            } else {
+                sheet().style.transform = 'translateY(' + dy + 'px)';
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchend', function() {
+            if (!isDragging) return;
+            isDragging = false;
+            const s = sheet();
+            s.style.transition = '';
+            const dy = currentY - startY;
+            if (dy > 80) {
+                // Swiped far enough — close
+                closeCameraModal();
+            } else {
+                // Snap back
+                s.style.transform = '';
+            }
+            startY = 0; currentY = 0;
+        }, { passive: true });
+    })();
 
     async function openCameraModal() {
         const modal = document.getElementById('cameraModal');
         const preview = document.getElementById('cameraPreview');
+        const sheet = document.getElementById('cameraSheet');
+        cameraState.pendingVideo = null;
+        cameraState._closing = false;
+        _updateCameraUI('idle');
+        // Reset transform before opening
+        if (sheet) sheet.style.transform = '';
         modal.classList.add('open');
         document.body.style.overflow = 'hidden';
         try {
@@ -3127,12 +3198,37 @@
     }
 
     function closeCameraModal() {
+        if (cameraState._closing) return; // предотвращаем рекурсию
+        cameraState._closing = true;
+
+        // Если есть несохранённое видео — сохраняем его
+        if (cameraState.pendingVideo) {
+            _savePendingVideo();
+        }
+        // Если идёт запись — останавливаем, onstop вызовет closeCameraModal повторно
+        if (cameraState.recording) {
+            // Подменяем поведение onstop: после остановки записи — закрыть модалку
+            const origOnStop = cameraState.mediaRecorder.onstop;
+            cameraState.mediaRecorder.onstop = function() {
+                if (origOnStop) origOnStop.call(this);
+                // Теперь pendingVideo заполнен, сохраняем и закрываем
+                if (cameraState.pendingVideo) {
+                    _savePendingVideo();
+                }
+                _cleanupCameraModal();
+            };
+            if (cameraState.mediaRecorder && cameraState.mediaRecorder.state === 'recording') {
+                cameraState.mediaRecorder.stop();
+            }
+            if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+            return;
+        }
+        _cleanupCameraModal();
+    }
+
+    function _cleanupCameraModal() {
         const modal = document.getElementById('cameraModal');
         const preview = document.getElementById('cameraPreview');
-        // Stop recording if active
-        if (cameraState.recording) {
-            stopCameraRecording();
-        }
         // Stop stream
         if (cameraState.stream) {
             cameraState.stream.getTracks().forEach(t => t.stop());
@@ -3146,14 +3242,54 @@
         cameraState.seconds = 0;
         document.getElementById('cameraRecTime').textContent = '00:00';
         document.getElementById('cameraRecIndicator').style.display = 'none';
-        // Reset record button
         document.getElementById('recordBtnInner').classList.remove('recording');
+        cameraState.pendingVideo = null;
+        cameraState._closing = false;
+        _updateCameraUI('idle');
+    }
+
+    function _updateCameraUI(state) {
+        const recBtn = document.getElementById('cameraRecordBtn');
+        const doneBtn = document.getElementById('cameraDoneBtn');
+        const switchBtn = document.getElementById('cameraSwitchBtn');
+        const recIndicator = document.getElementById('cameraRecIndicator');
+        const inner = document.getElementById('recordBtnInner');
+        const savedBadge = document.getElementById('cameraSavedBadge');
+
+        switch(state) {
+            case 'idle':
+                inner.classList.remove('recording');
+                recIndicator.style.display = 'none';
+                savedBadge.style.display = 'none';
+                recBtn.style.display = '';
+                recBtn.title = 'Записать';
+                doneBtn.style.display = '';
+                switchBtn.style.display = '';
+                break;
+            case 'recording':
+                inner.classList.add('recording');
+                recIndicator.style.display = 'flex';
+                savedBadge.style.display = 'none';
+                recBtn.style.display = '';
+                recBtn.title = 'Остановить';
+                doneBtn.style.display = '';
+                switchBtn.style.display = '';
+                break;
+            case 'done':
+                inner.classList.remove('recording');
+                recIndicator.style.display = 'none';
+                savedBadge.style.display = 'flex';
+                recBtn.style.display = '';  // Показываем кнопку записи для перезаписи
+                recBtn.title = 'Перезаписать';
+                doneBtn.style.display = '';
+                switchBtn.style.display = 'none';
+                break;
+        }
     }
 
     async function switchCameraFacing() {
         cameraState.facingMode = cameraState.facingMode === 'user' ? 'environment' : 'user';
         const preview = document.getElementById('cameraPreview');
-        // Stop current stream
         if (cameraState.stream) {
             cameraState.stream.getTracks().forEach(t => t.stop());
         }
@@ -3170,57 +3306,74 @@
 
     function toggleCameraRecording() {
         if (cameraState.recording) {
-            stopCameraRecording();
+            _stopAndSaveRecording();
         } else {
+            // Если есть pending видео — это перезапись, сбрасываем
+            if (cameraState.pendingVideo) {
+                cameraState.pendingVideo = null;
+                document.getElementById('cameraSavedBadge').style.display = 'none';
+            }
             startCameraRecording();
         }
     }
 
     function startCameraRecording() {
         if (!cameraState.stream) return;
+        cameraState.pendingVideo = null; // Сброс предыдущего
         try {
             const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' :
                             MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
             cameraState.mediaRecorder = new MediaRecorder(cameraState.stream, { mimeType });
             cameraState.chunks = [];
+
+            // Запрашиваем данные каждые 500мс для надёжности
             cameraState.mediaRecorder.ondataavailable = function(e) {
-                if (e.data.size > 0) cameraState.chunks.push(e.data);
+                if (e.data && e.data.size > 0) cameraState.chunks.push(e.data);
             };
-            cameraState.mediaRecorder.onstop = async function() {
-                const blob = new Blob(cameraState.chunks, { type: cameraState.mediaRecorder.mimeType || 'video/webm' });
-                const reader = new FileReader();
-                reader.onloadend = function() {
-                    const base64 = reader.result.split(',')[1];
-                    const ext = (cameraState.mediaRecorder.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
-                    const attachment = {
-                        name: 'camera_video_' + Date.now() + '.' + ext,
-                        type: cameraState.mediaRecorder.mimeType || 'video/webm',
-                        base64: base64,
-                        previewUrl: null,
-                        icon: '&#127916;',
-                        category: 'video'
-                    };
-                    // Create thumbnail from preview
+
+            cameraState.mediaRecorder.onstop = function() {
+                // Сохраняем mimeType до того как recorder обнулится
+                const recordedMime = cameraState.mediaRecorder ? cameraState.mediaRecorder.mimeType || mimeType : mimeType;
+                const recordedChunks = cameraState.chunks.slice(); // Копия
+
+                if (recordedChunks.length === 0) {
+                    showToast('Запись пуста — попробуйте ещё раз', 'error');
+                    cameraState.recording = false;
+                    _updateCameraUI('idle');
+                    return;
+                }
+
+                const blob = new Blob(recordedChunks, { type: recordedMime });
+
+                // Создаём миниатюру из текущего кадра превью (пока stream ещё жив)
+                let thumbnail = null;
+                try {
                     const preview = document.getElementById('cameraPreview');
-                    try {
+                    if (preview && preview.videoWidth > 0) {
                         const canvas = document.createElement('canvas');
                         canvas.width = 160; canvas.height = 120;
                         canvas.getContext('2d').drawImage(preview, 0, 0, 160, 120);
-                        attachment.previewUrl = canvas.toDataURL('image/jpeg', 0.6);
-                    } catch(e) {}
-                    chatAttachments.push(attachment);
-                    renderChatAttachments();
-                    showToast('Видео записано! (' + formatRecTime(cameraState.seconds) + ')', 'success');
+                        thumbnail = canvas.toDataURL('image/jpeg', 0.6);
+                    }
+                } catch(e) {}
+
+                cameraState.pendingVideo = {
+                    blob: blob,
+                    mimeType: recordedMime,
+                    thumbnail: thumbnail,
+                    duration: cameraState.seconds
                 };
-                reader.readAsDataURL(blob);
                 cameraState.recording = false;
-                cameraState.mediaRecorder = null;
+                cameraState.chunks = [];
+
+                _updateCameraUI('done');
+                showToast('Видео записано! (' + formatRecTime(cameraState.seconds) + ') Нажмите ✓ чтобы прикрепить', 'info');
             };
-            cameraState.mediaRecorder.start();
+
+            cameraState.mediaRecorder.start(500); // timeslice=500 для надёжного сбора данных
             cameraState.recording = true;
             cameraState.seconds = 0;
-            document.getElementById('recordBtnInner').classList.add('recording');
-            document.getElementById('cameraRecIndicator').style.display = 'flex';
+            _updateCameraUI('recording');
             if (navigator.vibrate) navigator.vibrate(100);
             // Start timer
             cameraState.timerInterval = setInterval(function() {
@@ -3232,13 +3385,41 @@
         }
     }
 
-    function stopCameraRecording() {
+    function _stopAndSaveRecording() {
         if (cameraState.mediaRecorder && cameraState.mediaRecorder.state === 'recording') {
             cameraState.mediaRecorder.stop();
         }
-        document.getElementById('recordBtnInner').classList.remove('recording');
-        document.getElementById('cameraRecIndicator').style.display = 'none';
         if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+        // onstop сработает асинхронно и установит pendingVideo
+    }
+
+    function _savePendingVideo() {
+        if (!cameraState.pendingVideo) return;
+        const pv = cameraState.pendingVideo;
+        const reader = new FileReader();
+        reader.onloadend = function() {
+            const base64 = reader.result.split(',')[1];
+            const ext = pv.mimeType.includes('mp4') ? 'mp4' : 'webm';
+            const attachment = {
+                name: 'camera_video_' + Date.now() + '.' + ext,
+                type: pv.mimeType,
+                base64: base64,
+                previewUrl: pv.thumbnail,
+                icon: '&#127916;',
+                category: 'video'
+            };
+            chatAttachments.push(attachment);
+            renderChatAttachments();
+            if (document.getElementById('welcomeScreen')) {
+                document.getElementById('welcomeScreen').style.display = 'none';
+            }
+            showToast('Видео прикреплено! (' + formatRecTime(pv.duration) + ')', 'success');
+        };
+        reader.onerror = function() {
+            showToast('Ошибка чтения записи', 'error');
+        };
+        reader.readAsDataURL(pv.blob);
+        cameraState.pendingVideo = null;
     }
 
     function formatRecTime(s) {
