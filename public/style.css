@@ -1063,11 +1063,14 @@ body {
 
 @media (max-width: 768px) {
     .header { padding: 10px 14px; }
-    .header-logo { font-size: 21px; }
+    .header-logo { font-size: 22px; }
+    .header-badge { font-size: 12px; padding: 3px 8px; }
+    .credits-display { font-size: 14px; padding: 7px 14px; }
+    .auth-btn { font-size: 13px; padding: 7px 14px; }
     
-    .mode-tabs { padding: 7px 10px; gap: 4px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 8px 12px; font-size: 15px; min-height: 38px; }
-    .mode-tab .mode-emoji { font-size: 14px; }
+    .mode-tabs { padding: 7px 10px; gap: 5px; -webkit-overflow-scrolling: touch; }
+    .mode-tab { padding: 8px 14px; font-size: 15px; min-height: 40px; }
+    .mode-tab .mode-emoji { font-size: 15px; }
     
     .sub-header { 
         padding: 7px 10px; 
@@ -1078,8 +1081,8 @@ body {
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { padding: 5px 10px; font-size: 14px; min-height: 32px; }
-    .model-select { font-size: 14px; padding: 5px 24px 5px 10px; max-width: 180px; }
+    .sub-option { padding: 6px 12px; font-size: 14px; min-height: 36px; }
+    .model-select { font-size: 14px; padding: 6px 26px 6px 12px; max-width: 180px; }
     
     .media-panel { padding: 16px 12px; gap: 14px; }
     
@@ -1116,14 +1119,14 @@ body {
 /* ===== RESPONSIVE — Small phones ===== */
 @media (max-width: 400px) {
     .header { padding: 8px 10px; gap: 6px; }
-    .header-logo { font-size: 19px; }
-    .header-badge { font-size: 11px; padding: 2px 6px; }
-    .credits-display { font-size: 13px; padding: 5px 10px; }
+    .header-logo { font-size: 20px; }
+    .header-badge { font-size: 11px; padding: 3px 7px; }
+    .credits-display { font-size: 13px; padding: 6px 12px; }
     .auth-btn { font-size: 12px; padding: 6px 12px; }
     
-    .mode-tabs { padding: 6px 8px; gap: 3px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 6px 9px; font-size: 13px; min-height: 36px; border-radius: 18px; }
-    .mode-tab .mode-emoji { font-size: 13px; }
+    .mode-tabs { padding: 6px 8px; gap: 4px; -webkit-overflow-scrolling: touch; }
+    .mode-tab { padding: 7px 10px; font-size: 14px; min-height: 38px; border-radius: 18px; }
+    .mode-tab .mode-emoji { font-size: 14px; }
     
     .sub-header { 
         padding: 6px 8px; 
@@ -1134,9 +1137,9 @@ body {
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 12px; padding: 4px 8px; min-height: 30px; border-radius: 14px; }
-    .sub-label { font-size: 11px; }
-    .model-select { font-size: 12px; max-width: 140px; padding: 4px 22px 4px 8px; }
+    .sub-option { font-size: 13px; padding: 5px 9px; min-height: 34px; border-radius: 14px; }
+    .sub-label { font-size: 12px; }
+    .model-select { font-size: 13px; max-width: 150px; padding: 5px 24px 5px 9px; }
     .mode-tag { font-size: 11px; padding: 3px 7px; }
     .size-option { font-size: 12px; padding: 4px 8px; min-height: 30px; border-radius: 14px; }
     .size-selector { gap: 5px; }
@@ -1163,9 +1166,9 @@ body {
     .vc-btn { padding: 5px 10px; font-size: 13px; }
     .input-hint { font-size: 11px; }
     
-    .message { font-size: 15px; padding: 9px 12px; }
-    .message.bot code { font-size: 13px; }
-    .message.bot pre { font-size: 13px; }
+    .message { font-size: 16px; padding: 10px 14px; }
+    .message.bot code { font-size: 14px; }
+    .message.bot pre { font-size: 14px; }
     
     .file-badge { font-size: 12px; }
     
@@ -1189,12 +1192,12 @@ body {
 
 /* ===== RESPONSIVE — Very small screens (iPhone SE, etc.) ===== */
 @media (max-width: 360px) {
-    .mode-tab { padding: 5px 7px; font-size: 12px; }
-    .mode-tab .mode-emoji { font-size: 12px; }
+    .mode-tab { padding: 6px 8px; font-size: 13px; min-height: 36px; }
+    .mode-tab .mode-emoji { font-size: 13px; }
     .sub-header { gap: 3px; padding: 5px 6px; max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 11px; padding: 3px 6px; min-height: 28px; }
+    .sub-option { font-size: 12px; padding: 4px 7px; min-height: 32px; }
     .sub-divider { height: 18px; }
-    .model-select { max-width: 120px; font-size: 11px; }
+    .model-select { max-width: 130px; font-size: 12px; }
     .input-pill { border-radius: 24px; }
     .input-pill textarea { font-size: 16px; padding: 8px 10px; }
     .pill-btn { width: 36px; height: 36px; }
