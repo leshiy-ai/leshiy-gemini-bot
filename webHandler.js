@@ -793,7 +793,17 @@ async function handleImage(auth, payload, env, monolith) {
 }
 
 // Helper: форматирование результата изображения
-function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId) {
+async function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId) {
+    // Логируем тип результата для дебага
+    const resultType = imageResult === null ? 'null' : imageResult === undefined ? 'undefined' :
+        (imageResult instanceof ArrayBuffer || imageResult?.constructor?.name === 'ArrayBuffer') ? 'ArrayBuffer' :
+        (imageResult instanceof Uint8Array) ? 'Uint8Array' :
+        Buffer.isBuffer(imageResult) ? 'Buffer' :
+        typeof imageResult === 'string' ? `string(${imageResult.length})` :
+        typeof imageResult === 'object' ? `object{${Object.keys(imageResult).join(',')}}` :
+        typeof imageResult;
+    console.log(`[WebHandler] formatImageResult: type=${resultType}`);
+
     // Gemini text2image / image2image могут вернуть {imageBase64, mimeType} или просто base64
     if (imageResult && typeof imageResult === 'object' && imageResult.imageBase64) {
         return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: imageResult.imageBase64 });
@@ -802,22 +812,20 @@ function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUr
     if (imageResult && typeof imageResult === 'object' && imageResult.url) {
         return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageResult.url });
     }
-    // ArrayBuffer / Uint8Array
-    if (imageResult instanceof ArrayBuffer || (imageResult && imageResult.constructor?.name === 'ArrayBuffer')) {
+    // ArrayBuffer / Uint8Array (Gemini T2I, DALL-E, Stability возвращают ArrayBuffer)
+    if (imageResult instanceof ArrayBuffer || imageResult instanceof Uint8Array || (imageResult && imageResult.constructor?.name === 'ArrayBuffer')) {
         const base64 = Buffer.from(imageResult).toString('base64');
-        // Пробуем загрузить в публичный URL
+        console.log(`[WebHandler] ArrayBuffer result: base64 length=${base64.length}`);
+        // Пробуем загрузить в публичный URL (асинхронно!)
         if (uploadBase64ImageToPublicUrl) {
             try {
-                const imageUrl = uploadBase64ImageToPublicUrl(base64, env, chatId);
+                const imageUrl = await uploadBase64ImageToPublicUrl(base64, env, chatId);
                 if (imageUrl && typeof imageUrl === 'string') {
+                    console.log(`[WebHandler] Uploaded to public URL: ${imageUrl.substring(0, 80)}`);
                     return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageUrl });
                 }
-                // Может быть Promise
-                if (imageUrl && typeof imageUrl.then === 'function') {
-                    // Асинхронная загрузка — возвращаем base64 сразу
-                }
             } catch (e) {
-                // fallback to base64
+                console.warn(`[WebHandler] Upload to public URL failed: ${e.message}, returning base64`);
             }
         }
         return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
@@ -834,12 +842,25 @@ function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUr
         const base64 = imageResult.toString('base64');
         return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
     }
-    // Promise (не должно быть)
-    if (imageResult && typeof imageResult.then === 'function') {
-        return formatResponse(false, 'Асинхронный результат не поддерживается');
+    // Объект с другими полями — пробуем извлечь URL или base64
+    if (imageResult && typeof imageResult === 'object') {
+        for (const field of ['imageUrl', 'image_url', 'outputUrl', 'output_url', 'url', 'src', 'data']) {
+            if (imageResult[field] && typeof imageResult[field] === 'string') {
+                if (imageResult[field].startsWith('http')) {
+                    return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageResult[field] });
+                }
+                // Может быть base64
+                return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: imageResult[field] });
+            }
+        }
+        // Может быть вложенный объект
+        if (imageResult.data && typeof imageResult.data === 'string') {
+            return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: imageResult.data });
+        }
+        console.error(`[WebHandler] Unknown object format:`, JSON.stringify(imageResult).substring(0, 500));
     }
 
-    return formatResponse(false, 'Неожиданный формат ответа от ИИ: ' + typeof imageResult);
+    return formatResponse(false, 'Неожиданный формат ответа от ИИ: ' + resultType);
 }
 
 // ============================================================
@@ -1786,10 +1807,52 @@ async function handleTaskStatus(auth, payload, env, monolith) {
 
         const state = result.data?.state;
         const output = result.data?.output;
+        const resultJson = result.data?.resultJson; // KieAI использует resultJson для хранения URL
 
         if (state === 'success' || state === 'succeeded') {
             // ✅ Улучшенное извлечение результата: проверяем все возможные форматы ответа KieAI
             let resultUrl = null;
+
+            // -1. KieAI format: resultJson — JSON-строка с resultUrls[]
+            if (!resultUrl && resultJson) {
+                try {
+                    const parsed = typeof resultJson === 'string' ? JSON.parse(resultJson) : resultJson;
+                    // resultUrls — основной формат KieAI для изображений и видео
+                    if (Array.isArray(parsed?.resultUrls) && parsed.resultUrls.length > 0) {
+                        resultUrl = parsed.resultUrls[0];
+                        console.log(`[WebHandler] Found URL in resultJson.resultUrls[0]: ${String(resultUrl || '').substring(0, 100)}`);
+                    }
+                    // Также проверяем другие поля в resultJson
+                    if (!resultUrl) {
+                        for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'outputUrl', 'src', 'source_url']) {
+                            if (parsed?.[field] && typeof parsed[field] === 'string' && parsed[field].startsWith('http')) {
+                                resultUrl = parsed[field];
+                                console.log(`[WebHandler] Found URL in resultJson.${field}: ${String(resultUrl || '').substring(0, 100)}`);
+                                break;
+                            }
+                        }
+                    }
+                    // images/videos массивы
+                    if (!resultUrl) {
+                        for (const field of ['images', 'videos', 'urls', 'outputs']) {
+                            if (Array.isArray(parsed?.[field]) && parsed[field].length > 0) {
+                                const first = parsed[field][0];
+                                if (typeof first === 'string' && first.startsWith('http')) {
+                                    resultUrl = first;
+                                    console.log(`[WebHandler] Found URL in resultJson.${field}[0]`);
+                                    break;
+                                } else if (typeof first === 'object' && first?.url) {
+                                    resultUrl = first.url;
+                                    console.log(`[WebHandler] Found URL in resultJson.${field}[0].url`);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[WebHandler] Failed to parse resultJson: ${e.message}`);
+                }
+            }
 
             // 0. KieAI часто возвращает output как массив строк-URL
             if (Array.isArray(output) && output.length > 0) {
@@ -1853,6 +1916,13 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 resultUrl = output;
             }
 
+            // 3b. Если output — строка base64 (без http префикса)
+            if (!resultUrl && typeof output === 'string' && output.length > 100) {
+                // Может быть base64 данные изображения
+                console.log(`[WebHandler] Output is a long string (${output.length} chars), treating as base64`);
+                return formatResponse(true, null, null, { type: 'image_base64', content: output });
+            }
+
             // 4. Проверяем data.result/data.output на верхнем уровне
             if (!resultUrl) {
                 const topLevel = result.data || result;
@@ -1894,9 +1964,35 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 const resultType = taskType === 'video' ? 'video_url' : 'image_url';
                 return formatResponse(true, null, null, { type: resultType, content: resultUrl });
             } else {
+                // 6. Глубокий рекурсивный поиск URL во всём ответе
+                const deepFindUrl = (obj, depth) => {
+                    if (depth > 5 || !obj || typeof obj !== 'object') return null;
+                    for (const key of Object.keys(obj)) {
+                        const val = obj[key];
+                        if (typeof val === 'string' && val.startsWith('http') && (val.includes('.png') || val.includes('.jpg') || val.includes('.webp') || val.includes('.mp4') || val.includes('/image') || val.includes('/video') || val.includes('storage') || val.includes('cdn') || val.includes('s3') || val.includes('blob'))) {
+                            console.log(`[WebHandler] Deep found URL at depth ${depth} key="${key}": ${val.substring(0, 100)}`);
+                            return val;
+                        }
+                        if (typeof val === 'string' && val.startsWith('http') && val.length > 50) {
+                            console.log(`[WebHandler] Deep found possible URL at depth ${depth} key="${key}": ${val.substring(0, 100)}`);
+                            return val;
+                        }
+                        const nested = deepFindUrl(val, depth + 1);
+                        if (nested) return nested;
+                    }
+                    return null;
+                };
+
+                resultUrl = deepFindUrl(result, 0);
+
+                if (resultUrl) {
+                    const resultType = taskType === 'video' ? 'video_url' : 'image_url';
+                    return formatResponse(true, null, null, { type: resultType, content: resultUrl });
+                }
+
                 // Output exists but no recognizable URL — логируем полный ответ для дебага
-                const safeOutput = output != null ? (JSON.stringify(output) || '').substring(0, 1000) : 'null';
-                const safeResult = result != null ? (JSON.stringify(result) || '').substring(0, 1000) : 'null';
+                const safeOutput = output != null ? (JSON.stringify(output) || '').substring(0, 2000) : 'null';
+                const safeResult = result != null ? (JSON.stringify(result) || '').substring(0, 2000) : 'null';
                 console.log(`[WebHandler] KieAI success but no URL found. Full output:`, safeOutput);
                 console.log(`[WebHandler] Full result:`, safeResult);
                 // 🛑 ФАТАЛЬНАЯ ошибка — НЕ повторять! Задача выполнена но результат не найден
