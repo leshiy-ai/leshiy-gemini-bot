@@ -535,16 +535,6 @@
                 <div class="camera-modal-handle-bar"></div>
             </div>
             <div class="camera-modal-header">
-                <div class="camera-mode-switch">
-                    <button class="camera-mode-btn active" id="camModePhoto" onclick="setCameraMode('photo')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-                        Фото
-                    </button>
-                    <button class="camera-mode-btn" id="camModeVideo" onclick="setCameraMode('video')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-                        Видео
-                    </button>
-                </div>
                 <button class="camera-modal-close" onclick="closeCameraModal()">&times;</button>
             </div>
             <div class="camera-preview-container">
@@ -569,6 +559,16 @@
                 <button class="camera-done-btn" id="cameraDoneBtn" onclick="closeCameraModal()" title="Готово">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
+                <div class="camera-mode-switch" id="cameraModeSwitch">
+                    <button class="camera-mode-btn active" id="camModePhoto" onclick="setCameraMode('photo')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                        Фото
+                    </button>
+                    <button class="camera-mode-btn" id="camModeVideo" onclick="setCameraMode('video')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                        Видео
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -3135,7 +3135,8 @@
         seconds: 0,
         mode: 'photo',       // 'photo' или 'video'
         capturedData: null,   // { blob, base64, mimeType, thumbnail, duration, category }
-        _closing: false
+        _closing: false,
+        _recorderReady: null  // Promise — резолвится когда onstop вернул blob
     };
 
     // ── Свайп вниз для закрытия ──
@@ -3178,7 +3179,6 @@
 
     // ── Переключатель Фото/Видео ──
     function setCameraMode(mode) {
-        // Если идёт запись — сначала останавливаем
         if (cameraState.recording) {
             _stopRecording();
         }
@@ -3187,6 +3187,26 @@
         document.getElementById('camModePhoto').classList.toggle('active', mode === 'photo');
         document.getElementById('camModeVideo').classList.toggle('active', mode === 'video');
         _updateCameraUI('idle');
+        // Перезапуск потока: для видео нужен аудио-трек, для фото — нет
+        _restartStreamForMode();
+    }
+
+    async function _restartStreamForMode() {
+        const preview = document.getElementById('cameraPreview');
+        if (!cameraState.stream) return;
+        // Останавливаем текущий поток
+        cameraState.stream.getTracks().forEach(t => t.stop());
+        try {
+            const audioConstraints = cameraState.mode === 'video' ? true : false;
+            cameraState.stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+                audio: audioConstraints
+            });
+            preview.srcObject = cameraState.stream;
+        } catch(err) {
+            showToast('Не удалось переключить режим камеры: ' + err.message, 'error');
+            _cleanupCameraModal();
+        }
     }
 
     async function openCameraModal() {
@@ -3202,7 +3222,7 @@
         try {
             const audioConstraints = cameraState.mode === 'video' ? true : false;
             cameraState.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
                 audio: audioConstraints
             });
             preview.srcObject = cameraState.stream;
@@ -3212,31 +3232,38 @@
         }
     }
 
-    function closeCameraModal() {
+    async function closeCameraModal() {
         if (cameraState._closing) return;
         cameraState._closing = true;
 
-        // Если идёт запись — сначала остановить, потом закрыть
+        // Если идёт запись — ждём завершения (onstop → capturedData)
         if (cameraState.recording) {
-            const savedChunks = cameraState.chunks.slice();
-            const savedMime = cameraState.mediaRecorder ? cameraState.mediaRecorder.mimeType : '';
-            if (cameraState.mediaRecorder && cameraState.mediaRecorder.state === 'recording') {
-                cameraState.mediaRecorder.stop();
-            }
-            if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
-            cameraState.recording = false;
-            cameraState.chunks = [];
-            // Формируем blob из уже собранных чанков
-            if (savedChunks.length > 0) {
-                const mime = savedMime || 'video/webm';
-                const blob = new Blob(savedChunks, { type: mime });
-                if (blob.size > 0) {
-                    cameraState.capturedData = { blob, mimeType: mime, category: 'video', duration: cameraState.seconds, thumbnail: _grabThumbnail() };
-                }
-            }
+            await _stopRecordingAsync();
         }
+
         // Сохраняем и закрываем
         _saveAndClose();
+    }
+
+    // ── Остановка записи с Promise (ждём onstop) ──
+    function _stopRecordingAsync() {
+        return new Promise(function(resolve) {
+            if (!cameraState.mediaRecorder || cameraState.mediaRecorder.state !== 'recording') {
+                cameraState.recording = false;
+                if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+                resolve();
+                return;
+            }
+            // Подменяем onstop чтобы он резолвил наш Promise ПОСЛЕ создания blob
+            const oldOnstop = cameraState.mediaRecorder.onstop;
+            cameraState.mediaRecorder.onstop = function(e) {
+                if (oldOnstop) oldOnstop.call(this, e);
+                resolve();
+            };
+            try { cameraState.mediaRecorder.requestData(); } catch(ex) {}
+            cameraState.mediaRecorder.stop();
+            if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+        });
     }
 
     function _saveAndClose() {
@@ -3294,8 +3321,11 @@
         if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
         cameraState.seconds = 0;
         cameraState.recording = false;
+        cameraState.chunks = [];
+        cameraState.mediaRecorder = null;
         cameraState.capturedData = null;
         cameraState._closing = false;
+        cameraState._recorderReady = null;
         document.getElementById('cameraRecTime').textContent = '00:00';
         document.getElementById('cameraRecIndicator').style.display = 'none';
         document.getElementById('cameraSavedBadge').style.display = 'none';
@@ -3320,7 +3350,7 @@
         }
     }
 
-    // ── Снимок фото с камеры ──
+    // ── Снимок фото с камеры — полное разрешение, не менее 1024x1024 ──
     function _capturePhoto() {
         const preview = document.getElementById('cameraPreview');
         if (!preview || preview.videoWidth === 0) {
@@ -3329,14 +3359,28 @@
         }
         try {
             const canvas = document.createElement('canvas');
-            canvas.width = preview.videoWidth;
-            canvas.height = preview.videoHeight;
-            canvas.getContext('2d').drawImage(preview, 0, 0);
-            // Превью (маленькое)
+            // Используем полное разрешение камеры, но не менее 1024x1024
+            const vw = preview.videoWidth;
+            const vh = preview.videoHeight;
+            // Рассчитываем размер с сохранением пропорций, min 1024 по меньшей стороне
+            let cw = vw, ch = vh;
+            const minSide = Math.min(vw, vh);
+            if (minSide < 1024) {
+                const scale = 1024 / minSide;
+                cw = Math.round(vw * scale);
+                ch = Math.round(vh * scale);
+            }
+            canvas.width = cw;
+            canvas.height = ch;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(preview, 0, 0, cw, ch);
+
+            // Превью (маленькое, для бейджа)
             const thumbCanvas = document.createElement('canvas');
-            thumbCanvas.width = 160; thumbCanvas.height = 120;
-            thumbCanvas.getContext('2d').drawImage(preview, 0, 0, 160, 120);
-            const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.6);
+            thumbCanvas.width = 200; thumbCanvas.height = 150;
+            thumbCanvas.getContext('2d').drawImage(preview, 0, 0, 200, 150);
+            const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.7);
+
             // Полное фото как blob
             canvas.toBlob(function(blob) {
                 if (!blob || blob.size === 0) {
@@ -3353,14 +3397,14 @@
                 _updateCameraUI('done');
                 document.getElementById('cameraSavedText').textContent = 'Фото сохранено';
                 if (navigator.vibrate) navigator.vibrate(50);
-                showToast('Фото готово! Нажмите ✓ чтобы прикрепить', 'info');
+                showToast('Фото готово! (' + cw + 'x' + ch + ') Нажмите ✓ чтобы прикрепить', 'info');
             }, 'image/jpeg', 0.92);
         } catch(err) {
             showToast('Ошибка фото: ' + err.message, 'error');
         }
     }
 
-    // ── Запись видео ──
+    // ── Запись видео — С timeslice для надёжного сбора чанков ──
     function _startRecording() {
         if (!cameraState.stream) return;
         cameraState.capturedData = null;
@@ -3373,17 +3417,19 @@
             else if (MediaRecorder.isTypeSupported('video/mp4')) mimeType = 'video/mp4';
 
             const options = mimeType ? { mimeType } : {};
-            cameraState.mediaRecorder = new MediaRecorder(cameraState.stream, options);
+            const recorder = new MediaRecorder(cameraState.stream, options);
             cameraState.chunks = [];
+            const usedMimeType = mimeType;
 
-            cameraState.mediaRecorder.ondataavailable = function(e) {
+            recorder.ondataavailable = function(e) {
                 if (e.data && e.data.size > 0) {
                     cameraState.chunks.push(e.data);
                 }
             };
 
-            cameraState.mediaRecorder.onstop = function() {
-                const recordedMime = cameraState.mediaRecorder.mimeType || mimeType || 'video/webm';
+            recorder.onstop = function() {
+                const recordedMime = recorder.mimeType || usedMimeType || 'video/webm';
+                // Собираем чанки — они уже накопились благодаря timeslice
                 const recordedChunks = cameraState.chunks.slice();
                 cameraState.chunks = [];
 
@@ -3408,8 +3454,10 @@
                 showToast('Видео записано! (' + formatRecTime(cameraState.seconds) + ') Нажмите ✓', 'info');
             };
 
-            // НЕ используем timeslice — пусть браузер буферизует сам, надёжнее
-            cameraState.mediaRecorder.start();
+            // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: timeslice=1000 → ondataavailable вызывается каждую секунду
+            // Без timeslice чанки доставляются только при stop(), что вызывает race condition
+            recorder.start(1000);
+            cameraState.mediaRecorder = recorder;
             cameraState.recording = true;
             cameraState.seconds = 0;
             _updateCameraUI('recording');
@@ -3425,7 +3473,6 @@
 
     function _stopRecording() {
         if (cameraState.mediaRecorder && cameraState.mediaRecorder.state === 'recording') {
-            // Запросить оставшиеся данные перед остановкой
             try { cameraState.mediaRecorder.requestData(); } catch(e) {}
             cameraState.mediaRecorder.stop();
         }
@@ -3437,9 +3484,9 @@
             const preview = document.getElementById('cameraPreview');
             if (preview && preview.videoWidth > 0) {
                 const c = document.createElement('canvas');
-                c.width = 160; c.height = 120;
-                c.getContext('2d').drawImage(preview, 0, 0, 160, 120);
-                return c.toDataURL('image/jpeg', 0.6);
+                c.width = 200; c.height = 150;
+                c.getContext('2d').drawImage(preview, 0, 0, 200, 150);
+                return c.toDataURL('image/jpeg', 0.7);
             }
         } catch(e) {}
         return null;
@@ -3452,7 +3499,7 @@
         const switchBtn = document.getElementById('cameraSwitchBtn');
         const recIndicator = document.getElementById('cameraRecIndicator');
         const savedBadge = document.getElementById('cameraSavedBadge');
-        const modeSwitch = document.querySelector('.camera-mode-switch');
+        const modeSwitch = document.getElementById('cameraModeSwitch');
 
         if (!captureBtn) return;
 
@@ -3475,7 +3522,7 @@
                 captureBtn.style.display = '';
                 doneBtn.style.display = '';
                 switchBtn.style.display = '';
-                if (modeSwitch) modeSwitch.style.display = '';
+                if (modeSwitch) modeSwitch.style.display = 'none';
                 break;
             case 'done':
                 inner.className = 'capture-btn-inner' + (isPhoto ? ' photo-mode' : ' video-mode');
@@ -3484,7 +3531,7 @@
                 captureBtn.style.display = '';
                 doneBtn.style.display = '';
                 switchBtn.style.display = 'none';
-                if (modeSwitch) modeSwitch.style.display = '';
+                if (modeSwitch) modeSwitch.style.display = 'none';
                 break;
         }
     }
@@ -3498,7 +3545,7 @@
         try {
             const audioConstraints = cameraState.mode === 'video' ? true : false;
             cameraState.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
                 audio: audioConstraints
             });
             preview.srcObject = cameraState.stream;
