@@ -785,97 +785,53 @@ body {
 
 /* ===== INPUT AREA ===== */
 .input-area {
-    padding: 12px;
+    padding: 10px 12px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     transition: border-color 0.2s ease, background 0.2s ease;
 }
 
-.input-row {
+/* Pill-style input bar — все элементы внутри одной скруглённой строки */
+.input-pill {
     display: flex;
-    gap: 6px;
     align-items: flex-end;
-}
-
-/* Left action buttons cluster — clip + cam + mic in a row */
-.input-actions-left {
-    display: flex;
-    gap: 4px;
-    align-items: flex-end;
-    flex-shrink: 0;
-}
-
-.input-wrapper {
-    flex: 1;
-    position: relative;
-    min-width: 0;
-}
-
-.input-wrapper textarea {
-    width: 100%;
-    padding: 10px 16px;
-    border-radius: 24px;
-    border: 1px solid var(--border);
+    gap: 2px;
     background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    padding: 4px 4px 4px 4px;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+.input-pill:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.15);
+}
+
+.input-pill textarea {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 20px;
+    background: transparent;
     color: var(--text-primary);
     font-size: 16px;
     font-family: inherit;
     resize: none;
     max-height: 120px;
     line-height: 1.4;
-    transition: border-color var(--transition);
-}
-
-.input-wrapper textarea:focus {
     outline: none;
-    border-color: var(--accent);
 }
+.input-pill textarea::placeholder { color: var(--text-muted); }
 
-.input-wrapper textarea::placeholder { color: var(--text-muted); }
-
-.send-btn {
-    width: 44px;
-    height: 44px;
+/* Pill buttons — компактные, внутри строки */
+.pill-btn {
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     border: none;
-    background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
-    color: white;
-    font-size: 18px;
-    cursor: pointer;
-    transition: all var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
-}
-
-.send-btn:hover { background: linear-gradient(135deg, #9333ea 0%, #6d28d9 100%); transform: scale(1.08); box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4); }
-.send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
-
-.attach-btn {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-.attach-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
-.attach-btn:active { transform: scale(0.9); }
-
-.cam-btn {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
@@ -884,42 +840,35 @@ body {
     justify-content: center;
     flex-shrink: 0;
     transition: all 0.2s ease;
-}
-.cam-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
-.cam-btn:active { transform: scale(0.9); }
-
-.mic-btn {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
     -webkit-user-select: none;
     user-select: none;
 }
-.mic-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
-.mic-btn.recording { 
-    border-color: var(--danger); 
-    color: white; 
-    background: var(--danger); 
+.pill-btn:hover { color: var(--accent); background: var(--accent-light); }
+.pill-btn:active { transform: scale(0.9); }
+
+/* Send — акцентная */
+.pill-send {
+    background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+}
+.pill-send:hover { background: linear-gradient(135deg, #9333ea 0%, #6d28d9 100%); transform: scale(1.08); box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4); }
+.pill-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Mic recording state */
+.pill-mic.recording {
+    background: var(--danger);
+    color: white;
     animation: micPulse 1s ease-in-out infinite;
+}
+.pill-mic.dictating {
+    background: var(--success);
+    color: white;
+    animation: micPulse 1.5s ease-in-out infinite;
 }
 @keyframes micPulse {
     0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
     50% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
-}
-.mic-btn.dictating {
-    border-color: var(--success);
-    color: white;
-    background: var(--success);
-    animation: micPulse 1.5s ease-in-out infinite;
 }
 
 .input-hint {
@@ -1139,11 +1088,10 @@ body {
     
     .result-area { min-height: 170px; }
     
-    .input-wrapper textarea { font-size: 16px; padding: 10px 14px; }
-    .input-area { padding: 10px 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
-    .input-actions-left { gap: 3px; }
-    .attach-btn, .cam-btn, .mic-btn { width: 36px; height: 36px; }
-    .send-btn { width: 40px; height: 40px; }
+    .input-pill textarea { font-size: 16px; padding: 8px 10px; }
+    .input-area { padding: 8px 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+    .pill-btn { width: 34px; height: 34px; }
+    .pill-send { width: 36px; height: 36px; }
     
     .dialog { padding: 24px; max-width: 420px; }
     .dialog p { font-size: 14px; }
@@ -1197,13 +1145,12 @@ body {
     .result-area { min-height: 150px; }
     .result-placeholder { font-size: 13px; }
     
-    .input-wrapper textarea { font-size: 16px; padding: 9px 12px; }
+    .input-pill textarea { font-size: 16px; padding: 7px 10px; }
     .input-area { padding: 8px 8px; }
-    .input-actions-left { gap: 2px; }
-    .attach-btn, .cam-btn, .mic-btn { width: 34px; height: 34px; }
-    .attach-btn svg, .cam-btn svg, .mic-btn svg { width: 16px; height: 16px; }
-    .send-btn { width: 36px; height: 36px; }
-    .send-btn svg { width: 16px; height: 16px; }
+    .pill-btn { width: 32px; height: 32px; }
+    .pill-btn svg { width: 16px; height: 16px; }
+    .pill-send { width: 34px; height: 34px; }
+    .pill-send svg { width: 16px; height: 16px; }
     .input-hint { font-size: 10px; }
     
     .message { font-size: 15px; padding: 9px 12px; }
@@ -1238,11 +1185,11 @@ body {
     .sub-option { font-size: 11px; padding: 3px 6px; min-height: 28px; }
     .sub-divider { height: 18px; }
     .model-select { max-width: 120px; font-size: 11px; }
-    .input-wrapper textarea { font-size: 16px; padding: 7px 10px; }
-    .attach-btn, .cam-btn, .mic-btn { width: 32px; height: 32px; }
-    .attach-btn svg, .cam-btn svg, .mic-btn svg { width: 14px; height: 14px; }
-    .send-btn { width: 34px; height: 34px; }
-    .send-btn svg { width: 14px; height: 14px; }
+    .input-pill textarea { font-size: 14px; padding: 6px 8px; }
+    .pill-btn { width: 30px; height: 30px; }
+    .pill-btn svg { width: 14px; height: 14px; }
+    .pill-send { width: 32px; height: 32px; }
+    .pill-send svg { width: 14px; height: 14px; }
 }
 
 /* Результат-область для аудио — вертикальная компоновка */
