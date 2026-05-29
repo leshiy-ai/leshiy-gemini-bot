@@ -2873,7 +2873,8 @@
         lightboxItems = [];
 
         if (att.type.startsWith('image/')) {
-            const src = att.previewUrl || ('data:' + att.type + ';base64,' + att.base64);
+            // ВСЕГДА используем полную base64, НЕ previewUrl (он 200x150)
+            const src = 'data:' + att.type + ';base64,' + att.base64;
             lightboxItems.push({ src: src, type: 'img' });
             content.innerHTML = '<img src="' + src + '" alt="' + att.name + '">';
         } else if (att.type.startsWith('video/')) {
@@ -3125,7 +3126,7 @@
     }
 
     // 📹 CAMERA — Фото и Видео через getUserMedia
-    // ПОЛНОСТЬЮ ПЕРЕПИСАНО: устранены баги 0-byte video и tiny photo
+    // ПОЛНОСТЬЮ ПЕРЕПИСАНО: устранены баги 0-byte video, tiny photo, no audio
     let cameraState = {
         stream: null,
         mediaRecorder: null,
@@ -3134,15 +3135,11 @@
         timerInterval: null,
         seconds: 0,
         mode: 'photo',
-        capturedData: null,   // { blob, mimeType, thumbnail, duration, category }
+        capturedData: null,
         _closing: false,
-        _recorderPromise: null // Promise — резолвится когда onstop создал blob
+        _recorderPromise: null,
+        _recordingGen: 0       // Счётчик поколений записи — защищает от stale onstop
     };
-
-    // ЛОКАЛЬНЫЙ массив чанков — хранится в замыкании, НЕ на cameraState
-    // Это гарантирует что никто не очистит чанки до создания blob
-    let _recorderChunks = [];
-    let _recorderMime = '';
 
     // ── Свайп вниз для закрытия ──
     (function initCameraSheetSwipe() {
@@ -3192,6 +3189,7 @@
         document.getElementById('camModePhoto').classList.toggle('active', mode === 'photo');
         document.getElementById('camModeVideo').classList.toggle('active', mode === 'video');
         _updateCameraUI('idle');
+        // Перезапуск потока: видео → с аудио, фото → без
         _restartStreamForMode();
     }
 
@@ -3201,7 +3199,7 @@
         cameraState.stream.getTracks().forEach(t => t.stop());
         try {
             cameraState.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: cameraState.mode === 'video'
             });
             preview.srcObject = cameraState.stream;
@@ -3214,7 +3212,6 @@
 
     // ── Получить РЕАЛЬНОЕ разрешение камеры ──
     function _getCameraResolution() {
-        // Пытаемся получить из track settings — самый надёжный источник
         try {
             const track = cameraState.stream && cameraState.stream.getVideoTracks()[0];
             if (track) {
@@ -3224,12 +3221,10 @@
                 }
             }
         } catch(e) {}
-        // Fallback — из video element
         const preview = document.getElementById('cameraPreview');
         if (preview && preview.videoWidth > 0 && preview.videoHeight > 0) {
             return { w: preview.videoWidth, h: preview.videoHeight };
         }
-        // Последний fallback — стандартное разрешение
         return { w: 1280, h: 720 };
     }
 
@@ -3244,15 +3239,26 @@
         modal.classList.add('open');
         document.body.style.overflow = 'hidden';
         try {
+            // ВСЕГДА запрашиваем и видео и аудио — аудио трек нужен для записи видео
             cameraState.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-                audio: cameraState.mode === 'video'
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: true
             });
             preview.srcObject = cameraState.stream;
             await preview.play();
         } catch(err) {
-            showToast('Ошибка доступа к камере: ' + err.message, 'error');
-            _cleanupCameraModal();
+            // Если аудио недоступно — пробуем только видео
+            try {
+                cameraState.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+                preview.srcObject = cameraState.stream;
+                await preview.play();
+            } catch(err2) {
+                showToast('Ошибка доступа к камере: ' + err2.message, 'error');
+                _cleanupCameraModal();
+            }
         }
     }
 
@@ -3260,10 +3266,7 @@
         if (cameraState._closing) return;
         cameraState._closing = true;
 
-        // КЛЮЧЕВОЙ ФИКС: если запись уже остановлена (onstop уже создал capturedData),
-        // просто сохраняем. Если onstop ещё не вызван — ждём его через _recorderPromise.
         if (cameraState.recording) {
-            // Запись ещё идёт или stop() вызван но onstop ещё не отработал
             await _stopRecordingAsync();
         }
 
@@ -3271,40 +3274,31 @@
     }
 
     // ── Синхронная остановка (при нажатии кнопки стоп) ──
-    // НЕ ждёт onstop! Только инициирует stop.
-    // cameraState.recording остаётся true пока onstop не отработает!
     function _stopRecordingSync() {
         const mr = cameraState.mediaRecorder;
         if (mr && mr.state === 'recording') {
             try { mr.requestData(); } catch(e) {}
-            mr.stop(); // onstop вызовется асинхронно и установит capturedData + recording=false
+            mr.stop();
         }
         if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
     }
 
     // ── Асинхронная остановка (при закрытии модалки) ──
-    // Ждёт когда onstop отработает и capturedData будет установлен
     function _stopRecordingAsync() {
-        // Если capturedData уже есть (onstop уже отработал) — не ждём
         if (cameraState.capturedData) {
             cameraState.recording = false;
             return Promise.resolve();
         }
-
-        // Если идёт активная запись — сначала стопаем
         const mr = cameraState.mediaRecorder;
         if (mr && mr.state === 'recording') {
             try { mr.requestData(); } catch(e) {}
-            mr.stop(); // onstop вызовется асинхронно
+            mr.stop();
         }
         if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
 
-        // Если recorderPromise существует — onstop ещё не отработал, ждём его
         if (cameraState._recorderPromise) {
             return cameraState._recorderPromise;
         }
-
-        // Если нет промиса — значит onstop уже отработал
         cameraState.recording = false;
         return Promise.resolve();
     }
@@ -3367,15 +3361,12 @@
         cameraState.capturedData = null;
         cameraState._closing = false;
         cameraState._recorderPromise = null;
-        _recorderChunks = [];
-        _recorderMime = '';
         document.getElementById('cameraRecTime').textContent = '00:00';
         document.getElementById('cameraRecIndicator').style.display = 'none';
         document.getElementById('cameraSavedBadge').style.display = 'none';
         _updateCameraUI('idle');
     }
 
-    // ── Главная кнопка: фото → снимок, видео → старт/стоп записи ──
     function cameraCapture() {
         if (cameraState.mode === 'photo') {
             _capturePhoto();
@@ -3392,9 +3383,7 @@
         }
     }
 
-    // ── Снимок фото с камеры ──
-    // РАЗРЕШЕНИЕ: берём из track.getSettings() (надёжнее чем videoWidth),
-    // и ПРИНУДИТЕЛЬНО масштабируем canvas до минимума 1024 по короткой стороне
+    // ── Снимок фото ──
     function _capturePhoto() {
         const preview = document.getElementById('cameraPreview');
         if (!preview || !cameraState.stream) {
@@ -3419,7 +3408,7 @@
             const ctx = canvas.getContext('2d');
             ctx.drawImage(preview, 0, 0, cw, ch);
 
-            // Превью для бейджа
+            // Превью для бейджа (маленькое)
             const thumbCanvas = document.createElement('canvas');
             thumbCanvas.width = 200; thumbCanvas.height = 150;
             thumbCanvas.getContext('2d').drawImage(preview, 0, 0, 200, 150);
@@ -3449,15 +3438,21 @@
     }
 
     // ── Запись видео ──
-    // КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ:
-    // 1. ЛОКАЛЬНЫЙ массив чанков в замыкании (не на cameraState — никто не затрёт)
-    // 2. _recorderPromise — резолвится ТОЛЬКО когда blob создан в onstop
-    // 3. cameraState.recording = true пока onstop не отработал (даже после stop())
+    // КЛЮЧЕВЫЕ ИСПРАВЛЕНИЯ:
+    // 1. _recordingGen — счётчик поколений. Каждый новый старт записи инкрементирует его.
+    //    onstop проверяет gen — если не совпадает, игнорирует (stale handler от старой записи)
+    // 2. _recorderPromise — резолвится только когда onstop текущего поколения создал blob
+    // 3. recording = false только в onstop (не при stop())
     // 4. timeslice=500 для надёжного сбора чанков
     function _startRecording() {
         if (!cameraState.stream) return;
         cameraState.capturedData = null;
         cameraState._recorderPromise = null;
+
+        // Инкремент поколения — все stale onstop будут игнорировать
+        cameraState._recordingGen++;
+        const currentGen = cameraState._recordingGen;
+
         try {
             let mimeType = '';
             if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) mimeType = 'video/webm;codecs=vp8,opus';
@@ -3468,7 +3463,7 @@
             const options = mimeType ? { mimeType } : {};
             const recorder = new MediaRecorder(cameraState.stream, options);
 
-            // ЛОКАЛЬНЫЙ массив — живёт в замыкании, безопасен от внешнего доступа
+            // ЛОКАЛЬНЫЙ массив чанков — в замыкании, никто не затрёт
             const localChunks = [];
             const usedMime = mimeType;
 
@@ -3478,16 +3473,19 @@
                 }
             };
 
-            // onstop — единственное место где создаётся blob
-            // КРИТИЧЕСКИ: cameraState.recording = false только ЗДЕСЬ,
-            // а НЕ при вызове stop(). Это гарантирует что closeCameraModal
-            // знает: recording=true → onstop ещё не отработал, надо ждать.
+            // onstop с проверкой поколения
             let onstopResolve = null;
             cameraState._recorderPromise = new Promise(function(resolve) {
                 onstopResolve = resolve;
             });
 
             recorder.onstop = function() {
+                // Если это старая запись — игнорируем полностью
+                if (currentGen !== cameraState._recordingGen) {
+                    if (onstopResolve) onstopResolve();
+                    return;
+                }
+
                 const recordedMime = recorder.mimeType || usedMime || 'video/webm';
 
                 if (localChunks.length === 0) {
@@ -3507,7 +3505,7 @@
                     thumbnail: _grabThumbnail(),
                     duration: cameraState.seconds
                 };
-                cameraState.recording = false;  // ← ТОЛЬКО ЗДЕСЬ!
+                cameraState.recording = false;
                 cameraState._recorderPromise = null;
                 _updateCameraUI('done');
                 document.getElementById('cameraSavedText').textContent = 'Видео записано';
@@ -3515,7 +3513,6 @@
                 if (onstopResolve) onstopResolve();
             };
 
-            // timeslice=500: ondataavailable каждые 500мс для надёжного сбора
             recorder.start(500);
             cameraState.mediaRecorder = recorder;
             cameraState.recording = true;
@@ -3554,7 +3551,6 @@
         const modeSwitch = document.getElementById('cameraModeSwitch');
 
         if (!captureBtn) return;
-
         const isPhoto = cameraState.mode === 'photo';
 
         switch(state) {
@@ -3595,14 +3591,25 @@
             cameraState.stream.getTracks().forEach(t => t.stop());
         }
         try {
+            // Всегда запрашиваем аудио для видео-записи
             cameraState.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-                audio: cameraState.mode === 'video'
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: true
             });
             preview.srcObject = cameraState.stream;
             await preview.play();
         } catch(err) {
-            showToast('Не удалось переключить камеру: ' + err.message, 'error');
+            // Fallback без аудио
+            try {
+                cameraState.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+                preview.srcObject = cameraState.stream;
+                await preview.play();
+            } catch(err2) {
+                showToast('Не удалось переключить камеру: ' + err2.message, 'error');
+            }
         }
     }
 
