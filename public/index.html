@@ -528,18 +528,15 @@
         <div class="lightbox-counter" id="lightboxCounter"></div>
     </div>
 
-    <!-- CAMERA MODAL — bottom sheet on mobile -->
+    <!-- CAMERA MODAL -->
     <div class="camera-modal-overlay" id="cameraModal">
-        <div class="camera-modal" id="cameraSheet">
-            <div class="camera-modal-handle" id="cameraSheetHandle">
-                <div class="camera-modal-handle-bar"></div>
-            </div>
+        <div class="camera-modal">
             <div class="camera-modal-header">
                 <h3>&#128249; Камера</h3>
                 <button class="camera-modal-close" onclick="closeCameraModal()">&times;</button>
             </div>
             <div class="camera-preview-container">
-                <video id="cameraPreview" autoplay playsinline muted></video>
+                <video id="cameraPreview" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;object-fit:cover"></video>
                 <div class="camera-recording-indicator" id="cameraRecIndicator" style="display:none">
                     <span class="rec-dot"></span> REC <span id="cameraRecTime">00:00</span>
                 </div>
@@ -3122,67 +3119,14 @@
         facingMode: 'user',
         timerInterval: null,
         seconds: 0,
-        pendingVideo: null,  // { blob, mimeType, thumbnail } — готовое видео, ожидает сохранения
-        _closing: false      // флаг предотвращает повторный вызов closeCameraModal
+        pendingVideo: null  // { blob, mimeType, thumbnail } — готовое видео, ожидает сохранения
     };
-
-    // ── Swipe-down-to-dismiss for camera bottom sheet ──
-    (function initCameraSheetSwipe() {
-        let startY = 0, currentY = 0, isDragging = false;
-        const sheet = () => document.getElementById('cameraSheet');
-        const overlay = () => document.getElementById('cameraModal');
-
-        document.addEventListener('touchstart', function(e) {
-            const s = sheet();
-            if (!s || !overlay().classList.contains('open')) return;
-            const handle = document.getElementById('cameraSheetHandle');
-            const header = s.querySelector('.camera-modal-header');
-            // Start drag only from handle or header area
-            if (handle && (handle.contains(e.target) || (header && header.contains(e.target)))) {
-                isDragging = true;
-                startY = e.touches[0].clientY;
-                s.style.transition = 'none';
-            }
-        }, { passive: true });
-
-        document.addEventListener('touchmove', function(e) {
-            if (!isDragging) return;
-            currentY = e.touches[0].clientY;
-            const dy = currentY - startY;
-            if (dy < 0) {
-                // Swiping up — don't go above original position
-                sheet().style.transform = 'translateY(0)';
-            } else {
-                sheet().style.transform = 'translateY(' + dy + 'px)';
-            }
-        }, { passive: true });
-
-        document.addEventListener('touchend', function() {
-            if (!isDragging) return;
-            isDragging = false;
-            const s = sheet();
-            s.style.transition = '';
-            const dy = currentY - startY;
-            if (dy > 80) {
-                // Swiped far enough — close
-                closeCameraModal();
-            } else {
-                // Snap back
-                s.style.transform = '';
-            }
-            startY = 0; currentY = 0;
-        }, { passive: true });
-    })();
 
     async function openCameraModal() {
         const modal = document.getElementById('cameraModal');
         const preview = document.getElementById('cameraPreview');
-        const sheet = document.getElementById('cameraSheet');
         cameraState.pendingVideo = null;
-        cameraState._closing = false;
         _updateCameraUI('idle');
-        // Reset transform before opening
-        if (sheet) sheet.style.transform = '';
         modal.classList.add('open');
         document.body.style.overflow = 'hidden';
         try {
@@ -3198,9 +3142,6 @@
     }
 
     function closeCameraModal() {
-        if (cameraState._closing) return; // предотвращаем рекурсию
-        cameraState._closing = true;
-
         // Если есть несохранённое видео — сохраняем его
         if (cameraState.pendingVideo) {
             _savePendingVideo();
@@ -3244,7 +3185,6 @@
         document.getElementById('cameraRecIndicator').style.display = 'none';
         document.getElementById('recordBtnInner').classList.remove('recording');
         cameraState.pendingVideo = null;
-        cameraState._closing = false;
         _updateCameraUI('idle');
     }
 
@@ -3262,7 +3202,6 @@
                 recIndicator.style.display = 'none';
                 savedBadge.style.display = 'none';
                 recBtn.style.display = '';
-                recBtn.title = 'Записать';
                 doneBtn.style.display = '';
                 switchBtn.style.display = '';
                 break;
@@ -3271,7 +3210,6 @@
                 recIndicator.style.display = 'flex';
                 savedBadge.style.display = 'none';
                 recBtn.style.display = '';
-                recBtn.title = 'Остановить';
                 doneBtn.style.display = '';
                 switchBtn.style.display = '';
                 break;
@@ -3279,8 +3217,7 @@
                 inner.classList.remove('recording');
                 recIndicator.style.display = 'none';
                 savedBadge.style.display = 'flex';
-                recBtn.style.display = '';  // Показываем кнопку записи для перезаписи
-                recBtn.title = 'Перезаписать';
+                recBtn.style.display = 'none';
                 doneBtn.style.display = '';
                 switchBtn.style.display = 'none';
                 break;
@@ -3308,11 +3245,6 @@
         if (cameraState.recording) {
             _stopAndSaveRecording();
         } else {
-            // Если есть pending видео — это перезапись, сбрасываем
-            if (cameraState.pendingVideo) {
-                cameraState.pendingVideo = null;
-                document.getElementById('cameraSavedBadge').style.display = 'none';
-            }
             startCameraRecording();
         }
     }
