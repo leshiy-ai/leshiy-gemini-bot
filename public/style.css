@@ -463,6 +463,44 @@ body {
     align-self: flex-start;
     background: var(--bot-bubble);
     border-bottom-left-radius: 4px;
+    position: relative;
+}
+
+/* ===== COPY BUTTON on AI messages ===== */
+.copy-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    line-height: 1;
+}
+.message.bot:hover .copy-btn,
+.copy-btn.copied {
+    opacity: 1;
+}
+/* На мобилке кнопка всегда видна (нет ховера) */
+@media (hover: none) {
+    .copy-btn { opacity: 0.4; }
+    .message.bot:hover .copy-btn { opacity: 1; }
+}
+.copy-btn:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+.copy-btn.copied {
+    color: var(--success);
+    font-size: 14px;
+    font-weight: 700;
+}
+.copy-btn svg {
+    display: block;
 }
 
 .message.error {

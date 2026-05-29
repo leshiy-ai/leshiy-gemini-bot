@@ -291,7 +291,9 @@ async function callWorkersAIWeb(config, ...args) {
     if (config.FUNCTION.name === 'callWorkersAITextToImage') {
         const [prompt, env] = args;
         const result = await callCloudflareRestAPI(modelName, {
-            prompt: prompt
+            prompt: prompt + ', photorealistic, cinematic light, detailed background',
+            num_steps: 10,
+            negative_prompt: 'blurry, low quality, worst quality, deformed, mutated, cropped, text, signature, low detail',
         }, env);
         // Возвращаем бинарный результат (изображение)
         if (result.binary) return result.data;
@@ -302,9 +304,14 @@ async function callWorkersAIWeb(config, ...args) {
     if (config.FUNCTION.name === 'callWorkersAIImg2Img') {
         const [prompt, env, refImage] = args;
         const imageBase64 = typeof refImage === 'string' ? refImage : Buffer.isBuffer(refImage) ? refImage.toString('base64') : '';
+        // Cloudflare img2img API: используем image_b64 для base64 строки
+        // (поле 'image' ожидает массив байтов, 'image_b64' — base64 строку)
         const result = await callCloudflareRestAPI(modelName, {
             prompt: prompt,
-            image: imageBase64
+            image_b64: imageBase64,
+            num_steps: 20,
+            strength: 0.6,
+            guidance: 7.5,
         }, env);
         if (result.binary) return result.data;
         return result.result;
