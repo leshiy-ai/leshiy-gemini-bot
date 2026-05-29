@@ -1150,9 +1150,9 @@ body {
     
     /* Camera modal mobile */
     .camera-modal { max-width: 100%; height: 90dvh; border-radius: 20px 20px 0 0; }
-    .camera-record-btn { width: 56px; height: 56px; }
-    .record-btn-inner { width: 42px; height: 42px; }
-    .record-btn-inner.recording { width: 24px; height: 24px; }
+    .camera-capture-btn { width: 56px; height: 56px; }
+    .capture-btn-inner { width: 42px; height: 42px; }
+    .capture-btn-inner.recording { width: 24px; height: 24px; }
     .camera-controls { gap: 20px; padding: 14px; }
 }
 
@@ -1221,10 +1221,11 @@ body {
     /* Camera modal small phone */
     .camera-modal { height: 92dvh; }
     .camera-controls { gap: 16px; padding: 12px; }
-    .camera-record-btn { width: 52px; height: 52px; }
-    .record-btn-inner { width: 38px; height: 38px; }
-    .record-btn-inner.recording { width: 22px; height: 22px; }
+    .camera-capture-btn { width: 52px; height: 52px; }
+    .capture-btn-inner { width: 38px; height: 38px; }
+    .capture-btn-inner.recording { width: 22px; height: 22px; }
     .camera-switch-btn, .camera-done-btn { width: 40px; height: 40px; }
+    .camera-mode-btn { padding: 5px 10px; font-size: 12px; }
 }
 
 /* ===== RESPONSIVE — Very small screens (iPhone SE, etc.) ===== */
@@ -1491,7 +1492,7 @@ body {
 .camera-modal {
     width: 100%;
     max-width: 480px;
-    height: 88dvh;               /* фиксированная высота в % от экрана */
+    height: 88dvh;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 20px 20px 0 0;
@@ -1526,35 +1527,62 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
+    padding: 8px 16px 10px 16px;
     flex-shrink: 0;
 }
-.camera-modal-header h3 {
-    font-size: 16px;
-    color: var(--accent);
-    margin: 0;
+
+/* Photo / Video mode switcher */
+.camera-mode-switch {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 20px;
+    padding: 3px;
 }
+.camera-mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    border-radius: 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.camera-mode-btn.active {
+    background: var(--accent);
+    color: white;
+}
+.camera-mode-btn:not(.active):hover {
+    color: var(--text-primary);
+    background: rgba(168,85,247,0.15);
+}
+
 .camera-modal-close {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
-    font-size: 22px;
+    font-size: 20px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all var(--transition);
+    flex-shrink: 0;
 }
 .camera-modal-close:hover { background: var(--danger); color: white; border-color: var(--danger); }
 
 .camera-preview-container {
     position: relative;
     background: #000;
-    flex: 1;                     /* занимает всё свободное место */
+    flex: 1;
     min-height: 0;
     overflow: hidden;
 }
@@ -1565,7 +1593,7 @@ body {
     display: block;
 }
 
-.camera-video-saved-badge {
+.camera-saved-badge {
     position: absolute;
     bottom: 12px;
     left: 50%;
@@ -1633,7 +1661,8 @@ body {
 }
 .camera-switch-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
-.camera-record-btn {
+/* Capture button — changes shape for photo (circle) vs video (red dot / square) */
+.camera-capture-btn {
     width: 64px;
     height: 64px;
     border-radius: 50%;
@@ -1646,16 +1675,21 @@ body {
     transition: all 0.15s ease;
     flex-shrink: 0;
 }
-.camera-record-btn:active { transform: scale(0.92); }
+.camera-capture-btn:active { transform: scale(0.92); }
 
-.record-btn-inner {
+.capture-btn-inner {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: var(--danger);
     transition: all 0.2s ease;
 }
-.record-btn-inner.recording {
+.capture-btn-inner.video-mode {
+    background: var(--danger);
+}
+.capture-btn-inner.photo-mode {
+    background: white;
+}
+.capture-btn-inner.recording {
     width: 28px;
     height: 28px;
     border-radius: 6px;
