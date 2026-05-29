@@ -1069,20 +1069,20 @@ body {
     .auth-btn { font-size: 13px; padding: 7px 14px; }
     
     .mode-tabs { padding: 7px 10px; gap: 5px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 8px 14px; font-size: 15px; min-height: 40px; }
-    .mode-tab .mode-emoji { font-size: 15px; }
+    .mode-tab { padding: 9px 16px; font-size: 16px; min-height: 44px; }
+    .mode-tab .mode-emoji { font-size: 16px; }
     
     .sub-header { 
-        padding: 7px 10px; 
+        padding: 8px 10px; 
         gap: 6px;
-        min-height: 40px;
+        min-height: 42px;
         flex-wrap: wrap;
         max-height: none;
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { padding: 6px 12px; font-size: 14px; min-height: 36px; }
-    .model-select { font-size: 14px; padding: 6px 26px 6px 12px; max-width: 180px; }
+    .sub-option { padding: 7px 14px; font-size: 15px; min-height: 38px; }
+    .model-select { font-size: 15px; padding: 7px 28px 7px 12px; max-width: 180px; }
     
     .media-panel { padding: 16px 12px; gap: 14px; }
     
@@ -1093,27 +1093,39 @@ body {
     
     .result-area { min-height: 170px; }
     
-    .input-pill { border-radius: 28px; padding: 6px 8px; }
-    .input-pill textarea { font-size: 16px; padding: 10px 12px; }
+    /* Сообщения крупнее на мобилке */
+    .message { font-size: 17px; padding: 11px 15px; line-height: 1.55; }
+    .message.bot code { font-size: 15px; }
+    .message.bot pre { font-size: 15px; }
+    .message.user { padding: 11px 15px; }
+
+    .input-pill { border-radius: 30px; padding: 6px 8px; }
+    .input-pill textarea { font-size: 17px; padding: 10px 12px; }
     .input-area { padding: 10px 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
-    .pill-btn { width: 40px; height: 40px; }
-    .pill-btn svg { width: 20px; height: 20px; }
-    .pill-send { width: 42px; height: 42px; }
-    .pill-send svg { width: 20px; height: 20px; }
-    .vc-btn { padding: 6px 12px; font-size: 14px; }
-    .vc-rec-label { font-size: 12px; }
-    .input-hint { font-size: 12px; }
+    .pill-btn { width: 44px; height: 44px; }
+    .pill-btn svg { width: 22px; height: 22px; }
+    .pill-send { width: 46px; height: 46px; }
+    .pill-send svg { width: 22px; height: 22px; }
+    .vc-btn { padding: 7px 14px; font-size: 15px; min-height: 38px; }
+    .vc-rec-label { font-size: 13px; }
+    .input-hint { font-size: 13px; }
 
     .dialog { padding: 24px; max-width: 420px; }
-    .dialog p { font-size: 14px; }
+    .dialog p { font-size: 15px; }
+    .dialog h3 { font-size: 18px; }
     
+    /* Toast крупнее */
+    .toast { font-size: 15px; padding: 10px 18px; }
+
     /* Camera modal mobile */
     .camera-modal { max-width: 100%; height: 90dvh; border-radius: 20px 20px 0 0; }
-    .camera-capture-btn { width: 56px; height: 56px; }
-    .capture-btn-inner { width: 42px; height: 42px; }
-    .capture-btn-inner.recording { width: 24px; height: 24px; }
+    .camera-capture-btn { width: 60px; height: 60px; }
+    .capture-btn-inner { width: 44px; height: 44px; }
+    .capture-btn-inner.recording { width: 26px; height: 26px; }
     .camera-controls { gap: 14px; padding: 10px 12px 14px 12px; }
     .camera-controls .camera-mode-switch { margin-top: 2px; }
+    .camera-switch-btn, .camera-done-btn { width: 46px; height: 46px; }
+    .camera-mode-btn { padding: 7px 14px; font-size: 14px; }
 }
 
 /* ===== RESPONSIVE — Small phones ===== */
@@ -1125,28 +1137,28 @@ body {
     .auth-btn { font-size: 12px; padding: 6px 12px; }
     
     .mode-tabs { padding: 6px 8px; gap: 4px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 7px 10px; font-size: 14px; min-height: 38px; border-radius: 18px; }
-    .mode-tab .mode-emoji { font-size: 14px; }
+    .mode-tab { padding: 8px 12px; font-size: 15px; min-height: 42px; border-radius: 18px; }
+    .mode-tab .mode-emoji { font-size: 15px; }
     
     .sub-header { 
         padding: 6px 8px; 
         gap: 4px;
-        min-height: 38px;
+        min-height: 40px;
         flex-wrap: wrap;
         max-height: none;
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 13px; padding: 5px 9px; min-height: 34px; border-radius: 14px; }
+    .sub-option { font-size: 14px; padding: 6px 10px; min-height: 36px; border-radius: 14px; }
     .sub-label { font-size: 12px; }
-    .model-select { font-size: 13px; max-width: 150px; padding: 5px 24px 5px 9px; }
+    .model-select { font-size: 14px; max-width: 150px; padding: 6px 26px 6px 10px; }
     .mode-tag { font-size: 11px; padding: 3px 7px; }
-    .size-option { font-size: 12px; padding: 4px 8px; min-height: 30px; border-radius: 14px; }
+    .size-option { font-size: 13px; padding: 5px 9px; min-height: 34px; border-radius: 14px; }
     .size-selector { gap: 5px; }
     
     .media-panel { padding: 12px 10px; gap: 12px; }
     .media-panel h3 { font-size: 15px; }
-    .media-panel p { font-size: 13px; }
+    .media-panel p { font-size: 14px; }
     
     .upload-zone { padding: 18px; }
     .upload-zone .icon { font-size: 26px; margin-bottom: 6px; }
@@ -1154,56 +1166,57 @@ body {
     .upload-zone .hint { font-size: 12px; }
     
     .result-area { min-height: 150px; }
-    .result-placeholder { font-size: 13px; }
+    .result-placeholder { font-size: 14px; }
     
-    .input-pill { border-radius: 26px; padding: 5px 6px; }
-    .input-pill textarea { font-size: 16px; padding: 9px 10px; }
+    .input-pill { border-radius: 28px; padding: 5px 6px; }
+    .input-pill textarea { font-size: 17px; padding: 9px 10px; }
     .input-area { padding: 10px 8px; }
-    .pill-btn { width: 38px; height: 38px; }
-    .pill-btn svg { width: 18px; height: 18px; }
-    .pill-send { width: 40px; height: 40px; }
-    .pill-send svg { width: 18px; height: 18px; }
-    .vc-btn { padding: 5px 10px; font-size: 13px; }
-    .input-hint { font-size: 11px; }
+    .pill-btn { width: 42px; height: 42px; }
+    .pill-btn svg { width: 20px; height: 20px; }
+    .pill-send { width: 44px; height: 44px; }
+    .pill-send svg { width: 20px; height: 20px; }
+    .vc-btn { padding: 6px 12px; font-size: 14px; min-height: 36px; }
+    .input-hint { font-size: 12px; }
     
-    .message { font-size: 16px; padding: 10px 14px; }
-    .message.bot code { font-size: 14px; }
-    .message.bot pre { font-size: 14px; }
+    .message { font-size: 17px; padding: 11px 14px; line-height: 1.55; }
+    .message.bot code { font-size: 15px; }
+    .message.bot pre { font-size: 15px; }
     
-    .file-badge { font-size: 12px; }
+    .file-badge { font-size: 13px; }
     
-    .toast { font-size: 13px; padding: 8px 14px; }
+    .toast { font-size: 14px; padding: 10px 16px; }
     
     .dialog { padding: 20px; }
-    .dialog h3 { font-size: 16px; }
-    .dialog p { font-size: 14px; }
+    .dialog h3 { font-size: 17px; }
+    .dialog p { font-size: 15px; }
     .auth-provider-btn { font-size: 14px; padding: 12px; }
     
     /* Camera modal small phone */
     .camera-modal { height: 92dvh; }
     .camera-controls { gap: 12px; padding: 8px 10px 12px 10px; }
     .camera-controls .camera-mode-switch { margin-top: 0; }
-    .camera-capture-btn { width: 52px; height: 52px; }
-    .capture-btn-inner { width: 38px; height: 38px; }
-    .capture-btn-inner.recording { width: 22px; height: 22px; }
-    .camera-switch-btn, .camera-done-btn { width: 40px; height: 40px; }
-    .camera-mode-btn { padding: 5px 10px; font-size: 12px; }
+    .camera-capture-btn { width: 56px; height: 56px; }
+    .capture-btn-inner { width: 40px; height: 40px; }
+    .capture-btn-inner.recording { width: 24px; height: 24px; }
+    .camera-switch-btn, .camera-done-btn { width: 44px; height: 44px; }
+    .camera-mode-btn { padding: 6px 12px; font-size: 13px; }
 }
 
 /* ===== RESPONSIVE — Very small screens (iPhone SE, etc.) ===== */
 @media (max-width: 360px) {
-    .mode-tab { padding: 6px 8px; font-size: 13px; min-height: 36px; }
-    .mode-tab .mode-emoji { font-size: 13px; }
+    .mode-tab { padding: 7px 10px; font-size: 14px; min-height: 40px; }
+    .mode-tab .mode-emoji { font-size: 14px; }
     .sub-header { gap: 3px; padding: 5px 6px; max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 12px; padding: 4px 7px; min-height: 32px; }
+    .sub-option { font-size: 13px; padding: 5px 8px; min-height: 34px; }
     .sub-divider { height: 18px; }
-    .model-select { max-width: 130px; font-size: 12px; }
-    .input-pill { border-radius: 24px; }
-    .input-pill textarea { font-size: 16px; padding: 8px 10px; }
-    .pill-btn { width: 36px; height: 36px; }
-    .pill-btn svg { width: 18px; height: 18px; }
-    .pill-send { width: 38px; height: 38px; }
-    .pill-send svg { width: 18px; height: 18px; }
+    .model-select { max-width: 130px; font-size: 13px; }
+    .input-pill { border-radius: 26px; }
+    .input-pill textarea { font-size: 17px; padding: 8px 10px; }
+    .pill-btn { width: 40px; height: 40px; }
+    .pill-btn svg { width: 20px; height: 20px; }
+    .pill-send { width: 42px; height: 42px; }
+    .pill-send svg { width: 20px; height: 20px; }
+    .message { font-size: 16px; padding: 10px 12px; }
 }
 
 /* Результат-область для аудио — вертикальная компоновка */
@@ -1279,11 +1292,34 @@ body {
     max-width: 100%;
 }
 
-/* ===== PULL-TO-REFRESH INDICATOR ===== */
-#ptrIndicator {
-    background: var(--accent-light);
-    border-radius: var(--radius-xs);
-    margin-bottom: 8px;
+/* ===== PULL-TO-REFRESH ===== */
+#pull-to-refresh {
+    position: absolute;
+    top: -60px;
+    left: 0;
+    right: 0;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    gap: 10px;
+    z-index: 10;
+    pointer-events: none;
+}
+#ptr-loader {
+    border: 3px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    animation: ptrSpin 0.8s linear infinite;
+    display: none;
+}
+@keyframes ptrSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 /* ===== CHAT IMAGE PREVIEW IN MESSAGES ===== */

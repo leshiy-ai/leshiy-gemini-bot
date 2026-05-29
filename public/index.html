@@ -5911,20 +5911,25 @@
     };
 
     // ============================================================
-    //  СВАЙП СООБЩЕНИЙ В ЧАТЕ (влево — юзер, вправо — бот)
+    //  СВАЙП СООБЩЕНИЙ В ЧАТЕ (ИИ — влево, пользователь — вправо)
     // ============================================================
     function initChatSwipe() {
         let touchStartX = 0;
         let touchCurrentX = 0;
         let swipingEl = null;
         let swipingHeight = 0;
+        let swipeDirection = 0; // -1 = влево, +1 = вправо, 0 = не определено
 
         chatArea.addEventListener('touchstart', function(e) {
+            // Не свайпаем по файл-бейджам и перетаскиваемым элементам
+            if (e.target.closest('.file-badge') || e.target.closest('[data-is-draggable="true"]')) return;
             const row = e.target.closest('.msg-row');
             if (!row) return;
             touchStartX = e.touches[0].clientX;
+            touchCurrentX = touchStartX;
             swipingEl = row;
             swipingHeight = row.offsetHeight;
+            swipeDirection = 0;
             row.style.transition = 'none';
         }, { passive: true });
 
@@ -5933,41 +5938,69 @@
             touchCurrentX = e.touches[0].clientX;
             const deltaX = touchCurrentX - touchStartX;
             const isUser = swipingEl.classList.contains('msg-user');
-            // Юзер свайпается влево, бот — вправо
-            if ((isUser && deltaX < 0) || (!isUser && deltaX > 0)) {
-                swipingEl.style.transform = 'translateX(' + (deltaX * 0.5) + 'px)';
-                swipingEl.style.opacity = Math.max(0.3, 1 - Math.abs(deltaX) / 300);
+
+            // Определяем направление свайпа один раз
+            if (swipeDirection === 0 && Math.abs(deltaX) > 8) {
+                swipeDirection = deltaX > 0 ? 1 : -1;
             }
+
+            // ИИ-сообщения свайпаются ВЛЕВО (отрицательный deltaX)
+            // Пользовательские — ВПРАВО (положительный deltaX)
+            // Блокируем движение в противоположную сторону
+            if (isUser && swipeDirection < 0) {
+                // Пользователь: свайп вправо, блокируем влево
+                swipingEl.style.transform = '';
+                swipingEl.style.opacity = '';
+                return;
+            }
+            if (!isUser && swipeDirection > 0) {
+                // ИИ: свайп влево, блокируем вправо
+                swipingEl.style.transform = '';
+                swipingEl.style.opacity = '';
+                return;
+            }
+
+            // Разрешённое направление — двигаем с затуханием
+            const progress = Math.abs(deltaX) / swipingEl.offsetWidth;
+            swipingEl.style.transform = 'translateX(' + deltaX + 'px)';
+            swipingEl.style.opacity = Math.max(0.2, 1 - progress * 0.8);
         }, { passive: true });
 
         chatArea.addEventListener('touchend', function(e) {
             if (!swipingEl) return;
             const deltaX = touchCurrentX - touchStartX;
-            const threshold = 100;
+            const threshold = swipingEl.offsetWidth * 0.35; // 35% ширины сообщения
 
-            if (Math.abs(deltaX) > threshold) {
-                // Удаляем сообщение со свайпом — схлопываем высоту
-                const el = swipingEl;
-                el.style.transition = 'transform 0.3s ease, opacity 0.3s ease, height 0.3s ease, margin 0.3s ease, padding 0.3s ease';
-                el.style.transform = 'translateX(' + (deltaX > 0 ? '200px' : '-200px') + ')';
-                el.style.opacity = '0';
-                // Схлопываем высоту чтобы не было дыры
-                el.style.height = swipingHeight + 'px';
-                el.style.overflow = 'hidden';
-                // Запускаем схлопывание на следующем кадре
-                requestAnimationFrame(function() {
+            if (Math.abs(deltaX) > threshold && swipeDirection !== 0) {
+                // Проверяем правильное направление
+                const isUser = swipingEl.classList.contains('msg-user');
+                const correctDirection = (isUser && deltaX > 0) || (!isUser && deltaX < 0);
+                if (correctDirection) {
+                    // Удаляем сообщение — улетает в сторону свайпа
+                    const el = swipingEl;
+                    const flyDir = deltaX > 0 ? '' : '-';
+                    el.style.transition = 'transform 0.3s ease, opacity 0.3s ease, height 0.3s ease, margin 0.3s ease, padding 0.3s ease';
+                    el.style.transform = 'translateX(' + flyDir + (window.innerWidth + 'px') + ')';
+                    el.style.opacity = '0';
+                    el.style.height = swipingHeight + 'px';
+                    el.style.overflow = 'hidden';
                     requestAnimationFrame(function() {
-                        el.style.height = '0px';
-                        el.style.marginBottom = '0px';
-                        el.style.paddingTop = '0px';
-                        el.style.paddingBottom = '0px';
+                        requestAnimationFrame(function() {
+                            el.style.height = '0px';
+                            el.style.marginBottom = '0px';
+                            el.style.paddingTop = '0px';
+                            el.style.paddingBottom = '0px';
+                        });
                     });
-                });
-                setTimeout(() => {
-                    el.remove();
-                }, 350);
+                    setTimeout(() => { el.remove(); }, 350);
+                } else {
+                    // Неверное направление — возвращаем обратно
+                    swipingEl.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+                    swipingEl.style.transform = '';
+                    swipingEl.style.opacity = '';
+                }
             } else {
-                // Возвращаем обратно
+                // Недотянули — пружиним обратно
                 swipingEl.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
                 swipingEl.style.transform = '';
                 swipingEl.style.opacity = '';
@@ -5975,51 +6008,93 @@
             swipingEl = null;
             touchStartX = 0;
             touchCurrentX = 0;
+            swipeDirection = 0;
         }, { passive: true });
     }
 
     // ============================================================
-    //  PULL-TO-REFRESH (стягивание сверху вниз)
+    //  PULL-TO-REFRESH (стягивание всего экрана вниз)
     // ============================================================
     function initPullToRefresh() {
+        const appEl = document.querySelector('.app');
         let touchStartY = 0;
         let pulling = false;
+        let ptrEl = document.getElementById('pull-to-refresh');
+        let ptrText = document.getElementById('ptr-text');
+        let ptrLoader = document.getElementById('ptr-loader');
+
+        // Создаём индикатор если его нет
+        if (!ptrEl) {
+            ptrEl = document.createElement('div');
+            ptrEl.id = 'pull-to-refresh';
+            ptrEl.innerHTML = '<div id="ptr-loader"></div><span id="ptr-text">Потяните для обновления</span>';
+            appEl.insertBefore(ptrEl, appEl.firstChild);
+            ptrText = document.getElementById('ptr-text');
+            ptrLoader = document.getElementById('ptr-loader');
+        }
 
         chatArea.addEventListener('touchstart', function(e) {
             if (chatArea.scrollTop === 0) {
                 touchStartY = e.touches[0].clientY;
                 pulling = true;
+                appEl.style.transition = 'none';
             }
         }, { passive: true });
 
         chatArea.addEventListener('touchmove', function(e) {
             if (!pulling) return;
-            const diff = e.touches[0].clientY - touchStartY;
-            if (diff > 60 && chatArea.scrollTop === 0) {
-                // Показываем индикатор обновления
-                if (!document.getElementById('ptrIndicator')) {
-                    const ptr = document.createElement('div');
-                    ptr.id = 'ptrIndicator';
-                    ptr.style.cssText = 'text-align:center;padding:8px;color:var(--accent);font-size:13px;animation:fadeIn 0.3s ease';
-                    ptr.textContent = '\uD83D\uDD04 Отпустите для обновления...';
-                    chatArea.insertBefore(ptr, chatArea.firstChild);
+            const currentY = e.touches[0].clientY;
+            const diff = currentY - touchStartY;
+            if (diff > 0 && chatArea.scrollTop <= 0) {
+                // Резиновая лента — затухание через степень < 1
+                const pullDistance = Math.pow(diff, 0.8);
+                appEl.style.transform = 'translateY(' + pullDistance + 'px)';
+                // Меняем текст в зависимости от расстояния
+                if (ptrText) {
+                    if (pullDistance > 60) {
+                        ptrText.textContent = 'Отпустите для обновления';
+                    } else {
+                        ptrText.textContent = 'Потяните для обновления';
+                    }
                 }
             }
         }, { passive: true });
 
         chatArea.addEventListener('touchend', function(e) {
-            const ptr = document.getElementById('ptrIndicator');
-            if (ptr) {
-                ptr.textContent = '\uD83D\uDD04 Обновление...';
-                // Перезагружаем модели и баланс
-                setTimeout(() => {
-                    loadModels();
-                    if (user) loadServerData();
-                    ptr.remove();
-                    showToast('Данные обновлены', 'success');
-                }, 500);
-            }
+            if (!pulling) return;
             pulling = false;
+            appEl.style.transition = 'transform 0.3s ease';
+
+            // Проверяем насколько стянули
+            const matrix = window.getComputedStyle(appEl).transform;
+            const translateY = matrix !== 'none' ? parseFloat(matrix.split(',')[5]) : 0;
+
+            if (translateY > 80) {
+                // Дотянули — обновляем
+                appEl.style.transform = 'translateY(50px)';
+                if (ptrText) ptrText.textContent = 'Обновление...';
+                if (ptrLoader) ptrLoader.style.display = 'block';
+
+                Promise.all([loadModels(), user ? loadServerData() : Promise.resolve()])
+                    .then(function() {
+                        showToast('Данные обновлены', 'success');
+                    })
+                    .catch(function() {
+                        showToast('Ошибка обновления', 'error');
+                    })
+                    .finally(function() {
+                        setTimeout(function() {
+                            appEl.style.transform = 'translateY(0)';
+                            if (ptrLoader) ptrLoader.style.display = 'none';
+                            if (ptrText) ptrText.textContent = 'Потяните для обновления';
+                        }, 400);
+                    });
+            } else {
+                // Недотянули — пружинит обратно
+                appEl.style.transform = 'translateY(0)';
+                if (ptrText) ptrText.textContent = 'Потяните для обновления';
+            }
+
             touchStartY = 0;
         }, { passive: true });
     }
