@@ -399,19 +399,25 @@
             <div class="chat-attachments" id="chatAttachments"></div>
             <input type="file" id="chatFileInput" multiple accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.pptx,.zip,.rar,.7z,.json,.xml,.html,.css,.js,.py,.java,.cpp,.c,.md,.rtf,.odt,.ods,.odp,.epub,.mobi,.apk,.exe,.dmg,.iso" style="display:none" onchange="handleChatFileUpload(this)">
             <div class="input-row">
-                <button class="attach-btn" id="chatFileBtn" onclick="document.getElementById('chatFileInput').click()" title="Прикрепить файл">&#128206;</button>
+                <div class="input-actions-left">
+                    <button class="attach-btn" id="chatFileBtn" onclick="document.getElementById('chatFileInput').click()" title="Прикрепить файл">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    </button>
+                    <button class="cam-btn" id="camBtn" title="Камера (запись видео)" onclick="openCameraModal()">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    </button>
+                    <button class="mic-btn" id="micBtn" title="Диктовка / Запись голоса" onclick="micToggle(event)" onmousedown="micStart(event)" onmouseup="micStop(event)" ontouchstart="micStart(event)" ontouchend="micStop(event)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    </button>
+                </div>
                 <div class="input-wrapper">
                     <textarea id="userInput" rows="1" 
                         placeholder="Напишите сообщение..." 
                         onkeydown="handleKeyDown(event)"
                         oninput="autoResize(this)"></textarea>
                 </div>
-                <button class="cam-btn" id="camBtn" title="&#128249; Камера (запись видео)" onclick="toggleCamera()">&#128249;</button>
-                <button class="mic-btn" id="micBtn" title="&#127908; Диктовка (нажмите) / Запись голоса (удержите)" onmousedown="micStart(event)" onmouseup="micStop(event)" ontouchstart="micStart(event)" ontouchend="micStop(event)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                </button>
                 <button class="send-btn" id="sendBtn" onclick="sendOrGenerate()" title="Отправить">
-                    &#10148;
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
             </div>
             <div class="voice-commands-bar" id="voiceCommandsBar" style="display:none">
@@ -520,6 +526,33 @@
         <div class="lightbox-content" id="lightboxContent"></div>
         <button class="lightbox-nav lightbox-next" onclick="lightboxNav(1, event)" title="Вперёд">&#8250;</button>
         <div class="lightbox-counter" id="lightboxCounter"></div>
+    </div>
+
+    <!-- CAMERA MODAL -->
+    <div class="camera-modal-overlay" id="cameraModal">
+        <div class="camera-modal">
+            <div class="camera-modal-header">
+                <h3>&#128249; Камера</h3>
+                <button class="camera-modal-close" onclick="closeCameraModal()">&times;</button>
+            </div>
+            <div class="camera-preview-container">
+                <video id="cameraPreview" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;object-fit:cover"></video>
+                <div class="camera-recording-indicator" id="cameraRecIndicator" style="display:none">
+                    <span class="rec-dot"></span> REC <span id="cameraRecTime">00:00</span>
+                </div>
+            </div>
+            <div class="camera-controls">
+                <button class="camera-switch-btn" id="cameraSwitchBtn" onclick="switchCameraFacing()" title="Переключить камеру">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </button>
+                <button class="camera-record-btn" id="cameraRecordBtn" onclick="toggleCameraRecording()">
+                    <div class="record-btn-inner" id="recordBtnInner"></div>
+                </button>
+                <button class="camera-done-btn" id="cameraDoneBtn" onclick="closeCameraModal()" title="Готово">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- TOAST CONTAINER -->
@@ -3073,80 +3106,129 @@
         if (micBtn) micBtn.classList.remove('recording');
     }
 
-    // 📹 CAMERA — Video recording via getUserMedia
-    let cameraState = { stream: null, mediaRecorder: null, chunks: [], recording: false };
+    // 📹 CAMERA — Video recording via getUserMedia with modal preview
+    let cameraState = { stream: null, mediaRecorder: null, chunks: [], recording: false, facingMode: 'user', timerInterval: null, seconds: 0 };
 
-    async function toggleCamera() {
+    async function openCameraModal() {
+        const modal = document.getElementById('cameraModal');
+        const preview = document.getElementById('cameraPreview');
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        try {
+            cameraState.stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: true
+            });
+            preview.srcObject = cameraState.stream;
+        } catch(err) {
+            showToast('Ошибка доступа к камере: ' + err.message, 'error');
+            closeCameraModal();
+        }
+    }
+
+    function closeCameraModal() {
+        const modal = document.getElementById('cameraModal');
+        const preview = document.getElementById('cameraPreview');
+        // Stop recording if active
         if (cameraState.recording) {
             stopCameraRecording();
-            return;
+        }
+        // Stop stream
+        if (cameraState.stream) {
+            cameraState.stream.getTracks().forEach(t => t.stop());
+            cameraState.stream = null;
+        }
+        preview.srcObject = null;
+        modal.classList.remove('open');
+        document.body.style.overflow = '';
+        // Reset timer
+        if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+        cameraState.seconds = 0;
+        document.getElementById('cameraRecTime').textContent = '00:00';
+        document.getElementById('cameraRecIndicator').style.display = 'none';
+        // Reset record button
+        document.getElementById('recordBtnInner').classList.remove('recording');
+    }
+
+    async function switchCameraFacing() {
+        cameraState.facingMode = cameraState.facingMode === 'user' ? 'environment' : 'user';
+        const preview = document.getElementById('cameraPreview');
+        // Stop current stream
+        if (cameraState.stream) {
+            cameraState.stream.getTracks().forEach(t => t.stop());
         }
         try {
-            cameraState.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: true });
-            cameraState.mediaRecorder = new MediaRecorder(cameraState.stream, { mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm' });
-            cameraState.chunks = [];
+            cameraState.stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: true
+            });
+            preview.srcObject = cameraState.stream;
+        } catch(err) {
+            showToast('Не удалось переключить камеру: ' + err.message, 'error');
+        }
+    }
 
+    function toggleCameraRecording() {
+        if (cameraState.recording) {
+            stopCameraRecording();
+        } else {
+            startCameraRecording();
+        }
+    }
+
+    function startCameraRecording() {
+        if (!cameraState.stream) return;
+        try {
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' :
+                            MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
+            cameraState.mediaRecorder = new MediaRecorder(cameraState.stream, { mimeType });
+            cameraState.chunks = [];
             cameraState.mediaRecorder.ondataavailable = function(e) {
                 if (e.data.size > 0) cameraState.chunks.push(e.data);
             };
-
             cameraState.mediaRecorder.onstop = async function() {
-                const blob = new Blob(cameraState.chunks, { type: 'video/webm' });
-                // Stop all tracks
-                cameraState.stream.getTracks().forEach(t => t.stop());
-
-                // Convert to base64
+                const blob = new Blob(cameraState.chunks, { type: cameraState.mediaRecorder.mimeType || 'video/webm' });
                 const reader = new FileReader();
                 reader.onloadend = function() {
                     const base64 = reader.result.split(',')[1];
+                    const ext = (cameraState.mediaRecorder.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
                     const attachment = {
-                        name: 'camera_video_' + Date.now() + '.webm',
-                        type: 'video/webm',
+                        name: 'camera_video_' + Date.now() + '.' + ext,
+                        type: cameraState.mediaRecorder.mimeType || 'video/webm',
                         base64: base64,
                         previewUrl: null,
                         icon: '&#127916;',
                         category: 'video'
                     };
-                    // Create thumbnail
-                    const videoEl = document.createElement('video');
-                    videoEl.src = URL.createObjectURL(blob);
-                    videoEl.muted = true;
-                    videoEl.onloadeddata = function() {
-                        try {
-                            const canvas = document.createElement('canvas');
-                            canvas.width = 160; canvas.height = 120;
-                            canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
-                            attachment.previewUrl = canvas.toDataURL('image/jpeg', 0.6);
-                        } catch(e) {}
-                        URL.revokeObjectURL(videoEl.src);
-                        chatAttachments.push(attachment);
-                        renderChatAttachments();
-                    };
-                    videoEl.onerror = function() {
-                        chatAttachments.push(attachment);
-                        renderChatAttachments();
-                    };
+                    // Create thumbnail from preview
+                    const preview = document.getElementById('cameraPreview');
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 160; canvas.height = 120;
+                        canvas.getContext('2d').drawImage(preview, 0, 0, 160, 120);
+                        attachment.previewUrl = canvas.toDataURL('image/jpeg', 0.6);
+                    } catch(e) {}
+                    chatAttachments.push(attachment);
+                    renderChatAttachments();
+                    showToast('Видео записано! (' + formatRecTime(cameraState.seconds) + ')', 'success');
                 };
                 reader.readAsDataURL(blob);
-
                 cameraState.recording = false;
-                cameraState.stream = null;
                 cameraState.mediaRecorder = null;
-                const camBtn = document.getElementById('camBtn');
-                camBtn.classList.remove('recording');
-                camBtn.innerHTML = '&#128249;';
-                showToast('Видео записано!', 'success');
             };
-
             cameraState.mediaRecorder.start();
             cameraState.recording = true;
-            const camBtn = document.getElementById('camBtn');
-            camBtn.classList.add('recording');
-            camBtn.innerHTML = '&#9209;';
+            cameraState.seconds = 0;
+            document.getElementById('recordBtnInner').classList.add('recording');
+            document.getElementById('cameraRecIndicator').style.display = 'flex';
             if (navigator.vibrate) navigator.vibrate(100);
-            showToast('Запись видео... Нажмите ⏹ для остановки', 'info');
+            // Start timer
+            cameraState.timerInterval = setInterval(function() {
+                cameraState.seconds++;
+                document.getElementById('cameraRecTime').textContent = formatRecTime(cameraState.seconds);
+            }, 1000);
         } catch(err) {
-            showToast('Ошибка доступа к камере: ' + err.message, 'error');
+            showToast('Ошибка записи: ' + err.message, 'error');
         }
     }
 
@@ -3154,6 +3236,38 @@
         if (cameraState.mediaRecorder && cameraState.mediaRecorder.state === 'recording') {
             cameraState.mediaRecorder.stop();
         }
+        document.getElementById('recordBtnInner').classList.remove('recording');
+        document.getElementById('cameraRecIndicator').style.display = 'none';
+        if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+    }
+
+    function formatRecTime(s) {
+        const m = Math.floor(s / 60);
+        const sec = s % 60;
+        return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+    }
+
+    // 🎤 Mic toggle — tap to toggle dictation on/off
+    function micToggle(e) {
+        if (e) e.preventDefault();
+        if (micState.mode === 'dictation') {
+            // Stop dictation on second tap
+            if (micState.recognition) {
+                micState.recognition.stop();
+                micState.recognition = null;
+            }
+            micState.mode = null;
+            const micBtn = document.getElementById('micBtn');
+            if (micBtn) micBtn.classList.remove('dictating');
+            return;
+        }
+        // If recording voice, stop it too
+        if (micState.mode === 'recording') {
+            stopVoiceRecording();
+            return;
+        }
+        // Start dictation
+        micStart(e);
     }
 
     async function sendOrGenerate() {
