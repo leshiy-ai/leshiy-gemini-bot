@@ -3125,19 +3125,24 @@
     }
 
     // 📹 CAMERA — Фото и Видео через getUserMedia
+    // ПОЛНОСТЬЮ ПЕРЕПИСАНО: устранены баги 0-byte video и tiny photo
     let cameraState = {
         stream: null,
         mediaRecorder: null,
-        chunks: [],
         recording: false,
         facingMode: 'user',
         timerInterval: null,
         seconds: 0,
-        mode: 'photo',       // 'photo' или 'video'
-        capturedData: null,   // { blob, base64, mimeType, thumbnail, duration, category }
+        mode: 'photo',
+        capturedData: null,   // { blob, mimeType, thumbnail, duration, category }
         _closing: false,
-        _recorderReady: null  // Promise — резолвится когда onstop вернул blob
+        _recorderPromise: null // Promise — резолвится когда onstop создал blob
     };
+
+    // ЛОКАЛЬНЫЙ массив чанков — хранится в замыкании, НЕ на cameraState
+    // Это гарантирует что никто не очистит чанки до создания blob
+    let _recorderChunks = [];
+    let _recorderMime = '';
 
     // ── Свайп вниз для закрытия ──
     (function initCameraSheetSwipe() {
@@ -3180,33 +3185,52 @@
     // ── Переключатель Фото/Видео ──
     function setCameraMode(mode) {
         if (cameraState.recording) {
-            _stopRecording();
+            _stopRecordingSync();
         }
         cameraState.mode = mode;
         cameraState.capturedData = null;
         document.getElementById('camModePhoto').classList.toggle('active', mode === 'photo');
         document.getElementById('camModeVideo').classList.toggle('active', mode === 'video');
         _updateCameraUI('idle');
-        // Перезапуск потока: для видео нужен аудио-трек, для фото — нет
         _restartStreamForMode();
     }
 
     async function _restartStreamForMode() {
         const preview = document.getElementById('cameraPreview');
         if (!cameraState.stream) return;
-        // Останавливаем текущий поток
         cameraState.stream.getTracks().forEach(t => t.stop());
         try {
-            const audioConstraints = cameraState.mode === 'video' ? true : false;
             cameraState.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: cameraState.facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
-                audio: audioConstraints
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+                audio: cameraState.mode === 'video'
             });
             preview.srcObject = cameraState.stream;
+            await preview.play();
         } catch(err) {
             showToast('Не удалось переключить режим камеры: ' + err.message, 'error');
             _cleanupCameraModal();
         }
+    }
+
+    // ── Получить РЕАЛЬНОЕ разрешение камеры ──
+    function _getCameraResolution() {
+        // Пытаемся получить из track settings — самый надёжный источник
+        try {
+            const track = cameraState.stream && cameraState.stream.getVideoTracks()[0];
+            if (track) {
+                const s = track.getSettings();
+                if (s.width && s.height && s.width > 0 && s.height > 0) {
+                    return { w: s.width, h: s.height };
+                }
+            }
+        } catch(e) {}
+        // Fallback — из video element
+        const preview = document.getElementById('cameraPreview');
+        if (preview && preview.videoWidth > 0 && preview.videoHeight > 0) {
+            return { w: preview.videoWidth, h: preview.videoHeight };
+        }
+        // Последний fallback — стандартное разрешение
+        return { w: 1280, h: 720 };
     }
 
     async function openCameraModal() {
@@ -3220,12 +3244,12 @@
         modal.classList.add('open');
         document.body.style.overflow = 'hidden';
         try {
-            const audioConstraints = cameraState.mode === 'video' ? true : false;
             cameraState.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: cameraState.facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
-                audio: audioConstraints
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+                audio: cameraState.mode === 'video'
             });
             preview.srcObject = cameraState.stream;
+            await preview.play();
         } catch(err) {
             showToast('Ошибка доступа к камере: ' + err.message, 'error');
             _cleanupCameraModal();
@@ -3236,40 +3260,58 @@
         if (cameraState._closing) return;
         cameraState._closing = true;
 
-        // Если идёт запись — ждём завершения (onstop → capturedData)
+        // КЛЮЧЕВОЙ ФИКС: если запись уже остановлена (onstop уже создал capturedData),
+        // просто сохраняем. Если onstop ещё не вызван — ждём его через _recorderPromise.
         if (cameraState.recording) {
+            // Запись ещё идёт или stop() вызван но onstop ещё не отработал
             await _stopRecordingAsync();
         }
 
-        // Сохраняем и закрываем
         _saveAndClose();
     }
 
-    // ── Остановка записи с Promise (ждём onstop) ──
+    // ── Синхронная остановка (при нажатии кнопки стоп) ──
+    // НЕ ждёт onstop! Только инициирует stop.
+    // cameraState.recording остаётся true пока onstop не отработает!
+    function _stopRecordingSync() {
+        const mr = cameraState.mediaRecorder;
+        if (mr && mr.state === 'recording') {
+            try { mr.requestData(); } catch(e) {}
+            mr.stop(); // onstop вызовется асинхронно и установит capturedData + recording=false
+        }
+        if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+    }
+
+    // ── Асинхронная остановка (при закрытии модалки) ──
+    // Ждёт когда onstop отработает и capturedData будет установлен
     function _stopRecordingAsync() {
-        return new Promise(function(resolve) {
-            if (!cameraState.mediaRecorder || cameraState.mediaRecorder.state !== 'recording') {
-                cameraState.recording = false;
-                if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
-                resolve();
-                return;
-            }
-            // Подменяем onstop чтобы он резолвил наш Promise ПОСЛЕ создания blob
-            const oldOnstop = cameraState.mediaRecorder.onstop;
-            cameraState.mediaRecorder.onstop = function(e) {
-                if (oldOnstop) oldOnstop.call(this, e);
-                resolve();
-            };
-            try { cameraState.mediaRecorder.requestData(); } catch(ex) {}
-            cameraState.mediaRecorder.stop();
-            if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
-        });
+        // Если capturedData уже есть (onstop уже отработал) — не ждём
+        if (cameraState.capturedData) {
+            cameraState.recording = false;
+            return Promise.resolve();
+        }
+
+        // Если идёт активная запись — сначала стопаем
+        const mr = cameraState.mediaRecorder;
+        if (mr && mr.state === 'recording') {
+            try { mr.requestData(); } catch(e) {}
+            mr.stop(); // onstop вызовется асинхронно
+        }
+        if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
+
+        // Если recorderPromise существует — onstop ещё не отработал, ждём его
+        if (cameraState._recorderPromise) {
+            return cameraState._recorderPromise;
+        }
+
+        // Если нет промиса — значит onstop уже отработал
+        cameraState.recording = false;
+        return Promise.resolve();
     }
 
     function _saveAndClose() {
         const data = cameraState.capturedData;
         if (data && data.blob && data.blob.size > 0) {
-            // Конвертируем blob → base64, ПОТОМ чистим
             const reader = new FileReader();
             reader.onloadend = function() {
                 const base64 = reader.result.split(',')[1];
@@ -3321,11 +3363,12 @@
         if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
         cameraState.seconds = 0;
         cameraState.recording = false;
-        cameraState.chunks = [];
         cameraState.mediaRecorder = null;
         cameraState.capturedData = null;
         cameraState._closing = false;
-        cameraState._recorderReady = null;
+        cameraState._recorderPromise = null;
+        _recorderChunks = [];
+        _recorderMime = '';
         document.getElementById('cameraRecTime').textContent = '00:00';
         document.getElementById('cameraRecIndicator').style.display = 'none';
         document.getElementById('cameraSavedBadge').style.display = 'none';
@@ -3338,9 +3381,8 @@
             _capturePhoto();
         } else {
             if (cameraState.recording) {
-                _stopRecording();
+                _stopRecordingSync();
             } else {
-                // Если есть предыдущее видео — перезапись
                 if (cameraState.capturedData) {
                     cameraState.capturedData = null;
                     document.getElementById('cameraSavedBadge').style.display = 'none';
@@ -3350,32 +3392,34 @@
         }
     }
 
-    // ── Снимок фото с камеры — полное разрешение, не менее 1024x1024 ──
+    // ── Снимок фото с камеры ──
+    // РАЗРЕШЕНИЕ: берём из track.getSettings() (надёжнее чем videoWidth),
+    // и ПРИНУДИТЕЛЬНО масштабируем canvas до минимума 1024 по короткой стороне
     function _capturePhoto() {
         const preview = document.getElementById('cameraPreview');
-        if (!preview || preview.videoWidth === 0) {
+        if (!preview || !cameraState.stream) {
             showToast('Камера не готова', 'error');
             return;
         }
         try {
-            const canvas = document.createElement('canvas');
-            // Используем полное разрешение камеры, но не менее 1024x1024
-            const vw = preview.videoWidth;
-            const vh = preview.videoHeight;
-            // Рассчитываем размер с сохранением пропорций, min 1024 по меньшей стороне
-            let cw = vw, ch = vh;
-            const minSide = Math.min(vw, vh);
+            const res = _getCameraResolution();
+            let cw = res.w, ch = res.h;
+
+            // ПРИНУДИТЕЛЬНЫЙ минимум 1024 по короткой стороне
+            const minSide = Math.min(cw, ch);
             if (minSide < 1024) {
                 const scale = 1024 / minSide;
-                cw = Math.round(vw * scale);
-                ch = Math.round(vh * scale);
+                cw = Math.round(cw * scale);
+                ch = Math.round(ch * scale);
             }
+
+            const canvas = document.createElement('canvas');
             canvas.width = cw;
             canvas.height = ch;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(preview, 0, 0, cw, ch);
 
-            // Превью (маленькое, для бейджа)
+            // Превью для бейджа
             const thumbCanvas = document.createElement('canvas');
             thumbCanvas.width = 200; thumbCanvas.height = 150;
             thumbCanvas.getContext('2d').drawImage(preview, 0, 0, 200, 150);
@@ -3404,12 +3448,17 @@
         }
     }
 
-    // ── Запись видео — С timeslice для надёжного сбора чанков ──
+    // ── Запись видео ──
+    // КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ:
+    // 1. ЛОКАЛЬНЫЙ массив чанков в замыкании (не на cameraState — никто не затрёт)
+    // 2. _recorderPromise — резолвится ТОЛЬКО когда blob создан в onstop
+    // 3. cameraState.recording = true пока onstop не отработал (даже после stop())
+    // 4. timeslice=500 для надёжного сбора чанков
     function _startRecording() {
         if (!cameraState.stream) return;
         cameraState.capturedData = null;
+        cameraState._recorderPromise = null;
         try {
-            // Подбираем поддерживаемый mimeType
             let mimeType = '';
             if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) mimeType = 'video/webm;codecs=vp8,opus';
             else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) mimeType = 'video/webm;codecs=vp9,opus';
@@ -3418,29 +3467,39 @@
 
             const options = mimeType ? { mimeType } : {};
             const recorder = new MediaRecorder(cameraState.stream, options);
-            cameraState.chunks = [];
-            const usedMimeType = mimeType;
+
+            // ЛОКАЛЬНЫЙ массив — живёт в замыкании, безопасен от внешнего доступа
+            const localChunks = [];
+            const usedMime = mimeType;
 
             recorder.ondataavailable = function(e) {
                 if (e.data && e.data.size > 0) {
-                    cameraState.chunks.push(e.data);
+                    localChunks.push(e.data);
                 }
             };
 
-            recorder.onstop = function() {
-                const recordedMime = recorder.mimeType || usedMimeType || 'video/webm';
-                // Собираем чанки — они уже накопились благодаря timeslice
-                const recordedChunks = cameraState.chunks.slice();
-                cameraState.chunks = [];
+            // onstop — единственное место где создаётся blob
+            // КРИТИЧЕСКИ: cameraState.recording = false только ЗДЕСЬ,
+            // а НЕ при вызове stop(). Это гарантирует что closeCameraModal
+            // знает: recording=true → onstop ещё не отработал, надо ждать.
+            let onstopResolve = null;
+            cameraState._recorderPromise = new Promise(function(resolve) {
+                onstopResolve = resolve;
+            });
 
-                if (recordedChunks.length === 0) {
+            recorder.onstop = function() {
+                const recordedMime = recorder.mimeType || usedMime || 'video/webm';
+
+                if (localChunks.length === 0) {
                     showToast('Запись пуста — попробуйте ещё раз', 'error');
                     cameraState.recording = false;
+                    cameraState._recorderPromise = null;
                     _updateCameraUI('idle');
+                    if (onstopResolve) onstopResolve();
                     return;
                 }
 
-                const blob = new Blob(recordedChunks, { type: recordedMime });
+                const blob = new Blob(localChunks, { type: recordedMime });
                 cameraState.capturedData = {
                     blob: blob,
                     mimeType: recordedMime,
@@ -3448,15 +3507,16 @@
                     thumbnail: _grabThumbnail(),
                     duration: cameraState.seconds
                 };
-                cameraState.recording = false;
+                cameraState.recording = false;  // ← ТОЛЬКО ЗДЕСЬ!
+                cameraState._recorderPromise = null;
                 _updateCameraUI('done');
                 document.getElementById('cameraSavedText').textContent = 'Видео записано';
-                showToast('Видео записано! (' + formatRecTime(cameraState.seconds) + ') Нажмите ✓', 'info');
+                showToast('Видео записано! (' + formatRecTime(cameraState.seconds) + ', ' + Math.round(blob.size/1024) + ' КБ) Нажмите ✓', 'info');
+                if (onstopResolve) onstopResolve();
             };
 
-            // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: timeslice=1000 → ondataavailable вызывается каждую секунду
-            // Без timeslice чанки доставляются только при stop(), что вызывает race condition
-            recorder.start(1000);
+            // timeslice=500: ondataavailable каждые 500мс для надёжного сбора
+            recorder.start(500);
             cameraState.mediaRecorder = recorder;
             cameraState.recording = true;
             cameraState.seconds = 0;
@@ -3469,14 +3529,6 @@
         } catch(err) {
             showToast('Ошибка записи: ' + err.message, 'error');
         }
-    }
-
-    function _stopRecording() {
-        if (cameraState.mediaRecorder && cameraState.mediaRecorder.state === 'recording') {
-            try { cameraState.mediaRecorder.requestData(); } catch(e) {}
-            cameraState.mediaRecorder.stop();
-        }
-        if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
     }
 
     function _grabThumbnail() {
@@ -3543,12 +3595,12 @@
             cameraState.stream.getTracks().forEach(t => t.stop());
         }
         try {
-            const audioConstraints = cameraState.mode === 'video' ? true : false;
             cameraState.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: cameraState.facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
-                audio: audioConstraints
+                video: { facingMode: cameraState.facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+                audio: cameraState.mode === 'video'
             });
             preview.srcObject = cameraState.stream;
+            await preview.play();
         } catch(err) {
             showToast('Не удалось переключить камеру: ' + err.message, 'error');
         }
