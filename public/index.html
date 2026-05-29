@@ -2882,9 +2882,16 @@
             lightboxItems.push({ src: src, type: 'img' });
             content.innerHTML = '<img src="' + src + '" alt="' + att.name + '">';
         } else if (att.type.startsWith('video/')) {
-            const src = 'data:' + att.type + ';base64,' + att.base64;
-            lightboxItems.push({ src: src, type: 'video' });
-            content.innerHTML = '<video src="' + src + '" controls autoplay style="max-width:90vw;max-height:80vh;border-radius:8px"></video>';
+            // Для видео используем objectURL если есть, иначе data URI
+            // objectURL надёжнее — data URI с ;codecs=... ломает воспроизведение
+            var videoSrc = att.videoUrl;
+            if (!videoSrc && att.base64) {
+                videoSrc = 'data:' + att.type + ';base64,' + att.base64;
+            }
+            if (videoSrc) {
+                lightboxItems.push({ src: videoSrc, type: 'video' });
+                content.innerHTML = '<video src="' + videoSrc + '" controls autoplay style="max-width:90vw;max-height:80vh;border-radius:8px"></video>';
+            }
         } else if (att.type.startsWith('audio/')) {
             const src = att.audioUrl || ('data:' + att.type + ';base64,' + att.base64);
             const audioIcon = att.name && att.name.startsWith('voice_') ? '&#127908;' : '&#127925;';
@@ -2903,8 +2910,9 @@
     }
 
     function removeChatAttachment(index) {
-        if (chatAttachments[index]?.previewUrl) URL.revokeObjectURL(chatAttachments[index].previewUrl);
+        if (chatAttachments[index]?.previewUrl && chatAttachments[index].previewUrl.startsWith('blob:')) URL.revokeObjectURL(chatAttachments[index].previewUrl);
         if (chatAttachments[index]?.audioUrl) URL.revokeObjectURL(chatAttachments[index].audioUrl);
+        if (chatAttachments[index]?.videoUrl) URL.revokeObjectURL(chatAttachments[index].videoUrl);
         chatAttachments.splice(index, 1);
         renderChatAttachments();
     }
@@ -3302,18 +3310,26 @@
         if (dbg) dbg.style.display = 'none';
 
         if (data && data.blob && data.blob.size > 0) {
+            // ОЧИСТКА mimeType: убираем ;codecs=... иначе data URI ломается
+            // "video/webm;codecs=vp8,opus" → запятая ломает data:video/webm;codecs=vp8,opus;base64,...
+            var cleanMime = (data.mimeType || 'video/webm').split(';')[0]; // только "video/webm"
+
             // Конвертируем blob → base64
             var reader = new FileReader();
             reader.onloadend = function() {
                 var base64 = reader.result.split(',')[1];
                 if (base64 && base64.length > 0) {
-                    var ext = data.mimeType && data.mimeType.includes('mp4') ? 'mp4' : data.category === 'photo' ? 'jpg' : 'webm';
+                    var ext = cleanMime.includes('mp4') ? 'mp4' : data.category === 'photo' ? 'jpg' : 'webm';
                     var prefix = data.category === 'photo' ? 'camera_photo' : 'camera_video';
+                    // Для видео: сохраняем objectURL для ПРЕВЬЮ + blob для надёжности
+                    var objUrl = URL.createObjectURL(data.blob);
                     chatAttachments.push({
                         name: prefix + '_' + Date.now() + '.' + ext,
-                        type: data.mimeType || 'video/webm',
+                        type: cleanMime,
                         base64: base64,
                         previewUrl: data.thumbnail,
+                        videoUrl: objUrl,   // objectURL для воспроизведения
+                        _blob: data.blob,    // сохраняем blob для отправки
                         icon: data.category === 'photo' ? '&#128247;' : '&#127916;',
                         category: data.category
                     });
@@ -5590,7 +5606,7 @@
                     // Video thumbnail with play icon overlay — КЛИКАБЕЛЬНО
                     const wrap = document.createElement('div');
                     wrap.style.cssText = 'position:relative;display:inline-block;width:60px;height:45px;cursor:pointer';
-                    const videoSrc = att.base64 ? ('data:' + att.type + ';base64,' + att.base64) : att.previewUrl;
+                    const videoSrc = att.videoUrl || (att.base64 ? ('data:' + att.type + ';base64,' + att.base64) : att.previewUrl);
                     wrap.innerHTML = '<img src="' + att.previewUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' +
                         '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:white">&#9654;</div>';
                     wrap.onclick = function() { openLightbox(videoSrc, 'video'); };
