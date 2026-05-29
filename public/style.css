@@ -1103,9 +1103,11 @@ body {
     }
     .camera-modal {
         border-radius: var(--radius);
-        max-height: 90vh;
+        height: auto;
+        max-height: 85vh;
     }
     .camera-modal-handle { display: none; }
+    .camera-preview-container { min-height: 300px; }
 }
 
 @media (max-width: 768px) {
@@ -1147,8 +1149,7 @@ body {
     .dialog p { font-size: 14px; }
     
     /* Camera modal mobile */
-    .camera-modal { max-width: 100%; border-radius: 20px 20px 0 0; }
-    .camera-preview-container video { max-height: 50dvh; }
+    .camera-modal { max-width: 100%; height: 90dvh; border-radius: 20px 20px 0 0; }
     .camera-record-btn { width: 56px; height: 56px; }
     .record-btn-inner { width: 42px; height: 42px; }
     .record-btn-inner.recording { width: 24px; height: 24px; }
@@ -1218,11 +1219,11 @@ body {
     .auth-provider-btn { font-size: 14px; padding: 12px; }
     
     /* Camera modal small phone */
+    .camera-modal { height: 92dvh; }
     .camera-controls { gap: 16px; padding: 12px; }
     .camera-record-btn { width: 52px; height: 52px; }
     .record-btn-inner { width: 38px; height: 38px; }
     .record-btn-inner.recording { width: 22px; height: 22px; }
-    .camera-preview-container video { max-height: 45dvh; }
     .camera-switch-btn, .camera-done-btn { width: 40px; height: 40px; }
 }
 
@@ -1490,7 +1491,7 @@ body {
 .camera-modal {
     width: 100%;
     max-width: 480px;
-    max-height: 92dvh;
+    height: 88dvh;               /* фиксированная высота в % от экрана */
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 20px 20px 0 0;
@@ -1511,6 +1512,7 @@ body {
     display: flex;
     justify-content: center;
     padding: 8px 0 4px 0;
+    flex-shrink: 0;
     cursor: grab;
 }
 .camera-modal-handle-bar {
@@ -1524,8 +1526,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 .camera-modal-header h3 {
     font-size: 16px;
@@ -1551,13 +1554,13 @@ body {
 .camera-preview-container {
     position: relative;
     background: #000;
-    flex-shrink: 1;
+    flex: 1;                     /* занимает всё свободное место */
     min-height: 0;
     overflow: hidden;
 }
 .camera-preview-container video {
     width: 100%;
-    max-height: 55dvh;
+    height: 100%;
     object-fit: cover;
     display: block;
 }
