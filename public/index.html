@@ -417,11 +417,15 @@
                 </button>
             </div>
             <div class="voice-commands-bar" id="voiceCommandsBar" style="display:none">
-                <button class="vc-btn" onclick="vcToggleCase()" title="Сменить регистр">Aa</button>
-                <button class="vc-btn" onclick="vcNewLine()" title="Новая строка">&#8629;</button>
-                <button class="vc-btn" onclick="vcUndoWord()" title="Удалить последнее слово">&#9003;</button>
-                <button class="vc-btn" onclick="vcClear()" title="Очистить">&#128465;</button>
-                <button class="vc-btn vc-send" onclick="vcSend()" title="Отправить">&#10003;</button>
+                <div class="vc-rec-indicator"><span class="vc-rec-dot"></span><span class="vc-rec-label">REC</span></div>
+                <div class="vc-hints-scroll">
+                    <button class="vc-btn" id="vcCaseBtn" onclick="vcCycleCase()" title="Сменить регистр">🔤 Aa</button>
+                    <button class="vc-btn" id="vcNumBtn" onclick="vcToggleNumbers()" title="Режим цифр">🔣 Буквами</button>
+                    <button class="vc-btn" onclick="vcNewLine()" title="Новая строка">↵</button>
+                    <button class="vc-btn" onclick="vcUndoWord()" title="Отменить слово">✕</button>
+                    <button class="vc-btn" onclick="vcClear()" title="Очистить">🗑</button>
+                    <button class="vc-btn vc-send" onclick="vcSend()" title="Отправить">✓</button>
+                </div>
             </div>
             <div class="input-hint" id="inputHint">Enter — отправить · 🎤 короткое — диктовка · 🎤 долгое — запись</div>
         </div>
@@ -2932,23 +2936,154 @@
 
     // ============================================
     // 🎤 МИКРОФОН — Диктовка (короткое нажатие) / Запись (долгое удержание)
+    // По образцу Леший-АИ: голосовые команды, пунктуация, числа, регистр
     // ============================================
-    let micState = { mode: null, timer: null, mediaRecorder: null, chunks: [], stream: null, recognition: null };
-    const LONG_PRESS_MS = 400;
+    let micState = {
+        mode: null,             // null | 'dictating' | 'recording'
+        timer: null,            // таймер долгого нажатия
+        mediaRecorder: null,
+        chunks: [],
+        stream: null,
+        recognition: null,
+        wasManuallyStopped: false,
+        shouldSendOnEnd: false,
+        isSending: false,
+        baseText: '',           // накопленный текст предыдущих сессий
+        sessionFinalText: '',   // текст текущей сессии распознавания
+        restartTimeout: null,
+        numberMode: false,      // режим цифр (голосом "цифрами"/"буквами")
+        caseMode: 'normal'      // 'normal' | 'upper' | 'lower'
+    };
+    const LONG_PRESS_MS = 500;
 
-    // Инициализация кнопки микрофона — вешаем ВСЕ обработчики программно,
-    // чтобы не было конфликта onclick + onmousedown + onmouseup в HTML
+    // ── Карта пунктуации (голосовые команды → символы) ──
+    const punctuationMap = {
+        'тчк': '.', 'точка': '.', 'зпт': ',', 'запятая': ',', 'точка с запятой': ';',
+        'тире': '-', 'дефис': '-', 'минус': '-',
+        'равно': '=', 'плюс': '+', 'подчёркивание': '_',
+        'звёздочка': '*', 'умножить': '*', 'пробел': ' ',
+        'собака': '@', 'решётка': '#', 'номер': '№',
+        'доллар': '$', 'евро': '€', 'рубль': '₽', 'градус': '°',
+        'процент': '%', 'проценты': '%', 'апостроф': "'", 'амперсанд': '&',
+        'слэш': '/', 'обратный слэш': '\\',
+        'тильда': '~', 'восклицательный знак': '!', 'вопросительный знак': '?', 'вопрос': '?',
+        'двоеточие': ':', 'степень': '^',
+        'многоточие': '...', 'троеточие': '...', 'вертикальная черта': '|',
+        'открыть скобку': '(', 'скобка открывается': '(',
+        'закрыть скобку': ')', 'скобка закрывается': ')',
+        'кавычки': '"', 'открыть кавычку': '«', 'закрыть кавычку': '»',
+        'кавычка открывается': '«', 'кавычка закрывается': '»',
+        'знак больше': '>', 'знак меньше': '<',
+        'смайлик': '🙂', 'грустный смайлик': '☹️', 'сердце': '❤️'
+    };
+    const numberMap = {
+        'ноль': 0, 'нуль': 0, 'один': 1, 'раз': 1, 'два': 2, 'три': 3,
+        'четыре': 4, 'пять': 5, 'шесть': 6, 'семь': 7, 'восемь': 8,
+        'девять': 9, 'десять': 10
+    };
+
+    // ── Обработка пунктуации в распознанном тексте ──
+    function applyPunctuation(text) {
+        let processed = ' ' + text + ' ';
+        const sortedKeys = Object.keys(punctuationMap).sort((a, b) => b.length - a.length);
+        sortedKeys.forEach(function(key) {
+            const regex = new RegExp(' ' + key + ' ', 'gi');
+            processed = processed.replace(regex, ' ' + punctuationMap[key] + ' ');
+        });
+        processed = processed.replace(/\s+([.,!?:;»"')])/g, '$1');
+        processed = processed.replace(/([(«"'])\s+/g, '$1');
+        return processed.replace(/^[ \t]+|[ \t]+$/g, '');
+    }
+
+    // ── Замена слов-числительных на цифры ──
+    function convertWordsToNumbers(text) {
+        let processed = text;
+        Object.keys(numberMap).forEach(function(word) {
+            const regex = new RegExp('\\b' + word + '\\b', 'gi');
+            processed = processed.replace(regex, numberMap[word]);
+        });
+        return processed;
+    }
+
+    // ── Применение режима регистра ──
+    function applyCaseMode(text, mode) {
+        if (!text) return '';
+        switch (mode) {
+            case 'upper': return text.toUpperCase();
+            case 'lower': return text.toLowerCase();
+            default: return text.replace(/(^|[.!?]\s+)([а-яёa-z])/g, function(m, p1, p2) { return p1 + p2.toUpperCase(); });
+        }
+    }
+
+    // ── Обработка команды "новая строка" ──
+    function processNewLineCommands(text) {
+        if (!text) return '';
+        var cmds = ['новая строка', 'с новой строки', 'энтер'];
+        var processed = ' ' + text + ' ';
+        cmds.forEach(function(cmd) {
+            var regex = new RegExp(' ' + cmd + ' ', 'gi');
+            processed = processed.replace(regex, '\n');
+        });
+        return processed.replace(/\s*\n\s*/g, '\n');
+    }
+
+    // ── Обработка "чистого" куска текста (для onend) ──
+    function processChunk(text) {
+        var cleanPhrase = text.trim();
+        var serviceWords = [
+            'цифрами', 'символами', 'буквами', 'текстом',
+            'заглавными', 'большими', 'маленькими', 'строчными', 'обычными', 'как в предложении'
+        ];
+        var commandFound = false;
+        for (var i = 0; i < serviceWords.length; i++) {
+            if (cleanPhrase.toLowerCase() === serviceWords[i]) {
+                cleanPhrase = '';
+                commandFound = true;
+                break;
+            }
+        }
+        if (!commandFound) {
+            for (var j = 0; j < serviceWords.length; j++) {
+                var regex = new RegExp('\\s+' + serviceWords[j] + '$', 'i');
+                if (regex.test(cleanPhrase)) {
+                    cleanPhrase = cleanPhrase.replace(regex, '');
+                    break;
+                }
+            }
+        }
+        if (!cleanPhrase) return '';
+        var result = processNewLineCommands(cleanPhrase);
+        result = applyPunctuation(result);
+        if (micState.numberMode) result = convertWordsToNumbers(result);
+        return applyCaseMode(result, micState.caseMode);
+    }
+
+    // ── Обновление UI кнопок голосовых подсказок ──
+    function updateVoiceCommandsUI() {
+        var caseBtn = document.getElementById('vcCaseBtn');
+        if (caseBtn) {
+            if (micState.caseMode === 'normal') caseBtn.textContent = '🔤 Aa';
+            else if (micState.caseMode === 'upper') caseBtn.textContent = '🔠 AA';
+            else caseBtn.textContent = '🔡 aa';
+        }
+        var numBtn = document.getElementById('vcNumBtn');
+        if (numBtn) {
+            numBtn.textContent = micState.numberMode ? '🔢 Цифрами' : '🔣 Буквами';
+            if (micState.numberMode) numBtn.classList.add('active-mode');
+            else numBtn.classList.remove('active-mode');
+        }
+    }
+
+    // ── Инициализация кнопки микрофона ──
     (function initMicButton() {
-        const btn = document.getElementById('micBtn');
+        var btn = document.getElementById('micBtn');
         if (!btn) return;
 
-        let _longPressFired = false;
+        var _longPressFired = false;
 
         function _onDown(e) {
             e.preventDefault();
             _longPressFired = false;
-            // Если уже активна диктовка — короткий тап выключит в _onUp
-            // Если уже идёт запись — отпустить остановит в _onUp
             micState.timer = setTimeout(function() {
                 micState.timer = null;
                 _longPressFired = true;
@@ -2963,11 +3098,10 @@
                 micState.timer = null;
             }
             if (_longPressFired) {
-                // Долгое удержание отпустили — стоп запись
                 if (micState.mode === 'recording') stopVoiceRecording();
                 return;
             }
-            // Короткий тап
+            // Короткий тап — toggle диктовки
             if (micState.mode === 'dictating') {
                 stopDictation();
             } else if (micState.mode === 'recording') {
@@ -2988,13 +3122,197 @@
             if (micState.timer) { clearTimeout(micState.timer); micState.timer = null; }
             if (micState.mode === 'recording') stopVoiceRecording();
         });
-        // Предотвращаем контекстное меню на долгом нажатии (мобилки)
         btn.addEventListener('contextmenu', function(e) { e.preventDefault(); });
     })();
 
-    // 🎙️ ДИКТОВКА — Speech Recognition API
+    // ── Создание SpeechRecognition (один раз) ──
+    function initRecognition() {
+        var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return null;
+
+        var recognition = new SpeechRecognition();
+        recognition.lang = 'ru-RU';
+        recognition.interimResults = true;
+        recognition.continuous = false; // как в Леший-АИ — сессии, автоперезапуск в onend
+
+        recognition.onstart = function() {
+            micState.wasManuallyStopped = false;
+            micState.shouldSendOnEnd = false;
+            micState.isSending = false;
+            micState.sessionFinalText = '';
+        };
+
+        recognition.onresult = function(event) {
+            var sessionInterim = '';
+            var sessionFinal = '';
+
+            for (var i = 0; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    sessionFinal += event.results[i][0].transcript;
+                } else {
+                    sessionInterim += event.results[i][0].transcript;
+                }
+            }
+
+            micState.sessionFinalText = sessionFinal || sessionInterim;
+            var lowerSession = (sessionFinal || sessionInterim).toLowerCase().trim();
+
+            // ── Голосовая команда: режим цифр ──
+            if (lowerSession.endsWith('цифрами') || lowerSession.endsWith('символами')) {
+                micState.numberMode = true;
+                updateVoiceCommandsUI();
+                recognition.stop();
+                return;
+            }
+            // ── Голосовая команда: режим букв ──
+            if (lowerSession.endsWith('буквами') || lowerSession.endsWith('текстом')) {
+                micState.numberMode = false;
+                updateVoiceCommandsUI();
+                recognition.stop();
+                return;
+            }
+            // ── Голосовая команда: заглавные ──
+            if (lowerSession.endsWith('заглавными') || lowerSession.endsWith('большими')) {
+                micState.caseMode = 'upper';
+                updateVoiceCommandsUI();
+                recognition.stop();
+                return;
+            }
+            // ── Голосовая команда: строчные ──
+            if (lowerSession.endsWith('маленькими') || lowerSession.endsWith('строчными')) {
+                micState.caseMode = 'lower';
+                updateVoiceCommandsUI();
+                recognition.stop();
+                return;
+            }
+            // ── Голосовая команда: обычный регистр ──
+            if (lowerSession.endsWith('обычными') || lowerSession.endsWith('как в предложении')) {
+                micState.caseMode = 'normal';
+                updateVoiceCommandsUI();
+                recognition.stop();
+                return;
+            }
+
+            // ── Голосовая команда: отправить ──
+            var sendCmds = ['отправить', 'послать'];
+            if (sendCmds.some(function(cmd) { return lowerSession.endsWith(cmd); }) && !micState.isSending) {
+                micState.isSending = true;
+                micState.shouldSendOnEnd = true;
+                recognition.stop();
+                return;
+            }
+
+            // ── Голосовая команда: очистить ──
+            var clearCmds = ['очистить', 'удалить'];
+            if (clearCmds.some(function(cmd) { return lowerSession.endsWith(cmd); })) {
+                micState.baseText = '';
+                micState.sessionFinalText = '';
+                userInput.value = '';
+                autoResize(userInput);
+                micState.wasManuallyStopped = true;
+                recognition.stop();
+                return;
+            }
+
+            // ── Голосовая команда: отменить/исправить (удалить последнее слово) ──
+            var undoCmds = ['исправить', 'отменить'];
+            var undoCmd = null;
+            for (var u = 0; u < undoCmds.length; u++) {
+                if (lowerSession.endsWith(undoCmds[u])) { undoCmd = undoCmds[u]; break; }
+            }
+            if (undoCmd) {
+                var beforeCmd = sessionFinal.substring(0, sessionFinal.toLowerCase().lastIndexOf(undoCmd)).trim();
+                if (beforeCmd) {
+                    var match = beforeCmd.match(/\S+$/);
+                    var corrected = match ? beforeCmd.substring(0, match.index).trim() : '';
+                    micState.sessionFinalText = corrected;
+                    var newText = micState.baseText + processNewLineCommands(corrected) + ' ';
+                    userInput.value = newText;
+                } else {
+                    var base = micState.baseText.trim();
+                    var bMatch = base.match(/\S+$/);
+                    micState.baseText = bMatch ? base.substring(0, bMatch.index).trim() + ' ' : '';
+                    micState.sessionFinalText = '';
+                    userInput.value = micState.baseText;
+                }
+                autoResize(userInput);
+                recognition.stop();
+                return;
+            }
+
+            // ── Обычный текст — накопление ──
+            var processed = processNewLineCommands(sessionFinal);
+            processed = applyPunctuation(processed);
+            if (micState.numberMode) processed = convertWordsToNumbers(processed);
+            processed = applyCaseMode(processed, micState.caseMode);
+
+            userInput.value = micState.baseText + processed + sessionInterim;
+            autoResize(userInput);
+        };
+
+        recognition.onend = function() {
+            // ── Команда "отправить" финализирована ──
+            if (micState.shouldSendOnEnd) {
+                var processedText = processChunk(micState.sessionFinalText);
+                var finalToSubmit = (micState.baseText + processedText).trim();
+                // Убираем слово-команду из текста
+                finalToSubmit = finalToSubmit.replace(/(отправить|послать)\s*$/gi, '').trim();
+
+                micState.baseText = '';
+                micState.sessionFinalText = '';
+                userInput.value = finalToSubmit;
+
+                stopDictation();
+                // Отправляем после остановки диктовки
+                setTimeout(function() { sendOrGenerate(); }, 100);
+                return;
+            }
+
+            // ── Накопление распознанного текста ──
+            if (micState.sessionFinalText) {
+                var pt = processChunk(micState.sessionFinalText);
+                if (pt) {
+                    micState.baseText += pt + (pt.endsWith('\n') ? '' : ' ');
+                }
+                micState.sessionFinalText = '';
+            }
+            userInput.value = micState.baseText;
+            autoResize(userInput);
+
+            // ── Автоперезапуск если не остановлен вручную ──
+            if (!micState.wasManuallyStopped) {
+                if (micState.restartTimeout) clearTimeout(micState.restartTimeout);
+                micState.restartTimeout = setTimeout(function() {
+                    try {
+                        if (!micState.wasManuallyStopped && micState.recognition) {
+                            micState.recognition.start();
+                        }
+                    } catch(e) {
+                        console.error('[Mic] Ошибка авто-перезапуска:', e);
+                        stopDictation();
+                    }
+                }, 200);
+            } else {
+                stopDictation();
+            }
+        };
+
+        recognition.onerror = function(event) {
+            if (event.error === 'no-speech' && !micState.wasManuallyStopped) {
+                // Тишина — просто перезапустится в onend
+                try { recognition.stop(); } catch(e) {}
+            } else if (event.error !== 'aborted') {
+                console.error('[Mic] Ошибка распознавания:', event.error);
+                // Не стопаем — onend сам перезапустит
+            }
+        };
+
+        return recognition;
+    }
+
+    // ── ДИКТОВКА — старт ──
     function startDictation() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             showToast('Диктовка не поддерживается вашим браузером', 'error');
             return;
@@ -3003,59 +3321,27 @@
             stopDictation();
             return;
         }
-        // Если идёт запись — сначала стоп
         if (micState.mode === 'recording') {
             stopVoiceRecording();
         }
 
         micState.mode = 'dictating';
-        const micBtn = document.getElementById('micBtn');
+        micState.baseText = userInput.value ? userInput.value.trim() + ' ' : '';
+        micState.wasManuallyStopped = false;
+
+        var micBtn = document.getElementById('micBtn');
         if (micBtn) micBtn.classList.add('dictating');
-        const vcBar = document.getElementById('voiceCommandsBar');
+        var vcBar = document.getElementById('voiceCommandsBar');
         if (vcBar) vcBar.style.display = 'flex';
+        updateVoiceCommandsUI();
 
-        micState.recognition = new SpeechRecognition();
-        micState.recognition.lang = 'ru-RU';
-        micState.recognition.continuous = true;
-        micState.recognition.interimResults = true;
-
-        let finalTranscript = '';
-        let interimTranscript = '';
-
-        micState.recognition.onresult = (event) => {
-            interimTranscript = '';
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript;
-                } else {
-                    interimTranscript += event.results[i][0].transcript;
-                }
-            }
-            userInput.value = finalTranscript + interimTranscript;
-            autoResize(userInput);
-        };
-
-        micState.recognition.onerror = (event) => {
-            console.warn('[Mic] Dictation error:', event.error);
-            if (event.error !== 'aborted' && event.error !== 'no-speech') {
-                showToast('Ошибка диктовки: ' + event.error, 'error');
-            }
-            // Не стопаем при no-speech — перезапустится в onend
-        };
-
-        micState.recognition.onend = () => {
-            // Автоматический перезапуск если ещё в режиме диктовки
-            if (micState.mode === 'dictating' && micState.recognition) {
-                try { micState.recognition.start(); } catch(e) { stopDictation(); }
-            } else {
-                // Чистим состояние если режим уже не диктовка
-                micState.mode = null;
-                const btn = document.getElementById('micBtn');
-                if (btn) btn.classList.remove('dictating');
-                const vcBar = document.getElementById('voiceCommandsBar');
-                if (vcBar) vcBar.style.display = 'none';
-            }
-        };
+        micState.recognition = initRecognition();
+        if (!micState.recognition) {
+            showToast('Диктовка не поддерживается вашим браузером', 'error');
+            micState.mode = null;
+            if (micBtn) micBtn.classList.remove('dictating');
+            return;
+        }
 
         try {
             micState.recognition.start();
@@ -3066,73 +3352,107 @@
         }
     }
 
+    // ── ДИКТОВКА — стоп ──
     function stopDictation() {
-        const wasDictating = micState.mode === 'dictating';
+        micState.wasManuallyStopped = true;
         micState.mode = null;
+
+        if (micState.restartTimeout) {
+            clearTimeout(micState.restartTimeout);
+            micState.restartTimeout = null;
+        }
+
         if (micState.recognition) {
             try { micState.recognition.stop(); } catch(e) {}
             micState.recognition = null;
         }
-        const micBtn = document.getElementById('micBtn');
+
+        var micBtn = document.getElementById('micBtn');
         if (micBtn) micBtn.classList.remove('dictating');
-        const vcBar = document.getElementById('voiceCommandsBar');
+        var vcBar = document.getElementById('voiceCommandsBar');
         if (vcBar) vcBar.style.display = 'none';
     }
 
-    // 🎤 Voice command helpers
-    function vcToggleCase() {
-        const v = userInput.value;
-        const words = v.trim().split(/\s+/);
-        if (words.length > 0 && words[0] !== '') {
-            const last = words[words.length - 1];
-            words[words.length - 1] = last === last.toUpperCase() ? last.toLowerCase() : last.toUpperCase();
-            userInput.value = words.join(' ');
-        }
+    // ── Кнопки голосовых подсказок ──
+    function vcCycleCase() {
+        var modes = ['normal', 'upper', 'lower'];
+        var idx = modes.indexOf(micState.caseMode);
+        micState.caseMode = modes[(idx + 1) % modes.length];
+        updateVoiceCommandsUI();
     }
-    function vcNewLine() { userInput.value += '\n'; autoResize(userInput); }
-    function vcUndoWord() {
-        const v = userInput.value.trim();
-        const lastSpace = v.lastIndexOf(' ');
-        userInput.value = lastSpace > 0 ? v.substring(0, lastSpace) : '';
+    function vcToggleNumbers() {
+        micState.numberMode = !micState.numberMode;
+        updateVoiceCommandsUI();
+    }
+    function vcNewLine() {
+        var newText = userInput.value + '\n';
+        micState.baseText = newText;
+        userInput.value = newText;
         autoResize(userInput);
     }
-    function vcClear() { userInput.value = ''; autoResize(userInput); }
-    function vcSend() { stopDictation(); sendOrGenerate(); }
+    function vcUndoWord() {
+        var current = micState.baseText.trim();
+        var match = current.match(/\S+$/);
+        micState.baseText = match ? current.substring(0, match.index).trim() + ' ' : '';
+        micState.sessionFinalText = '';
+        userInput.value = micState.baseText;
+        autoResize(userInput);
+        // Перезапуск сессии распознавания
+        if (micState.recognition && micState.mode === 'dictating') {
+            micState.wasManuallyStopped = false;
+            try { micState.recognition.stop(); } catch(e) {}
+        }
+    }
+    function vcClear() {
+        micState.baseText = '';
+        micState.sessionFinalText = '';
+        userInput.value = '';
+        autoResize(userInput);
+        if (micState.restartTimeout) clearTimeout(micState.restartTimeout);
+        micState.wasManuallyStopped = true;
+        if (micState.recognition) { try { micState.recognition.stop(); } catch(e) {} }
+    }
+    function vcSend() {
+        micState.shouldSendOnEnd = false;
+        micState.baseText = '';
+        micState.sessionFinalText = '';
+        stopDictation();
+        setTimeout(function() { sendOrGenerate(); }, 100);
+    }
 
-    // 🔴 ЗАПИСЬ ГОЛОСА — MediaRecorder API → аудио вложение
+    // ── ЗАПИСЬ ГОЛОСА — MediaRecorder API → аудио вложение ──
     async function startVoiceRecording() {
-        // Если диктовка активна — стопаем
         if (micState.mode === 'dictating') stopDictation();
         try {
             micState.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             micState.mode = 'recording';
             micState.chunks = [];
 
-            const micBtn = document.getElementById('micBtn');
+            var micBtn = document.getElementById('micBtn');
             if (micBtn) micBtn.classList.add('recording');
             showToast('🎙 Запись голоса... Удерживайте кнопку', 'info');
 
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
                 ? 'audio/webm;codecs=opus'
                 : 'audio/webm';
 
             micState.mediaRecorder = new MediaRecorder(micState.stream, { mimeType });
 
-            micState.mediaRecorder.ondataavailable = (e) => {
+            micState.mediaRecorder.ondataavailable = function(e) {
                 if (e.data.size > 0) micState.chunks.push(e.data);
             };
 
-            micState.mediaRecorder.onstop = () => {
-                const blob = new Blob(micState.chunks, { type: mimeType });
-                const url = URL.createObjectURL(blob);
+            micState.mediaRecorder.onstop = function() {
+                var blob = new Blob(micState.chunks, { type: mimeType });
+                var url = URL.createObjectURL(blob);
 
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const base64 = reader.result.split(',')[1];
-                    const ext = mimeType.includes('webm') ? 'webm' : 'ogg';
-                    const audioType = mimeType.includes('webm') ? 'audio/webm' : 'audio/ogg';
+                var reader = new FileReader();
+                reader.onloadend = function() {
+                    var base64 = reader.result.split(',')[1];
+                    var ext = mimeType.includes('webm') ? 'webm' : 'ogg';
+                    var audioType = mimeType.includes('webm') ? 'audio/webm' : 'audio/ogg';
 
-                    const attachment = {
+                    var attachment = {
                         name: 'voice_message.' + ext,
                         type: audioType,
                         base64: base64,
@@ -3154,7 +3474,7 @@
             console.error('[Mic] Recording error:', e.message);
             showToast('Не удалось записать голос: ' + e.message, 'error');
             micState.mode = null;
-            const micBtn = document.getElementById('micBtn');
+            var micBtn = document.getElementById('micBtn');
             if (micBtn) micBtn.classList.remove('recording');
         }
     }
@@ -3164,11 +3484,11 @@
             micState.mediaRecorder.stop();
         }
         if (micState.stream) {
-            micState.stream.getTracks().forEach(t => t.stop());
+            micState.stream.getTracks().forEach(function(t) { t.stop(); });
             micState.stream = null;
         }
         micState.mode = null;
-        const micBtn = document.getElementById('micBtn');
+        var micBtn = document.getElementById('micBtn');
         if (micBtn) micBtn.classList.remove('recording');
     }
 
