@@ -409,7 +409,7 @@
                 <button class="pill-btn pill-cam" id="camBtn" title="Камера" onclick="openCameraModal()">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                 </button>
-                <button class="pill-btn pill-mic" id="micBtn" title="Диктовка / Запись голоса" onclick="micToggle(event)" onmousedown="micStart(event)" onmouseup="micStop(event)" ontouchstart="micStart(event)" ontouchend="micStop(event)">
+                <button class="pill-btn pill-mic" id="micBtn" title="Диктовка / Запись голоса">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                 </button>
                 <button class="pill-btn pill-send" id="sendBtn" onclick="sendOrGenerate()" title="Отправить">
@@ -2931,75 +2931,97 @@
     }
 
     // ============================================
-    // 🎤 МИКРОФОН — Диктовка (короткое) / Запись (долгое)
+    // 🎤 МИКРОФОН — Диктовка (короткое нажатие) / Запись (долгое удержание)
     // ============================================
     let micState = { mode: null, timer: null, mediaRecorder: null, chunks: [], stream: null, recognition: null };
-    const LONG_PRESS_MS = 400; // Порог долгого нажатия
+    const LONG_PRESS_MS = 400;
 
-    function micStart(e) {
-        e.preventDefault();
-        if (micState.mode === 'dictating') {
-            // Toggle off — stop dictation
-            stopDictation();
-            return;
-        }
-        if (micState.mode === 'recording') {
-            // Stop recording
-            stopVoiceRecording();
-            return;
-        }
-        // Start timer for long press detection
-        micState.timer = setTimeout(function() {
-            micState.timer = null;
-            startVoiceRecording();
-        }, LONG_PRESS_MS);
-    }
+    // Инициализация кнопки микрофона — вешаем ВСЕ обработчики программно,
+    // чтобы не было конфликта onclick + onmousedown + onmouseup в HTML
+    (function initMicButton() {
+        const btn = document.getElementById('micBtn');
+        if (!btn) return;
 
-    function micStop(e) {
-        e.preventDefault();
-        if (micState.timer) {
-            // Short tap — start/stop dictation
-            clearTimeout(micState.timer);
-            micState.timer = null;
+        let _longPressFired = false;
+
+        function _onDown(e) {
+            e.preventDefault();
+            _longPressFired = false;
+            // Если уже активна диктовка — короткий тап выключит в _onUp
+            // Если уже идёт запись — отпустить остановит в _onUp
+            micState.timer = setTimeout(function() {
+                micState.timer = null;
+                _longPressFired = true;
+                startVoiceRecording();
+            }, LONG_PRESS_MS);
+        }
+
+        function _onUp(e) {
+            e.preventDefault();
+            if (micState.timer) {
+                clearTimeout(micState.timer);
+                micState.timer = null;
+            }
+            if (_longPressFired) {
+                // Долгое удержание отпустили — стоп запись
+                if (micState.mode === 'recording') stopVoiceRecording();
+                return;
+            }
+            // Короткий тап
             if (micState.mode === 'dictating') {
                 stopDictation();
+            } else if (micState.mode === 'recording') {
+                stopVoiceRecording();
             } else {
                 startDictation();
             }
         }
-        // If long press was started and still recording, stop on release
-        if (micState.mode === 'recording') {
-            stopVoiceRecording();
-        }
-    }
 
-    // 🎙️ ДИКТОВКА — Speech Recognition API (браузерная)
+        btn.addEventListener('mousedown', _onDown);
+        btn.addEventListener('mouseup', _onUp);
+        btn.addEventListener('mouseleave', function() {
+            if (micState.timer) { clearTimeout(micState.timer); micState.timer = null; }
+        });
+        btn.addEventListener('touchstart', _onDown, { passive: false });
+        btn.addEventListener('touchend', _onUp, { passive: false });
+        btn.addEventListener('touchcancel', function() {
+            if (micState.timer) { clearTimeout(micState.timer); micState.timer = null; }
+            if (micState.mode === 'recording') stopVoiceRecording();
+        });
+        // Предотвращаем контекстное меню на долгом нажатии (мобилки)
+        btn.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+    })();
+
+    // 🎙️ ДИКТОВКА — Speech Recognition API
     function startDictation() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             showToast('Диктовка не поддерживается вашим браузером', 'error');
             return;
         }
-        
         if (micState.mode === 'dictating') {
             stopDictation();
             return;
         }
-        
+        // Если идёт запись — сначала стоп
+        if (micState.mode === 'recording') {
+            stopVoiceRecording();
+        }
+
         micState.mode = 'dictating';
         const micBtn = document.getElementById('micBtn');
-        micBtn.classList.add('dictating');
+        if (micBtn) micBtn.classList.add('dictating');
         const vcBar = document.getElementById('voiceCommandsBar');
         if (vcBar) vcBar.style.display = 'flex';
-        
+
         micState.recognition = new SpeechRecognition();
         micState.recognition.lang = 'ru-RU';
         micState.recognition.continuous = true;
         micState.recognition.interimResults = true;
-        
+
         let finalTranscript = '';
         let interimTranscript = '';
-        
+
         micState.recognition.onresult = (event) => {
             interimTranscript = '';
             for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -3012,24 +3034,29 @@
             userInput.value = finalTranscript + interimTranscript;
             autoResize(userInput);
         };
-        
+
         micState.recognition.onerror = (event) => {
             console.warn('[Mic] Dictation error:', event.error);
-            if (event.error !== 'aborted') {
+            if (event.error !== 'aborted' && event.error !== 'no-speech') {
                 showToast('Ошибка диктовки: ' + event.error, 'error');
             }
-            stopDictation();
+            // Не стопаем при no-speech — перезапустится в onend
         };
-        
+
         micState.recognition.onend = () => {
             // Автоматический перезапуск если ещё в режиме диктовки
-            if (micState.mode === 'dictating') {
+            if (micState.mode === 'dictating' && micState.recognition) {
                 try { micState.recognition.start(); } catch(e) { stopDictation(); }
             } else {
-                stopDictation();
+                // Чистим состояние если режим уже не диктовка
+                micState.mode = null;
+                const btn = document.getElementById('micBtn');
+                if (btn) btn.classList.remove('dictating');
+                const vcBar = document.getElementById('voiceCommandsBar');
+                if (vcBar) vcBar.style.display = 'none';
             }
         };
-        
+
         try {
             micState.recognition.start();
             showToast('Диктовка активна — говорите...', 'info');
@@ -3040,11 +3067,12 @@
     }
 
     function stopDictation() {
+        const wasDictating = micState.mode === 'dictating';
+        micState.mode = null;
         if (micState.recognition) {
             try { micState.recognition.stop(); } catch(e) {}
             micState.recognition = null;
         }
-        micState.mode = null;
         const micBtn = document.getElementById('micBtn');
         if (micBtn) micBtn.classList.remove('dictating');
         const vcBar = document.getElementById('voiceCommandsBar');
@@ -3052,53 +3080,66 @@
     }
 
     // 🎤 Voice command helpers
-    function vcToggleCase() { const v = userInput.value; const words = v.trim().split(/\s+/); if (words.length > 0 && words[0] !== '') { const last = words[words.length-1]; words[words.length-1] = last === last.toUpperCase() ? last.toLowerCase() : last.toUpperCase(); userInput.value = words.join(' '); } }
+    function vcToggleCase() {
+        const v = userInput.value;
+        const words = v.trim().split(/\s+/);
+        if (words.length > 0 && words[0] !== '') {
+            const last = words[words.length - 1];
+            words[words.length - 1] = last === last.toUpperCase() ? last.toLowerCase() : last.toUpperCase();
+            userInput.value = words.join(' ');
+        }
+    }
     function vcNewLine() { userInput.value += '\n'; autoResize(userInput); }
-    function vcUndoWord() { const v = userInput.value.trim(); const lastSpace = v.lastIndexOf(' '); userInput.value = lastSpace > 0 ? v.substring(0, lastSpace) : ''; }
+    function vcUndoWord() {
+        const v = userInput.value.trim();
+        const lastSpace = v.lastIndexOf(' ');
+        userInput.value = lastSpace > 0 ? v.substring(0, lastSpace) : '';
+        autoResize(userInput);
+    }
     function vcClear() { userInput.value = ''; autoResize(userInput); }
     function vcSend() { stopDictation(); sendOrGenerate(); }
 
-    // 🔴 ЗАПИСЬ ГОЛОСА — MediaRecorder API → MP3 файл
+    // 🔴 ЗАПИСЬ ГОЛОСА — MediaRecorder API → аудио вложение
     async function startVoiceRecording() {
+        // Если диктовка активна — стопаем
+        if (micState.mode === 'dictating') stopDictation();
         try {
             micState.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             micState.mode = 'recording';
             micState.chunks = [];
-            
+
             const micBtn = document.getElementById('micBtn');
-            micBtn.classList.add('recording');
+            if (micBtn) micBtn.classList.add('recording');
             showToast('🎙 Запись голоса... Удерживайте кнопку', 'info');
-            
-            // Используем webm/opus — самый поддерживаемый формат
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-                ? 'audio/webm;codecs=opus' 
+
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
                 : 'audio/webm';
-            
+
             micState.mediaRecorder = new MediaRecorder(micState.stream, { mimeType });
-            
+
             micState.mediaRecorder.ondataavailable = (e) => {
                 if (e.data.size > 0) micState.chunks.push(e.data);
             };
-            
+
             micState.mediaRecorder.onstop = () => {
                 const blob = new Blob(micState.chunks, { type: mimeType });
                 const url = URL.createObjectURL(blob);
-                
-                // Конвертируем в base64 и добавляем как вложение в чат
+
                 const reader = new FileReader();
                 reader.onloadend = () => {
                     const base64 = reader.result.split(',')[1];
                     const ext = mimeType.includes('webm') ? 'webm' : 'ogg';
                     const audioType = mimeType.includes('webm') ? 'audio/webm' : 'audio/ogg';
-                    
+
                     const attachment = {
                         name: 'voice_message.' + ext,
                         type: audioType,
                         base64: base64,
-                        previewUrl: null, // ✅ Не ставим audio blob URL как previewUrl — это НЕ картинка
+                        previewUrl: null,
                         icon: '&#127908;',
                         category: 'audio',
-                        audioUrl: url  // ✅ Сохраняем URL для прослушивания
+                        audioUrl: url
                     };
                     chatAttachments.push(attachment);
                     renderChatAttachments();
@@ -3107,7 +3148,7 @@
                 };
                 reader.readAsDataURL(blob);
             };
-            
+
             micState.mediaRecorder.start();
         } catch(e) {
             console.error('[Mic] Recording error:', e.message);
@@ -3654,29 +3695,6 @@
         const m = Math.floor(s / 60);
         const sec = s % 60;
         return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
-    }
-
-    // 🎤 Mic toggle — tap to toggle dictation on/off
-    function micToggle(e) {
-        if (e) e.preventDefault();
-        if (micState.mode === 'dictating') {
-            // Stop dictation on second tap
-            if (micState.recognition) {
-                micState.recognition.stop();
-                micState.recognition = null;
-            }
-            micState.mode = null;
-            const micBtn = document.getElementById('micBtn');
-            if (micBtn) micBtn.classList.remove('dictating');
-            return;
-        }
-        // If recording voice, stop it too
-        if (micState.mode === 'recording') {
-            stopVoiceRecording();
-            return;
-        }
-        // Start dictation
-        micStart(e);
     }
 
     async function sendOrGenerate() {
