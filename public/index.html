@@ -3271,19 +3271,26 @@
         _saveAndClose();
     }
 
-    // ── Остановка записи (вызывает stop() который автоматически делает requestData) ──
+    // ── Остановка записи ──
+    // 1. requestData() — ПРИНУДИТЕЛЬНЫЙ сброс буфера → ondataavailable с реальными данными
+    // 2. stop() — финальный сброс + onstop
     function _stopRecording() {
         if (cameraState.timerInterval) { clearInterval(cameraState.timerInterval); cameraState.timerInterval = null; }
         const mr = cameraState.mediaRecorder;
-        if (mr && mr.state === 'recording') {
-            mr.stop();   // stop() САМ вызывает requestData() + ondataavailable + onstop
+        if (!mr) return;
+        if (mr.state === 'recording') {
+            try { mr.requestData(); } catch(e) { console.warn('[Camera] requestData err:', e); }
+            mr.stop();
+        } else if (mr.state === 'paused') {
+            mr.resume();
+            try { mr.requestData(); } catch(e) {}
+            mr.stop();
         }
     }
 
     // ── Асинхронная остановка с ожиданием onstop (для закрытия модалки) ──
     async function _stopRecordingAndWait() {
         _stopRecording();
-        // Ждём пока onstop создаст blob
         if (cameraState._stopPromise) {
             await cameraState._stopPromise;
             cameraState._stopPromise = null;
@@ -3425,23 +3432,32 @@
     }
 
     // ── Запись видео ──
-    // ПРОСТАЯ И НАДЁЖНАЯ схема:
-    // 1. recorder.start() БЕЗ timeslice — stop() сам вызовет requestData
-    // 2. onstop создаёт blob и резолвит _stopPromise
-    // 3. closeCameraModal ЖДЁТ _stopPromise → данные гарантированно готовы
-    // 4. Каждый вызов = новый MediaRecorder на тот же stream (stream не ломается)
+    // НАДЁЖНАЯ схема для мобильных браузеров:
+    // 1. recorder.start(1000) — timeslice 1 сек → ondataavailable каждую секунду
+    //    Без timeslice на многих мобильных браузерах ondataavailable НЕ вызывается
+    // 2. При остановке: requestData() (сброс буфера) → stop() (финальный сброс + onstop)
+    // 3. onstop собирает ВСЕ чанки в blob, резолвит _stopPromise
+    // 4. Каждый вызов = НОВЫЙ MediaRecorder (старый после stop() уже мёртв)
     function _startRecording() {
-        if (!cameraState.stream) return;
+        if (!cameraState.stream) {
+            showToast('Камера не готова', 'error');
+            return;
+        }
+        if (!cameraState.stream.active) {
+            showToast('Поток камеры неактивен — переоткройте камеру', 'error');
+            return;
+        }
+
         cameraState.capturedData = null;
         cameraState._stopPromise = null;
 
         try {
-            // Проверяем аудио трек в потоке
             const hasAudio = cameraState.stream.getAudioTracks().length > 0;
-            console.log('[Camera] Start recording, stream tracks: video=' +
-                cameraState.stream.getVideoTracks().length + ' audio=' + hasAudio);
+            console.log('[Camera] Start recording, tracks: video=' +
+                cameraState.stream.getVideoTracks().length + ' audio=' + hasAudio +
+                ', stream.active=' + cameraState.stream.active);
 
-            // Выбираем mimeType с аудио кодеком если есть аудио трек
+            // Выбираем mimeType — с аудио кодеком если есть аудио трек
             let mimeType = '';
             if (hasAudio) {
                 if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) mimeType = 'video/webm;codecs=vp8,opus';
@@ -3464,16 +3480,18 @@
             const usedMime = mimeType;
 
             recorder.ondataavailable = function(e) {
+                // Принимаем ВСЕ чанки с размером > 0
                 if (e.data && e.data.size > 0) {
                     localChunks.push(e.data);
-                    console.log('[Camera] Chunk: ' + e.data.size + ' bytes, total chunks: ' + localChunks.length);
+                    console.log('[Camera] Chunk: ' + e.data.size + ' bytes, total=' + localChunks.length);
                 }
             };
 
             recorder.onerror = function(e) {
-                console.error('[Camera] MediaRecorder error:', e.error);
+                console.error('[Camera] MediaRecorder error:', e.error || e);
                 showToast('Ошибка записи: ' + (e.error ? e.error.message : 'unknown'), 'error');
                 cameraState.recording = false;
+                cameraState.mediaRecorder = null;
                 cameraState._stopPromise = null;
                 _updateCameraUI('idle');
             };
@@ -3484,10 +3502,13 @@
                     console.log('[Camera] onstop fired, chunks=' + localChunks.length);
 
                     const recordedMime = recorder.mimeType || usedMime || 'video/webm';
+                    const totalSize = localChunks.reduce(function(s, c) { return s + c.size; }, 0);
+                    console.log('[Camera] Total chunks data: ' + totalSize + ' bytes');
 
-                    if (localChunks.length === 0) {
+                    if (localChunks.length === 0 || totalSize === 0) {
                         showToast('Запись пуста — попробуйте ещё раз', 'error');
                         cameraState.recording = false;
+                        cameraState.mediaRecorder = null;
                         _updateCameraUI('idle');
                         resolve();
                         return;
@@ -3495,14 +3516,6 @@
 
                     const blob = new Blob(localChunks, { type: recordedMime });
                     console.log('[Camera] Blob created: ' + blob.size + ' bytes, type=' + recordedMime);
-
-                    if (blob.size === 0) {
-                        showToast('Запись пуста — попробуйте ещё раз', 'error');
-                        cameraState.recording = false;
-                        _updateCameraUI('idle');
-                        resolve();
-                        return;
-                    }
 
                     cameraState.capturedData = {
                         blob: blob,
@@ -3520,8 +3533,9 @@
                 };
             });
 
-            // БЕЗ timeslice — stop() сам вызовет requestData и отдаст все данные
-            recorder.start();
+            // TIMESLICE 1000ms — КРИТИЧЕСКИ для мобильных!
+            // Без timeslice ondataavailable может НЕ вызываться на многих мобильных браузерах
+            recorder.start(1000);
             cameraState.mediaRecorder = recorder;
             cameraState.recording = true;
             cameraState.seconds = 0;
@@ -3531,7 +3545,7 @@
                 cameraState.seconds++;
                 document.getElementById('cameraRecTime').textContent = formatRecTime(cameraState.seconds);
             }, 1000);
-            console.log('[Camera] Recording started');
+            console.log('[Camera] Recording started with timeslice=1000');
         } catch(err) {
             console.error('[Camera] _startRecording error:', err);
             showToast('Ошибка записи: ' + err.message, 'error');
