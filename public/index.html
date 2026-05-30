@@ -199,25 +199,36 @@
             <!-- Конвертация -->
             <div class="panel-subsection" id="imageConvertSection">
                 <div>
-                    <h3>&#128260; Конвертация изображения</h3>
-                    <p>Загрузите изображение и выберите формат. Бесплатно.</p>
+                    <h3>&#128260; Конвертация медиа</h3>
+                    <p>Загрузите файл и выберите формат. Бесплатно.</p>
                 </div>
                 <div class="upload-zone" id="imageConvertZone" onclick="if(!_dropJustHappened)document.getElementById('imageConvertInput').click()">
                     <div class="icon">&#128247;</div>
-                    <div class="label">Загрузить изображение для конвертации</div>
-                    <div class="hint">Любой формат — JPG, PNG, WebP, GIF</div>
-                    <input type="file" id="imageConvertInput" accept="image/*" style="display:none" onchange="handleImageConvertUpload(this)">
+                    <div class="label">Загрузить файл для конвертации</div>
+                    <div class="hint">Изображения, видео, аудио — любой формат</div>
+                    <input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">
                 </div>
                 <div id="imageConvertFormat" style="display:none">
-                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Формат:</label>
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Конвертировать в:</label>
                     <div class="size-selector" id="imageConvertFormatBtns">
-                        <button class="size-option active" onclick="selectedImageConvertFormat='png';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">PNG</button>
-                        <button class="size-option" onclick="selectedImageConvertFormat='jpg';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">JPG</button>
-                        <button class="size-option" onclick="selectedImageConvertFormat='webp';this.parentNode.querySelectorAll('.size-option').forEach(b=>b.classList.remove('active'));this.classList.add('active')">WebP</button>
+                        <!-- Изображения -->
+                        <button class="size-option active" data-group="image" onclick="selectConvertFormat('png',this)">PNG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('jpg',this)">JPG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('webp',this)">WebP</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('heic2jpg',this)">HEIC→JPG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('webp2png',this)">WebP→PNG</button>
+                        <!-- Видео -->
+                        <button class="size-option" data-group="video" onclick="selectConvertFormat('webm2mp4',this)">WEBM→MP4</button>
+                        <button class="size-option" data-group="video" onclick="selectConvertFormat('gif2mp4',this)">GIF→MP4</button>
+                        <button class="size-option" data-group="video" onclick="selectConvertFormat('video2gif',this)">Видео→GIF</button>
+                        <button class="size-option" data-group="video" onclick="selectConvertFormat('video2mp3',this)">Видео→MP3</button>
+                        <!-- Аудио -->
+                        <button class="size-option" data-group="audio" onclick="selectConvertFormat('ogg2mp3',this)">OGG→MP3</button>
+                        <button class="size-option" data-group="audio" onclick="selectConvertFormat('wav2mp3',this)">WAV→MP3</button>
                     </div>
                 </div>
                 <div class="result-area" id="imageConvertResult">
-                    <span class="result-placeholder">Здесь появится сконвертированное изображение</span>
+                    <span class="result-placeholder">Здесь появится сконвертированный файл</span>
                 </div>
             </div>
         </div>
@@ -603,6 +614,29 @@
     let chatAttachments = []; // [{name, type, base64, previewUrl}] — файлы для чата
     let selectedAudioConvertFormat = 'mp3';
     let selectedImageConvertFormat = 'png';
+    let convertFileCategory = 'image'; // 'image', 'video', 'audio'
+    let convertFileSrcFormat = ''; // исходный формат: 'webp', 'heic', 'webm', 'ogg', 'wav' etc.
+
+    function selectConvertFormat(format, btn) {
+        selectedImageConvertFormat = format;
+        // Обновляем UI — подсвечиваем выбранную кнопку
+        btn.parentNode.querySelectorAll('.size-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    // Показать только релевантные кнопки конвертации в зависимости от типа файла
+    function updateConvertFormatButtons(category) {
+        const btns = document.querySelectorAll('#imageConvertFormatBtns .size-option');
+        btns.forEach(btn => {
+            const group = btn.getAttribute('data-group');
+            btn.style.display = (group === category) ? '' : 'none';
+        });
+        // Автовыбор первого видимого
+        const firstVisible = Array.from(btns).find(b => b.style.display !== 'none');
+        if (firstVisible) {
+            firstVisible.click();
+        }
+    }
     let selectedRotateAngle = '-90';
     let voiceCloneSample = null; // {base64, name} — образец голоса
     let lastGeneratedImage = null; // { base64, url } — последнее сгенерированное изображение
@@ -2886,21 +2920,44 @@
             lightboxItems.push({ src: src, type: 'img' });
             content.innerHTML = '<img src="' + src + '" alt="' + att.name + '">';
         } else if (att.type.startsWith('video/')) {
-            // Для видео используем objectURL если есть, иначе data URI
-            // objectURL надёжнее — data URI с ;codecs=... ломает воспроизведение
+            // Для видео — ленивое создание blob:URL из base64 (надёжнее data:URL)
             var videoSrc = att.videoUrl;
             if (!videoSrc && att.base64) {
-                videoSrc = 'data:' + att.type + ';base64,' + att.base64;
+                try {
+                    var byteStr = atob(att.base64);
+                    var ab = new ArrayBuffer(byteStr.length);
+                    var ia = new Uint8Array(ab);
+                    for (var k = 0; k < byteStr.length; k++) ia[k] = byteStr.charCodeAt(k);
+                    var blob = new Blob([ab], { type: att.type || 'video/webm' });
+                    videoSrc = URL.createObjectURL(blob);
+                    att.videoUrl = videoSrc;
+                } catch(e) {
+                    videoSrc = 'data:' + att.type + ';base64,' + att.base64;
+                }
             }
             if (videoSrc) {
                 lightboxItems.push({ src: videoSrc, type: 'video' });
                 content.innerHTML = '<video src="' + videoSrc + '" controls autoplay style="max-width:90vw;max-height:80vh;border-radius:8px"></video>';
             }
         } else if (att.type.startsWith('audio/')) {
-            const src = att.audioUrl || ('data:' + att.type + ';base64,' + att.base64);
+            // Для аудио — ленивое создание blob:URL из base64
+            var audioSrc = att.audioUrl;
+            if (!audioSrc && att.base64) {
+                try {
+                    var byteStr2 = atob(att.base64);
+                    var ab2 = new ArrayBuffer(byteStr2.length);
+                    var ia2 = new Uint8Array(ab2);
+                    for (var k2 = 0; k2 < byteStr2.length; k2++) ia2[k2] = byteStr2.charCodeAt(k2);
+                    var blob2 = new Blob([ab2], { type: att.type || 'audio/mpeg' });
+                    audioSrc = URL.createObjectURL(blob2);
+                    att.audioUrl = audioSrc;
+                } catch(e) {
+                    audioSrc = 'data:' + att.type + ';base64,' + att.base64;
+                }
+            }
             const audioIcon = att.name && att.name.startsWith('voice_') ? '&#127908;' : '&#127925;';
-            lightboxItems.push({ src: src, type: 'audio' });
-            content.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:20px">' + audioIcon + '</div><div style="color:var(--text-primary);margin-bottom:16px;font-size:16px">' + att.name + '</div><audio src="' + src + '" controls autoplay style="width:100%;max-width:400px"></audio></div>';
+            lightboxItems.push({ src: audioSrc, type: 'audio' });
+            content.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:20px">' + audioIcon + '</div><div style="color:var(--text-primary);margin-bottom:16px;font-size:16px">' + att.name + '</div><audio src="' + audioSrc + '" controls autoplay style="width:100%;max-width:400px"></audio></div>';
         } else {
             // Документы — показываем информацию
             content.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:20px">&#128196;</div><div style="color:var(--text-primary);margin-bottom:8px;font-size:16px">' + att.name + '</div><div style="color:var(--text-secondary);font-size:14px">' + att.type + '</div></div>';
@@ -4163,9 +4220,9 @@
 
             // Очищаем вложения после отправки (ревокаем только blob:URL, data:URL не ревокаются)
             chatAttachments.forEach(a => {
+                // Аннулируем только preview blob:URL для картинок (они заменены data:URL в бабблах)
+                // НЕ аннулируем videoUrl и audioUrl — они нужны для воспроизведения в уже отрендеренных бабблах!
                 if (a.previewUrl && a.previewUrl.startsWith('blob:')) URL.revokeObjectURL(a.previewUrl);
-                if (a.videoUrl) URL.revokeObjectURL(a.videoUrl);
-                if (a.audioUrl) URL.revokeObjectURL(a.audioUrl);
             });
             chatAttachments = [];
             renderChatAttachments();
@@ -5240,7 +5297,7 @@
         });
     }
 
-    // ---- IMAGE CONVERT ----
+    // ---- MEDIA CONVERT ----
     let convertImageBase64 = null;
     async function handleImageConvertUpload(input) {
         const file = (input.files && input.files[0]) || null;
@@ -5248,63 +5305,186 @@
         try {
             convertImageBase64 = await fileToBase64(file);
             document.getElementById('imageConvertFormat').style.display = 'block';
-            // Показываем предпросмотр изображения в зоне загрузки
-            const src = 'data:' + (file.type || 'image/png') + ';base64,' + convertImageBase64;
+
+            // Определяем категорию и исходный формат
+            if (file.type.startsWith('video/')) {
+                convertFileCategory = 'video';
+                convertFileSrcFormat = file.name.split('.').pop().toLowerCase();
+            } else if (file.type.startsWith('audio/')) {
+                convertFileCategory = 'audio';
+                convertFileSrcFormat = file.name.split('.').pop().toLowerCase();
+            } else {
+                convertFileCategory = 'image';
+                convertFileSrcFormat = file.name.split('.').pop().toLowerCase();
+                // Если тип неизвестен, проверяем по расширению
+                if (!file.type && (convertFileSrcFormat === 'heic' || convertFileSrcFormat === 'heif')) {
+                    convertFileCategory = 'image';
+                }
+            }
+
+            // Показываем релевантные кнопки конвертации
+            updateConvertFormatButtons(convertFileCategory);
+
+            // Показываем предпросмотр файла в зоне загрузки
             const zone = document.getElementById('imageConvertZone');
             if (zone) {
-                zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для конвертации">' +
-                    '<input type="file" id="imageConvertInput" accept="image/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
-                    '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Выберите формат и отправьте.</div>';
+                if (convertFileCategory === 'image') {
+                    const src = 'data:' + (file.type || 'image/png') + ';base64,' + convertImageBase64;
+                    zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для конвертации">' +
+                        '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
+                } else if (convertFileCategory === 'video') {
+                    // Видео — показываем thumbnail
+                    const objUrl = URL.createObjectURL(file);
+                    const videoEl = document.createElement('video');
+                    videoEl.src = objUrl;
+                    videoEl.muted = true;
+                    videoEl.onloadeddata = function() {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = 160; canvas.height = 120;
+                            canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
+                            const thumb = canvas.toDataURL('image/jpeg', 0.6);
+                            zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
+                                '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                                '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
+                        } catch(e) {}
+                        URL.revokeObjectURL(objUrl);
+                    };
+                    videoEl.onerror = function() {
+                        zone.innerHTML = '<div style="font-size:40px;text-align:center">&#127916;</div>' +
+                            '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                            '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + convertFileSrcFormat.toUpperCase() + ')</div>';
+                        URL.revokeObjectURL(objUrl);
+                    };
+                } else if (convertFileCategory === 'audio') {
+                    zone.innerHTML = '<div style="font-size:40px;text-align:center">&#127925;</div>' +
+                        '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Аудио загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
+                }
                 zone.onclick = function() { document.getElementById('imageConvertInput').click(); };
             }
-            document.getElementById('imageConvertResult').innerHTML = '<span class="result-placeholder">Здесь появится сконвертированное изображение</span>';
+            document.getElementById('imageConvertResult').innerHTML = '<span class="result-placeholder">Здесь появится сконвертированный файл</span>';
         } catch (err) {
-            showToast('Ошибка загрузки фото', 'error');
+            showToast('Ошибка загрузки файла', 'error');
         }
         input.value = '';
     }
 
     async function executeImageConvert() {
-        if (!convertImageBase64) { showToast('Сначала загрузите фото', 'info'); return; }
+        if (!convertImageBase64) { showToast('Сначала загрузите файл', 'info'); return; }
         const resultArea = document.getElementById('imageConvertResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Конвертирую...</span>';
+
+        const fmt = selectedImageConvertFormat;
+        // Маппинг форматов на endpoint и payload
+        let mode, payload;
+
+        if (convertFileCategory === 'video') {
+            mode = 'video';
+            let targetFormat = 'mp4';
+            let videoMode = 'convert';
+            if (fmt === 'webm2mp4') { targetFormat = 'mp4'; }
+            else if (fmt === 'gif2mp4') { targetFormat = 'mp4'; }
+            else if (fmt === 'video2gif') { targetFormat = 'gif'; }
+            else if (fmt === 'video2mp3') { targetFormat = 'mp3'; }
+            else { targetFormat = fmt; }
+
+            payload = {
+                video_base64: convertImageBase64,
+                video_mode: videoMode,
+                source_format: convertFileSrcFormat,
+                target_format: targetFormat
+            };
+        } else if (convertFileCategory === 'audio') {
+            mode = 'audio';
+            payload = {
+                audio_base64: convertImageBase64,
+                audio_mode: 'convert',
+                source_format: convertFileSrcFormat,
+                target_format: 'mp3'
+            };
+        } else {
+            // Изображение
+            mode = 'image';
+            let targetFormat = fmt;
+            let sourceFormat = convertFileSrcFormat;
+
+            // Маппинг составных форматов
+            if (fmt === 'heic2jpg') { sourceFormat = 'heic'; targetFormat = 'jpg'; }
+            else if (fmt === 'webp2png') { sourceFormat = 'webp'; targetFormat = 'png'; }
+
+            payload = {
+                image_base64: convertImageBase64,
+                image_mode: 'convert',
+                source_format: sourceFormat,
+                target_format: targetFormat
+            };
+        }
+
         try {
-            // Сначала пробуем серверный конвертер
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    mode: 'image',
-                    auth: getAuth(),
-                    payload: {
-                        image_base64: convertImageBase64,
-                        image_mode: 'convert',
-                        target_format: selectedImageConvertFormat
-                    }
-                })
+                body: JSON.stringify({ mode: mode, auth: getAuth(), payload: payload })
             });
             if (!response.ok) throw new Error('Ошибка конвертации');
             const data = await response.json();
             if (!data.success) throw new Error(data.error || 'Ошибка');
             const content = data.data?.content;
+            const resultType = data.data?.type || '';
+
             if (content) {
-                const src = content.startsWith('http') ? content : 'data:image/' + selectedImageConvertFormat + ';base64,' + content;
-                resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Converted"><br><a href="' + src + '" download="converted.' + selectedImageConvertFormat + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + selectedImageConvertFormat.toUpperCase() + '</a>';
-                showToast('Конвертация выполнена!', 'success');
-            } else throw new Error('Сервер не вернул изображение');
+                if (resultType === 'video_base64') {
+                    // Видео результат — создаём blob для воспроизведения/скачивания
+                    try {
+                        var byteStr = atob(content);
+                        var ab = new ArrayBuffer(byteStr.length);
+                        var ia = new Uint8Array(ab);
+                        for (var j = 0; j < byteStr.length; j++) ia[j] = byteStr.charCodeAt(j);
+                        var blob = new Blob([ab], { type: 'video/mp4' });
+                        var blobUrl = URL.createObjectURL(blob);
+                        var ext = fmt === 'video2gif' ? 'gif' : 'mp4';
+                        resultArea.innerHTML = '<video src="' + blobUrl + '" controls style="max-width:100%;max-height:200px;border-radius:8px"></video><br><a href="' + blobUrl + '" download="converted.' + ext + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + ext.toUpperCase() + '</a>';
+                    } catch(e) {
+                        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; Ошибка: ' + e.message + '</span>';
+                    }
+                    showToast('Конвертация выполнена!', 'success');
+                } else if (resultType === 'audio_base64') {
+                    // Аудио результат
+                    try {
+                        var byteStr2 = atob(content);
+                        var ab2 = new ArrayBuffer(byteStr2.length);
+                        var ia2 = new Uint8Array(ab2);
+                        for (var k = 0; k < byteStr2.length; k++) ia2[k] = byteStr2.charCodeAt(k);
+                        var blob2 = new Blob([ab2], { type: 'audio/mpeg' });
+                        var blobUrl2 = URL.createObjectURL(blob2);
+                        resultArea.innerHTML = '<audio src="' + blobUrl2 + '" controls style="width:100%;max-width:400px;margin:8px 0"></audio><br><a href="' + blobUrl2 + '" download="converted.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
+                    } catch(e) {}
+                    showToast('Конвертация выполнена!', 'success');
+                } else {
+                    // Изображение
+                    const src = content.startsWith('http') ? content : 'data:image/' + (fmt === 'heic2jpg' ? 'jpg' : fmt === 'webp2png' ? 'png' : fmt) + ';base64,' + content;
+                    const downloadExt = fmt === 'heic2jpg' ? 'jpg' : fmt === 'webp2png' ? 'png' : fmt;
+                    resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Converted"><br><a href="' + src + '" download="converted.' + downloadExt + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + downloadExt.toUpperCase() + '</a>';
+                    showToast('Конвертация выполнена!', 'success');
+                }
+            } else throw new Error('Сервер не вернул результат');
         } catch (err) {
-            // Фоллбэк: конвертация через Canvas на клиенте (бесплатно, без сервера)
-            console.log('[Convert] Server failed, trying client-side Canvas fallback:', err.message);
-            try {
-                const result = await clientSideConvert(convertImageBase64, selectedImageConvertFormat);
-                if (result) {
-                    resultArea.innerHTML = '<img class="generated-image" src="' + result + '" alt="Converted"><br><a href="' + result + '" download="converted.' + selectedImageConvertFormat + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + selectedImageConvertFormat.toUpperCase() + '</a>';
-                    showToast('Конвертация выполнена (клиент)!', 'success');
-                } else throw new Error('Canvas fallback failed');
-            } catch (fallbackErr) {
-                resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-                showToast('Ошибка: ' + err.message, 'error');
+            // Фоллбэк для изображений: Canvas на клиенте
+            if (convertFileCategory === 'image' && ['png', 'jpg', 'webp'].includes(fmt)) {
+                console.log('[Convert] Server failed, trying client-side Canvas fallback:', err.message);
+                try {
+                    const result = await clientSideConvert(convertImageBase64, fmt);
+                    if (result) {
+                        resultArea.innerHTML = '<img class="generated-image" src="' + result + '" alt="Converted"><br><a href="' + result + '" download="converted.' + fmt + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + fmt.toUpperCase() + '</a>';
+                        showToast('Конвертация выполнена (клиент)!', 'success');
+                        return;
+                    }
+                } catch (_) {}
             }
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
         }
     }
 
@@ -5896,22 +6076,56 @@
                 } else if ((att.category === 'video' || att.type.startsWith('video/')) && (att.previewUrl || att.base64)) {
                     // Video thumbnail with play icon overlay — КЛИКАБЕЛЬНО
                     // Превью (previewUrl) — обычно data:URL из canvas, безопасно от revokeObjectURL
-                    // Для воспроизведения в lightbox — videoUrl (blob) или data:URL из base64
-                    const videoDataSrc = att.base64 ? ('data:' + att.type + ';base64,' + att.base64) : '';
-                    const videoSrc = att.videoUrl || videoDataSrc || att.previewUrl;
+                    // Для воспроизведения в lightbox — создаём blob:URL лениво из base64
+                    // (старый videoUrl мог быть аннулирован через revokeObjectURL после отправки)
+                    const videoBase64 = att.base64;
+                    const videoMime = att.type || 'video/webm';
                     const wrap = document.createElement('div');
                     wrap.style.cssText = 'position:relative;display:inline-block;width:60px;height:45px;cursor:pointer';
                     wrap.innerHTML = '<img src="' + (att.previewUrl || '') + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' +
                         '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:white">&#9654;</div>';
-                    wrap.onclick = function() { openLightbox(videoSrc, 'video'); };
+                    wrap.onclick = function() {
+                        // Ленивое создание blob:URL для воспроизведения (data:URL не работает для видео)
+                        var src = att.videoUrl;
+                        if (!src && videoBase64) {
+                            try {
+                                var byteStr = atob(videoBase64);
+                                var ab = new ArrayBuffer(byteStr.length);
+                                var ia = new Uint8Array(ab);
+                                for (var j = 0; j < byteStr.length; j++) ia[j] = byteStr.charCodeAt(j);
+                                var blob = new Blob([ab], { type: videoMime });
+                                src = URL.createObjectURL(blob);
+                                att.videoUrl = src; // кешируем
+                            } catch(e) {
+                                src = 'data:' + videoMime + ';base64,' + videoBase64;
+                            }
+                        }
+                        if (src) openLightbox(src, 'video');
+                    };
                     imgContainer.appendChild(wrap);
                 } else if (att.category === 'audio' || att.type.startsWith('audio/')) {
                     // Audio icon badge — КЛИКАБЕЛЬНО для предпросмотра
                     const badge = document.createElement('div');
                     badge.style.cssText = 'display:flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(139,92,246,0.15);border-radius:8px;font-size:12px;color:var(--text-secondary);cursor:pointer';
                     badge.innerHTML = '&#127925; ' + (att.name || 'audio');
-                    const audioSrc = att.base64 ? ('data:' + att.type + ';base64,' + att.base64) : att.previewUrl;
-                    badge.onclick = function() { openLightbox(audioSrc, 'audio'); };
+                    // Ленивое создание blob:URL для воспроизведения
+                    badge.onclick = function() {
+                        var src = att.audioUrl;
+                        if (!src && att.base64) {
+                            try {
+                                var byteStr = atob(att.base64);
+                                var ab = new ArrayBuffer(byteStr.length);
+                                var ia = new Uint8Array(ab);
+                                for (var j = 0; j < byteStr.length; j++) ia[j] = byteStr.charCodeAt(j);
+                                var blob = new Blob([ab], { type: att.type || 'audio/mpeg' });
+                                src = URL.createObjectURL(blob);
+                                att.audioUrl = src; // кешируем
+                            } catch(e) {
+                                src = 'data:' + (att.type || 'audio/mpeg') + ';base64,' + att.base64;
+                            }
+                        }
+                        if (src) openLightbox(src, 'audio');
+                    };
                     imgContainer.appendChild(badge);
                 } else {
                     // Document icon badge
@@ -6329,11 +6543,14 @@
                 }
             } else if (mode === 'convert') {
                 convertImageBase64 = lastGeneratedImage.base64;
+                convertFileCategory = 'image';
+                convertFileSrcFormat = 'png';
                 document.getElementById('imageConvertFormat').style.display = 'block';
+                updateConvertFormatButtons('image');
                 const zone = document.getElementById('imageConvertZone');
                 if (zone) {
                     zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для конвертации">' +
-                        '<input type="file" id="imageConvertInput" accept="image/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                        '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
                         '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение перенесено. Выберите формат и отправьте.</div>';
                     zone.onclick = function() { document.getElementById('imageConvertInput').click(); };
                 }

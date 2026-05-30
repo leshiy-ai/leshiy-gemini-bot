@@ -642,23 +642,91 @@ async function handleImage(auth, payload, env, monolith) {
     if (imageMode === 'convert') {
         if (!payload.image_base64) return formatResponse(false, 'Нет изображения для конвертации');
         const targetFormat = payload.target_format || 'png';
+        // sourceFormat — исходный формат (для выбора эндпоинта конвертера)
+        const sourceFormat = (payload.source_format || '').toLowerCase();
 
         try {
             const converterUrl = getConverterUrl(env);
-            if (converterUrl) {
-                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
-                const imageBuffer = Buffer.from(payload.image_base64, 'base64');
-                const response = await fetch(`${baseUrl}/convert-image?format=${targetFormat}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/octet-stream' },
-                    body: imageBuffer
-                });
-                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
-                const resultBuffer = Buffer.from(await response.arrayBuffer());
-                const resultBase64 = resultBuffer.toString('base64');
-                return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
+            if (!converterUrl) return formatResponse(false, 'Конвертер недоступен');
+            const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+            const imageBuffer = Buffer.from(payload.image_base64, 'base64');
+
+            // 🧠 Выбираем эндпоинт конвертера по исходному и целевому формату
+            let endpoint = null;
+            let fieldName = 'image'; // имя поля в multipart
+
+            if (sourceFormat === 'webp' && targetFormat === 'png') {
+                endpoint = '/webp2png';
+            } else if (sourceFormat === 'heic' && targetFormat === 'jpg') {
+                endpoint = '/heic2jpg';
+            } else if (sourceFormat === 'gif' && targetFormat === 'mp4') {
+                // GIF → Video (gif2video endpoint, fieldName = 'gif')
+                endpoint = '/gif2video';
+                fieldName = 'gif';
+            } else {
+                // Универсальная конвертация через /rotate-image или Canvas fallback
+                // Для rotate/resize используем конкретные эндпоинты
+                if (payload.convert_action === 'rotate') {
+                    const angle = payload.angle || '90';
+                    endpoint = '/rotate-image?angle=' + encodeURIComponent(angle);
+                } else if (payload.convert_action === 'resize') {
+                    const res = payload.resolution || '720p';
+                    endpoint = '/resize-image?resolution=' + encodeURIComponent(res);
+                } else {
+                    // Фоллбэк: пробуем webp2png если целевой png, иначе heic2jpg для heic
+                    // Или отправляем как octet-stream на универсальный эндпоинт
+                    endpoint = '/webp2png'; // Подходит для большинства форматов
+                }
             }
-            return formatResponse(false, 'Конвертер недоступен');
+
+            console.log(`[WebHandler] Image convert: ${sourceFormat || 'auto'} → ${targetFormat}, endpoint: ${endpoint}`);
+
+            // 🧠 Отправляем через multipart/form-data (конвертер ожидает formData!)
+            // В Cloudflare Workers нет FormData API для fetch — собираем вручную
+            const boundary = '----FormBoundary' + Date.now().toString(36);
+            const fileName = 'input.' + (sourceFormat || 'png');
+            const fileMime = sourceFormat === 'heic' ? 'image/heic' : sourceFormat === 'gif' ? 'image/gif' : sourceFormat === 'webp' ? 'image/webp' : 'image/png';
+            const bodyParts = [
+                '--' + boundary,
+                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
+                'Content-Type: ' + fileMime,
+                '',
+                '' // placeholder — binary data follows
+            ];
+            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
+            const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
+            const fullBody = Buffer.concat([headerBytes, imageBuffer, footerBytes]);
+
+            const response = await fetch(`${baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+                body: fullBody
+            });
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error('Конвертер вернул ' + response.status + ': ' + errText.substring(0, 200));
+            }
+            // Проверяем тип ответа — может быть бинарный (изображение/видео) или JSON (video2image)
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('json')) {
+                const jsonData = await response.json();
+                if (jsonData.image) {
+                    // data:image/jpeg;base64,... — извлекаем base64
+                    const b64 = jsonData.image.split(',')[1] || jsonData.image;
+                    return formatResponse(true, null, null, { type: 'image_base64', content: b64 });
+                }
+                if (jsonData.success === false) {
+                    throw new Error(jsonData.error || 'Ошибка конвертера');
+                }
+            }
+            const resultBuffer = Buffer.from(await response.arrayBuffer());
+            const resultBase64 = resultBuffer.toString('base64');
+
+            // GIF→MP4 возвращает video, не image
+            if (sourceFormat === 'gif' && targetFormat === 'mp4') {
+                return formatResponse(true, null, null, { type: 'video_base64', content: resultBase64 });
+            }
+            return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
         } catch (e) {
             console.error("[WebHandler] Image convert error:", e.message);
             return formatResponse(false, "Ошибка конвертации: " + e.message);
@@ -873,8 +941,105 @@ async function handleVideo(auth, payload, env, monolith) {
     const chatId = isAuth ? String(auth.id) : 'guest';
     const videoMode = payload.video_mode || 'generate';
 
-    // === CONVERT / ANALYSIS (бесплатно) ===
+    // === CONVERT (конвертация видео через конвертер, бесплатно) ===
     if (videoMode === 'convert') {
+        if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для конвертации');
+        const targetFormat = (payload.target_format || 'mp4').toLowerCase();
+        const sourceFormat = (payload.source_format || '').toLowerCase();
+
+        try {
+            const converterUrl = getConverterUrl(env);
+            if (!converterUrl) return formatResponse(false, 'Конвертер недоступен');
+            const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+            const videoBuffer = Buffer.from(payload.video_base64, 'base64');
+
+            let endpoint = null;
+            let fieldName = 'video';
+
+            if (sourceFormat === 'webm' && targetFormat === 'mp4') {
+                endpoint = '/webm2mp4';
+            } else if (sourceFormat === 'gif' || targetFormat === 'gif') {
+                // Video → GIF
+                const start = payload.start || '0';
+                const end = payload.end || '3';
+                const fps = payload.fps || '10';
+                const width = payload.width || '480';
+                const format = targetFormat === 'mp4' ? 'mp4' : 'gif';
+                endpoint = `/video2gif?start=${start}&end=${end}&fps=${fps}&width=${width}&format=${format}`;
+            } else if (targetFormat === 'mp3') {
+                // Video → MP3 (извлечение аудио)
+                endpoint = '/video2mp3';
+            } else if (targetFormat === 'image' || targetFormat === 'jpg' || targetFormat === 'png') {
+                // Video → Image (скриншот кадра)
+                const timestamp = payload.timestamp || '00:00:01.000';
+                const imgFormat = targetFormat === 'png' ? 'png' : 'jpg';
+                endpoint = `/video2image?timestamp=${encodeURIComponent(timestamp)}&format=${imgFormat}`;
+            } else if (payload.convert_action === 'rotate') {
+                const angle = payload.angle || '90';
+                endpoint = '/rotate-video?angle=' + encodeURIComponent(angle);
+            } else if (payload.convert_action === 'resize') {
+                const res = payload.resolution || '720p';
+                endpoint = '/resize-video?resolution=' + encodeURIComponent(res);
+            } else {
+                // По умолчанию — webm2mp4 (самый частый кейс)
+                endpoint = '/webm2mp4';
+            }
+
+            console.log(`[WebHandler] Video convert: ${sourceFormat || 'auto'} → ${targetFormat}, endpoint: ${endpoint}`);
+
+            // Multipart/form-data
+            const boundary = '----FormBoundary' + Date.now().toString(36);
+            const fileName = 'input.' + (sourceFormat || 'webm');
+            const fileMime = sourceFormat === 'gif' ? 'image/gif' : sourceFormat === 'mp4' ? 'video/mp4' : 'video/webm';
+            const bodyParts = [
+                '--' + boundary,
+                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
+                'Content-Type: ' + fileMime,
+                '',
+                ''
+            ];
+            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
+            const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
+            const fullBody = Buffer.concat([headerBytes, videoBuffer, footerBytes]);
+
+            const response = await fetch(`${baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+                body: fullBody
+            });
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error('Конвертер вернул ' + response.status + ': ' + errText.substring(0, 200));
+            }
+
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('json')) {
+                // video2image возвращает JSON с base64
+                const jsonData = await response.json();
+                if (jsonData.image) {
+                    const b64 = jsonData.image.split(',')[1] || jsonData.image;
+                    return formatResponse(true, null, null, { type: 'image_base64', content: b64 });
+                }
+            }
+
+            const resultBuffer = Buffer.from(await response.arrayBuffer());
+            const resultBase64 = resultBuffer.toString('base64');
+
+            // Определяем тип результата
+            if (targetFormat === 'mp3') {
+                return formatResponse(true, null, null, { type: 'audio_base64', content: resultBase64 });
+            } else if (targetFormat === 'image' || targetFormat === 'jpg' || targetFormat === 'png') {
+                return formatResponse(true, null, null, { type: 'image_base64', content: resultBase64 });
+            }
+            return formatResponse(true, null, null, { type: 'video_base64', content: resultBase64 });
+        } catch (e) {
+            console.error("[WebHandler] Video convert error:", e.message);
+            return formatResponse(false, "Ошибка конвертации видео: " + e.message);
+        }
+    }
+
+    // === ANALYSIS (анализ видео через AI модели) ===
+    if (videoMode === 'analysis') {
         if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для анализа');
         const prompt = (payload.prompt || 'Проанализируй это видео подробно').trim();
 
@@ -1178,23 +1343,62 @@ async function handleAudio(auth, payload, env, monolith) {
     if (audioMode === 'convert') {
         if (!payload.audio_base64) return formatResponse(false, 'Нет аудиофайла для конвертации');
         const targetFormat = payload.target_format || 'mp3';
+        const sourceFormat = (payload.source_format || '').toLowerCase();
 
         try {
             const converterUrl = getConverterUrl(env);
-            if (converterUrl) {
-                const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
-                const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
-                const response = await fetch(`${baseUrl}/convert-audio?format=${targetFormat}`, {
+            if (!converterUrl) return formatResponse(false, 'Конвертер недоступен');
+            const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
+            const audioBuffer = Buffer.from(payload.audio_base64, 'base64');
+
+            let endpoint = null;
+            let fieldName = 'audio';
+
+            if (sourceFormat === 'ogg' || sourceFormat === 'opus') {
+                endpoint = '/ogg2mp3';
+            } else if (sourceFormat === 'wav') {
+                endpoint = '/wav2mp3';
+            } else if (sourceFormat === 'pcm') {
+                // PCM → MP3: raw binary body + query params
+                const sampleRate = payload.sample_rate || '24000';
+                const channels = payload.channels || '1';
+                const pcmFormat = payload.pcm_format || 's16le';
+                const response = await fetch(`${baseUrl}/pcm2mp3?sampleRate=${sampleRate}&channels=${channels}&format=${pcmFormat}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/octet-stream' },
                     body: audioBuffer
                 });
-                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                if (!response.ok) throw new Error('Конвертер вернул ' + response.status);
                 const resultBuffer = Buffer.from(await response.arrayBuffer());
-                const resultBase64 = resultBuffer.toString('base64');
-                return formatResponse(true, null, null, { type: 'audio_base64', content: resultBase64 });
+                return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
+            } else {
+                // По умолчанию — пробуем ogg2mp3 (самый частый кейс для Telegram)
+                endpoint = '/ogg2mp3';
             }
-            return formatResponse(false, 'Конвертер недоступен');
+
+            // Multipart/form-data
+            const boundary = '----FormBoundary' + Date.now().toString(36);
+            const fileName = 'input.' + (sourceFormat || 'ogg');
+            const fileMime = sourceFormat === 'wav' ? 'audio/wav' : 'audio/ogg';
+            const bodyParts = [
+                '--' + boundary,
+                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
+                'Content-Type: ' + fileMime,
+                '',
+                ''
+            ];
+            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
+            const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
+            const fullBody = Buffer.concat([headerBytes, audioBuffer, footerBytes]);
+
+            const response = await fetch(`${baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+                body: fullBody
+            });
+            if (!response.ok) throw new Error('Конвертер вернул ' + response.status);
+            const resultBuffer = Buffer.from(await response.arrayBuffer());
+            return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
         } catch (e) {
             console.error("[WebHandler] Audio convert error:", e.message);
             return formatResponse(false, "Ошибка конвертации: " + e.message);
