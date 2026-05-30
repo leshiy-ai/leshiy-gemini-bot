@@ -216,63 +216,22 @@ body {
 .sub-header.active { display: flex; }
 .sub-header.wrap-allowed { flex-wrap: wrap; max-height: none; overflow-y: visible; }
 
-/* Sub-option icon-only mode — expand on hover */
 .sub-option {
-    overflow: hidden;
-    max-width: 38px;
-    padding: 6px 8px;
+    padding: 6px 14px;
     border-radius: 20px;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
     font-size: 13px;
     cursor: pointer;
-    transition: max-width 0.3s ease, padding 0.3s ease, border-color var(--transition), color var(--transition), background var(--transition);
-    display: inline-flex;
-    align-items: center;
-    gap: 0;
+    transition: all var(--transition);
     white-space: nowrap;
 }
-.sub-option:hover {
-    max-width: 180px;
-    padding: 6px 14px;
-    gap: 5px;
-    border-color: var(--accent);
-    color: var(--text-primary);
-}
-.sub-option.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: white;
-    max-width: 180px;
-    padding: 6px 14px;
-    gap: 5px;
-}
+.sub-option:hover { border-color: var(--accent); color: var(--text-primary); }
+.sub-option.active { background: var(--accent); border-color: var(--accent); color: white; }
 .sub-option.free { border-color: rgba(34,197,94,0.4); color: var(--free); }
 .sub-option.free.active { background: var(--free); color: white; }
 .sub-option .price { font-size: 11px; opacity: 0.7; }
-.sub-option .sub-emoji {
-    font-size: 15px;
-    flex-shrink: 0;
-    line-height: 1;
-}
-.sub-option .sub-text {
-    max-width: 0;
-    opacity: 0;
-    overflow: hidden;
-    display: inline-block;
-    transition: max-width 0.3s ease, opacity 0.2s ease;
-    white-space: nowrap;
-    font-size: 13px;
-}
-.sub-option:hover .sub-text {
-    max-width: 140px;
-    opacity: 1;
-}
-.sub-option.active .sub-text {
-    opacity: 1;
-    max-width: 140px;
-}
 
 .sub-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
 .sub-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
@@ -286,12 +245,6 @@ body {
     padding: 5px 12px;
     font-size: 13px;
     border-radius: 16px;
-    max-width: none;
-    gap: 5px;
-}
-#imageParamsArea .sub-option .sub-text, #videoParamsArea .sub-option .sub-text {
-    max-width: none;
-    opacity: 1;
 }
 
 /* ===== MODEL DROPDOWN ===== */
@@ -1177,8 +1130,7 @@ body {
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 13px; min-height: 38px; max-width: 34px; padding: 7px 8px; }
-    .sub-option:hover, .sub-option.active { max-width: 180px; padding: 7px 14px; }
+    .sub-option { padding: 7px 14px; font-size: 13px; min-height: 38px; }
     .model-select { font-size: 13px; padding: 7px 28px 7px 12px; max-width: 180px; }
     
     .media-panel { padding: 16px 12px; gap: 14px; }
@@ -1246,8 +1198,7 @@ body {
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 12px; min-height: 36px; border-radius: 14px; max-width: 32px; padding: 6px 8px; }
-    .sub-option:hover, .sub-option.active { max-width: 160px; padding: 6px 12px; }
+    .sub-option { font-size: 12px; padding: 6px 10px; min-height: 36px; border-radius: 14px; }
     .sub-label { font-size: 12px; }
     .model-select { font-size: 12px; max-width: 150px; padding: 6px 26px 6px 10px; }
     .mode-tag { font-size: 11px; padding: 3px 7px; }
@@ -1305,8 +1256,7 @@ body {
     .mode-tab { padding: 7px 10px; font-size: 14px; min-height: 40px; }
     .mode-tab .mode-emoji { font-size: 14px; }
     .sub-header { gap: 3px; padding: 5px 6px; max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 11px; min-height: 34px; max-width: 30px; padding: 5px 7px; }
-    .sub-option:hover, .sub-option.active { max-width: 150px; padding: 5px 10px; }
+    .sub-option { font-size: 11px; padding: 5px 8px; min-height: 34px; }
     .sub-divider { height: 18px; }
     .model-select { max-width: 130px; font-size: 11px; }
     .input-pill { border-radius: 26px; }
