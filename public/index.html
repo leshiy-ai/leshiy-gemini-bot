@@ -2684,13 +2684,13 @@
         const placeholders = {
             chat: 'Напишите сообщение или перетащите файл...',
             image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
-            video: ['t2v','i2v','v2v','a2v'].includes(selected.videoSubMode) ? 'Опишите видео-сцену для ИИ...' : 'Загрузите файл выше',
+            video: ['t2v','i2v','v2v','a2v'].includes(selected.videoSubMode) ? 'Опишите видео-сцену для ИИ...' : selected.videoSubMode === 'upscale' ? 'Загрузите видео выше для апскейла' : 'Загрузите файл выше',
             audio: 'Введите текст для озвучки...'
         };
         const hints = {
             chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат',
             image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
-            video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : ['analysis','convert','resize','extract','stopframe'].includes(selected.videoSubMode) ? '\u2713 Бесплатно' : 'Стоимость зависит от режима',
+            video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : selected.videoSubMode === 'upscale' ? 'Апскейл видео — от 5\u00A2' : ['analysis','convert','resize','extract','stopframe'].includes(selected.videoSubMode) ? '\u2713 Бесплатно' : 'Стоимость зависит от режима',
             audio: selected.audioSubMode === 'tts' ? 'Стоимость озвучки зависит от модели' : 'Бесплатно'
         };
         userInput.placeholder = placeholders[mode];
@@ -4311,9 +4311,10 @@
             } else if (selected.videoSubMode === 'resize') {
                 await executeVideoResize(); return;
             } else if (selected.videoSubMode === 'extract') {
-                showToast('Для извлечения аудио загрузите видеофайл', 'info'); return;
+                showToast('Загрузите видеофайл выше для извлечения аудио', 'info'); return;
             } else if (selected.videoSubMode === 'stopframe') {
-                showToast('Для стоп-кадра загрузите видеофайл', 'info'); return;
+                if (stopFrameBase64) { await extractFrame(); return; }
+                showToast('Загрузите видеофайл выше для стоп-кадра', 'info'); return;
             } else if (selected.videoSubMode === 'upscale') {
                 await executeVideoUpscale(); return;
             }
@@ -4685,6 +4686,7 @@
                 quality: selected.videoQuality,
                 duration: selected.videoDuration,
                 video_mode: selected.videoSubMode,
+                video_submode: selected.videoSubMode,
                 ...(videoRefs.image ? { reference_image: videoRefs.image } : {}),
                 ...(videoRefs.audio ? { reference_audio: videoRefs.audio } : {}),
                 ...(videoRefs.video ? { reference_video: videoRefs.video } : {})
@@ -4823,7 +4825,7 @@
                         prompt: prompt,
                         video_base64: base64,
                         video_mime_type: file.type || 'video/mp4',
-                        video_mode: 'convert',  // бэкенд использует 'convert' для анализа
+                        video_mode: 'analysis',
                         model: analysisModel
                     }
                 })
@@ -4980,7 +4982,7 @@
                         audio_base64: audioBase64,
                         audio_mode: 'convert',
                         target_format: selectedAudioConvertFormat,
-                        source_name: file.name
+                        source_format: file.name.split('.').pop().toLowerCase()
                     }
                 })
             });
@@ -5834,9 +5836,9 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mode: 'image', auth: getAuth(), payload: {
                     image_base64: resizeImageBase64,
-                    image_mode: 'resize',
-                    target_width: w,
-                    target_height: h
+                    image_mode: 'convert',
+                    convert_action: 'resize',
+                    resolution: w + 'x' + h
                 }})
             });
             if (!response.ok) throw new Error('Ошибка ресайза');
@@ -5948,14 +5950,14 @@
                 body: JSON.stringify({ mode: videoResizeCategory, auth: getAuth(), payload:
                     videoResizeCategory === 'video' ? {
                         video_base64: videoResizeBase64,
-                        video_mode: 'resize',
-                        target_width: w,
-                        target_height: h
+                        video_mode: 'convert',
+                        convert_action: 'resize',
+                        resolution: w + 'x' + h
                     } : {
                         image_base64: videoResizeBase64,
-                        image_mode: 'resize',
-                        target_width: w,
-                        target_height: h
+                        image_mode: 'convert',
+                        convert_action: 'resize',
+                        resolution: w + 'x' + h
                     }
                 })
             });
@@ -6193,13 +6195,19 @@
 
         try {
             // Сначала пробуем серверный конвертер
+            // Бэкенд ожидает video_mode: 'convert' с target_format: 'png'/'jpg' для стоп-кадра
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            const timestamp = String(hours).padStart(2,'0') + ':' + String(mins).padStart(2,'0') + ':' + String(Math.floor(secs)).padStart(2,'0') + '.000';
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mode: 'video', auth: getAuth(), payload: {
                     video_base64: stopFrameBase64,
-                    video_mode: 'stopframe',
-                    time_seconds: seconds
+                    video_mode: 'convert',
+                    target_format: 'png',
+                    timestamp: timestamp
                 }})
             });
             if (response.ok) {
