@@ -8235,7 +8235,7 @@ async function processAdminStartCommand(adminChatId, envData) {
 
     // 2. 🌟 ПОЛУЧАЕМ БАЛАНС POLLINATIONS 🌟
     // Берём ключ из переменных окружения воркера
-    const pollinationsApiKey = currentEnvData.POLLINATIONS_API_KEY; 
+    const pollinationsApiKey = envData.POLLINATIONS_API_KEY; 
     const pollinationsBalance = await getPollinationsBalance(pollinationsApiKey);
 
     // --- 4. ФОРМИРОВАНИЕ ТЕКСТА И ОТПРАВКА ---
