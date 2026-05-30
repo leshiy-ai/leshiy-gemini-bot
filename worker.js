@@ -3787,7 +3787,7 @@ async function generateAdminMessage(currentEnvData, kieAiBalance, BothubBalance)
 💰 **Платные сервисы:**
 \`TELEGRAM\` : ⭐️ **${starBalance}** ${starWord}
 KIE.AI : **${kieAiBalance}**
-Pollinations.ai : **${pollinationsBalance}**
+Pollinations.ai : **${pollinationsBalance}** pollen
 BotHub.ru : ${BothubBalance}
 
 Доступность опций:
@@ -8252,7 +8252,7 @@ async function processAdminStartCommand(adminChatId, envData) {
 💰 **Платные сервисы:**
 \`TELEGRAM\` : ⭐️ **${starBalance}** ${starWord}
 KIE.AI : **${kieAiBalance}**
-Pollinations.ai : **${pollinationsBalance}**
+Pollinations.ai : **${pollinationsBalance}** pollen
 BotHub.ru : ${BothubBalance}
 
 Доступность опций:
