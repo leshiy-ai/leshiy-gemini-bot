@@ -834,6 +834,7 @@ body {
 
 /* ===== INPUT AREA ===== */
 .input-area {
+    position: relative;
     padding: 8px 12px;
     padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     background: transparent;
