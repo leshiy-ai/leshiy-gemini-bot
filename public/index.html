@@ -52,7 +52,7 @@
 
         <!-- SUB-HEADERS — настройки каждого режима, заполняются динамически из /api/models -->
         <div class="sub-header active" id="subChat">
-            <div id="chatModels" class="skeleton" style="height:24px;width:200px"></div>
+            <div id="chatModels" class="skeleton" style="height:24px;width:220px"></div>
             <div class="sub-divider"></div>
             <span class="sub-label" style="color:var(--free)">&#10003; Бесплатно</span>
         </div>
@@ -504,16 +504,16 @@
                 </div>
             </div>
 
-            <!-- Свой голос (клонирование) -->
+            <!-- Свой голос (конвертация аудио) -->
             <div class="panel-subsection" id="audioVoiceCloneSection">
                 <div>
-                    <h3>&#127909; Создание своего голоса</h3>
-                    <p>Загрузите образец голоса (от 10 сек), и я озвучу любой текст вашим голосом.</p>
+                    <h3>&#127908; Свой голос</h3>
+                    <p>Загрузите голосовую запись — я конвертирую её в MP3. Бесплатно.</p>
                 </div>
                 <div class="upload-zone" id="voiceCloneZone" onclick="if(!_dropJustHappened)document.getElementById('voiceCloneInput').click()">
-                    <div class="icon">&#127909;</div>
-                    <div class="label">Загрузить образец голоса</div>
-                    <div class="hint">MP3, WAV — от 10 секунд, до 5 МБ</div>
+                    <div class="icon">&#127908;</div>
+                    <div class="label">Загрузить голосовую запись</div>
+                    <div class="hint">OGG, WAV, MP3 — любой формат</div>
                     <input type="file" id="voiceCloneInput" accept="audio/*" style="display:none" onchange="handleVoiceClone(this)">
                 </div>
                 <div class="result-area" id="voiceCloneResult">
@@ -1312,40 +1312,33 @@
             { id: 'Kore', label: '\u2640 Кора', group: 'Female' },
             { id: 'Enceladus', label: '\u2642 Энцеладус', group: 'Male' },
             { id: 'Luna', label: '\u2640 Луна', group: 'Female' },
-            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'WORKERS_AI': [
             { id: 'orpheus', label: '\u2642 Орфей', group: 'Male' },
             { id: 'zeus', label: '\u2642 Зевс', group: 'Male' },
             { id: 'athena', label: '\u2640 Афина', group: 'Female' },
             { id: 'luna', label: '\u2640 Луна', group: 'Female' },
-            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'KIEAI': [
             { id: 'Roger', label: '\u2642 Роджер', group: 'Male' },
             { id: 'Rachel', label: '\u2640 Рейчел', group: 'Female' },
-            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'BOTHUB': [
             { id: 'echo', label: '\u2642 Эхо', group: 'Male' },
             { id: 'nova', label: '\u2640 Нова', group: 'Female' },
-            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'VOICERSS': [
             { id: 'Peter', label: '\u2642 Пётр', group: 'Male' },
             { id: 'Marina', label: '\u2640 Марина', group: 'Female' },
             { id: 'Olga', label: '\u2640 Ольга', group: 'Female' },
-            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'POLLINATIONS': [
             { id: 'Female', label: '\u2640 Женский', group: 'Female' },
             { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
-            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'STABILITY': [
             { id: 'Female', label: '\u2640 Женский', group: 'Female' },
             { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
-            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
     };
     // Дефолтный набор голосов если сервис неизвестен
@@ -2225,7 +2218,7 @@
         const subModesContainer = document.getElementById('imageSubModes');
         subModesContainer.innerHTML = '';
         [
-            { key: 'generate', label: hasRefs ? '✨ Фото&#8594;Изображение' : '📖 Текст&#8594;Изображение', cls: '' },
+            { key: 'generate', label: hasRefs ? '✨ Фото->Изображение' : '📖 Текст->Изображение', cls: '' },
             { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
             { key: 'convert', label: '📦 Конверт', cls: 'free' },
@@ -2317,20 +2310,31 @@
             }
             modelsContainer.appendChild(sel);
         } else if (selected.imageSubMode === 'upscale') {
-            // Показываем выбор модели для апскейла
+            // Показываем выбор модели для апскейла (с группировкой по сервису)
             const upscaleModels = availableModels.image_upscale || [];
             if (upscaleModels.length > 0) {
                 const sel = document.createElement('select');
                 sel.className = 'model-select';
                 sel.value = selected.image_upscale || upscaleModels[0]?.key;
-                sel.onchange = () => { selected.image_upscale = sel.value; saveSelected(); };
+                sel.onchange = () => { selected.image_upscale = sel.value; saveSelected(); renderImageSubHeader(); };
+                const groups = {};
                 upscaleModels.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m.key;
-                    opt.selected = (selected.image_upscale || upscaleModels[0]?.key) === m.key;
-                    opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
-                    sel.appendChild(opt);
+                    const lbl = m.serviceLabel || m.service || 'Другие';
+                    if (!groups[lbl]) groups[lbl] = [];
+                    groups[lbl].push(m);
                 });
+                for (const [grp, models] of Object.entries(groups)) {
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = grp;
+                    models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.key;
+                        opt.selected = (selected.image_upscale || upscaleModels[0]?.key) === m.key;
+                        opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
+                        optgroup.appendChild(opt);
+                    });
+                    sel.appendChild(optgroup);
+                }
                 modelsContainer.appendChild(sel);
             } else {
                 modelsContainer.innerHTML = '<span class="sub-label">2\u00A2 за апскейл</span>';
@@ -2521,13 +2525,24 @@
                 sel.className = 'model-select';
                 sel.value = selected.video_upscale || upscaleModels[0]?.key;
                 sel.onchange = () => { selected.video_upscale = sel.value; saveSelected(); renderVideoSubHeader(); };
+                const groups = {};
                 upscaleModels.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m.key;
-                    opt.selected = (selected.video_upscale || upscaleModels[0]?.key) === m.key;
-                    opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
-                    sel.appendChild(opt);
+                    const lbl = m.serviceLabel || m.service || 'Другие';
+                    if (!groups[lbl]) groups[lbl] = [];
+                    groups[lbl].push(m);
                 });
+                for (const [grp, models] of Object.entries(groups)) {
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = grp;
+                    models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.key;
+                        opt.selected = (selected.video_upscale || upscaleModels[0]?.key) === m.key;
+                        opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
+                        optgroup.appendChild(opt);
+                    });
+                    sel.appendChild(optgroup);
+                }
                 modelsContainer.appendChild(sel);
             } else {
                 modelsContainer.innerHTML = '<span class="sub-label">5\u00A2 за апскейл</span>';
@@ -2686,7 +2701,7 @@
         } else if (selected.audioSubMode === 'convert') {
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         } else if (selected.audioSubMode === 'voice_clone') {
-            modelsContainer.innerHTML = '<span class="sub-label">Клонирование голоса</span>';
+            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         }
     }
 
@@ -2698,14 +2713,17 @@
         if (!descEl) return;
         const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
         const service = model?.service || '';
+        const serviceLabel = model?.serviceLabel || service;
         const descMap = {
             'VOICERSS': 'VoiceRSS — бесплатно, без авторизации.',
-            'WORKERS_AI': 'Cloudflare Workers AI — озвучка текста.',
-            'GEMINI': 'Gemini TTS — генерация речи через ИИ.',
-            'KIEAI': 'Kie.AI — качественная озвучка текста.',
-            'BOTHUB': 'BotHub — озвучка текста.',
+            'WORKERS_AI': 'Cloudflare Workers AI — озвучка текста через нейросеть.',
+            'GEMINI': 'Gemini TTS — генерация речи через Google ИИ.',
+            'KIEAI': 'Kie.AI (ElevenLabs) — качественная озвучка текста.',
+            'BOTHUB': 'BotHub (OpenAI) — озвучка текста.',
+            'POLLINATIONS': 'Pollinations — озвучка текста.',
         };
-        descEl.textContent = descMap[service] || 'Озвучка текста через ИИ.';
+        const desc = descMap[service] || 'Озвучка текста через ИИ.';
+        descEl.textContent = serviceLabel ? serviceLabel + '. ' + desc : desc;
     }
 
     function switchVideoSubMode(mode) {
@@ -2789,8 +2807,8 @@
 
     function updateAudioPlaceholder() {
         if (currentMode === 'audio') {
-            const ph = { tts: 'Введите текст для озвучки...', stt: 'Загрузите аудиофайл выше', convert: 'Загрузите аудиофайл выше', voice_clone: 'Введите текст для озвучки вашим голосом...' };
-            const hints = { tts: 'VoiceRSS — бесплатно без авторизации', stt: 'Распознавание речи — бесплатно', convert: 'Конвертация — бесплатно', voice_clone: 'Клонирование голоса' };
+            const ph = { tts: 'Введите текст для озвучки...', stt: 'Загрузите аудиофайл выше', convert: 'Загрузите аудиофайл выше', voice_clone: 'Нажмите отправить для конвертации в MP3' };
+            const hints = { tts: 'VoiceRSS — бесплатно без авторизации', stt: 'Распознавание речи — бесплатно', convert: 'Конвертация — бесплатно', voice_clone: 'Конвертация аудио — бесплатно' };
             userInput.placeholder = ph[selected.audioSubMode] || 'Введите текст...';
             inputHint.textContent = hints[selected.audioSubMode] || '';
         }
@@ -5074,9 +5092,8 @@
         } else if (selected.audioSubMode === 'convert') {
             await executeAudioConvert();
         } else if (selected.audioSubMode === 'voice_clone') {
-            if (!voiceCloneSample) { showToast('Сначала загрузите образец голоса', 'info'); return; }
-            if (!text) { showToast('Введите текст для озвучки', 'info'); return; }
-            await generateVoiceClone(text);
+            if (!voiceCloneSample) { showToast('Сначала загрузите голосовую запись', 'info'); return; }
+            await generateVoiceClone();
         }
     }
 
@@ -5111,7 +5128,7 @@
                 body: JSON.stringify({
                     mode: 'audio',
                     auth: getAuth(),
-                    payload: { text, model: selected.audio_tts, voice: selected.voice, audio_mode: 'tts', ...(selected.voice === 'user_voice' && voiceCloneSample ? { voice_sample: voiceCloneSample } : {}) }
+                    payload: { text, model: selected.audio_tts, voice: selected.voice, audio_mode: 'tts' }
                 })
             });
 
@@ -5330,13 +5347,13 @@
             // Показываем превью загруженного файла
             const previewUrl = URL.createObjectURL(file);
             resultArea.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px">' +
-                '<span style="font-size:24px">&#127909;</span>' +
-                '<div><div style="color:var(--success);font-size:13px;font-weight:600">&#10003; Образец голоса загружен</div>' +
+                '<span style="font-size:24px">&#127908;</span>' +
+                '<div><div style="color:var(--success);font-size:13px;font-weight:600">&#10003; Аудиозапись загружена</div>' +
                 '<div style="color:var(--text-muted);font-size:11px">' + file.name + '</div></div>' +
                 '<button onclick="removeVoiceClone()" style="margin-left:auto;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3);color:var(--danger);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:11px">Удалить</button>' +
                 '</div>' +
-                '<div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">Теперь введите текст ниже и нажмите отправить — я озвучу его этим голосом.</div>';
-            showToast('Образец голоса загружен!', 'success');
+                '<div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">Нажмите отправить — я сконвертирую в MP3.</div>';
+            showToast('Аудиозапись загружена!', 'success');
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка: ' + err.message, 'error');
@@ -5347,13 +5364,13 @@
     function removeVoiceClone() {
         voiceCloneSample = null;
         const cloneResult = document.getElementById('voiceCloneResult');
-        if (cloneResult) cloneResult.innerHTML = '<span class="result-placeholder">Сначала загрузите образец голоса</span>';
+        if (cloneResult) cloneResult.innerHTML = '<span class="result-placeholder">Загрузите голосовую запись</span>';
         // Reset the voice clone upload zone
         const cloneZone = document.getElementById('voiceCloneZone');
         if (cloneZone) {
-            cloneZone.innerHTML = '<div class="icon">&#127909;</div>' +
-                '<div class="label">Загрузить образец голоса</div>' +
-                '<div class="hint">MP3, WAV — от 10 секунд, до 5 МБ</div>' +
+            cloneZone.innerHTML = '<div class="icon">&#127908;</div>' +
+                '<div class="label">Загрузить голосовую запись</div>' +
+                '<div class="hint">OGG, WAV, MP3 — любой формат</div>' +
                 '<input type="file" id="voiceCloneInput" accept="audio/*" style="display:none" onchange="handleVoiceClone(this)">';
             cloneZone.onclick = function() { if(!_dropJustHappened) document.getElementById('voiceCloneInput').click(); };
         }
@@ -5377,8 +5394,8 @@
             if (zone) {
                 const previewUrl = URL.createObjectURL(file);
                 zone.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:4px">' +
-                    '<span style="font-size:24px">&#127909;</span>' +
-                    '<div><div style="color:var(--success);font-size:13px;font-weight:600">&#10003; Образец голоса загружен</div>' +
+                    '<span style="font-size:24px">&#127908;</span>' +
+                    '<div><div style="color:var(--success);font-size:13px;font-weight:600">&#10003; Аудиозапись загружена</div>' +
                     '<div style="color:var(--text-muted);font-size:11px">' + file.name + '</div></div>' +
                     '<audio src="' + previewUrl + '" controls style="height:28px;margin-left:auto"></audio>' +
                     '<button onclick="removeVoiceClone();renderAudioSubHeader()" style="margin-left:4px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3);color:var(--danger);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:11px">Убрать</button>' +
@@ -5386,15 +5403,15 @@
                     '<input type="file" id="voiceCloneInput" accept="audio/*" style="display:none" onchange="handleVoiceClone(this)">';
                 zone.onclick = function() { if(!_dropJustHappened) document.getElementById('voiceCloneInput').click(); };
             }
-            showToast('Образец голоса загружен! Теперь введите текст для озвучки.', 'success');
+            showToast('Аудиозапись загружена! Нажмите отправить для конвертации.', 'success');
         } catch (err) {
-            showToast('Ошибка загрузки образца: ' + err.message, 'error');
+            showToast('Ошибка загрузки: ' + err.message, 'error');
         }
         input.value = '';
     }
 
     async function generateVoiceClone(text) {
-        if (!checkAuth(10)) return;
+        if (!voiceCloneSample) { showToast('Сначала загрузите образец голоса', 'info'); return; }
 
         isProcessing = true;
         sendBtn.disabled = true;
@@ -5402,9 +5419,12 @@
         autoResize(userInput);
 
         const resultArea = document.getElementById('voiceCloneResult');
-        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Озвучиваю вашим голосом...</span>';
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Конвертирую ваш голос в MP3...</span>';
 
         try {
+            // Свой голос работает как в боте: конвертируем загруженное аудио в MP3
+            // через бэкенд (как Audio Convert), а не через TTS с voice_clone
+            const srcFormat = (voiceCloneSample.name || '').split('.').pop().toLowerCase() || 'ogg';
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -5412,40 +5432,26 @@
                     mode: 'audio',
                     auth: getAuth(),
                     payload: {
-                        text: text,
-                        audio_mode: 'voice_clone',
-                        voice_sample: voiceCloneSample.base64,
-                        voice_sample_name: voiceCloneSample.name,
-                        model: selected.audio_tts
+                        audio_base64: voiceCloneSample.base64,
+                        audio_mode: 'convert',
+                        source_format: srcFormat,
+                        target_format: 'mp3'
                     }
                 })
             });
 
-            if (!response.ok) throw new Error('Ошибка клонирования голоса');
-            const contentType = response.headers.get('Content-Type') || '';
-
-            if (contentType.includes('application/json')) {
-                const data = await response.json();
-                if (!data.success) throw new Error(data.error || 'Ошибка клонирования');
-                const audioContent = data.data?.content;
-                if (audioContent) {
-                    const audioSrc = audioContent.startsWith('http') ? audioContent : 'data:audio/mp3;base64,' + audioContent;
-                    resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '" type="audio/mp3"></audio><br><a href="' + audioSrc + '" download="voice_clone.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
-                } else throw new Error('Сервер не вернул аудио');
-                if (data.credits_left !== undefined) credits = data.credits_left;
-                updateCreditsDisplay();
-                showToast('Голос клонирован!', 'success');
-            } else {
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio><br><span style="color:var(--text-muted);font-size:11px">&#127909; Озвучено вашим голосом</span>';
-                showToast('Голос клонирован!', 'success');
-            }
+            if (!response.ok) throw new Error('Ошибка конвертации голоса');
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error || 'Ошибка конвертации');
+            const audioContent = data.data?.content;
+            if (audioContent) {
+                const audioSrc = audioContent.startsWith('http') ? audioContent : 'data:audio/mp3;base64,' + audioContent;
+                resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '" type="audio/mp3"></audio><br><a href="' + audioSrc + '" download="my_voice.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
+                showToast('Голос сконвертирован!', 'success');
+            } else throw new Error('Сервер не вернул аудио');
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка: ' + err.message, 'error');
-            userInput.value = text;
-            autoResize(userInput);
         }
 
         isProcessing = false;

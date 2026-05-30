@@ -625,10 +625,23 @@ async function handleImage(auth, payload, env, monolith) {
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const imageBuffer = Buffer.from(payload.image_base64, 'base64');
-                const response = await fetch(`${baseUrl}/rotate?angle=${angle}`, {
+                // Converter expects multipart/form-data for rotate-image
+                const boundary = '----FormBoundary' + Date.now().toString(36);
+                const bodyParts = [
+                    '--' + boundary,
+                    'Content-Disposition: form-data; name="image"; filename="input.png"',
+                    'Content-Type: image/png',
+                    '',
+                    ''
+                ];
+                const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
+                const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
+                const fullBody = Buffer.concat([headerBytes, imageBuffer, footerBytes]);
+
+                const response = await fetch(`${baseUrl}/rotate-image?angle=${angle}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/octet-stream' },
-                    body: imageBuffer
+                    headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+                    body: fullBody
                 });
                 if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
                 const resultBuffer = Buffer.from(await response.arrayBuffer());
@@ -1149,10 +1162,23 @@ async function handleVideo(auth, payload, env, monolith) {
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const videoBuffer = Buffer.from(payload.video_base64, 'base64');
+                // Converter expects multipart/form-data for rotate-video
+                const boundary = '----FormBoundary' + Date.now().toString(36);
+                const bodyParts = [
+                    '--' + boundary,
+                    'Content-Disposition: form-data; name="video"; filename="input.mp4"',
+                    'Content-Type: video/mp4',
+                    '',
+                    ''
+                ];
+                const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
+                const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
+                const fullBody = Buffer.concat([headerBytes, videoBuffer, footerBytes]);
+
                 const response = await fetch(`${baseUrl}/rotate-video?angle=${angle}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/octet-stream' },
-                    body: videoBuffer
+                    headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+                    body: fullBody
                 });
                 if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
                 const resultBuffer = Buffer.from(await response.arrayBuffer());
