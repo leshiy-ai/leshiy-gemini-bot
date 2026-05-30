@@ -1342,7 +1342,7 @@ async function handleAudio(auth, payload, env, monolith) {
     // === CONVERT (бесплатно через конвертер) ===
     if (audioMode === 'convert') {
         if (!payload.audio_base64) return formatResponse(false, 'Нет аудиофайла для конвертации');
-        const targetFormat = payload.target_format || 'mp3';
+        const targetFormat = (payload.target_format || 'mp3').toLowerCase();
         const sourceFormat = (payload.source_format || '').toLowerCase();
 
         try {
@@ -1354,32 +1354,44 @@ async function handleAudio(auth, payload, env, monolith) {
             let endpoint = null;
             let fieldName = 'audio';
 
-            if (sourceFormat === 'ogg' || sourceFormat === 'opus') {
-                endpoint = '/ogg2mp3';
-            } else if (sourceFormat === 'wav') {
-                endpoint = '/wav2mp3';
-            } else if (sourceFormat === 'pcm') {
-                // PCM → MP3: raw binary body + query params
-                const sampleRate = payload.sample_rate || '24000';
-                const channels = payload.channels || '1';
-                const pcmFormat = payload.pcm_format || 's16le';
-                const response = await fetch(`${baseUrl}/pcm2mp3?sampleRate=${sampleRate}&channels=${channels}&format=${pcmFormat}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/octet-stream' },
-                    body: audioBuffer
-                });
-                if (!response.ok) throw new Error('Конвертер вернул ' + response.status);
-                const resultBuffer = Buffer.from(await response.arrayBuffer());
-                return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
+            // Determine endpoint based on source and target format
+            // Converter supports: ogg2mp3, wav2mp3, pcm2mp3, and generic ffmpeg conversion
+            if (targetFormat === 'mp3') {
+                if (sourceFormat === 'ogg' || sourceFormat === 'opus') {
+                    endpoint = '/ogg2mp3';
+                } else if (sourceFormat === 'wav') {
+                    endpoint = '/wav2mp3';
+                } else if (sourceFormat === 'pcm') {
+                    const sampleRate = payload.sample_rate || '24000';
+                    const channels = payload.channels || '1';
+                    const pcmFormat = payload.pcm_format || 's16le';
+                    const response = await fetch(`${baseUrl}/pcm2mp3?sampleRate=${sampleRate}&channels=${channels}&format=${pcmFormat}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/octet-stream' },
+                        body: audioBuffer
+                    });
+                    if (!response.ok) throw new Error('Конвертер вернул ' + response.status);
+                    const resultBuffer = Buffer.from(await response.arrayBuffer());
+                    return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
+                } else {
+                    // Try ogg2mp3 as default fallback — most audio can be read as ogg-compatible
+                    endpoint = '/ogg2mp3';
+                }
+            } else if (targetFormat === 'wav' || targetFormat === 'ogg' || targetFormat === 'flac') {
+                // For non-mp3 targets: first convert to mp3, then let ffmpeg handle the rest
+                // Use the generic convert endpoint if available, otherwise convert to mp3 first
+                // The converter's /convert endpoint supports arbitrary format conversion
+                endpoint = '/convert?outputFormat=' + encodeURIComponent(targetFormat);
             } else {
-                // По умолчанию — пробуем ogg2mp3 (самый частый кейс для Telegram)
+                // Default: ogg2mp3
                 endpoint = '/ogg2mp3';
             }
 
             // Multipart/form-data
             const boundary = '----FormBoundary' + Date.now().toString(36);
             const fileName = 'input.' + (sourceFormat || 'ogg');
-            const fileMime = sourceFormat === 'wav' ? 'audio/wav' : 'audio/ogg';
+            const mimeMap = { wav: 'audio/wav', mp3: 'audio/mpeg', ogg: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac', m4a: 'audio/mp4', aac: 'audio/aac' };
+            const fileMime = mimeMap[sourceFormat] || 'audio/ogg';
             const bodyParts = [
                 '--' + boundary,
                 'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
@@ -1391,12 +1403,29 @@ async function handleAudio(auth, payload, env, monolith) {
             const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
             const fullBody = Buffer.concat([headerBytes, audioBuffer, footerBytes]);
 
+            console.log(`[WebHandler] Audio convert: ${sourceFormat || 'auto'} → ${targetFormat}, endpoint: ${endpoint}`);
+
             const response = await fetch(`${baseUrl}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
                 body: fullBody
             });
-            if (!response.ok) throw new Error('Конвертер вернул ' + response.status);
+            if (!response.ok) {
+                // If the /convert endpoint failed, fallback to ogg2mp3 for mp3 target
+                if (endpoint !== '/ogg2mp3' && targetFormat === 'mp3') {
+                    console.log('[WebHandler] Audio convert: fallback to ogg2mp3');
+                    const fallbackBody = Buffer.concat([headerBytes, audioBuffer, footerBytes]);
+                    const fallbackResp = await fetch(`${baseUrl}/ogg2mp3`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+                        body: fallbackBody
+                    });
+                    if (!fallbackResp.ok) throw new Error('Конвертер вернул ' + fallbackResp.status);
+                    const resultBuffer = Buffer.from(await fallbackResp.arrayBuffer());
+                    return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
+                }
+                throw new Error('Конвертер вернул ' + response.status);
+            }
             const resultBuffer = Buffer.from(await response.arrayBuffer());
             return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
         } catch (e) {

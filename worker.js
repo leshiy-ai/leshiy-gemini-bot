@@ -4464,13 +4464,17 @@ async function callGeminiText2Image(config, prompt, envData) {
     // ДОБАВЛЯЕМ МАГИЧЕСКУЮ ФРАЗУ К ПРОМПТУ
     const finalPrompt = `Сгенерируй изображение по этому описанию: ${prompt}`;
 
-    // ✅ КОРРЕКТНЫЙ BODY ПО ИНСТРУКЦИИ
+    // ✅ КОРРЕКТНЫЙ BODY: responseModalities обязателен для генерации изображений!
+    // Без "IMAGE" Gemini вернёт только текст, без inlineData
     const body = {
         "contents": [{
             "parts": [
                 {"text": finalPrompt}
             ]
-        }]
+        }],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        }
     };
 
     try {
@@ -4491,12 +4495,29 @@ async function callGeminiText2Image(config, prompt, envData) {
             throw new Error(`Gemini T2I Error (${model}): ${data.error.message} | 🌐 Sent URL: ${url}`); 
         }
 
-        // 🖼️ ИЗВЛЕЧЕНИЕ РЕЗУЛЬТАТА: Та же структура, что и в чате/мультимодальном ответе
-        const base64Image = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        // 🖼️ ИЗВЛЕЧЕНИЕ РЕЗУЛЬТАТА: С responseModalities ["TEXT","IMAGE"] Gemini может вернуть
+        // несколько parts: parts[0]=текст, parts[1]=изображение. Ищем inlineData во всех parts.
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        let base64Image = null;
+        for (const part of parts) {
+            if (part.inlineData?.data) {
+                base64Image = part.inlineData.data;
+                console.log(`[Gemini T2I] Found image inlineData, mimeType: ${part.inlineData.mimeType || 'unknown'}`);
+                break;
+            }
+        }
 
         if (!base64Image) {
-            const feedback = JSON.stringify(data.promptFeedback || data.error);
-            throw new Error(`Gemini не вернул изображение (Base64). Ответ API: ${feedback.substring(0, 100)}... | 🌐 Sent URL: ${url}`);
+            // Логируем полный ответ для дебага
+            const safeParts = JSON.stringify(parts.map(p => ({
+                type: p.text ? 'text' : p.inlineData ? 'inlineData' : Object.keys(p).join(','),
+                textLen: p.text?.length,
+                dataLen: p.inlineData?.data?.length,
+                mimeType: p.inlineData?.mimeType
+            })));
+            console.error(`[Gemini T2I] No image data found. Parts: ${safeParts}`);
+            const feedback = JSON.stringify(data.promptFeedback || data.error || 'no candidates');
+            throw new Error(`Gemini не вернул изображение (Base64). Parts: ${safeParts.substring(0, 100)}. API: ${feedback.substring(0, 100)}... | 🌐 Sent URL: ${url}`);
         }
 
         // =========================================================================
@@ -5918,24 +5939,29 @@ async function callBotHubText2ImgDalle(config, prompt, envData) {
     // Используем T2I endpoint BotHub
     const url = `${BASE_URL}/images/generations`; 
     
-    const body = JSON.stringify({
+    const bodyObj = {
         model: MODEL,
         prompt: prompt,
         n: 1,
         size: config.SIZE || "1024x1024"
-        // ✅ КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Запрашиваем URL, так как BotHub не возвращает b64_json по умолчанию
-        //response_format: "url" 
-    });
+    };
 
-    // 1. ВЫЗОВ BOT-HUB API
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${API_KEY}`
-        },
-        body: body,
-    });
+    // 1. ВЫЗОВ BOT-HUB API — через sendAiRequest (с прокси-фоллбэком)
+    let response;
+    try {
+        response = await sendAiRequest(bodyObj, url, config, envData);
+    } catch (proxyErr) {
+        // Если все прокси отказали — пробуем напрямую
+        console.warn(`[DALL-E] Proxy failed: ${proxyErr.message}, trying direct...`);
+        response = await fetch(url, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${API_KEY}`
+            },
+            body: JSON.stringify(bodyObj),
+        });
+    }
     
     if (!response.ok) {
         const errorText = await response.text();
@@ -5943,17 +5969,35 @@ async function callBotHubText2ImgDalle(config, prompt, envData) {
     }
 
     const data = await response.json();
+    // Проверяем наличие b64_json (некоторые API возвращают base64 напрямую)
+    const b64Json = data?.data?.[0]?.b64_json;
+    if (b64Json) {
+        console.log(`[DALL-E] Got b64_json, length: ${b64Json.length}`);
+        const uint8Array = base64ToUint8Array(b64Json);
+        return uint8Array.buffer;
+    }
     const imageUrl = data?.data?.[0]?.url; // Получаем URL изображения
     
     if (!imageUrl) {
         throw new Error("DALL-E-3 вернул успешный ответ, но отсутствует URL изображения.");
     }
     
-    // 2. ЗАГРУЗКА ИЗОБРАЖЕНИЯ ПО URL
-    const imageResponse = await fetch(imageUrl);
+    // 2. ЗАГРУЗКА ИЗОБРАЖЕНИЯ ПО URL — с прокси-фоллбэком
+    let imageResponse;
+    try {
+        imageResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(30000) });
+    } catch (e) {
+        // Прямой fetch не удался — пробуем через прокси
+        console.warn(`[DALL-E] Direct image download failed: ${e.message}, trying proxy...`);
+        try {
+            imageResponse = await sendAiRequest({ _download: imageUrl }, imageUrl, config, envData);
+        } catch (proxyErr) {
+            throw new Error(`Не удалось скачать изображение DALL-E (прямой: ${e.message}, прокси: ${proxyErr.message})`);
+        }
+    }
 
     if (!imageResponse.ok) {
-        throw new Error(`Ошибка загрузки изображения по URL (${imageResponse.status}).`);
+        throw new Error(`Ошибка загрузки изображения DALL-E по URL (${imageResponse.status}).`);
     }
 
     // Возвращаем бинарные данные (ArrayBuffer)
@@ -6708,20 +6752,26 @@ async function callPollinationsVision(config, imageBuffer, envData) {
         throw new Error(`Pollinations API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
     }
 
-    // 1. Конвертация в Base64 (используем твой метод)
-    const imageBase64 = Buffer.from(imageBuffer).toString('base64');
-    const dataUrl = `data:image/jpeg;base64,${imageBase64}`;
+    // 1. Конвертация в Base64
+    const imageBase64 = Buffer.isBuffer(imageBuffer) ? imageBuffer.toString('base64') : Buffer.from(imageBuffer).toString('base64');
+    // Определяем MIME-тип по сигнатуре файла
+    const buf = Buffer.isBuffer(imageBuffer) ? imageBuffer : Buffer.from(imageBuffer);
+    let mimeType = 'image/jpeg'; // по умолчанию
+    if (buf[0] === 0x89 && buf[1] === 0x50) mimeType = 'image/png';
+    else if (buf[0] === 0x52 && buf[1] === 0x49) mimeType = 'image/webp';
+    else if (buf[0] === 0x47 && buf[1] === 0x49) mimeType = 'image/gif';
+    const dataUrl = `data:${mimeType};base64,${imageBase64}`;
 
     // 2. Формирование OpenAI-совместимого запроса
     const url = `${BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/'}v1/chat/completions`;
 
-    // Твой специфический промпт для фотореставратора
-    const userPrompt = "На основе присланного изображения, сгенерируй ОЧЕНЬ ПОДРОБНЫЙ, но не более 750 символов, точный и буквальный промпт на РУССКОМ языке для нейросети для генерации изображения. ТОЧНО ВОСПРОИЗВЕДИ сцену, но в высоком разрешении и цвете. Сохрани СТРОГО ту же КОМПОЗИЦИЮ и ракурс. Используй художественный стиль 'фотореалистичная иллюстрация' или 'картина'. Добавь в конец: 'высокая детализация, шедевр, студийное освещение'.";
+    // Промпт для описания изображения
+    const userPrompt = "Опиши это изображение подробно на русском языке. Расскажи что на нём изображено, опиши детали, цвета, композицию, атмосферу.";
 
     const body = {
         model: config.MODEL || "gemini-fast",
         messages: [
-            { role: "system", content: "Действуй как 'Фотореставратор'. Общение СТРОГО на РУССКОМ языке." },
+            { role: "system", content: "Ты — AI-ассистент. Отвечай на русском языке. Подробно описывай изображения." },
             {
                 role: "user",
                 content: [
@@ -6831,14 +6881,18 @@ async function callVoiceRSSTextToAudio(config, text, envData, requestedVoice) {
     const VOICE_MALE = 'Male';
     const VOICE_FEMALE = 'Female';
     
-    // 1. Карта соответствия голосов
+    // 1. Карта соответствия голосов — поддерживает как универсальные (Male/Female),
+    // так и конкретные имена VoiceRSS (Peter, Marina, Olga)
     const voiceMap = {
-        [VOICE_MALE]: 'Peter', // Мужской голос
-        [VOICE_FEMALE]: 'Olga'  // Женский голос
+        'Male': 'Peter',
+        'Female': 'Olga',
+        'Peter': 'Peter',
+        'Marina': 'Marina',
+        'Olga': 'Olga'
     };
-    
-    // 2. Определяем имя голоса для API (используем Peter по умолчанию)
-    const apiVoiceName = voiceMap[requestedVoice] || voiceMap[VOICE_MALE]; 
+
+    // 2. Определяем имя голоса для API (по умолчанию Peter)
+    const apiVoiceName = voiceMap[requestedVoice] || requestedVoice || 'Peter'; 
     
     // 3. Получение API-ключа
     const apiKey = envData[config.API_KEY]; 
