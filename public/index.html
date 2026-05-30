@@ -2936,7 +2936,8 @@
                         handleImageRef(0, input);
                     }
                 } else if (currentMode === 'video') {
-                    if (selected.videoSubMode === 'convert') {
+                    if (selected.videoSubMode === 'convert' || fileType === 'image/gif') {
+                        // Video convert: accept GIF as well (GIF→MP4)
                         handleMediaConvertUpload(input);
                     } else {
                         // In video mode, image → i2v
@@ -2996,11 +2997,9 @@
                         if (selected.voice === 'user_voice') {
                             handleTTSSampleUpload(input);
                         } else {
-                            // Auto-switch to user_voice so the dropped file goes to TTS sample zone
-                            selected.voice = 'user_voice';
-                            saveSelected();
-                            renderAudioSubHeader();
-                            handleTTSSampleUpload(input);
+                            // In TTS mode with a standard voice: add audio as chat attachment
+                            // (user can then use it as reference by dragging into TTS sample zone)
+                            processChatFiles(files);
                         }
                     } else if (selected.audioSubMode === 'stt') {
                         handleAudioUpload(input);
@@ -3011,6 +3010,9 @@
                         switchAudioSubMode('stt');
                         handleAudioUpload(input);
                     }
+                } else if (currentMode === 'chat') {
+                    // In chat mode: add audio as attachment
+                    processChatFiles(files);
                 } else if (currentMode === 'video') {
                     // Audio in video mode → a2v
                     selected.videoSubMode = 'a2v';
@@ -3018,12 +3020,8 @@
                     switchVideoSubMode('a2v');
                     handleVideoRef('audio', input);
                 } else {
-                    // ✅ В ЛЮБОМ другом режиме (включая чат, картинки) — переключаемся в аудио STT
-                    switchMode('audio');
-                    selected.audioSubMode = 'stt';
-                    renderAudioSubHeader();
-                    switchAudioSubMode('stt');
-                    handleAudioUpload(input);
+                    // In any other mode → add as chat attachment (not auto-switch to STT)
+                    processChatFiles(files);
                 }
             } else {
                 // Other files → chat (vision/document analysis)
@@ -5829,17 +5827,22 @@
             document.getElementById('mediaConvertFormat').style.display = 'block';
 
             // Определяем категорию и исходный формат
+            const ext = file.name.split('.').pop().toLowerCase();
             if (file.type.startsWith('video/')) {
                 convertFileCategory = 'video';
-                convertFileSrcFormat = file.name.split('.').pop().toLowerCase();
+                convertFileSrcFormat = ext;
             } else if (file.type.startsWith('audio/')) {
                 convertFileCategory = 'audio';
-                convertFileSrcFormat = file.name.split('.').pop().toLowerCase();
+                convertFileSrcFormat = ext;
+            } else if (file.type === 'image/gif' || ext === 'gif') {
+                // GIF files should be treated as video for conversion purposes (GIF→MP4)
+                convertFileCategory = 'video';
+                convertFileSrcFormat = 'gif';
             } else {
                 convertFileCategory = 'image';
-                convertFileSrcFormat = file.name.split('.').pop().toLowerCase();
+                convertFileSrcFormat = ext;
                 // Если тип неизвестен, проверяем по расширению
-                if (!file.type && (convertFileSrcFormat === 'heic' || convertFileSrcFormat === 'heif')) {
+                if (!file.type && (ext === 'heic' || ext === 'heif')) {
                     convertFileCategory = 'image';
                 }
             }
@@ -6139,22 +6142,75 @@
         container.innerHTML = '';
         if (infoEl) infoEl.textContent = 'Оригинал: ' + origW + '×' + origH;
 
-        // Find closest preset to current height
-        let closestKey = currentResVar;
+        // Smart presets: group into smaller / original / larger like Telegram bot
+        // Find the closest preset to original height
+        let closestIdx = 0;
         let minDiff = Infinity;
-        RESOLUTION_PRESETS.forEach(p => {
+        RESOLUTION_PRESETS.forEach((p, idx) => {
             if (Math.abs(p.height - origH) < minDiff) {
                 minDiff = Math.abs(p.height - origH);
-                closestKey = p.key;
+                closestIdx = idx;
             }
         });
 
-        RESOLUTION_PRESETS.forEach(p => {
+        // Find the nearest preset that is SMALLER than original (or equal)
+        let smallerIdx = closestIdx;
+        while (smallerIdx > 0 && RESOLUTION_PRESETS[smallerIdx].height > origH) smallerIdx--;
+        // Find the nearest preset that is LARGER than original
+        let largerIdx = closestIdx;
+        while (largerIdx < RESOLUTION_PRESETS.length - 1 && RESOLUTION_PRESETS[largerIdx].height < origH) largerIdx++;
+
+        // Build smart option set: a few smaller, original, a few larger
+        const options = [];
+        // Add 2-3 smaller options
+        for (let i = Math.max(0, smallerIdx - 2); i <= smallerIdx; i++) {
+            const p = RESOLUTION_PRESETS[i];
+            if (p.height <= origH && !options.find(o => o.key === p.key)) {
+                options.push({ ...p, category: 'smaller' });
+            }
+        }
+        // Add "original" marker (closest to current)
+        const origPreset = RESOLUTION_PRESETS[closestIdx];
+        if (!options.find(o => o.key === origPreset.key)) {
+            options.push({ ...origPreset, category: 'original' });
+        }
+        // Add 2-3 larger options
+        for (let i = largerIdx; i <= Math.min(RESOLUTION_PRESETS.length - 1, largerIdx + 2); i++) {
+            const p = RESOLUTION_PRESETS[i];
+            if (p.height >= origH && !options.find(o => o.key === p.key)) {
+                options.push({ ...p, category: 'larger' });
+            }
+        }
+
+        // If we still have too few options, add from the full list
+        if (options.length < 3) {
+            RESOLUTION_PRESETS.forEach(p => {
+                if (!options.find(o => o.key === p.key)) {
+                    options.push({ ...p, category: p.height < origH ? 'smaller' : p.height > origH ? 'larger' : 'original' });
+                }
+            });
+        }
+
+        // Sort by height
+        options.sort((a, b) => a.height - b.height);
+
+        // Render with category labels
+        let lastCat = null;
+        const catLabels = { smaller: '👇 Меньше', original: '👌 Оригинал', larger: '☝️ Больше' };
+        options.forEach(p => {
+            if (p.category !== lastCat) {
+                const label = document.createElement('div');
+                label.style.cssText = 'font-size:11px;color:var(--text-muted);margin:6px 0 2px;font-weight:600';
+                label.textContent = catLabels[p.category] || '';
+                container.appendChild(label);
+                lastCat = p.category;
+            }
             const btn = document.createElement('button');
-            btn.className = 'size-option' + (p.key === closestKey ? ' active' : '');
-            // Calculate resulting width based on aspect ratio
+            const isActive = p.height === origPreset.height || p.key === currentResVar;
+            btn.className = 'size-option' + (isActive ? ' active' : '');
             const calcW = Math.round(origW * p.height / origH);
-            btn.textContent = p.key + ' (' + calcW + '×' + p.height + ')';
+            const sizeLabel = p.height === origPreset.height ? ' (ориг.)' : '';
+            btn.textContent = p.key + ' (' + calcW + '×' + p.height + ')' + sizeLabel;
             btn.title = 'Высота: ' + p.height + 'px, ширина: ' + calcW + 'px';
             btn.onclick = () => {
                 container.querySelectorAll('.size-option').forEach(b => b.classList.remove('active'));
@@ -6164,8 +6220,8 @@
             container.appendChild(btn);
         });
 
-        // Set the initial resolution
-        setter(closestKey);
+        // Set the initial resolution to closest preset
+        setter(origPreset.key);
     }
 
     // ---- RESIZE (Картинки — бесплатно) ----
@@ -7922,11 +7978,8 @@
                         if (selected.voice === 'user_voice') {
                             handleTTSSampleUpload(input);
                         } else {
-                            // Auto-switch to user_voice so the dropped file goes to TTS sample zone
-                            selected.voice = 'user_voice';
-                            saveSelected();
-                            renderAudioSubHeader();
-                            handleTTSSampleUpload(input);
+                            // In TTS mode with standard voice: add as chat attachment
+                            processChatFiles(files);
                         }
                     } else if (selected.audioSubMode === 'stt') {
                         handleAudioUpload(input);
@@ -7936,18 +7989,17 @@
                         switchAudioSubMode('stt');
                         handleAudioUpload(input);
                     }
+                } else if (currentMode === 'chat') {
+                    // In chat mode: add audio as attachment
+                    processChatFiles(files);
                 } else if (currentMode === 'video') {
                     selected.videoSubMode = 'a2v';
                     renderVideoSubHeader();
                     switchVideoSubMode('a2v');
                     handleVideoRef('audio', input);
                 } else {
-                    // ✅ В любом режиме (включая чат) — переключаемся в аудио STT
-                    switchMode('audio');
-                    selected.audioSubMode = 'stt';
-                    renderAudioSubHeader();
-                    switchAudioSubMode('stt');
-                    handleAudioUpload(input);
+                    // In any other mode → add as chat attachment (not auto-switch to STT)
+                    processChatFiles(files);
                 }
             } else {
                 // Other files → chat (vision/document analysis)
