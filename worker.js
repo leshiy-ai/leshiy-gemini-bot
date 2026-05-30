@@ -3787,7 +3787,7 @@ async function generateAdminMessage(currentEnvData, kieAiBalance, BothubBalance)
 💰 **Платные сервисы:**
 \`TELEGRAM\` : ⭐️ **${starBalance}** ${starWord}
 KIE.AI : **${kieAiBalance}**
-Pollinations : **${pollinationsBalance}**
+Pollinations.ai : **${pollinationsBalance}**
 BotHub.ru : ${BothubBalance}
 
 Доступность опций:
@@ -8233,6 +8233,11 @@ async function processAdminStartCommand(adminChatId, envData) {
     // --- 1. ПРИМЕНЕНИЕ СКЛОНЕНИЯ ---
     const starWord = pluralize(starBalance, STAR_FORMS); // Падеж для звёзд
 
+    // 2. 🌟 ПОЛУЧАЕМ БАЛАНС POLLINATIONS 🌟
+    // Берём ключ из переменных окружения воркера
+    const pollinationsApiKey = currentEnvData.POLLINATIONS_API_KEY; 
+    const pollinationsBalance = await getPollinationsBalance(pollinationsApiKey);
+
     // --- 4. ФОРМИРОВАНИЕ ТЕКСТА И ОТПРАВКА ---
     const debugStatus = DEBUG_ENABLED ? '✅ ВКЛЮЧЕНА' : '❌ ВЫКЛЮЧЕНА';
     const photoStatus = PHOTO_ENABLED ? '✅ ВКЛЮЧЕНО' : '❌ ВЫКЛЮЧЕНО';
@@ -8247,6 +8252,7 @@ async function processAdminStartCommand(adminChatId, envData) {
 💰 **Платные сервисы:**
 \`TELEGRAM\` : ⭐️ **${starBalance}** ${starWord}
 KIE.AI : **${kieAiBalance}**
+Pollinations.ai : **${pollinationsBalance}**
 BotHub.ru : ${BothubBalance}
 
 Доступность опций:
@@ -11257,9 +11263,16 @@ async function getPollinationsBalance(apiKey) {
         }
 
         const data = await response.json();
-        // Если API возвращает JSON вида { balance: 12345 } или аналогичный:
-        // (Если там возвращается просто число, замени на: return data;)
-        return data.balance !== undefined ? data.balance : JSON.stringify(data);
+        const rawBalance = data.balance !== undefined ? data.balance : data;
+
+        const numericBalance = Number(rawBalance);
+        if (!isNaN(numericBalance)) {
+            // 🌟 ЖЕСТКОЕ ОТСЕКАНИЕ ДО 4 ЗНАКОВ БЕЗ ОКРУГЛЕНИЯ 🌟
+            // Умножаем на 10000, отбрасываем дробь через Math.trunc, и делим обратно
+            return (Math.trunc(numericBalance * 10000) / 10000).toFixed(4);
+        }
+
+        return rawBalance;
     } catch (e) {
         console.error('Ошибка при запросе баланса Pollinations:', e);
         return 'Недоступен';
