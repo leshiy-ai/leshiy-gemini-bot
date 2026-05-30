@@ -196,41 +196,7 @@
                 </div>
             </div>
 
-            <!-- Конвертация -->
-            <div class="panel-subsection" id="imageConvertSection">
-                <div>
-                    <h3>&#128260; Конвертация медиа</h3>
-                    <p>Загрузите файл и выберите формат. Бесплатно.</p>
-                </div>
-                <div class="upload-zone" id="imageConvertZone" onclick="if(!_dropJustHappened)document.getElementById('imageConvertInput').click()">
-                    <div class="icon">&#128247;</div>
-                    <div class="label">Загрузить файл для конвертации</div>
-                    <div class="hint">Изображения, видео, аудио — любой формат</div>
-                    <input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">
-                </div>
-                <div id="imageConvertFormat" style="display:none">
-                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Конвертировать в:</label>
-                    <div class="size-selector" id="imageConvertFormatBtns">
-                        <!-- Изображения -->
-                        <button class="size-option active" data-group="image" onclick="selectConvertFormat('png',this)">PNG</button>
-                        <button class="size-option" data-group="image" onclick="selectConvertFormat('jpg',this)">JPG</button>
-                        <button class="size-option" data-group="image" onclick="selectConvertFormat('webp',this)">WebP</button>
-                        <button class="size-option" data-group="image" onclick="selectConvertFormat('heic2jpg',this)">HEIC→JPG</button>
-                        <button class="size-option" data-group="image" onclick="selectConvertFormat('webp2png',this)">WebP→PNG</button>
-                        <!-- Видео -->
-                        <button class="size-option" data-group="video" onclick="selectConvertFormat('webm2mp4',this)">WEBM→MP4</button>
-                        <button class="size-option" data-group="video" onclick="selectConvertFormat('gif2mp4',this)">GIF→MP4</button>
-                        <button class="size-option" data-group="video" onclick="selectConvertFormat('video2gif',this)">Видео→GIF</button>
-                        <button class="size-option" data-group="video" onclick="selectConvertFormat('video2mp3',this)">Видео→MP3</button>
-                        <!-- Аудио -->
-                        <button class="size-option" data-group="audio" onclick="selectConvertFormat('ogg2mp3',this)">OGG→MP3</button>
-                        <button class="size-option" data-group="audio" onclick="selectConvertFormat('wav2mp3',this)">WAV→MP3</button>
-                    </div>
-                </div>
-                <div class="result-area" id="imageConvertResult">
-                    <span class="result-placeholder">Здесь появится сконвертированный файл</span>
-                </div>
-            </div>
+            <!-- Конвертация перенесена в режим Видео -->
         </div>
 
         <!-- VIDEO PANEL -->
@@ -325,6 +291,42 @@
                 </div>
                 <div class="result-area" id="videoConvertResult">
                     <span class="result-placeholder">Здесь появится результат анализа</span>
+                </div>
+            </div>
+
+            <!-- Конвертация медиа (бесплатно) -->
+            <div class="panel-subsection" id="videoConvertMediaSection">
+                <div>
+                    <h3>&#128260; Конвертация медиа</h3>
+                    <p>Загрузите файл и выберите формат. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="mediaConvertZone" onclick="if(!_dropJustHappened)document.getElementById('mediaConvertInput').click()">
+                    <div class="icon">&#128247;</div>
+                    <div class="label">Загрузить файл для конвертации</div>
+                    <div class="hint">Изображения, видео, аудио — любой формат</div>
+                    <input type="file" id="mediaConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">
+                </div>
+                <div id="mediaConvertFormat" style="display:none">
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Конвертировать в:</label>
+                    <div class="size-selector" id="mediaConvertFormatBtns">
+                        <!-- Изображения -->
+                        <button class="size-option active" data-group="image" onclick="selectConvertFormat('png',this)">PNG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('jpg',this)">JPG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('webp',this)">WebP</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('heic2jpg',this)">HEIC&#8594;JPG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('webp2png',this)">WebP&#8594;PNG</button>
+                        <!-- Видео -->
+                        <button class="size-option" data-group="video" onclick="selectConvertFormat('webm2mp4',this)">WEBM&#8594;MP4</button>
+                        <button class="size-option" data-group="video" onclick="selectConvertFormat('gif2mp4',this)">GIF&#8594;MP4</button>
+                        <button class="size-option" data-group="video" onclick="selectConvertFormat('video2gif',this)">Видео&#8594;GIF</button>
+                        <button class="size-option" data-group="video" onclick="selectConvertFormat('video2mp3',this)">Видео&#8594;MP3</button>
+                        <!-- Аудио -->
+                        <button class="size-option" data-group="audio" onclick="selectConvertFormat('ogg2mp3',this)">OGG&#8594;MP3</button>
+                        <button class="size-option" data-group="audio" onclick="selectConvertFormat('wav2mp3',this)">WAV&#8594;MP3</button>
+                    </div>
+                </div>
+                <div class="result-area" id="mediaConvertResult">
+                    <span class="result-placeholder">Здесь появится сконвертированный файл</span>
                 </div>
             </div>
         </div>
@@ -626,7 +628,7 @@
 
     // Показать только релевантные кнопки конвертации в зависимости от типа файла
     function updateConvertFormatButtons(category) {
-        const btns = document.querySelectorAll('#imageConvertFormatBtns .size-option');
+        const btns = document.querySelectorAll('#mediaConvertFormatBtns .size-option');
         btns.forEach(btn => {
             const group = btn.getAttribute('data-group');
             btn.style.display = (group === category) ? '' : 'none';
@@ -830,8 +832,8 @@
                         handleImageUpscale(fakeInput);
                     } else if (zoneId === 'imageRotateZone') {
                         handleImageRotateUpload(fakeInput);
-                    } else if (zoneId === 'imageConvertZone') {
-                        handleImageConvertUpload(fakeInput);
+                    } else if (zoneId === 'mediaConvertZone') {
+                        handleMediaConvertUpload(fakeInput);
                     } else if (zoneId === 'audioUploadZone') {
                         handleAudioUpload(fakeInput);
                     } else if (zoneId === 'audioConvertZone') {
@@ -1141,14 +1143,14 @@
         image_i2i: null,
         image_vision: null,
         image_upscale: null,
-        imageSubMode: 'generate',  // 'generate', 'upscale', 'rotate', 'convert'
+        imageSubMode: 'generate',  // 'generate', 'upscale', 'rotate'
         video_t2v: null,
         video_i2v: null,
         video_v2v: null,
         video_a2v: null,
         video_analysis: null,
         video_upscale: null,
-        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'analysis'
+        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'analysis', 'convert'
         audio_tts: null,
         audio_stt: null,
         audioSubMode: 'tts',  // 'tts', 'stt', 'convert', 'voice_clone'
@@ -1228,8 +1230,8 @@
                 }
                 if (parsed.videoMode) delete parsed.videoMode;
                 if (parsed.videoSubMode === 'generate') parsed.videoSubMode = 't2v';
-                if (parsed.videoSubMode === 'convert') parsed.videoSubMode = 'analysis';
                 if (parsed.imageSubMode === 't2i' || parsed.imageSubMode === 'i2i') parsed.imageSubMode = 'generate';
+                if (parsed.imageSubMode === 'convert') { parsed.imageSubMode = 'generate'; } // конверт перенесён в Видео
                 selected = { ...selected, ...parsed };
             }
         } catch(e) {}
@@ -1957,14 +1959,13 @@
         const hasRefs = imageRefs.some(r => r !== null);
 
         // Автоопределение режима: если есть референсы → i2i, иначе t2i
-        // Кнопки подрежимов: Генерация / Апскейл / Поворот / Конверт (без "По фото")
+        // Кнопки подрежимов: Генерация / Апскейл / Поворот (Конверт — в режиме Видео)
         const subModesContainer = document.getElementById('imageSubModes');
         subModesContainer.innerHTML = '';
         [
             { key: 'generate', label: '🎨 Генерация', cls: '' },
             { key: 'upscale', label: '🔍 Апскейл', cls: '' },
-            { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
-            { key: 'convert', label: '📦 Конверт', cls: 'free' }
+            { key: 'rotate', label: '🔄 Поворот', cls: 'free' }
         ].forEach(sm => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.imageSubMode === sm.key ? ' active' : '') + (sm.cls ? ' ' + sm.cls : '');
@@ -1994,9 +1995,6 @@
         } else if (selected.imageSubMode === 'rotate') {
             modeTag.className = 'mode-tag by-photo';
             modeTag.textContent = 'поворот';
-        } else if (selected.imageSubMode === 'convert') {
-            modeTag.className = 'mode-tag by-photo';
-            modeTag.textContent = 'конверт';
         } else if (isI2I || hasRefs) {
             modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'txt-to-img');
             modeTag.textContent = 'по фото';
@@ -2062,8 +2060,6 @@
             }
         } else if (selected.imageSubMode === 'rotate') {
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
-        } else if (selected.imageSubMode === 'convert') {
-            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         } else {
             modelsContainer.innerHTML = '<span class="sub-label">Нет моделей</span>';
         }
@@ -2125,7 +2121,6 @@
         document.getElementById('imageGenSection').classList.toggle('active', mode === 'generate');
         document.getElementById('imageUpscaleSection').classList.toggle('active', mode === 'upscale');
         document.getElementById('imageRotateSection').classList.toggle('active', mode === 'rotate');
-        document.getElementById('imageConvertSection').classList.toggle('active', mode === 'convert');
         updateImagePlaceholder();
     }
 
@@ -2138,7 +2133,8 @@
             { key: 'i2v', label: '🎬 Картинка\u2192Видео', cls: '' },
             { key: 'v2v', label: '🎥 Видео\u2192Видео', cls: '' },
             { key: 'a2v', label: '🗣 Аудио\u2192Аватар', cls: '' },
-            { key: 'analysis', label: '👀 Анализ', cls: 'free' }
+            { key: 'analysis', label: '👀 Анализ', cls: 'free' },
+            { key: 'convert', label: '🔄 Конвертация', cls: 'free' }
         ].forEach(vm => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.videoSubMode === vm.key ? ' active' : '') + (vm.cls ? ' ' + vm.cls : '');
@@ -2211,6 +2207,9 @@
             } else {
                 modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
             }
+        } else if (selected.videoSubMode === 'convert') {
+            // Конвертация медиа — бесплатно
+            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         }
 
         // Ratio — для генерации
@@ -2368,6 +2367,7 @@
         document.getElementById('videoV2VSection').classList.toggle('active', mode === 'v2v');
         document.getElementById('videoA2VSection').classList.toggle('active', mode === 'a2v');
         document.getElementById('videoAnalysisSection').classList.toggle('active', mode === 'analysis');
+        document.getElementById('videoConvertMediaSection').classList.toggle('active', mode === 'convert');
         updateVideoPlaceholder();
     }
 
@@ -2388,14 +2388,12 @@
             const phMap = {
                 generate: hasRefs ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
                 upscale: 'Загрузите фото выше для увеличения разрешения',
-                rotate: 'Загрузите фото выше и выберите угол поворота',
-                convert: 'Загрузите фото выше и выберите формат'
+                rotate: 'Загрузите фото выше и выберите угол поворота'
             };
             const hintMap = {
                 generate: hasRefs ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
                 upscale: 'Апскейл — 2¢ за изображение',
-                rotate: 'Поворот изображения — бесплатно',
-                convert: 'Конвертация — бесплатно'
+                rotate: 'Поворот изображения — бесплатно'
             };
             userInput.placeholder = phMap[selected.imageSubMode] || 'Опишите изображение...';
             inputHint.textContent = hintMap[selected.imageSubMode] || '';
@@ -2409,14 +2407,16 @@
                 i2v: 'Опишите анимацию для картинки...',
                 v2v: 'Опишите трансформацию видео...',
                 a2v: 'Опишите аватар для генерации...',
-                analysis: 'Загрузите видеофайл выше для анализа'
+                analysis: 'Загрузите видеофайл выше для анализа',
+                convert: 'Загрузите файл выше и выберите формат'
             };
             const hintMap = {
                 t2v: 'Стоимость: от 20\u00A2',
                 i2v: 'Обязательно загрузите картинку выше',
                 v2v: 'Обязательно загрузите видео выше',
                 a2v: 'Обязательно загрузите аудио выше',
-                analysis: 'Анализ видео — бесплатно'
+                analysis: 'Анализ видео — бесплатно',
+                convert: 'Конвертация медиа — бесплатно'
             };
             userInput.placeholder = phMap[selected.videoSubMode] || 'Опишите видео...';
             inputHint.textContent = hintMap[selected.videoSubMode] || '';
@@ -2490,13 +2490,13 @@
         const placeholders = {
             chat: 'Напишите сообщение или перетащите файл...',
             image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
-            video: ['t2v','i2v','v2v','a2v'].includes(selected.videoSubMode) ? 'Опишите видео-сцену для ИИ...' : 'Загрузите видеофайл',
+            video: ['t2v','i2v','v2v','a2v'].includes(selected.videoSubMode) ? 'Опишите видео-сцену для ИИ...' : selected.videoSubMode === 'convert' ? 'Загрузите файл и выберите формат' : 'Загрузите видеофайл',
             audio: 'Введите текст для озвучки...'
         };
         const hints = {
             chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат',
             image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
-            video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : selected.videoSubMode === 'analysis' ? 'Анализ видео — бесплатно' : 'Стоимость зависит от режима',
+            video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : selected.videoSubMode === 'analysis' ? 'Анализ видео — бесплатно' : selected.videoSubMode === 'convert' ? 'Конвертация медиа — бесплатно' : 'Стоимость зависит от режима',
             audio: selected.audioSubMode === 'tts' ? 'Стоимость озвучки зависит от модели' : 'Бесплатно'
         };
         userInput.placeholder = placeholders[mode];
@@ -2570,18 +2570,20 @@
                         handleImageUpscale(input);
                     } else if (selected.imageSubMode === 'rotate') {
                         handleImageRotateUpload(input);
-                    } else if (selected.imageSubMode === 'convert') {
-                        handleImageConvertUpload(input);
                     } else {
                         // Generate mode: add as reference
                         handleImageRef(0, input);
                     }
                 } else if (currentMode === 'video') {
-                    // In video mode, image → i2v
-                    selected.videoSubMode = 'i2v';
-                    renderVideoSubHeader();
-                    switchVideoSubMode('i2v');
-                    handleVideoRef('image', input);
+                    if (selected.videoSubMode === 'convert') {
+                        handleMediaConvertUpload(input);
+                    } else {
+                        // In video mode, image → i2v
+                        selected.videoSubMode = 'i2v';
+                        renderVideoSubHeader();
+                        switchVideoSubMode('i2v');
+                        handleVideoRef('image', input);
+                    }
                 } else {
                     // In any other mode → switch to image generate
                     switchMode('image');
@@ -4083,12 +4085,13 @@
     async function sendOrGenerate() {
         const text = userInput.value.trim();
         // 🧠 Для upscale/rotate/convert промпт не нужен — проверяем только isProcessing
-        const isImageToolMode = currentMode === 'image' && ['upscale', 'rotate', 'convert'].includes(selected.imageSubMode);
+        const isImageToolMode = currentMode === 'image' && ['upscale', 'rotate'].includes(selected.imageSubMode);
         const isVideoAnalysis = currentMode === 'video' && selected.videoSubMode === 'analysis';
+        const isVideoConvert = currentMode === 'video' && selected.videoSubMode === 'convert';
         const isAudioToolMode = currentMode === 'audio' && ['stt', 'convert', 'voice_clone'].includes(selected.audioSubMode);
         if (isProcessing) return;
         // Требуем текст или вложения ТОЛЬКО для режимов где промпт нужен
-        if (!isImageToolMode && !isVideoAnalysis && !isAudioToolMode && !text && chatAttachments.length === 0) return;
+        if (!isImageToolMode && !isVideoAnalysis && !isVideoConvert && !isAudioToolMode && !text && chatAttachments.length === 0) return;
 
         if (currentMode === 'chat') {
             await sendChat(text);
@@ -4097,8 +4100,6 @@
                 await executeImageUpscale(); return;
             } else if (selected.imageSubMode === 'rotate') {
                 await executeImageRotate(); return;
-            } else if (selected.imageSubMode === 'convert') {
-                await executeImageConvert(); return;
             }
             if (!text) { showToast('Опишите изображение', 'info'); return; }
             await generateImage(text);
@@ -4106,6 +4107,9 @@
             if (selected.videoSubMode === 'analysis') {
                 showToast('Для этого режима загрузите видеофайл', 'info');
                 return;
+            }
+            if (selected.videoSubMode === 'convert') {
+                await executeMediaConvert(); return;
             }
             if (!text) { showToast('Опишите видео-сцену', 'info'); return; }
             await generateVideo(text);
@@ -5299,12 +5303,12 @@
 
     // ---- MEDIA CONVERT ----
     let convertImageBase64 = null;
-    async function handleImageConvertUpload(input) {
+    async function handleMediaConvertUpload(input) {
         const file = (input.files && input.files[0]) || null;
         if (!file) return;
         try {
             convertImageBase64 = await fileToBase64(file);
-            document.getElementById('imageConvertFormat').style.display = 'block';
+            document.getElementById('mediaConvertFormat').style.display = 'block';
 
             // Определяем категорию и исходный формат
             if (file.type.startsWith('video/')) {
@@ -5326,12 +5330,12 @@
             updateConvertFormatButtons(convertFileCategory);
 
             // Показываем предпросмотр файла в зоне загрузки
-            const zone = document.getElementById('imageConvertZone');
+            const zone = document.getElementById('mediaConvertZone');
             if (zone) {
                 if (convertFileCategory === 'image') {
                     const src = 'data:' + (file.type || 'image/png') + ';base64,' + convertImageBase64;
                     zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для конвертации">' +
-                        '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                        '<input type="file" id="mediaConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                         '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
                 } else if (convertFileCategory === 'video') {
                     // Видео — показываем thumbnail
@@ -5346,34 +5350,34 @@
                             canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
                             const thumb = canvas.toDataURL('image/jpeg', 0.6);
                             zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
-                                '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                                '<input type="file" id="mediaConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                                 '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
                         } catch(e) {}
                         URL.revokeObjectURL(objUrl);
                     };
                     videoEl.onerror = function() {
                         zone.innerHTML = '<div style="font-size:40px;text-align:center">&#127916;</div>' +
-                            '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                            '<input type="file" id="mediaConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                             '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + convertFileSrcFormat.toUpperCase() + ')</div>';
                         URL.revokeObjectURL(objUrl);
                     };
                 } else if (convertFileCategory === 'audio') {
                     zone.innerHTML = '<div style="font-size:40px;text-align:center">&#127925;</div>' +
-                        '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                        '<input type="file" id="mediaConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                         '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Аудио загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
                 }
-                zone.onclick = function() { document.getElementById('imageConvertInput').click(); };
+                zone.onclick = function() { document.getElementById('mediaConvertInput').click(); };
             }
-            document.getElementById('imageConvertResult').innerHTML = '<span class="result-placeholder">Здесь появится сконвертированный файл</span>';
+            document.getElementById('mediaConvertResult').innerHTML = '<span class="result-placeholder">Здесь появится сконвертированный файл</span>';
         } catch (err) {
             showToast('Ошибка загрузки файла', 'error');
         }
         input.value = '';
     }
 
-    async function executeImageConvert() {
+    async function executeMediaConvert() {
         if (!convertImageBase64) { showToast('Сначала загрузите файл', 'info'); return; }
-        const resultArea = document.getElementById('imageConvertResult');
+        const resultArea = document.getElementById('mediaConvertResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Конвертирую...</span>';
 
         const fmt = selectedImageConvertFormat;
@@ -5745,8 +5749,8 @@
                 handleImageUpscale(input);
             } else if (id === 'imageRotateZone') {
                 handleImageRotateUpload(input);
-            } else if (id === 'imageConvertZone') {
-                handleImageConvertUpload(input);
+            } else if (id === 'mediaConvertZone') {
+                handleMediaConvertUpload(input);
             } else if (id === 'audioUploadZone') {
                 handleAudioUpload(input);
             } else if (id === 'videoI2VRefImg') {
@@ -5890,8 +5894,8 @@
     function cmdStart(arg) {
         addMessage('\uD83C\uDFE0 **Gemini-AI** — главное меню\n\n' +
             '\uD83D\uDCAC Чат — общение с ИИ, анализ файлов\n' +
-            '\uD83C\uDFA8 Изображения — генерация, апскейл, поворот, конвертация\n' +
-            '\uD83C\uDFAC Видео — генерация, анализ, апскейл\n' +
+            '\uD83C\uDFA8 Изображения — генерация, апскейл, поворот\n' +
+            '\uD83C\uDFAC Видео — генерация, анализ, конвертация\n' +
             '\uD83C\uDF99 Аудио — озвучка, распознавание, конвертация\n\n' +
             'Используй кнопки режимов сверху или команды:\n' +
             '/create /photo /video /say /upscale', 'bot');
@@ -6542,17 +6546,22 @@
                     zone.onclick = function() { document.getElementById('imageRotateInput').click(); };
                 }
             } else if (mode === 'convert') {
+                // Конвертация перенесена в режим Видео — переключаемся туда
                 convertImageBase64 = lastGeneratedImage.base64;
                 convertFileCategory = 'image';
                 convertFileSrcFormat = 'png';
-                document.getElementById('imageConvertFormat').style.display = 'block';
+                switchMode('video');
+                selected.videoSubMode = 'convert';
+                renderVideoSubHeader();
+                switchVideoSubMode('convert');
+                document.getElementById('mediaConvertFormat').style.display = 'block';
                 updateConvertFormatButtons('image');
-                const zone = document.getElementById('imageConvertZone');
+                const zone = document.getElementById('mediaConvertZone');
                 if (zone) {
                     zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для конвертации">' +
-                        '<input type="file" id="imageConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleImageConvertUpload(this)">' +
+                        '<input type="file" id="mediaConvertInput" accept="image/*,video/*,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                         '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение перенесено. Выберите формат и отправьте.</div>';
-                    zone.onclick = function() { document.getElementById('imageConvertInput').click(); };
+                    zone.onclick = function() { document.getElementById('mediaConvertInput').click(); };
                 }
             }
         }
@@ -6626,13 +6635,16 @@
                 } else if (currentMode === 'image') {
                     if (selected.imageSubMode === 'upscale') handleImageUpscale(input);
                     else if (selected.imageSubMode === 'rotate') handleImageRotateUpload(input);
-                    else if (selected.imageSubMode === 'convert') handleImageConvertUpload(input);
                     else handleImageRef(0, input);
                 } else if (currentMode === 'video') {
-                    selected.videoSubMode = 'i2v';
-                    renderVideoSubHeader();
-                    switchVideoSubMode('i2v');
-                    handleVideoRef('image', input);
+                    if (selected.videoSubMode === 'convert') {
+                        handleMediaConvertUpload(input);
+                    } else {
+                        selected.videoSubMode = 'i2v';
+                        renderVideoSubHeader();
+                        switchVideoSubMode('i2v');
+                        handleVideoRef('image', input);
+                    }
                 } else {
                     switchMode('image');
                     selected.imageSubMode = 'generate';
@@ -6646,6 +6658,8 @@
                 } else if (currentMode === 'video') {
                     if (selected.videoSubMode === 'v2v') {
                         handleVideoRef('video', input);
+                    } else if (selected.videoSubMode === 'convert') {
+                        handleMediaConvertUpload(input);
                     } else {
                         selected.videoSubMode = 'analysis';
                         renderVideoSubHeader();
