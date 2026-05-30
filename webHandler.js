@@ -280,8 +280,12 @@ async function callWorkersAIWeb(config, ...args) {
             prompt: text,
             voice: voice || 'female'
         }, env);
-        // Возвращаем бинарный результат
-        if (result.binary) return result.data;
+        // Возвращаем результат в формате { audioBase64, mimeType } для унификации
+        if (result.binary) {
+            const b64 = result.data.toString('base64');
+            const mime = result.contentType || 'audio/mpeg';
+            return { audioBase64: b64, mimeType: mime.startsWith('audio/') ? mime : 'audio/mpeg' };
+        }
         return result.result;
     }
 
@@ -1504,8 +1508,23 @@ async function handleAudio(auth, payload, env, monolith) {
             audioResult = await config.FUNCTION(config, text, env, voice);
         } else if (config.SERVICE === 'VOICERSS' || config.FUNCTION.name === 'callVoiceRSSTextToAudio') {
             audioResult = await config.FUNCTION(config, text, env, voice);
+        } else if (config.SERVICE === 'KIEAI') {
+            // KIE.AI TTS — async task via createTaskKieAi
+            const { createTaskKieAi } = monolith;
+            if (!createTaskKieAi) return formatResponse(false, 'Kie.AI TTS недоступен');
+            const workerDomain = env.WORKER_DOMAIN || '';
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+            const input = { text, voice };
+            const taskId = await createTaskKieAi(chatId, config, input, env, callbackUrl);
+            if (!taskId) return formatResponse(false, 'Не удалось создать задачу TTS');
+            // Deduct credits before returning task ID
+            let creditsLeft = null;
+            if (!isFreeTTS && isAuth) {
+                creditsLeft = await deductCredits(chatId, 2, env, monolith);
+            }
+            return formatResponse(true, null, creditsLeft, { type: 'audio_task', content: taskId });
         } else {
-            // KIE.AI, BotHub и прочие — пробуем с voice
+            // BotHub и прочие — пробуем с voice
             try { audioResult = await config.FUNCTION(config, text, env, voice); }
             catch(_) { audioResult = await config.FUNCTION(config, text, env); }
         }
@@ -2380,6 +2399,9 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                     return formatResponse(false, 'Не удалось скачать изображение. Попробуйте другую модель.');
                 }
                 // Для видео — возвращаем URL как есть
+                if (taskType === 'audio') {
+                    return formatResponse(true, null, null, { type: 'audio_url', content: resultUrl });
+                }
                 return formatResponse(true, null, null, { type: 'video_url', content: resultUrl });
             } else {
                 // 6. Глубокий рекурсивный поиск URL во всём ответе
@@ -2387,7 +2409,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                     if (depth > 5 || !obj || typeof obj !== 'object') return null;
                     for (const key of Object.keys(obj)) {
                         const val = obj[key];
-                        if (typeof val === 'string' && val.startsWith('http') && (val.includes('.png') || val.includes('.jpg') || val.includes('.webp') || val.includes('.mp4') || val.includes('/image') || val.includes('/video') || val.includes('storage') || val.includes('cdn') || val.includes('s3') || val.includes('blob'))) {
+                        if (typeof val === 'string' && val.startsWith('http') && (val.includes('.png') || val.includes('.jpg') || val.includes('.webp') || val.includes('.mp4') || val.includes('.mp3') || val.includes('/image') || val.includes('/video') || val.includes('/audio') || val.includes('storage') || val.includes('cdn') || val.includes('s3') || val.includes('blob'))) {
                             console.log(`[WebHandler] Deep found URL at depth ${depth} key="${key}": ${val.substring(0, 100)}`);
                             return val;
                         }
@@ -2404,7 +2426,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 resultUrl = deepFindUrl(result, 0);
 
                 if (resultUrl) {
-                    const resultType = taskType === 'video' ? 'video_url' : 'image_url';
+                    const resultType = taskType === 'video' ? 'video_url' : taskType === 'audio' ? 'audio_url' : 'image_url';
                     return formatResponse(true, null, null, { type: resultType, content: resultUrl });
                 }
 

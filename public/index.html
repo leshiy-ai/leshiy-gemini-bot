@@ -57,9 +57,9 @@
             <span class="sub-label" style="color:var(--free)">&#10003; Бесплатно</span>
         </div>
         <div class="sub-header wrap-allowed" id="subImage">
-            <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
-            <div class="sub-divider"></div>
             <div id="imageSubModes"></div>
+            <div class="sub-divider"></div>
+            <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
         </div>
         <div class="sub-header wrap-allowed" id="subVideo">
             <div id="videoSubMode"></div>
@@ -69,8 +69,6 @@
         <div class="sub-header wrap-allowed" id="subAudio">
             <div id="audioSubMode"></div>
             <div class="sub-divider"></div>
-            <div id="audioVoices"></div>
-            <div class="sub-divider" id="audioVoicesDivider" style="display:none"></div>
             <div id="audioModels" class="skeleton" style="height:24px;width:200px"></div>
         </div>
 
@@ -361,7 +359,7 @@
                     <div class="icon">&#127916;</div>
                     <div class="label">Загрузить видеофайл для конвертации</div>
                     <div class="hint">MP4, AVI, MOV, WebM, GIF — видеоформаты</div>
-                    <input type="file" id="mediaConvertInput" accept="video/*" style="display:none" onchange="handleMediaConvertUpload(this)">
+                    <input type="file" id="mediaConvertInput" accept="video/*,image/gif,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">
                 </div>
                 <div id="mediaConvertFormat" style="display:none">
                     <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Конвертировать в:</label>
@@ -457,6 +455,7 @@
                     <h3>&#127925; Озвучка текста</h3>
                     <p id="audioTTSDesc">Напиши текст, и я озвучу его. VoiceRSS — бесплатно, без авторизации.</p>
                 </div>
+                <div id="audioTTSVoices" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
                 <div class="result-area" id="audioTTSResult">
                     <span class="result-placeholder">Здесь появится аудиоплеер</span>
                 </div>
@@ -732,11 +731,13 @@
     let chatAttachments = []; // [{name, type, base64, previewUrl}] — файлы для чата
     let selectedAudioConvertFormat = 'mp3';
     let selectedImageConvertFormat = 'png';
+    let selectedMediaConvertFormat = 'webm2mp4';
     let convertFileCategory = 'image'; // 'image', 'video', 'audio'
     let convertFileSrcFormat = ''; // исходный формат: 'webp', 'heic', 'webm', 'ogg', 'wav' etc.
 
     function selectConvertFormat(format, btn) {
         selectedImageConvertFormat = format;
+        selectedMediaConvertFormat = format;
         // Обновляем UI — подсвечиваем выбранную кнопку
         btn.parentNode.querySelectorAll('.size-option').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
@@ -1239,7 +1240,7 @@
                 }
 
                 // Task completed successfully
-                if (data.data?.type === 'image_url' || data.data?.type === 'video_url') {
+                if (data.data?.type === 'image_url' || data.data?.type === 'video_url' || data.data?.type === 'audio_url') {
                     return { completed: true, url: data.data.content, type: data.data.type };
                 }
 
@@ -1247,6 +1248,12 @@
                 if (data.data?.type === 'image_base64' && data.data.content) {
                     const dataUrl = 'data:image/png;base64,' + data.data.content;
                     return { completed: true, url: dataUrl, type: 'image_url' };
+                }
+
+                // KieAI TTS может вернуть audio_base64
+                if (data.data?.type === 'audio_base64' && data.data.content) {
+                    const dataUrl = data.data.content.startsWith('http') ? data.data.content : 'data:audio/mpeg;base64,' + data.data.content;
+                    return { completed: true, url: dataUrl, type: 'audio_url' };
                 }
 
                 // Task still pending — показываем реальный прогресс
@@ -1305,40 +1312,40 @@
             { id: 'Kore', label: '\u2640 Кора', group: 'Female' },
             { id: 'Enceladus', label: '\u2642 Энцеладус', group: 'Male' },
             { id: 'Luna', label: '\u2640 Луна', group: 'Female' },
-            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
+            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'WORKERS_AI': [
             { id: 'orpheus', label: '\u2642 Орфей', group: 'Male' },
             { id: 'zeus', label: '\u2642 Зевс', group: 'Male' },
             { id: 'athena', label: '\u2640 Афина', group: 'Female' },
             { id: 'luna', label: '\u2640 Луна', group: 'Female' },
-            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
+            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'KIEAI': [
             { id: 'Roger', label: '\u2642 Роджер', group: 'Male' },
             { id: 'Rachel', label: '\u2640 Рейчел', group: 'Female' },
-            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
+            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'BOTHUB': [
             { id: 'echo', label: '\u2642 Эхо', group: 'Male' },
             { id: 'nova', label: '\u2640 Нова', group: 'Female' },
-            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
+            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'VOICERSS': [
             { id: 'Peter', label: '\u2642 Пётр', group: 'Male' },
             { id: 'Marina', label: '\u2640 Марина', group: 'Female' },
             { id: 'Olga', label: '\u2640 Ольга', group: 'Female' },
-            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
+            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'POLLINATIONS': [
             { id: 'Female', label: '\u2640 Женский', group: 'Female' },
             { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
-            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
+            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
         'STABILITY': [
             { id: 'Female', label: '\u2640 Женский', group: 'Female' },
             { id: 'Male', label: '\u2642 Мужской', group: 'Male' },
-            { id: 'user_voice', label: '\u2764 Свой голос', group: 'Custom' },
+            { id: 'user_voice', label: '🎙️ Свой голос', group: 'Custom' },
         ],
     };
     // Дефолтный набор голосов если сервис неизвестен
@@ -2218,7 +2225,7 @@
         const subModesContainer = document.getElementById('imageSubModes');
         subModesContainer.innerHTML = '';
         [
-            { key: 'generate', label: '🎨 Генерация', cls: '' },
+            { key: 'generate', label: hasRefs ? '✨ Фото->Изображение' : '📖 Текст->Изображение', cls: '' },
             { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
             { key: 'convert', label: '📦 Конверт', cls: 'free' },
@@ -2471,20 +2478,31 @@
                 modelsContainer.innerHTML = '<span class="sub-label">Нет моделей</span>';
             }
         } else if (selected.videoSubMode === 'analysis') {
-            // Анализ видео — Vision модели
+            // Анализ видео — Vision модели (с optgroup по сервису)
             const modelList = availableModels.video_analysis || [];
             if (modelList.length > 0) {
                 const sel = document.createElement('select');
                 sel.className = 'model-select model-free';
                 sel.value = selected.video_analysis || modelList[0]?.key;
                 sel.onchange = () => { selected.video_analysis = sel.value; saveSelected(); };
+                const groups = {};
                 modelList.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m.key;
-                    opt.selected = (selected.video_analysis || modelList[0]?.key) === m.key;
-                    opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
-                    sel.appendChild(opt);
+                    const lbl = m.serviceLabel || m.service || 'Другие';
+                    if (!groups[lbl]) groups[lbl] = [];
+                    groups[lbl].push(m);
                 });
+                for (const [grp, models] of Object.entries(groups)) {
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = grp;
+                    models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.key;
+                        opt.selected = (selected.video_analysis || modelList[0]?.key) === m.key;
+                        opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
+                        optgroup.appendChild(opt);
+                    });
+                    sel.appendChild(optgroup);
+                }
                 modelsContainer.appendChild(sel);
             } else {
                 modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
@@ -2571,7 +2589,7 @@
             { key: 'tts', label: '🔊 Озвучка', cls: '' },
             { key: 'stt', label: '🎧 Распознавание', cls: 'free' },
             { key: 'convert', label: '🔄 Конвертация', cls: 'free' },
-            { key: 'voice_clone', label: '❤️ Свой голос', cls: '' }
+            { key: 'voice_clone', label: '🎙️ Свой голос', cls: '' }
         ].forEach(am => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.audioSubMode === am.key ? ' active' : '') + (am.cls ? ' ' + am.cls : '');
@@ -2590,18 +2608,15 @@
             subModeContainer.appendChild(btn);
         });
 
-        // Голос — в отдельном контейнере ВЫШЕ моделей, зависит от выбранной модели (как в боте)
-        const voicesContainer = document.getElementById('audioVoices');
-        const voicesDivider = document.getElementById('audioVoicesDivider');
+        // Голос — в контейнере внутри TTS секции тела, зависит от выбранной модели (как в боте)
+        const voicesContainer = document.getElementById('audioTTSVoices');
         voicesContainer.innerHTML = '';
-        voicesDivider.style.display = 'none';
 
         if (selected.audioSubMode === 'tts') {
-            voicesDivider.style.display = '';
             const voices = getVoicesForModel(selected.audio_tts);
             voices.forEach(v => {
                 const btn = document.createElement('button');
-                btn.className = 'sub-option' + (selected.voice === v.id ? ' active' : '');
+                btn.className = 'size-option' + (selected.voice === v.id ? ' active' : '');
                 btn.dataset.voice = v.id;
                 btn.onclick = () => { selected.voice = v.id; saveSelected(); renderAudioSubHeader(); };
                 btn.innerHTML = v.label;
@@ -2622,6 +2637,9 @@
         modelsContainer.innerHTML = '';
 
         if (selected.audioSubMode === 'tts') {
+            // Update TTS description based on current model's service
+            updateTTSDesc();
+
             const modelList = availableModels.audio_tts;
             if (modelList.length > 0) {
                 const sel = document.createElement('select');
@@ -2636,6 +2654,7 @@
                     }
                     saveSelected();
                     renderAudioSubHeader();
+                    updateTTSDesc();
                 };
                 const groups = {};
                 modelList.forEach(m => { const lbl = m.serviceLabel || m.service || 'Другие'; if (!groups[lbl]) groups[lbl] = []; groups[lbl].push(m); });
@@ -2672,6 +2691,23 @@
     }
 
     // ---- PANEL SUB-MODE SWITCHING ----
+
+    // Update TTS description text based on current model's service
+    function updateTTSDesc() {
+        const descEl = document.getElementById('audioTTSDesc');
+        if (!descEl) return;
+        const model = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
+        const service = model?.service || '';
+        const descMap = {
+            'VOICERSS': 'VoiceRSS — бесплатно, без авторизации.',
+            'WORKERS_AI': 'Cloudflare Workers AI — озвучка текста.',
+            'GEMINI': 'Gemini TTS — генерация речи через ИИ.',
+            'KIEAI': 'Kie.AI — качественная озвучка текста.',
+            'BOTHUB': 'BotHub — озвучка текста.',
+        };
+        descEl.textContent = descMap[service] || 'Озвучка текста через ИИ.';
+    }
+
     function switchVideoSubMode(mode) {
         selected.videoSubMode = mode;
         saveSelected();
@@ -2783,7 +2819,7 @@
 
         // Обновляем заголовок панели
         if (title) {
-            title.textContent = isI2I ? '\uD83C\uDFA8 Генерация по фото' : '\uD83C\uDFA8 Генерация по тексту';
+            title.textContent = isI2I ? '✨ Фото → Изображение' : '📖 Текст → Изображение';
         }
 
         if (isI2I) {
@@ -5085,7 +5121,33 @@
             if (contentType.includes('application/json')) {
                 const data = await response.json();
                 if (!data.success) throw new Error(data.error || 'Ошибка генерации');
+                const resultType = data.data?.type || '';
                 const audioContent = data.data?.content;
+
+                // Handle async task (e.g., Kie.AI)
+                if (resultType === 'audio_task' && audioContent) {
+                    const taskId = audioContent;
+                    if (data.credits_left !== undefined) credits = data.credits_left;
+                    updateCreditsDisplay();
+                    resultArea.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:24px;margin-bottom:8px">&#9883;</div><div style="color:var(--accent);font-weight:600">Генерирую аудио...</div><div id="audioTTSPollProgress" style="margin-top:8px;font-size:12px;color:var(--text-muted)">Ожидание результата</div></div>';
+                    try {
+                        const pollResult = await pollTaskStatus.call({_updateProgress: function(state, attempt, maxAttempts, pct) {
+                            const el = document.getElementById('audioTTSPollProgress');
+                            if (el) el.textContent = state + ' (' + pct + '%)';
+                        }}, taskId, 'audio', 60, 5000);
+                        if (pollResult?.url) {
+                            const audioSrc = pollResult.url;
+                            resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '"></audio><br><a href="' + audioSrc + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
+                            showToast('Аудио создано!', 'success');
+                        } else throw new Error('Результат не найден');
+                    } catch (pollErr) {
+                        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + pollErr.message + '</span>';
+                        showToast('Ошибка: ' + pollErr.message, 'error');
+                    }
+                    loadServerData();
+                    return;
+                }
+
                 if (audioContent) {
                     const audioSrc = audioContent.startsWith('http') ? audioContent : 'data:audio/mp3;base64,' + audioContent;
                     resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '" type="audio/mp3"></audio><br><a href="' + audioSrc + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
@@ -5834,7 +5896,7 @@
                 if (convertFileCategory === 'image') {
                     const src = 'data:' + (file.type || 'image/png') + ';base64,' + convertImageBase64;
                     zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для конвертации">' +
-                        '<input type="file" id="mediaConvertInput" accept="video/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
+                        '<input type="file" id="mediaConvertInput" accept="video/*,image/gif,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                         '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
                 } else if (convertFileCategory === 'video') {
                     // Видео — показываем thumbnail с информацией о разрешении и длительности
@@ -5851,20 +5913,20 @@
                             const dur = videoEl.duration ? Math.round(videoEl.duration) + ' сек' : '';
                             const info = videoEl.videoWidth + '&#215;' + videoEl.videoHeight + (dur ? ', ' + dur : '');
                             zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
-                                '<input type="file" id="mediaConvertInput" accept="video/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
+                                '<input type="file" id="mediaConvertInput" accept="video/*,image/gif,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                                 '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + convertFileSrcFormat.toUpperCase() + ', ' + info + '). Выберите формат и отправьте.</div>';
                         } catch(e) {}
                         URL.revokeObjectURL(objUrl);
                     };
                     videoEl.onerror = function() {
                         zone.innerHTML = '<div style="font-size:40px;text-align:center">&#127916;</div>' +
-                            '<input type="file" id="mediaConvertInput" accept="video/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
+                            '<input type="file" id="mediaConvertInput" accept="video/*,image/gif,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                             '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + convertFileSrcFormat.toUpperCase() + ')</div>';
                         URL.revokeObjectURL(objUrl);
                     };
                 } else if (convertFileCategory === 'audio') {
                     zone.innerHTML = '<div style="font-size:40px;text-align:center">&#127925;</div>' +
-                        '<input type="file" id="mediaConvertInput" accept="video/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
+                        '<input type="file" id="mediaConvertInput" accept="video/*,image/gif,audio/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                         '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Аудио загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
                 }
                 zone.onclick = function() { document.getElementById('mediaConvertInput').click(); };
@@ -5881,7 +5943,7 @@
         const resultArea = document.getElementById('mediaConvertResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Конвертирую...</span>';
 
-        const fmt = selectedImageConvertFormat;
+        const fmt = selectedMediaConvertFormat;
         // Маппинг форматов на endpoint и payload
         let mode, payload;
 
