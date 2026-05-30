@@ -52,16 +52,14 @@
 
         <!-- SUB-HEADERS — настройки каждого режима, заполняются динамически из /api/models -->
         <div class="sub-header active" id="subChat">
-            <span class="sub-label" style="color:var(--free)">&#10003; Бесплатно</span>
-            <div class="sub-divider"></div>
             <div id="chatModels" class="skeleton" style="height:24px;width:200px"></div>
+            <div class="sub-divider"></div>
+            <span class="sub-label" style="color:var(--free)">&#10003; Бесплатно</span>
         </div>
         <div class="sub-header wrap-allowed" id="subImage">
-            <div id="imageModeTag" class="mode-tag by-text">по тексту</div>
+            <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
             <div class="sub-divider"></div>
             <div id="imageSubModes"></div>
-            <div class="sub-divider"></div>
-            <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
         </div>
         <div class="sub-header wrap-allowed" id="subVideo">
             <div id="videoSubMode"></div>
@@ -145,23 +143,6 @@
                 </div>
             </div>
 
-            <!-- Апскейл -->
-            <div class="panel-subsection" id="imageUpscaleSection">
-                <div>
-                    <h3>&#128269; Увеличение разрешения</h3>
-                    <p>Загрузите фото — я увеличу разрешение в 4 раза. Стоимость: 2&#162;.</p>
-                </div>
-                <div class="upload-zone" id="imageUpscaleZone" onclick="if(!_dropJustHappened)document.getElementById('imageUpscaleInput').click()">
-                    <div class="icon">&#128247;</div>
-                    <div class="label">Загрузить изображение для апскейла</div>
-                    <div class="hint">JPG, PNG, WebP — до 10 МБ</div>
-                    <input type="file" id="imageUpscaleInput" accept="image/*" style="display:none" onchange="handleImageUpscale(this)">
-                </div>
-                <div class="result-area" id="imageUpscaleResult">
-                    <span class="result-placeholder">Здесь появится увеличенное изображение</span>
-                </div>
-            </div>
-
             <!-- Поворот -->
             <div class="panel-subsection" id="imageRotateSection">
                 <div>
@@ -184,6 +165,28 @@
                 </div>
                 <div class="result-area" id="imageRotateResult">
                     <span class="result-placeholder">Здесь появится повёрнутое изображение</span>
+                </div>
+            </div>
+
+            <!-- Ресайз -->
+            <div class="panel-subsection" id="imageResizeSection">
+                <div>
+                    <h3>&#128302; Ресайз</h3>
+                    <p>Измените размер изображения — больше или меньше. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="imageResizeZone" onclick="if(!_dropJustHappened)document.getElementById('imageResizeInput').click()">
+                    <div class="icon">&#128302;</div>
+                    <div class="label">Загрузить изображение для ресайза</div>
+                    <div class="hint">PNG, JPG, WebP — любой размер</div>
+                    <input type="file" id="imageResizeInput" accept="image/*" style="display:none" onchange="handleImageResizeUpload(this)">
+                </div>
+                <div id="imageResizeControls" style="display:none">
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер (по высоте):</label>
+                    <div id="imageResizePresets" class="size-selector"></div>
+                    <div id="imageResizeCurrentInfo" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
+                </div>
+                <div class="result-area" id="imageResizeResult">
+                    <span class="result-placeholder">Здесь появится ресайзнутое изображение</span>
                 </div>
             </div>
 
@@ -214,25 +217,20 @@
                 </div>
             </div>
 
-            <!-- Ресайз -->
-            <div class="panel-subsection" id="imageResizeSection">
+            <!-- Апскейл -->
+            <div class="panel-subsection" id="imageUpscaleSection">
                 <div>
-                    <h3>&#128302; Ресайз</h3>
-                    <p>Измените размер изображения — больше или меньше. Бесплатно.</p>
+                    <h3>&#128269; Увеличение разрешения</h3>
+                    <p>Загрузите фото — я увеличу разрешение в 4 раза. Стоимость: 2&#162;.</p>
                 </div>
-                <div class="upload-zone" id="imageResizeZone" onclick="if(!_dropJustHappened)document.getElementById('imageResizeInput').click()">
-                    <div class="icon">&#128302;</div>
-                    <div class="label">Загрузить изображение для ресайза</div>
-                    <div class="hint">PNG, JPG, WebP — любой размер</div>
-                    <input type="file" id="imageResizeInput" accept="image/*" style="display:none" onchange="handleImageResizeUpload(this)">
+                <div class="upload-zone" id="imageUpscaleZone" onclick="if(!_dropJustHappened)document.getElementById('imageUpscaleInput').click()">
+                    <div class="icon">&#128247;</div>
+                    <div class="label">Загрузить изображение для апскейла</div>
+                    <div class="hint">JPG, PNG, WebP — до 10 МБ</div>
+                    <input type="file" id="imageUpscaleInput" accept="image/*" style="display:none" onchange="handleImageUpscale(this)">
                 </div>
-                <div id="imageResizeControls" style="display:none">
-                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер (по высоте):</label>
-                    <div id="imageResizePresets" class="size-selector"></div>
-                    <div id="imageResizeCurrentInfo" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
-                </div>
-                <div class="result-area" id="imageResizeResult">
-                    <span class="result-placeholder">Здесь появится ресайзнутое изображение</span>
+                <div class="result-area" id="imageUpscaleResult">
+                    <span class="result-placeholder">Здесь появится увеличенное изображение</span>
                 </div>
             </div>
         </div>
@@ -423,23 +421,6 @@
                 </div>
             </div>
 
-            <!-- Экстракт аудио из видео -->
-            <div class="panel-subsection" id="videoExtractAudioSection">
-                <div>
-                    <h3>&#127925; Экстракт аудио</h3>
-                    <p>Извлеките звуковую дорожку из видео. Бесплатно.</p>
-                </div>
-                <div class="upload-zone" id="videoExtractAudioZone" onclick="if(!_dropJustHappened)document.getElementById('videoExtractAudioInput').click()">
-                    <div class="icon">&#127925;</div>
-                    <div class="label">Загрузить видеофайл</div>
-                    <div class="hint">MP4, AVI, MOV, WebM — до 50 МБ</div>
-                    <input type="file" id="videoExtractAudioInput" accept="video/*" style="display:none" onchange="handleExtractAudio(this)">
-                </div>
-                <div class="result-area" id="videoExtractAudioResult">
-                    <span class="result-placeholder">Здесь появится извлечённое аудио</span>
-                </div>
-            </div>
-
             <!-- Стоп-кадр -->
             <div class="panel-subsection" id="videoStopFrameSection">
                 <div>
@@ -475,16 +456,6 @@
                 <div>
                     <h3>&#127925; Озвучка текста</h3>
                     <p id="audioTTSDesc">Напиши текст, и я озвучу его. VoiceRSS — бесплатно, без авторизации.</p>
-                </div>
-                <!-- Зона загрузки образца голоса (показывается когда выбран "Свой голос") -->
-                <div id="ttsVoiceSampleArea" style="display:none">
-                    <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Образец голоса (обязательно):</label>
-                    <div class="upload-zone" id="ttsVoiceSampleZone" style="padding:16px" onclick="if(!_dropJustHappened)document.getElementById('ttsVoiceSampleInput').click()">
-                        <div class="icon" style="font-size:20px">&#127909;</div>
-                        <div class="label">Загрузить образец голоса</div>
-                        <div class="hint">MP3, WAV — от 10 секунд, до 5 МБ</div>
-                        <input type="file" id="ttsVoiceSampleInput" accept="audio/*" style="display:none" onchange="handleTTSSampleUpload(this)">
-                    </div>
                 </div>
                 <div class="result-area" id="audioTTSResult">
                     <span class="result-placeholder">Здесь появится аудиоплеер</span>
@@ -993,8 +964,6 @@
                         handleImageResizeUpload(fakeInput);
                     } else if (zoneId === 'videoResizeZone') {
                         handleVideoResizeUpload(fakeInput);
-                    } else if (zoneId === 'videoExtractAudioZone') {
-                        handleExtractAudio(fakeInput);
                     } else if (zoneId === 'videoStopFrameZone') {
                         handleStopFrame(fakeInput);
                     } else if (zoneId === 'audioUploadZone') {
@@ -1003,8 +972,6 @@
                         handleAudioConvert(fakeInput);
                     } else if (zoneId === 'voiceCloneZone') {
                         handleVoiceClone(fakeInput);
-                    } else if (zoneId === 'ttsVoiceSampleZone') {
-                        handleTTSSampleUpload(fakeInput);
                     } else if (zoneId && zoneId.startsWith('videoI2V')) {
                         handleVideoRef('image', fakeInput);
                     } else if (zoneId && zoneId.startsWith('videoV2V')) {
@@ -1430,7 +1397,7 @@
         video_a2v: null,
         video_analysis: null,
         video_upscale: null,
-        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'upscale', 'analysis', 'convert', 'resize', 'extract', 'stopframe'
+        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'upscale', 'analysis', 'convert', 'resize', 'stopframe'
         audio_tts: null,
         audio_stt: null,
         audioSubMode: 'tts',  // 'tts', 'stt', 'convert', 'voice_clone'
@@ -2245,19 +2212,17 @@
     }
 
     function renderImageSubHeader() {
-        const modeTag = document.getElementById('imageModeTag');
         const hasRefs = imageRefs.some(r => r !== null);
 
-        // Автоопределение режима: если есть референсы → i2i, иначе t2i
-        // Кнопки подрежимов: Генерация / Апскейл / Поворот / Ресайз / Конверт
+        // Кнопки подрежимов: Генерация / Поворот / Ресайз / Конверт / Апскейл
         const subModesContainer = document.getElementById('imageSubModes');
         subModesContainer.innerHTML = '';
         [
             { key: 'generate', label: '🎨 Генерация', cls: '' },
-            { key: 'upscale', label: '🔍 Апскейл', cls: '' },
             { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
-            { key: 'convert', label: '📦 Конверт', cls: 'free' }
+            { key: 'convert', label: '📦 Конверт', cls: 'free' },
+            { key: 'upscale', label: '🔍 Апскейл', cls: '' }
         ].forEach(sm => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.imageSubMode === sm.key ? ' active' : '') + (sm.cls ? ' ' + sm.cls : '');
@@ -2268,7 +2233,11 @@
                 renderImageSubHeader();
                 switchImageSubMode(sm.key);
             };
-            btn.innerHTML = sm.label;
+            // Split emoji from text
+            const emojiMatch = sm.label.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\s)+/u);
+            const emoji = emojiMatch ? emojiMatch[0].trim() : '';
+            const text = emojiMatch ? sm.label.slice(emojiMatch[0].length).trim() : sm.label;
+            btn.innerHTML = '<span class="sub-emoji">' + emoji + '</span><span class="sub-text">' + text + '</span>';
             subModesContainer.appendChild(btn);
         });
 
@@ -2279,29 +2248,32 @@
         const currentModelKey = isI2I ? selected.image_i2i : selected.image;
         const currentModel = modelList.find(m => m.key === currentModelKey);
 
-        // Обновляем тег режима — авто: «по тексту» / «по фото»
-        const isFreeModel = currentModel?.isFree;
-        if (selected.imageSubMode === 'upscale') {
-            modeTag.className = 'mode-tag txt-to-img';
-            modeTag.textContent = 'апскейл';
-        } else if (selected.imageSubMode === 'rotate') {
-            modeTag.className = 'mode-tag by-photo';
-            modeTag.textContent = 'поворот';
-        } else if (selected.imageSubMode === 'resize') {
-            modeTag.className = 'mode-tag by-photo';
-            modeTag.textContent = 'ресайз';
-        } else if (selected.imageSubMode === 'convert') {
-            modeTag.className = 'mode-tag by-photo';
-            modeTag.textContent = 'конверт';
-        } else if (isI2I || hasRefs) {
-            modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'txt-to-img');
-            modeTag.textContent = 'по фото';
-        } else {
-            modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'by-text');
-            modeTag.textContent = 'по тексту';
+        // Обновляем тег режима (modeTag removed from sub-header, skip if not found)
+        const modeTag = document.getElementById('imageModeTag');
+        if (modeTag) {
+            const isFreeModel = currentModel?.isFree;
+            if (selected.imageSubMode === 'upscale') {
+                modeTag.className = 'mode-tag txt-to-img';
+                modeTag.textContent = 'апскейл';
+            } else if (selected.imageSubMode === 'rotate') {
+                modeTag.className = 'mode-tag by-photo';
+                modeTag.textContent = 'поворот';
+            } else if (selected.imageSubMode === 'resize') {
+                modeTag.className = 'mode-tag by-photo';
+                modeTag.textContent = 'ресайз';
+            } else if (selected.imageSubMode === 'convert') {
+                modeTag.className = 'mode-tag by-photo';
+                modeTag.textContent = 'конверт';
+            } else if (isI2I || hasRefs) {
+                modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'txt-to-img');
+                modeTag.textContent = 'по фото';
+            } else {
+                modeTag.className = 'mode-tag ' + (isFreeModel ? 'by-photo' : 'by-text');
+                modeTag.textContent = 'по тексту';
+            }
+            modeTag.style.cursor = 'default';
+            modeTag.onclick = null;
         }
-        modeTag.style.cursor = 'default';
-        modeTag.onclick = null;
 
         const modelsContainer = document.getElementById('imageModels');
         modelsContainer.classList.remove('skeleton');
@@ -2432,15 +2404,14 @@
         const subModeContainer = document.getElementById('videoSubMode');
         subModeContainer.innerHTML = '';
         [
-            { key: 't2v', label: '📹 Текст\u2192Видео', cls: '' },
-            { key: 'i2v', label: '🎬 Картинка\u2192Видео', cls: '' },
-            { key: 'v2v', label: '🎥 Видео\u2192Видео', cls: '' },
-            { key: 'a2v', label: '🗣 Аудио\u2192Аватар', cls: '' },
-            { key: 'upscale', label: '\uD83D\uDD0D Апскейл', cls: '' },
+            { key: 't2v', label: '📹 Текст→Видео', cls: '' },
+            { key: 'i2v', label: '🎬 Картинка→Видео', cls: '' },
+            { key: 'v2v', label: '🎥 Видео→Видео', cls: '' },
+            { key: 'a2v', label: '🗣 Аудио→Аватар', cls: '' },
+            { key: 'upscale', label: '🔍 Апскейл', cls: '' },
             { key: 'analysis', label: '👀 Анализ', cls: 'free' },
             { key: 'convert', label: '🔄 Конвертация', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
-            { key: 'extract', label: '🎵 Экстракт', cls: 'free' },
             { key: 'stopframe', label: '📷 Стоп-кадр', cls: 'free' }
         ].forEach(vm => {
             const btn = document.createElement('button');
@@ -2452,7 +2423,11 @@
                 renderVideoSubHeader();
                 switchVideoSubMode(vm.key);
             };
-            btn.innerHTML = vm.label;
+            // Split emoji from text
+            const emojiMatch = vm.label.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\s)+/u);
+            const emoji = emojiMatch ? emojiMatch[0].trim() : '';
+            const text = emojiMatch ? vm.label.slice(emojiMatch[0].length).trim() : vm.label;
+            btn.innerHTML = '<span class="sub-emoji">' + emoji + '</span><span class="sub-text">' + text + '</span>';
             subModeContainer.appendChild(btn);
         });
 
@@ -2518,8 +2493,6 @@
             // Конвертация медиа — бесплатно
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         } else if (selected.videoSubMode === 'resize') {
-            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
-        } else if (selected.videoSubMode === 'extract') {
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         } else if (selected.videoSubMode === 'stopframe') {
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
@@ -2609,7 +2582,11 @@
                 renderAudioSubHeader();
                 switchAudioSubMode(am.key);
             };
-            btn.innerHTML = am.label;
+            // Split emoji from text
+            const emojiMatch = am.label.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F?|\s)+/u);
+            const emoji = emojiMatch ? emojiMatch[0].trim() : '';
+            const text = emojiMatch ? am.label.slice(emojiMatch[0].length).trim() : am.label;
+            btn.innerHTML = '<span class="sub-emoji">' + emoji + '</span><span class="sub-text">' + text + '</span>';
             subModeContainer.appendChild(btn);
         });
 
@@ -2637,11 +2614,7 @@
             }
         }
 
-        // Показываем/скрываем зону загрузки образца голоса в теле TTS
-        const ttsSampleArea = document.getElementById('ttsVoiceSampleArea');
-        if (ttsSampleArea) {
-            ttsSampleArea.style.display = (selected.audioSubMode === 'tts' && selected.voice === 'user_voice') ? 'block' : 'none';
-        }
+        // ttsVoiceSampleArea removed — Свой голос section handles voice sample upload
 
         // Модели — после голосов
         const modelsContainer = document.getElementById('audioModels');
@@ -2680,7 +2653,13 @@
                 sel.className = 'model-select model-free';
                 sel.value = selected.audio_stt;
                 sel.onchange = () => { selected.audio_stt = sel.value; saveSelected(); renderAudioSubHeader(); };
-                modelList.forEach(m => { const opt = document.createElement('option'); opt.value = m.key; opt.selected = selected.audio_stt === m.key; opt.textContent = (m.modelShort || m.displayName || m.key) + ' \u2713'; sel.appendChild(opt); });
+                const groups = {};
+                modelList.forEach(m => { const lbl = m.serviceLabel || m.service || 'Другие'; if (!groups[lbl]) groups[lbl] = []; groups[lbl].push(m); });
+                for (const [grp, models] of Object.entries(groups)) {
+                    const optgroup = document.createElement('optgroup'); optgroup.label = grp;
+                    models.forEach(m => { const opt = document.createElement('option'); opt.value = m.key; opt.selected = selected.audio_stt === m.key; opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : m.cost ? ' ' + m.cost + '\u00A2' : ''); optgroup.appendChild(opt); });
+                    sel.appendChild(optgroup);
+                }
                 modelsContainer.appendChild(sel);
             } else {
                 modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
@@ -2706,7 +2685,6 @@
         document.getElementById('videoAnalysisSection').classList.toggle('active', mode === 'analysis');
         document.getElementById('videoConvertMediaSection').classList.toggle('active', mode === 'convert');
         document.getElementById('videoResizeSection').classList.toggle('active', mode === 'resize');
-        document.getElementById('videoExtractAudioSection').classList.toggle('active', mode === 'extract');
         document.getElementById('videoStopFrameSection').classList.toggle('active', mode === 'stopframe');
         updateVideoPlaceholder();
     }
@@ -2754,7 +2732,6 @@
                 analysis: 'Загрузите видеофайл выше для анализа',
                 convert: 'Загрузите файл выше и выберите формат',
                 resize: 'Загрузите видео/фото выше и укажите размер',
-                extract: 'Загрузите видео выше для извлечения аудио',
                 stopframe: 'Загрузите видео выше для стоп-кадра',
                 upscale: 'Загрузите видео выше для увеличения разрешения'
             };
@@ -2766,7 +2743,6 @@
                 analysis: 'Анализ видео — бесплатно',
                 convert: 'Конвертация медиа — бесплатно',
                 resize: 'Ресайз — бесплатно',
-                extract: 'Экстракт аудио — бесплатно',
                 stopframe: 'Стоп-кадр — бесплатно',
                 upscale: 'Апскейл видео — от 5\u00A2'
             };
@@ -2848,7 +2824,7 @@
         const hints = {
             chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат',
             image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
-            video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : selected.videoSubMode === 'upscale' ? 'Апскейл видео — от 5\u00A2' : ['analysis','convert','resize','extract','stopframe'].includes(selected.videoSubMode) ? '\u2713 Бесплатно' : 'Стоимость зависит от режима',
+            video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : selected.videoSubMode === 'upscale' ? 'Апскейл видео — от 5\u00A2' : ['analysis','convert','resize','stopframe'].includes(selected.videoSubMode) ? '\u2713 Бесплатно' : 'Стоимость зависит от режима',
             audio: selected.audioSubMode === 'tts' ? 'Стоимость озвучки зависит от модели' : 'Бесплатно'
         };
         userInput.placeholder = placeholders[mode];
@@ -2965,8 +2941,6 @@
                         handleMediaConvertUpload(input);
                     } else if (selected.videoSubMode === 'resize') {
                         handleVideoResizeUpload(input);
-                    } else if (selected.videoSubMode === 'extract') {
-                        handleExtractAudio(input);
                     } else if (selected.videoSubMode === 'stopframe') {
                         handleStopFrame(input);
                     } else if (selected.videoSubMode === 'upscale') {
@@ -2994,13 +2968,12 @@
                     } else if (selected.audioSubMode === 'voice_clone') {
                         handleVoiceClone(input);
                     } else if (selected.audioSubMode === 'tts') {
-                        if (selected.voice === 'user_voice') {
-                            handleTTSSampleUpload(input);
-                        } else {
-                            // In TTS mode with a standard voice: add audio as chat attachment
-                            // (user can then use it as reference by dragging into TTS sample zone)
-                            processChatFiles(files);
-                        }
+                        // Audio in TTS mode → switch to Свой голос and upload as voice sample
+                        selected.audioSubMode = 'voice_clone';
+                        saveSelected();
+                        renderAudioSubHeader();
+                        switchAudioSubMode('voice_clone');
+                        handleVoiceClone(input);
                     } else if (selected.audioSubMode === 'stt') {
                         handleAudioUpload(input);
                     } else {
@@ -4473,7 +4446,7 @@
         const isImageToolMode = currentMode === 'image' && ['upscale', 'rotate', 'resize', 'convert'].includes(selected.imageSubMode);
         const isVideoAnalysis = currentMode === 'video' && selected.videoSubMode === 'analysis';
         const isVideoConvert = currentMode === 'video' && selected.videoSubMode === 'convert';
-        const isVideoTool = currentMode === 'video' && ['analysis', 'convert', 'resize', 'extract', 'stopframe', 'upscale'].includes(selected.videoSubMode);
+        const isVideoTool = currentMode === 'video' && ['analysis', 'convert', 'resize', 'stopframe', 'upscale'].includes(selected.videoSubMode);
         const isAudioToolMode = currentMode === 'audio' && ['stt', 'convert', 'voice_clone'].includes(selected.audioSubMode);
         if (isProcessing) return;
         // Требуем текст или вложения ТОЛЬКО для режимов где промпт нужен
@@ -4501,8 +4474,6 @@
                 await executeMediaConvert(); return;
             } else if (selected.videoSubMode === 'resize') {
                 await executeVideoResize(); return;
-            } else if (selected.videoSubMode === 'extract') {
-                showToast('Загрузите видеофайл выше для извлечения аудио', 'info'); return;
             } else if (selected.videoSubMode === 'stopframe') {
                 if (stopFrameBase64) { await extractFrame(); return; }
                 showToast('Загрузите видеофайл выше для стоп-кадра', 'info'); return;
@@ -5313,19 +5284,20 @@
 
     function removeVoiceClone() {
         voiceCloneSample = null;
-        document.getElementById('voiceCloneResult').innerHTML = '<span class="result-placeholder">Сначала загрузите образец голоса</span>';
-        // Also reset the TTS sample area
-        const ttsSampleZone = document.getElementById('ttsVoiceSampleZone');
-        if (ttsSampleZone) {
-            ttsSampleZone.innerHTML = '<div class="icon" style="font-size:20px">&#127909;</div>' +
+        const cloneResult = document.getElementById('voiceCloneResult');
+        if (cloneResult) cloneResult.innerHTML = '<span class="result-placeholder">Сначала загрузите образец голоса</span>';
+        // Reset the voice clone upload zone
+        const cloneZone = document.getElementById('voiceCloneZone');
+        if (cloneZone) {
+            cloneZone.innerHTML = '<div class="icon">&#127909;</div>' +
                 '<div class="label">Загрузить образец голоса</div>' +
                 '<div class="hint">MP3, WAV — от 10 секунд, до 5 МБ</div>' +
-                '<input type="file" id="ttsVoiceSampleInput" accept="audio/*" style="display:none" onchange="handleTTSSampleUpload(this)">';
-            ttsSampleZone.onclick = function() { document.getElementById('ttsVoiceSampleInput').click(); };
+                '<input type="file" id="voiceCloneInput" accept="audio/*" style="display:none" onchange="handleVoiceClone(this)">';
+            cloneZone.onclick = function() { if(!_dropJustHappened) document.getElementById('voiceCloneInput').click(); };
         }
     }
 
-    // Обработчик загрузки образца голоса в режиме TTS (Свой голос)
+    // Обработчик загрузки образца голоса — теперь через Свой голос (voiceCloneZone)
     async function handleTTSSampleUpload(input) {
         const file = (input.files && input.files[0]) || null;
         if (!file) return;
@@ -5333,7 +5305,13 @@
             const base64 = await fileToBase64(file);
             voiceCloneSample = { base64: base64, name: file.name };
 
-            const zone = document.getElementById('ttsVoiceSampleZone');
+            // Switch to Свой голос sub-mode and show preview there
+            selected.audioSubMode = 'voice_clone';
+            saveSelected();
+            renderAudioSubHeader();
+            switchAudioSubMode('voice_clone');
+
+            const zone = document.getElementById('voiceCloneZone');
             if (zone) {
                 const previewUrl = URL.createObjectURL(file);
                 zone.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:4px">' +
@@ -5343,8 +5321,8 @@
                     '<audio src="' + previewUrl + '" controls style="height:28px;margin-left:auto"></audio>' +
                     '<button onclick="removeVoiceClone();renderAudioSubHeader()" style="margin-left:4px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3);color:var(--danger);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:11px">Убрать</button>' +
                     '</div>' +
-                    '<input type="file" id="ttsVoiceSampleInput" accept="audio/*" style="display:none" onchange="handleTTSSampleUpload(this)">';
-                zone.onclick = function() { document.getElementById('ttsVoiceSampleInput').click(); };
+                    '<input type="file" id="voiceCloneInput" accept="audio/*" style="display:none" onchange="handleVoiceClone(this)">';
+                zone.onclick = function() { if(!_dropJustHappened) document.getElementById('voiceCloneInput').click(); };
             }
             showToast('Образец голоса загружен! Теперь введите текст для озвучки.', 'success');
         } catch (err) {
@@ -5859,7 +5837,7 @@
                         '<input type="file" id="mediaConvertInput" accept="video/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
                         '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
                 } else if (convertFileCategory === 'video') {
-                    // Видео — показываем thumbnail
+                    // Видео — показываем thumbnail с информацией о разрешении и длительности
                     const objUrl = URL.createObjectURL(file);
                     const videoEl = document.createElement('video');
                     videoEl.src = objUrl;
@@ -5870,9 +5848,11 @@
                             canvas.width = 160; canvas.height = 120;
                             canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
                             const thumb = canvas.toDataURL('image/jpeg', 0.6);
+                            const dur = videoEl.duration ? Math.round(videoEl.duration) + ' сек' : '';
+                            const info = videoEl.videoWidth + '&#215;' + videoEl.videoHeight + (dur ? ', ' + dur : '');
                             zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
                                 '<input type="file" id="mediaConvertInput" accept="video/*" style="display:none" onchange="handleMediaConvertUpload(this)">' +
-                                '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + convertFileSrcFormat.toUpperCase() + '). Выберите формат и отправьте.</div>';
+                                '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + convertFileSrcFormat.toUpperCase() + ', ' + info + '). Выберите формат и отправьте.</div>';
                         } catch(e) {}
                         URL.revokeObjectURL(objUrl);
                     };
@@ -6553,75 +6533,12 @@
     }
 
     // ---- EXTRACT AUDIO FROM VIDEO ----
+    // NOTE: Extract submode was removed from UI — Video→MP3 is now in Конвертация mode
     let extractAudioBase64 = null;
 
     async function handleExtractAudio(input) {
-        const file = (input.files && input.files[0]) || null;
-        if (!file) return;
-
-        // Show preview of uploaded file in the upload zone
-        const zone = document.getElementById('videoExtractAudioZone');
-        if (zone) {
-            const objUrl = URL.createObjectURL(file);
-            const videoEl = document.createElement('video');
-            videoEl.src = objUrl;
-            videoEl.muted = true;
-            videoEl.onloadeddata = function() {
-                try {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 160; canvas.height = 120;
-                    canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
-                    const thumb = canvas.toDataURL('image/jpeg', 0.6);
-                    zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
-                        '<input type="file" id="videoExtractAudioInput" accept="video/*" style="display:none" onchange="handleExtractAudio(this)">' +
-                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено. Извлекаю аудио...</div>';
-                } catch(e) {}
-                URL.revokeObjectURL(objUrl);
-            };
-            zone.onclick = function() { document.getElementById('videoExtractAudioInput').click(); };
-        }
-
-        const resultArea = document.getElementById('videoExtractAudioResult');
-        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Извлечение аудио...</span>';
-
-        try {
-            const base64 = await fileToBase64(file);
-            const srcFormat = file.name.split('.').pop().toLowerCase();
-            const response = await fetch(API_URL + '/api', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'video', auth: getAuth(), payload: {
-                    video_base64: base64,
-                    video_mode: 'convert',
-                    source_format: srcFormat,
-                    target_format: 'mp3'
-                }})
-            });
-            if (!response.ok) throw new Error('Ошибка извлечения аудио');
-            const data = await response.json();
-            if (!data.success) throw new Error(data.error || 'Ошибка');
-            const content = data.data?.content;
-            const resultType = data.data?.type || '';
-
-            if (content) {
-                if (resultType === 'audio_base64' || resultType === 'video_base64') {
-                    var byteStr = atob(content);
-                    var ab = new ArrayBuffer(byteStr.length);
-                    var ia = new Uint8Array(ab);
-                    for (var j = 0; j < byteStr.length; j++) ia[j] = byteStr.charCodeAt(j);
-                    var blob = new Blob([ab], { type: 'audio/mpeg' });
-                    var blobUrl = URL.createObjectURL(blob);
-                    resultArea.innerHTML = '<audio src="' + blobUrl + '" controls style="width:100%;max-width:400px;margin:8px 0"></audio><br><a href="' + blobUrl + '" download="extracted.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
-                } else {
-                    resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; Неожиданный формат результата</span>';
-                }
-                showToast('Аудио извлечено!', 'success');
-            } else throw new Error('Сервер не вернул результат');
-        } catch (err) {
-            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-            showToast('Ошибка: ' + err.message, 'error');
-        }
-        input.value = '';
+        // Redirected to Конвертация → Видео→MP3
+        showToast('Используйте Конвертация → Видео→MP3', 'info');
     }
 
     // ---- STOP FRAME (извлечение кадра из видео) ----
@@ -7021,16 +6938,12 @@
                 handleAudioConvert(input);
             } else if (id === 'voiceCloneZone') {
                 handleVoiceClone(input);
-            } else if (id === 'ttsVoiceSampleZone') {
-                handleTTSSampleUpload(input);
             } else if (id === 'imageResizeZone') {
                 handleImageResizeUpload(input);
             } else if (id === 'imageConvertZone') {
                 handleImageConvertUpload(input);
             } else if (id === 'videoResizeZone') {
                 handleVideoResizeUpload(input);
-            } else if (id === 'videoExtractAudioZone') {
-                handleExtractAudio(input);
             } else if (id === 'videoStopFrameZone') {
                 handleStopFrame(input);
             } else if (id === 'videoUpscaleZone') {
@@ -7951,8 +7864,6 @@
                         handleMediaConvertUpload(input);
                     } else if (selected.videoSubMode === 'resize') {
                         handleVideoResizeUpload(input);
-                    } else if (selected.videoSubMode === 'extract') {
-                        handleExtractAudio(input);
                     } else if (selected.videoSubMode === 'stopframe') {
                         handleStopFrame(input);
                     } else if (selected.videoSubMode === 'upscale') {
@@ -7975,12 +7886,12 @@
                     if (selected.audioSubMode === 'convert') handleAudioConvert(input);
                     else if (selected.audioSubMode === 'voice_clone') handleVoiceClone(input);
                     else if (selected.audioSubMode === 'tts') {
-                        if (selected.voice === 'user_voice') {
-                            handleTTSSampleUpload(input);
-                        } else {
-                            // In TTS mode with standard voice: add as chat attachment
-                            processChatFiles(files);
-                        }
+                        // Audio in TTS mode → switch to Свой голос and upload as voice sample
+                        selected.audioSubMode = 'voice_clone';
+                        saveSelected();
+                        renderAudioSubHeader();
+                        switchAudioSubMode('voice_clone');
+                        handleVoiceClone(input);
                     } else if (selected.audioSubMode === 'stt') {
                         handleAudioUpload(input);
                     } else {

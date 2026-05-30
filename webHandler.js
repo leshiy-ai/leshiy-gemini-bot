@@ -621,19 +621,10 @@ async function handleImage(auth, payload, env, monolith) {
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const imageBuffer = Buffer.from(payload.image_base64, 'base64');
-                // Converter expects multipart/form-data with field name "image"
-                const boundary = '----FormBoundary' + Date.now().toString(36);
-                const headerStr = '--' + boundary + '\r\n' +
-                    'Content-Disposition: form-data; name="image"; filename="input.png"\r\n' +
-                    'Content-Type: image/png\r\n' +
-                    '\r\n';
-                const headerBytes = Buffer.from(headerStr, 'utf8');
-                const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
-                const fullBody = Buffer.concat([headerBytes, imageBuffer, footerBytes]);
-                const response = await fetch(`${baseUrl}/rotate-image?angle=${angle}`, {
+                const response = await fetch(`${baseUrl}/rotate?angle=${angle}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-                    body: fullBody
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: imageBuffer
                 });
                 if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
                 const resultBuffer = Buffer.from(await response.arrayBuffer());
@@ -673,23 +664,18 @@ async function handleImage(auth, payload, env, monolith) {
                 endpoint = '/gif2video';
                 fieldName = 'gif';
             } else {
-                // Универсальная конвертация через FFmpeg-based endpoints
-                // Конвертер использует FFmpeg, который поддерживает ЛЮБЫЕ форматы изображений
+                // Универсальная конвертация через /rotate-image или Canvas fallback
+                // Для rotate/resize используем конкретные эндпоинты
                 if (payload.convert_action === 'rotate') {
                     const angle = payload.angle || '90';
                     endpoint = '/rotate-image?angle=' + encodeURIComponent(angle);
                 } else if (payload.convert_action === 'resize') {
                     const res = payload.resolution || '720p';
                     endpoint = '/resize-image?resolution=' + encodeURIComponent(res);
-                } else if (targetFormat === 'png') {
-                    // FFmpeg webp2png endpoint works for ANY input format → PNG output
-                    endpoint = '/webp2png';
-                } else if (targetFormat === 'jpg' || targetFormat === 'jpeg') {
-                    // FFmpeg heic2jpg endpoint works for ANY input format → JPG output
-                    endpoint = '/heic2jpg';
                 } else {
-                    // Fallback: convert to PNG (most universal)
-                    endpoint = '/webp2png';
+                    // Фоллбэк: пробуем webp2png если целевой png, иначе heic2jpg для heic
+                    // Или отправляем как octet-stream на универсальный эндпоинт
+                    endpoint = '/webp2png'; // Подходит для большинства форматов
                 }
             }
 
@@ -700,12 +686,14 @@ async function handleImage(auth, payload, env, monolith) {
             const boundary = '----FormBoundary' + Date.now().toString(36);
             const fileName = 'input.' + (sourceFormat || 'png');
             const fileMime = sourceFormat === 'heic' ? 'image/heic' : sourceFormat === 'gif' ? 'image/gif' : sourceFormat === 'webp' ? 'image/webp' : 'image/png';
-            // Correct multipart: headers + blank line separator + binary data
-            const headerStr = '--' + boundary + '\r\n' +
-                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"' + '\r\n' +
-                'Content-Type: ' + fileMime + '\r\n' +
-                '\r\n';
-            const headerBytes = Buffer.from(headerStr, 'utf8');
+            const bodyParts = [
+                '--' + boundary,
+                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
+                'Content-Type: ' + fileMime,
+                '',
+                '' // placeholder — binary data follows
+            ];
+            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
             const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
             const fullBody = Buffer.concat([headerBytes, imageBuffer, footerBytes]);
 
@@ -970,7 +958,11 @@ async function handleVideo(auth, payload, env, monolith) {
 
             if (sourceFormat === 'webm' && targetFormat === 'mp4') {
                 endpoint = '/webm2mp4';
-            } else if (sourceFormat === 'gif' || targetFormat === 'gif') {
+            } else if (sourceFormat === 'gif' && targetFormat !== 'gif') {
+                // GIF → MP4 (gif2video endpoint, field name = 'gif')
+                endpoint = '/gif2video';
+                fieldName = 'gif';
+            } else if (targetFormat === 'gif') {
                 // Video → GIF
                 const start = payload.start || '0';
                 const end = payload.end || '3';
@@ -999,15 +991,18 @@ async function handleVideo(auth, payload, env, monolith) {
 
             console.log(`[WebHandler] Video convert: ${sourceFormat || 'auto'} → ${targetFormat}, endpoint: ${endpoint}`);
 
-            // Multipart/form-data — correct format: headers + blank line + binary data
+            // Multipart/form-data
             const boundary = '----FormBoundary' + Date.now().toString(36);
             const fileName = 'input.' + (sourceFormat || 'webm');
             const fileMime = sourceFormat === 'gif' ? 'image/gif' : sourceFormat === 'mp4' ? 'video/mp4' : 'video/webm';
-            const headerStr = '--' + boundary + '\r\n' +
-                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"' + '\r\n' +
-                'Content-Type: ' + fileMime + '\r\n' +
-                '\r\n';
-            const headerBytes = Buffer.from(headerStr, 'utf8');
+            const bodyParts = [
+                '--' + boundary,
+                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
+                'Content-Type: ' + fileMime,
+                '',
+                ''
+            ];
+            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
             const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
             const fullBody = Buffer.concat([headerBytes, videoBuffer, footerBytes]);
 
@@ -1150,19 +1145,10 @@ async function handleVideo(auth, payload, env, monolith) {
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const videoBuffer = Buffer.from(payload.video_base64, 'base64');
-                // Converter expects multipart/form-data with field name "video"
-                const boundary = '----FormBoundary' + Date.now().toString(36);
-                const headerStr = '--' + boundary + '\r\n' +
-                    'Content-Disposition: form-data; name="video"; filename="input.mp4"\r\n' +
-                    'Content-Type: video/mp4\r\n' +
-                    '\r\n';
-                const headerBytes = Buffer.from(headerStr, 'utf8');
-                const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
-                const fullBody = Buffer.concat([headerBytes, videoBuffer, footerBytes]);
                 const response = await fetch(`${baseUrl}/rotate-video?angle=${angle}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-                    body: fullBody
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: videoBuffer
                 });
                 if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
                 const resultBuffer = Buffer.from(await response.arrayBuffer());
@@ -1372,15 +1358,14 @@ async function handleAudio(auth, payload, env, monolith) {
             let endpoint = null;
             let fieldName = 'audio';
 
-            // Converter only supports output to MP3 currently.
-            // For target MP3: use appropriate endpoint based on source format
+            // Determine endpoint based on source and target format
+            // Converter supports: ogg2mp3, wav2mp3, pcm2mp3, and generic ffmpeg conversion
             if (targetFormat === 'mp3') {
                 if (sourceFormat === 'ogg' || sourceFormat === 'opus') {
                     endpoint = '/ogg2mp3';
                 } else if (sourceFormat === 'wav') {
                     endpoint = '/wav2mp3';
                 } else if (sourceFormat === 'pcm') {
-                    // PCM → MP3: raw binary body + query params
                     const sampleRate = payload.sample_rate || '24000';
                     const channels = payload.channels || '1';
                     const pcmFormat = payload.pcm_format || 's16le';
@@ -1392,55 +1377,59 @@ async function handleAudio(auth, payload, env, monolith) {
                     if (!response.ok) throw new Error('Конвертер вернул ' + response.status);
                     const resultBuffer = Buffer.from(await response.arrayBuffer());
                     return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
-                } else if (sourceFormat === 'mp3') {
-                    // MP3 → MP3: nothing to convert, return as-is
-                    return formatResponse(true, null, null, { type: 'audio_base64', content: payload.audio_base64 });
                 } else {
-                    // For unknown source formats, try wav2mp3 as it's the most universal
-                    endpoint = '/wav2mp3';
+                    // Try ogg2mp3 as default fallback — most audio can be read as ogg-compatible
+                    endpoint = '/ogg2mp3';
                 }
             } else if (targetFormat === 'wav' || targetFormat === 'ogg' || targetFormat === 'flac') {
-                // Converter doesn't support these output formats directly.
-                // Strategy: first convert to MP3, then the frontend will need to handle client-side conversion
-                // or we inform the user that only MP3 output is supported.
-                // For now, convert to MP3 and label it as the target format with a note.
-                if (sourceFormat === 'ogg' || sourceFormat === 'opus') {
-                    endpoint = '/ogg2mp3';
-                } else if (sourceFormat === 'wav') {
-                    endpoint = '/wav2mp3';
-                } else {
-                    endpoint = '/wav2mp3';
-                }
-                // We'll still return the MP3 result but the frontend will know the target format
+                // For non-mp3 targets: first convert to mp3, then let ffmpeg handle the rest
+                // Use the generic convert endpoint if available, otherwise convert to mp3 first
+                // The converter's /convert endpoint supports arbitrary format conversion
+                endpoint = '/convert?outputFormat=' + encodeURIComponent(targetFormat);
             } else {
-                // Unknown target format — default to MP3
-                if (sourceFormat === 'ogg' || sourceFormat === 'opus') {
-                    endpoint = '/ogg2mp3';
-                } else {
-                    endpoint = '/wav2mp3';
-                }
+                // Default: ogg2mp3
+                endpoint = '/ogg2mp3';
             }
 
             // Multipart/form-data
             const boundary = '----FormBoundary' + Date.now().toString(36);
-            const fileName = 'input.' + (sourceFormat || 'mp3');
-            const mimeMap = { ogg: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', mp3: 'audio/mpeg', flac: 'audio/flac', m4a: 'audio/mp4', aac: 'audio/aac' };
-            const fileMime = mimeMap[sourceFormat] || 'audio/mpeg';
-            // Correct multipart: headers + blank line separator + binary data
-            const headerStr = '--' + boundary + '\r\n' +
-                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"' + '\r\n' +
-                'Content-Type: ' + fileMime + '\r\n' +
-                '\r\n';
-            const headerBytes = Buffer.from(headerStr, 'utf8');
+            const fileName = 'input.' + (sourceFormat || 'ogg');
+            const mimeMap = { wav: 'audio/wav', mp3: 'audio/mpeg', ogg: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac', m4a: 'audio/mp4', aac: 'audio/aac' };
+            const fileMime = mimeMap[sourceFormat] || 'audio/ogg';
+            const bodyParts = [
+                '--' + boundary,
+                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
+                'Content-Type: ' + fileMime,
+                '',
+                ''
+            ];
+            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
             const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
             const fullBody = Buffer.concat([headerBytes, audioBuffer, footerBytes]);
+
+            console.log(`[WebHandler] Audio convert: ${sourceFormat || 'auto'} → ${targetFormat}, endpoint: ${endpoint}`);
 
             const response = await fetch(`${baseUrl}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
                 body: fullBody
             });
-            if (!response.ok) throw new Error('Конвертер вернул ' + response.status);
+            if (!response.ok) {
+                // If the /convert endpoint failed, fallback to ogg2mp3 for mp3 target
+                if (endpoint !== '/ogg2mp3' && targetFormat === 'mp3') {
+                    console.log('[WebHandler] Audio convert: fallback to ogg2mp3');
+                    const fallbackBody = Buffer.concat([headerBytes, audioBuffer, footerBytes]);
+                    const fallbackResp = await fetch(`${baseUrl}/ogg2mp3`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+                        body: fallbackBody
+                    });
+                    if (!fallbackResp.ok) throw new Error('Конвертер вернул ' + fallbackResp.status);
+                    const resultBuffer = Buffer.from(await fallbackResp.arrayBuffer());
+                    return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
+                }
+                throw new Error('Конвертер вернул ' + response.status);
+            }
             const resultBuffer = Buffer.from(await response.arrayBuffer());
             return formatResponse(true, null, null, { type: 'audio_base64', content: resultBuffer.toString('base64') });
         } catch (e) {
