@@ -236,6 +236,17 @@ body {
 .sub-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
 .sub-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 
+/* Params area inside panels */
+#imageParamsArea, #videoParamsArea {
+    padding: 8px 0;
+}
+#imageParamsArea .sub-option, #videoParamsArea .sub-option,
+#imageParamsArea .size-option, #videoParamsArea .size-option {
+    padding: 5px 12px;
+    font-size: 13px;
+    border-radius: 16px;
+}
+
 /* ===== MODEL DROPDOWN ===== */
 .model-select {
     appearance: none;
@@ -1107,7 +1118,7 @@ body {
     .auth-btn { font-size: 13px; padding: 7px 14px; }
     
     .mode-tabs { padding: 7px 10px; gap: 5px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 9px 16px; font-size: 16px; min-height: 44px; }
+    .mode-tab { padding: 9px 16px; font-size: 14px; min-height: 44px; }
     .mode-tab .mode-emoji { font-size: 16px; }
     
     .sub-header { 
@@ -1119,8 +1130,8 @@ body {
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { padding: 7px 14px; font-size: 15px; min-height: 38px; }
-    .model-select { font-size: 15px; padding: 7px 28px 7px 12px; max-width: 180px; }
+    .sub-option { padding: 7px 14px; font-size: 13px; min-height: 38px; }
+    .model-select { font-size: 13px; padding: 7px 28px 7px 12px; max-width: 180px; }
     
     .media-panel { padding: 16px 12px; gap: 14px; }
     
@@ -1132,19 +1143,19 @@ body {
     .result-area { min-height: 170px; }
     
     /* Сообщения крупнее на мобилке */
-    .message { font-size: 17px; padding: 11px 15px; line-height: 1.55; }
+    .message { font-size: 15px; padding: 11px 15px; line-height: 1.55; }
     .message.bot code { font-size: 15px; }
     .message.bot pre { font-size: 15px; }
     .message.user { padding: 11px 15px; }
 
     .input-pill { border-radius: 30px; padding: 6px 8px; }
-    .input-pill textarea { font-size: 17px; padding: 10px 12px; }
+    .input-pill textarea { font-size: 15px; padding: 10px 12px; }
     .input-area { padding: 10px 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
     .pill-btn { width: 44px; height: 44px; }
     .pill-btn svg { width: 22px; height: 22px; }
     .pill-send { width: 46px; height: 46px; }
     .pill-send svg { width: 22px; height: 22px; }
-    .vc-btn { padding: 7px 14px; font-size: 15px; min-height: 38px; }
+    .vc-btn { padding: 7px 14px; font-size: 13px; min-height: 38px; }
     .vc-rec-label { font-size: 13px; }
     .input-hint { font-size: 13px; }
 
@@ -1175,7 +1186,7 @@ body {
     .auth-btn { font-size: 12px; padding: 6px 12px; }
     
     .mode-tabs { padding: 6px 8px; gap: 4px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 8px 12px; font-size: 15px; min-height: 42px; border-radius: 18px; }
+    .mode-tab { padding: 8px 12px; font-size: 13px; min-height: 42px; border-radius: 18px; }
     .mode-tab .mode-emoji { font-size: 15px; }
     
     .sub-header { 
@@ -1187,9 +1198,9 @@ body {
         overflow-y: visible;
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 14px; padding: 6px 10px; min-height: 36px; border-radius: 14px; }
+    .sub-option { font-size: 12px; padding: 6px 10px; min-height: 36px; border-radius: 14px; }
     .sub-label { font-size: 12px; }
-    .model-select { font-size: 14px; max-width: 150px; padding: 6px 26px 6px 10px; }
+    .model-select { font-size: 12px; max-width: 150px; padding: 6px 26px 6px 10px; }
     .mode-tag { font-size: 11px; padding: 3px 7px; }
     .size-option { font-size: 13px; padding: 5px 9px; min-height: 34px; border-radius: 14px; }
     .size-selector { gap: 5px; }
@@ -1207,7 +1218,7 @@ body {
     .result-placeholder { font-size: 14px; }
     
     .input-pill { border-radius: 28px; padding: 5px 6px; }
-    .input-pill textarea { font-size: 17px; padding: 9px 10px; }
+    .input-pill textarea { font-size: 15px; padding: 9px 10px; }
     .input-area { padding: 10px 8px; }
     .pill-btn { width: 42px; height: 42px; }
     .pill-btn svg { width: 20px; height: 20px; }
@@ -1216,7 +1227,7 @@ body {
     .vc-btn { padding: 6px 12px; font-size: 14px; min-height: 36px; }
     .input-hint { font-size: 12px; }
     
-    .message { font-size: 17px; padding: 11px 14px; line-height: 1.55; }
+    .message { font-size: 15px; padding: 11px 14px; line-height: 1.55; }
     .message.bot code { font-size: 15px; }
     .message.bot pre { font-size: 15px; }
     
@@ -1245,16 +1256,16 @@ body {
     .mode-tab { padding: 7px 10px; font-size: 14px; min-height: 40px; }
     .mode-tab .mode-emoji { font-size: 14px; }
     .sub-header { gap: 3px; padding: 5px 6px; max-height: none; overflow-y: visible; }
-    .sub-option { font-size: 13px; padding: 5px 8px; min-height: 34px; }
+    .sub-option { font-size: 11px; padding: 5px 8px; min-height: 34px; }
     .sub-divider { height: 18px; }
-    .model-select { max-width: 130px; font-size: 13px; }
+    .model-select { max-width: 130px; font-size: 11px; }
     .input-pill { border-radius: 26px; }
-    .input-pill textarea { font-size: 17px; padding: 8px 10px; }
+    .input-pill textarea { font-size: 14px; padding: 8px 10px; }
     .pill-btn { width: 40px; height: 40px; }
     .pill-btn svg { width: 20px; height: 20px; }
     .pill-send { width: 42px; height: 42px; }
     .pill-send svg { width: 20px; height: 20px; }
-    .message { font-size: 16px; padding: 10px 12px; }
+    .message { font-size: 14px; padding: 10px 12px; }
 }
 
 /* Результат-область для аудио — вертикальная компоновка */
