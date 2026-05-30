@@ -3770,6 +3770,12 @@ async function generateAdminMessage(currentEnvData, kieAiBalance, BothubBalance)
     }
     // --- 1. ПРИМЕНЕНИЕ СКЛОНЕНИЯ ---
     const starWord = pluralize(starBalance, STAR_FORMS); // Падеж для звёзд
+
+    // 2. 🌟 ПОЛУЧАЕМ БАЛАНС POLLINATIONS 🌟
+    // Берём ключ из переменных окружения воркера
+    const pollinationsApiKey = currentEnvData.POLLINATIONS_API_KEY; 
+    const pollinationsBalance = await getPollinationsBalance(pollinationsApiKey);
+
     // 💡 ДОБАВЛЕНО: Таблица активных моделей (функция generateModelStatusTable должна существовать)
     const modelStatusTable = generateModelStatusTable(currentEnvData); 
     
@@ -3781,6 +3787,7 @@ async function generateAdminMessage(currentEnvData, kieAiBalance, BothubBalance)
 💰 **Платные сервисы:**
 \`TELEGRAM\` : ⭐️ **${starBalance}** ${starWord}
 KIE.AI : **${kieAiBalance}**
+Pollinations : **${pollinationsBalance}**
 BotHub.ru : ${BothubBalance}
 
 Доступность опций:
@@ -11230,6 +11237,33 @@ async function updateKieAiUserCredits(apiKey, envData, ctx) {
         ctx.waitUntil(logDebug('KIEAI_CREDIT_EXCEPTION', errorMsg, envData));
         return 0;
     }
+}
+
+// Функция получения баланса от Pollinations.ai
+async function getPollinationsBalance(apiKey) {
+    if (!apiKey) return 'Ключ не задан';
+    try {
+        const response = await fetch('https://gen.pollinations.ai/account/balance', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.error(`Pollinations API Error: ${response.status}`);
+            return 'Ошибка API';
+        }
+
+        const data = await response.json();
+        // Если API возвращает JSON вида { balance: 12345 } или аналогичный:
+        // (Если там возвращается просто число, замени на: return data;)
+        return data.balance !== undefined ? data.balance : JSON.stringify(data);
+    } catch (e) {
+        console.error('Ошибка при запросе баланса Pollinations:', e);
+        return 'Недоступен';
+    }
 }
 
 /**
