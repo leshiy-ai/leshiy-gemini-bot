@@ -4714,8 +4714,16 @@ async function callGeminiTextToAudio(config, text, envData, requestedVoice) {
     };
     
     // 💡 1. Динамический выбор имени голоса Gemini по 'Male' или 'Female'
-    // Используем Female в качестве fallback
-    const selectedVoiceName = GEMINI_VOICE_MAP[requestedVoice] || GEMINI_VOICE_MAP[VOICE_FEMALE_KEY];
+    // Поддерживаем прямые имена голосов Gemini (Kore, Enceladus, Luna, Puck, etc.)
+    const GEMINI_DIRECT_VOICES = ['Kore', 'Enceladus', 'Luna', 'Puck', 'Charon', 'Fenrir', 'Aulos', 'Leda', 'Orion'];
+    let selectedVoiceName;
+    if (GEMINI_DIRECT_VOICES.includes(requestedVoice)) {
+        // Прямое имя голоса Gemini — используем как есть
+        selectedVoiceName = requestedVoice;
+    } else {
+        // Маппинг Male/Female → имя голоса Gemini
+        selectedVoiceName = GEMINI_VOICE_MAP[requestedVoice] || GEMINI_VOICE_MAP[VOICE_FEMALE_KEY];
+    }
     // Сборка универсального URL
     const url = `${BASE_URL}/models/${MODEL}:generateContent`; 
     // ------------------------------------
