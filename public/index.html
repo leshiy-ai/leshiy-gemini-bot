@@ -227,15 +227,9 @@
                     <input type="file" id="imageResizeInput" accept="image/*" style="display:none" onchange="handleImageResizeUpload(this)">
                 </div>
                 <div id="imageResizeControls" style="display:none">
-                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Новый размер:</label>
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                        <input type="number" id="resizeWidth" placeholder="Ширина" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px" min="1" max="4096">
-                        <span style="color:var(--text-secondary)">&#215;</span>
-                        <input type="number" id="resizeHeight" placeholder="Высота" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px" min="1" max="4096">
-                        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;cursor:pointer">
-                            <input type="checkbox" id="resizeKeepRatio" checked style="accent-color:var(--accent)"> Пропорции
-                        </label>
-                    </div>
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер (по высоте):</label>
+                    <div id="imageResizePresets" class="size-selector"></div>
+                    <div id="imageResizeCurrentInfo" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
                 </div>
                 <div class="result-area" id="imageResizeResult">
                     <span class="result-placeholder">Здесь появится ресайзнутое изображение</span>
@@ -384,6 +378,24 @@
                         <button class="size-option" data-group="audio" onclick="selectConvertFormat('wav2mp3',this)">WAV&#8594;MP3</button>
                     </div>
                 </div>
+                <div id="gifParamsArea" style="display:none;margin-top:8px">
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Параметры GIF:</label>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px">Начало:
+                            <input type="number" id="gifStart" value="0" min="0" step="0.1" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px"> сек
+                        </label>
+                        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px">Конец:
+                            <input type="number" id="gifEnd" value="3" min="0.1" step="0.1" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px"> сек
+                        </label>
+                        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px">FPS:
+                            <input type="number" id="gifFps" value="10" min="1" max="30" style="width:50px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px">
+                        </label>
+                        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px">Ширина:
+                            <input type="number" id="gifWidth" value="480" min="100" max="1280" step="10" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px"> px
+                        </label>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Длительность (конец−начало): 0.1–5 сек</div>
+                </div>
                 <div class="result-area" id="mediaConvertResult">
                     <span class="result-placeholder">Здесь появится сконвертированный файл</span>
                 </div>
@@ -402,15 +414,9 @@
                     <input type="file" id="videoResizeInput" accept="image/*,video/*" style="display:none" onchange="handleVideoResizeUpload(this)">
                 </div>
                 <div id="videoResizeControls" style="display:none">
-                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Новый размер:</label>
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                        <input type="number" id="videoResizeWidth" placeholder="Ширина" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px" min="1" max="4096">
-                        <span style="color:var(--text-secondary)">&#215;</span>
-                        <input type="number" id="videoResizeHeight" placeholder="Высота" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px" min="1" max="4096">
-                        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;cursor:pointer">
-                            <input type="checkbox" id="videoResizeKeepRatio" checked style="accent-color:var(--accent)"> Пропорции
-                        </label>
-                    </div>
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер (по высоте):</label>
+                    <div id="videoResizePresets" class="size-selector"></div>
+                    <div id="videoResizeCurrentInfo" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
                 </div>
                 <div class="result-area" id="videoResizeResult">
                     <span class="result-placeholder">Здесь появится ресайзнутый файл</span>
@@ -763,6 +769,11 @@
         // Обновляем UI — подсвечиваем выбранную кнопку
         btn.parentNode.querySelectorAll('.size-option').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        // Show/hide GIF parameters
+        const gifParams = document.getElementById('gifParamsArea');
+        if (gifParams) {
+            gifParams.style.display = (format === 'video2gif') ? 'block' : 'none';
+        }
     }
 
     // Показать только релевантные кнопки конвертации в зависимости от типа файла
@@ -2179,6 +2190,11 @@
             const voicerss = availableModels.audio_tts?.find(m => m.service === 'VOICERSS');
             selected.audio_tts = voicerss?.key || availableModels.audio_tts?.find(m => m.isFree)?.key || availableModels.audio_tts?.[0]?.key;
         }
+        // Sync voice with the selected TTS model — reset if current voice is invalid
+        const ttsVoices = getVoicesForModel(selected.audio_tts);
+        if (ttsVoices.length > 0 && !ttsVoices.find(v => v.id === selected.voice)) {
+            selected.voice = ttsVoices[0].id;
+        }
         if (!selected.audio_stt || !availableModels.audio_stt?.find(m => m.key === selected.audio_stt))
             selected.audio_stt = availableModels.audio_stt?.[0]?.key;
     }
@@ -2638,7 +2654,16 @@
                 const sel = document.createElement('select');
                 sel.className = 'model-select' + (modelList.find(m => m.key === selected.audio_tts)?.isFree ? ' model-free' : '');
                 sel.value = selected.audio_tts;
-                sel.onchange = () => { selected.audio_tts = sel.value; saveSelected(); renderAudioSubHeader(); };
+                sel.onchange = () => {
+                    selected.audio_tts = sel.value;
+                    // Reset voice to first valid option for the new model's service
+                    const newVoices = getVoicesForModel(selected.audio_tts);
+                    if (newVoices.length > 0 && !newVoices.find(v => v.id === selected.voice)) {
+                        selected.voice = newVoices[0].id;
+                    }
+                    saveSelected();
+                    renderAudioSubHeader();
+                };
                 const groups = {};
                 modelList.forEach(m => { const lbl = m.serviceLabel || m.service || 'Другие'; if (!groups[lbl]) groups[lbl] = []; groups[lbl].push(m); });
                 for (const [grp, models] of Object.entries(groups)) {
@@ -2961,14 +2986,24 @@
                     handleVideoConvert(input);
                 }
             } else if (fileType.startsWith('audio/')) {
-                // Audio files → audio STT (в любом режиме, кроме чата где тоже можно)
+                // Audio files → route to correct audio zone based on current sub-mode
                 if (currentMode === 'audio') {
                     if (selected.audioSubMode === 'convert') {
                         handleAudioConvert(input);
                     } else if (selected.audioSubMode === 'voice_clone') {
                         handleVoiceClone(input);
-                    } else if (selected.audioSubMode === 'tts' && selected.voice === 'user_voice') {
-                        handleTTSSampleUpload(input);
+                    } else if (selected.audioSubMode === 'tts') {
+                        if (selected.voice === 'user_voice') {
+                            handleTTSSampleUpload(input);
+                        } else {
+                            // Auto-switch to user_voice so the dropped file goes to TTS sample zone
+                            selected.voice = 'user_voice';
+                            saveSelected();
+                            renderAudioSubHeader();
+                            handleTTSSampleUpload(input);
+                        }
+                    } else if (selected.audioSubMode === 'stt') {
+                        handleAudioUpload(input);
                     } else {
                         // Default: STT (free)
                         selected.audioSubMode = 'stt';
@@ -5883,6 +5918,26 @@
                 source_format: convertFileSrcFormat,
                 target_format: targetFormat
             };
+
+            // Add GIF-specific parameters
+            if (fmt === 'video2gif') {
+                const gifStartEl = document.getElementById('gifStart');
+                const gifEndEl = document.getElementById('gifEnd');
+                const gifFpsEl = document.getElementById('gifFps');
+                const gifWidthEl = document.getElementById('gifWidth');
+                const gifStart = gifStartEl ? parseFloat(gifStartEl.value) || 0 : 0;
+                let gifEnd = gifEndEl ? parseFloat(gifEndEl.value) || 3 : 3;
+                const gifFps = gifFpsEl ? Math.min(30, Math.max(1, parseInt(gifFpsEl.value) || 10)) : 10;
+                const gifWidth = gifWidthEl ? Math.min(1280, Math.max(100, parseInt(gifWidthEl.value) || 480)) : 480;
+                // Clamp duration to 0.1-5 seconds
+                const duration = gifEnd - gifStart;
+                if (duration < 0.1) { gifEnd = gifStart + 0.1; }
+                if (duration > 5) { gifEnd = gifStart + 5; }
+                payload.start = gifStart;
+                payload.end = gifEnd;
+                payload.fps = gifFps;
+                payload.width = gifWidth;
+            }
         } else if (convertFileCategory === 'audio') {
             mode = 'audio';
             payload = {
@@ -5929,10 +5984,16 @@
                         var ab = new ArrayBuffer(byteStr.length);
                         var ia = new Uint8Array(ab);
                         for (var j = 0; j < byteStr.length; j++) ia[j] = byteStr.charCodeAt(j);
-                        var blob = new Blob([ab], { type: 'video/mp4' });
-                        var blobUrl = URL.createObjectURL(blob);
                         var ext = fmt === 'video2gif' ? 'gif' : 'mp4';
-                        resultArea.innerHTML = '<video src="' + blobUrl + '" controls style="max-width:100%;max-height:200px;border-radius:8px"></video><br><a href="' + blobUrl + '" download="converted.' + ext + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + ext.toUpperCase() + '</a>';
+                        var mimeType = fmt === 'video2gif' ? 'image/gif' : 'video/mp4';
+                        var blob = new Blob([ab], { type: mimeType });
+                        var blobUrl = URL.createObjectURL(blob);
+                        if (fmt === 'video2gif') {
+                            // GIF — show as image
+                            resultArea.innerHTML = '<img class="generated-image" src="' + blobUrl + '" alt="GIF"><br><a href="' + blobUrl + '" download="converted.gif" style="color:var(--accent);font-size:13px">&#128229; Скачать GIF</a>';
+                        } else {
+                            resultArea.innerHTML = '<video src="' + blobUrl + '" controls style="max-width:100%;max-height:200px;border-radius:8px"></video><br><a href="' + blobUrl + '" download="converted.' + ext + '" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + ext.toUpperCase() + '</a>';
+                        }
                     } catch(e) {
                         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; Ошибка: ' + e.message + '</span>';
                     }
@@ -6058,10 +6119,60 @@
         }
     }
 
+    // ---- RESOLUTION PRESETS ----
+    const RESOLUTION_PRESETS = [
+        { key: '240p', height: 240 },
+        { key: '360p', height: 360 },
+        { key: '480p', height: 480 },
+        { key: '580p', height: 580 },
+        { key: '640p', height: 640 },
+        { key: '720p', height: 720 },
+        { key: '1080p', height: 1080 },
+        { key: '1440p', height: 1440 },
+        { key: '2160p', height: 2160 }
+    ];
+
+    function populateResolutionPresets(containerId, infoId, origW, origH, currentResVar, setter) {
+        const container = document.getElementById(containerId);
+        const infoEl = document.getElementById(infoId);
+        if (!container) return;
+        container.innerHTML = '';
+        if (infoEl) infoEl.textContent = 'Оригинал: ' + origW + '×' + origH;
+
+        // Find closest preset to current height
+        let closestKey = currentResVar;
+        let minDiff = Infinity;
+        RESOLUTION_PRESETS.forEach(p => {
+            if (Math.abs(p.height - origH) < minDiff) {
+                minDiff = Math.abs(p.height - origH);
+                closestKey = p.key;
+            }
+        });
+
+        RESOLUTION_PRESETS.forEach(p => {
+            const btn = document.createElement('button');
+            btn.className = 'size-option' + (p.key === closestKey ? ' active' : '');
+            // Calculate resulting width based on aspect ratio
+            const calcW = Math.round(origW * p.height / origH);
+            btn.textContent = p.key + ' (' + calcW + '×' + p.height + ')';
+            btn.title = 'Высота: ' + p.height + 'px, ширина: ' + calcW + 'px';
+            btn.onclick = () => {
+                container.querySelectorAll('.size-option').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                setter(p.key);
+            };
+            container.appendChild(btn);
+        });
+
+        // Set the initial resolution
+        setter(closestKey);
+    }
+
     // ---- RESIZE (Картинки — бесплатно) ----
     let resizeImageBase64 = null;
     let resizeOriginalWidth = 0;
     let resizeOriginalHeight = 0;
+    let imageResizeResolution = '720p';
 
     async function handleImageResizeUpload(input) {
         const file = (input.files && input.files[0]) || null;
@@ -6075,8 +6186,8 @@
             img.onload = function() {
                 resizeOriginalWidth = img.naturalWidth;
                 resizeOriginalHeight = img.naturalHeight;
-                document.getElementById('resizeWidth').value = img.naturalWidth;
-                document.getElementById('resizeHeight').value = img.naturalHeight;
+                // Populate resolution presets based on original dimensions
+                populateResolutionPresets('imageResizePresets', 'imageResizeCurrentInfo', img.naturalWidth, img.naturalHeight, imageResizeResolution, function(v) { imageResizeResolution = v; });
             };
             img.src = src;
 
@@ -6085,7 +6196,7 @@
             if (zone) {
                 zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для ресайза">' +
                     '<input type="file" id="imageResizeInput" accept="image/*" style="display:none" onchange="handleImageResizeUpload(this)">' +
-                    '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Укажите размер и отправьте.</div>';
+                    '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Выберите размер и отправьте.</div>';
                 zone.onclick = function() { document.getElementById('imageResizeInput').click(); };
             }
             document.getElementById('imageResizeResult').innerHTML = '<span class="result-placeholder">Здесь появится ресайзнутое изображение</span>';
@@ -6097,10 +6208,12 @@
 
     async function executeImageResize() {
         if (!resizeImageBase64) { showToast('Сначала загрузите файл', 'info'); return; }
-        const w = parseInt(document.getElementById('resizeWidth').value);
-        const h = parseInt(document.getElementById('resizeHeight').value);
-        if (!w || !h || w < 1 || h < 1) { showToast('Укажите корректный размер', 'info'); return; }
-        if (w > 4096 || h > 4096) { showToast('Максимальный размер: 4096px', 'info'); return; }
+        if (!imageResizeResolution) { showToast('Выберите размер', 'info'); return; }
+
+        // Calculate resulting dimensions for display
+        const preset = RESOLUTION_PRESETS.find(p => p.key === imageResizeResolution);
+        const h = preset ? preset.height : 720;
+        const w = resizeOriginalHeight > 0 ? Math.round(resizeOriginalWidth * h / resizeOriginalHeight) : h;
 
         const resultArea = document.getElementById('imageResizeResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Ресайз...</span>';
@@ -6113,7 +6226,7 @@
                     image_base64: resizeImageBase64,
                     image_mode: 'convert',
                     convert_action: 'resize',
-                    resolution: w + 'x' + h
+                    resolution: imageResizeResolution
                 }})
             });
             if (!response.ok) throw new Error('Ошибка ресайза');
@@ -6122,7 +6235,7 @@
             const content = data.data?.content;
             if (content) {
                 const src = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
-                resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Resized"><br><a href="' + src + '" download="resized.png" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + w + '&#215;' + h + '</a>';
+                resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Resized"><br><a href="' + src + '" download="resized.png" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + imageResizeResolution + '</a>';
                 showToast('Ресайз выполнен!', 'success');
             } else throw new Error('Сервер не вернул результат');
         } catch (err) {
@@ -6130,7 +6243,7 @@
             try {
                 const result = await clientSideResize(resizeImageBase64, w, h);
                 if (result) {
-                    resultArea.innerHTML = '<img class="generated-image" src="' + result + '" alt="Resized"><br><a href="' + result + '" download="resized.png" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + w + '&#215;' + h + '</a>';
+                    resultArea.innerHTML = '<img class="generated-image" src="' + result + '" alt="Resized"><br><a href="' + result + '" download="resized.png" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + imageResizeResolution + '</a>';
                     showToast('Ресайз выполнен (клиент)!', 'success');
                     return;
                 }
@@ -6158,6 +6271,9 @@
     // ---- VIDEO RESIZE (Видео — бесплатно) ----
     let videoResizeBase64 = null;
     let videoResizeCategory = 'image'; // или 'video'
+    let videoResizeResolution = '720p';
+    let videoResizeOrigWidth = 0;
+    let videoResizeOrigHeight = 0;
 
     async function handleVideoResizeUpload(input) {
         const file = (input.files && input.files[0]) || null;
@@ -6175,8 +6291,10 @@
                     videoEl.src = objUrl;
                     videoEl.muted = true;
                     videoEl.onloadeddata = function() {
-                        document.getElementById('videoResizeWidth').value = videoEl.videoWidth;
-                        document.getElementById('videoResizeHeight').value = videoEl.videoHeight;
+                        videoResizeOrigWidth = videoEl.videoWidth;
+                        videoResizeOrigHeight = videoEl.videoHeight;
+                        // Populate resolution presets based on video dimensions
+                        populateResolutionPresets('videoResizePresets', 'videoResizeCurrentInfo', videoEl.videoWidth, videoEl.videoHeight, videoResizeResolution, function(v) { videoResizeResolution = v; });
                         try {
                             const canvas = document.createElement('canvas');
                             canvas.width = 160; canvas.height = 120;
@@ -6184,7 +6302,7 @@
                             const thumb = canvas.toDataURL('image/jpeg', 0.6);
                             zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
                                 '<input type="file" id="videoResizeInput" accept="image/*,video/*" style="display:none" onchange="handleVideoResizeUpload(this)">' +
-                                '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + videoEl.videoWidth + '&#215;' + videoEl.videoHeight + '). Укажите размер и отправьте.</div>';
+                                '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + videoEl.videoWidth + '&#215;' + videoEl.videoHeight + '). Выберите размер и отправьте.</div>';
                         } catch(e) {}
                         URL.revokeObjectURL(objUrl);
                     };
@@ -6192,13 +6310,15 @@
                     const src = 'data:' + (file.type || 'image/png') + ';base64,' + videoResizeBase64;
                     const imgEl = new Image();
                     imgEl.onload = function() {
-                        document.getElementById('videoResizeWidth').value = imgEl.naturalWidth;
-                        document.getElementById('videoResizeHeight').value = imgEl.naturalHeight;
+                        videoResizeOrigWidth = imgEl.naturalWidth;
+                        videoResizeOrigHeight = imgEl.naturalHeight;
+                        // Populate resolution presets based on image dimensions
+                        populateResolutionPresets('videoResizePresets', 'videoResizeCurrentInfo', imgEl.naturalWidth, imgEl.naturalHeight, videoResizeResolution, function(v) { videoResizeResolution = v; });
                     };
                     imgEl.src = src;
                     zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для ресайза">' +
                         '<input type="file" id="videoResizeInput" accept="image/*,video/*" style="display:none" onchange="handleVideoResizeUpload(this)">' +
-                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Укажите размер и отправьте.</div>';
+                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Выберите размер и отправьте.</div>';
                 }
                 zone.onclick = function() { document.getElementById('videoResizeInput').click(); };
             }
@@ -6211,9 +6331,12 @@
 
     async function executeVideoResize() {
         if (!videoResizeBase64) { showToast('Сначала загрузите файл', 'info'); return; }
-        const w = parseInt(document.getElementById('videoResizeWidth').value);
-        const h = parseInt(document.getElementById('videoResizeHeight').value);
-        if (!w || !h || w < 1 || h < 1) { showToast('Укажите корректный размер', 'info'); return; }
+        if (!videoResizeResolution) { showToast('Выберите размер', 'info'); return; }
+
+        // Calculate resulting dimensions for display and fallback
+        const preset = RESOLUTION_PRESETS.find(p => p.key === videoResizeResolution);
+        const h = preset ? preset.height : 720;
+        const w = videoResizeOrigHeight > 0 ? Math.round(videoResizeOrigWidth * h / videoResizeOrigHeight) : h;
 
         const resultArea = document.getElementById('videoResizeResult');
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Ресайз...</span>';
@@ -6227,12 +6350,12 @@
                         video_base64: videoResizeBase64,
                         video_mode: 'convert',
                         convert_action: 'resize',
-                        resolution: w + 'x' + h
+                        resolution: videoResizeResolution
                     } : {
                         image_base64: videoResizeBase64,
                         image_mode: 'convert',
                         convert_action: 'resize',
-                        resolution: w + 'x' + h
+                        resolution: videoResizeResolution
                     }
                 })
             });
@@ -6250,10 +6373,10 @@
                     for (var j = 0; j < byteStr.length; j++) ia[j] = byteStr.charCodeAt(j);
                     var blob = new Blob([ab], { type: 'video/mp4' });
                     var blobUrl = URL.createObjectURL(blob);
-                    resultArea.innerHTML = '<video src="' + blobUrl + '" controls style="max-width:100%;max-height:200px;border-radius:8px"></video><br><a href="' + blobUrl + '" download="resized.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать MP4 ' + w + '&#215;' + h + '</a>';
+                    resultArea.innerHTML = '<video src="' + blobUrl + '" controls style="max-width:100%;max-height:200px;border-radius:8px"></video><br><a href="' + blobUrl + '" download="resized.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать MP4 ' + videoResizeResolution + '</a>';
                 } else {
                     const src = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
-                    resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Resized"><br><a href="' + src + '" download="resized.png" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + w + '&#215;' + h + '</a>';
+                    resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Resized"><br><a href="' + src + '" download="resized.png" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + videoResizeResolution + '</a>';
                 }
                 showToast('Ресайз выполнен!', 'success');
             } else throw new Error('Сервер не вернул результат');
@@ -6263,7 +6386,7 @@
                 try {
                     const result = await clientSideResize(videoResizeBase64, w, h);
                     if (result) {
-                        resultArea.innerHTML = '<img class="generated-image" src="' + result + '" alt="Resized"><br><a href="' + result + '" download="resized.png" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + w + '&#215;' + h + '</a>';
+                        resultArea.innerHTML = '<img class="generated-image" src="' + result + '" alt="Resized"><br><a href="' + result + '" download="resized.png" style="color:var(--accent);font-size:13px">&#128229; Скачать ' + videoResizeResolution + '</a>';
                         showToast('Ресайз выполнен (клиент)!', 'success');
                         return;
                     }
@@ -7643,14 +7766,16 @@
                 if (zone) {
                     zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для ресайза">' +
                         '<input type="file" id="imageResizeInput" accept="image/*" style="display:none" onchange="handleImageResizeUpload(this)">' +
-                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение перенесено. Укажите размер и отправьте.</div>';
+                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение перенесено. Выберите размер и отправьте.</div>';
                     zone.onclick = function() { document.getElementById('imageResizeInput').click(); };
                 }
                 // Определяем размер
                 const imgEl = new Image();
                 imgEl.onload = function() {
-                    document.getElementById('resizeWidth').value = imgEl.naturalWidth;
-                    document.getElementById('resizeHeight').value = imgEl.naturalHeight;
+                    resizeOriginalWidth = imgEl.naturalWidth;
+                    resizeOriginalHeight = imgEl.naturalHeight;
+                    // Populate resolution presets based on original dimensions
+                    populateResolutionPresets('imageResizePresets', 'imageResizeCurrentInfo', imgEl.naturalWidth, imgEl.naturalHeight, imageResizeResolution, function(v) { imageResizeResolution = v; });
                 };
                 imgEl.src = src;
             } else if (mode === 'convert') {
@@ -7793,8 +7918,19 @@
                 if (currentMode === 'audio') {
                     if (selected.audioSubMode === 'convert') handleAudioConvert(input);
                     else if (selected.audioSubMode === 'voice_clone') handleVoiceClone(input);
-                    else if (selected.audioSubMode === 'tts' && selected.voice === 'user_voice') handleTTSSampleUpload(input);
-                    else {
+                    else if (selected.audioSubMode === 'tts') {
+                        if (selected.voice === 'user_voice') {
+                            handleTTSSampleUpload(input);
+                        } else {
+                            // Auto-switch to user_voice so the dropped file goes to TTS sample zone
+                            selected.voice = 'user_voice';
+                            saveSelected();
+                            renderAudioSubHeader();
+                            handleTTSSampleUpload(input);
+                        }
+                    } else if (selected.audioSubMode === 'stt') {
+                        handleAudioUpload(input);
+                    } else {
                         selected.audioSubMode = 'stt';
                         renderAudioSubHeader();
                         switchAudioSubMode('stt');
