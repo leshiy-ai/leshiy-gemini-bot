@@ -276,6 +276,11 @@ body {
 .model-select.model-free { border-color: rgba(34,197,94,0.4); }
 .model-select.model-free:focus { border-color: var(--free); }
 
+/* Video sub-header: keep models on same line as buttons */
+#subVideo .sub-option { flex-shrink: 0; }
+#subVideo .model-select { flex-shrink: 0; }
+#subVideo .sub-divider { flex-shrink: 0; }
+
 .mode-tag {
     padding: 4px 10px;
     border-radius: 12px;
@@ -1132,7 +1137,9 @@ body {
     }
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
     .sub-option { padding: 7px 14px; font-size: 13px; min-height: 38px; }
-    .model-select { font-size: 13px; padding: 7px 28px 7px 12px; max-width: 180px; }
+    .model-select { font-size: 13px; padding: 7px 28px 7px 12px; max-width: 220px; }
+    /* На мобилке не обрезаем поле моделей */
+    #chatModels .model-select { max-width: none; flex: 1; min-width: 0; }
     
     .media-panel { padding: 16px 12px; gap: 14px; }
     
@@ -1201,7 +1208,8 @@ body {
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
     .sub-option { font-size: 12px; padding: 6px 10px; min-height: 36px; border-radius: 14px; }
     .sub-label { font-size: 12px; }
-    .model-select { font-size: 12px; max-width: 150px; padding: 6px 26px 6px 10px; }
+    .model-select { font-size: 12px; max-width: 220px; padding: 6px 26px 6px 10px; }
+    #chatModels .model-select { max-width: none; flex: 1; min-width: 0; }
     .mode-tag { font-size: 11px; padding: 3px 7px; }
     .size-option { font-size: 13px; padding: 5px 9px; min-height: 34px; border-radius: 14px; }
     .size-selector { gap: 5px; }
@@ -1259,7 +1267,8 @@ body {
     .sub-header { gap: 3px; padding: 5px 6px; max-height: none; overflow-y: visible; }
     .sub-option { font-size: 11px; padding: 5px 8px; min-height: 34px; }
     .sub-divider { height: 18px; }
-    .model-select { max-width: 130px; font-size: 11px; }
+    .model-select { max-width: 220px; font-size: 11px; }
+    #chatModels .model-select { max-width: none; flex: 1; min-width: 0; }
     .input-pill { border-radius: 26px; }
     .input-pill textarea { font-size: 14px; padding: 8px 10px; }
     .pill-btn { width: 40px; height: 40px; }

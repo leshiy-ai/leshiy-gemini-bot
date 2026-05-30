@@ -61,7 +61,7 @@
             <div class="sub-divider"></div>
             <div id="imageModels" class="skeleton" style="height:24px;width:250px"></div>
         </div>
-        <div class="sub-header wrap-allowed" id="subVideo">
+        <div class="sub-header" id="subVideo">
             <div id="videoSubMode"></div>
             <div class="sub-divider"></div>
             <div id="videoModels" class="skeleton" style="height:24px;width:200px"></div>
@@ -453,7 +453,7 @@
             <div class="panel-subsection" id="audioTTSSection">
                 <div>
                     <h3>&#127925; Озвучка текста</h3>
-                    <p id="audioTTSDesc">Напиши текст, и я озвучу его. VoiceRSS — бесплатно, без авторизации.</p>
+                    <p id="audioTTSDesc">Напиши текст, и я озвучу его.</p>
                 </div>
                 <div id="audioTTSVoices" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
                 <div class="result-area" id="audioTTSResult">
@@ -2218,7 +2218,7 @@
         const subModesContainer = document.getElementById('imageSubModes');
         subModesContainer.innerHTML = '';
         [
-            { key: 'generate', label: hasRefs ? '✨ Фото->Изображение' : '📖 Текст->Изображение', cls: '' },
+            { key: 'generate', label: hasRefs ? '✨ Фото→Изображение' : '📖 Текст→Изображение', cls: '' },
             { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
             { key: 'convert', label: '📦 Конверт', cls: 'free' },
@@ -2808,7 +2808,17 @@
     function updateAudioPlaceholder() {
         if (currentMode === 'audio') {
             const ph = { tts: 'Введите текст для озвучки...', stt: 'Загрузите аудиофайл выше', convert: 'Загрузите аудиофайл выше', voice_clone: 'Нажмите отправить для конвертации в MP3' };
-            const hints = { tts: 'VoiceRSS — бесплатно без авторизации', stt: 'Распознавание речи — бесплатно', convert: 'Конвертация — бесплатно', voice_clone: 'Конвертация аудио — бесплатно' };
+            const ttsModel = availableModels.audio_tts.find(m => m.key === selected.audio_tts);
+            const ttsService = ttsModel?.service || '';
+            const ttsHintMap = {
+                'VOICERSS': 'VoiceRSS — бесплатно без авторизации',
+                'WORKERS_AI': 'Cloudflare Workers AI — озвучка через нейросеть',
+                'GEMINI': 'Gemini TTS — генерация речи',
+                'KIEAI': 'Kie.AI (ElevenLabs) — качественная озвучка',
+                'BOTHUB': 'BotHub (OpenAI) — озвучка текста',
+                'POLLINATIONS': 'Pollinations — озвучка текста',
+            };
+            const hints = { tts: ttsHintMap[ttsService] || 'Стоимость озвучки зависит от модели', stt: 'Распознавание речи — бесплатно', convert: 'Конвертация аудио — бесплатно', voice_clone: 'Конвертация аудио — бесплатно' };
             userInput.placeholder = ph[selected.audioSubMode] || 'Введите текст...';
             inputHint.textContent = hints[selected.audioSubMode] || '';
         }
@@ -2948,7 +2958,19 @@
 
             // Smart routing: switch to appropriate mode based on file type, regardless of current mode
             // This makes drag-and-drop work across ALL modes
-            if (fileType.startsWith('image/')) {
+            // Fallback: if file.type is empty, check extension
+            const fileExt = (file.name || '').split('.').pop().toLowerCase();
+            const videoExts = ['webm','mp4','avi','mov','mkv','flv','wmv','m4v','3gp'];
+            const audioExts = ['mp3','wav','ogg','flac','aac','m4a','wma','opus'];
+            const imageExts = ['jpg','jpeg','png','gif','webp','bmp','svg','heic','heif','tiff'];
+            let effectiveType = fileType;
+            if (!effectiveType) {
+                if (videoExts.includes(fileExt)) effectiveType = 'video/' + fileExt;
+                else if (audioExts.includes(fileExt)) effectiveType = 'audio/' + fileExt;
+                else if (imageExts.includes(fileExt)) effectiveType = 'image/' + fileExt;
+            }
+
+            if (effectiveType.startsWith('image/')) {
                 // Image files → image mode (or chat with vision)
                 if (currentMode === 'chat') {
                     processChatFiles(files);
@@ -2984,7 +3006,7 @@
                     switchImageSubMode('generate');
                     handleImageRef(0, input);
                 }
-            } else if (fileType.startsWith('video/')) {
+            } else if (effectiveType.startsWith('video/')) {
                 // Video files → video sub-mode or chat
                 if (currentMode === 'chat') {
                     processChatFiles(files);
@@ -3014,7 +3036,7 @@
                     switchVideoSubMode('analysis');
                     handleVideoConvert(input);
                 }
-            } else if (fileType.startsWith('audio/')) {
+            } else if (effectiveType.startsWith('audio/')) {
                 // Audio files → route to correct audio zone based on current sub-mode
                 if (currentMode === 'audio') {
                     if (selected.audioSubMode === 'convert') {
@@ -5033,8 +5055,10 @@
             videoEl.onloadeddata = function() {
                 try {
                     const canvas = document.createElement('canvas');
-                    canvas.width = 160; canvas.height = 120;
-                    canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
+                    const vw = videoEl.videoWidth || 16, vh = videoEl.videoHeight || 9;
+                    const maxW = 200, maxH = 150, sc = Math.min(maxW / vw, maxH / vh);
+                    canvas.width = Math.round(vw * sc); canvas.height = Math.round(vh * sc);
+                    canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
                     const thumb = canvas.toDataURL('image/jpeg', 0.6);
                     zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
                         '<input type="file" id="videoConvertInput" accept="video/*" style="display:none" onchange="handleVideoConvert(this)">' +
@@ -6378,6 +6402,7 @@
     let videoResizeResolution = '720p';
     let videoResizeOrigWidth = 0;
     let videoResizeOrigHeight = 0;
+    let videoResizeSrcFormat = 'mp4';
 
     async function handleVideoResizeUpload(input) {
         const file = (input.files && input.files[0]) || null;
@@ -6385,6 +6410,7 @@
         try {
             videoResizeBase64 = await fileToBase64(file);
             videoResizeCategory = file.type.startsWith('video/') ? 'video' : 'image';
+            videoResizeSrcFormat = (file.name || '').split('.').pop().toLowerCase() || (videoResizeCategory === 'video' ? 'mp4' : 'png');
 
             document.getElementById('videoResizeControls').style.display = 'block';
             const zone = document.getElementById('videoResizeZone');
@@ -6454,12 +6480,14 @@
                         video_base64: videoResizeBase64,
                         video_mode: 'convert',
                         convert_action: 'resize',
-                        resolution: videoResizeResolution
+                        resolution: videoResizeResolution,
+                        source_format: videoResizeSrcFormat || 'mp4'
                     } : {
                         image_base64: videoResizeBase64,
                         image_mode: 'convert',
                         convert_action: 'resize',
-                        resolution: videoResizeResolution
+                        resolution: videoResizeResolution,
+                        source_format: videoResizeSrcFormat || 'png'
                     }
                 })
             });
@@ -6611,12 +6639,14 @@
 
     // ---- STOP FRAME (извлечение кадра из видео) ----
     let stopFrameBase64 = null;
+    let stopFrameSrcFormat = 'mp4';
 
     async function handleStopFrame(input) {
         const file = (input.files && input.files[0]) || null;
         if (!file) return;
         try {
             stopFrameBase64 = await fileToBase64(file);
+            stopFrameSrcFormat = (file.name || '').split('.').pop().toLowerCase() || 'mp4';
             document.getElementById('stopFrameControls').style.display = 'block';
 
             // Предпросмотр
@@ -6632,8 +6662,13 @@
                 videoEl.onseeked = function() {
                     try {
                         const canvas = document.createElement('canvas');
-                        canvas.width = 160; canvas.height = 120;
-                        canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
+                        // Сохраняем пропорции видео — не сплющиваем
+                        const maxW = 200, maxH = 150;
+                        const vw = videoEl.videoWidth || 16, vh = videoEl.videoHeight || 9;
+                        const scale = Math.min(maxW / vw, maxH / vh);
+                        canvas.width = Math.round(vw * scale);
+                        canvas.height = Math.round(vh * scale);
+                        canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
                         const thumb = canvas.toDataURL('image/jpeg', 0.6);
                         zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#128248;</div></div>' +
                             '<input type="file" id="videoStopFrameInput" accept="video/*" style="display:none" onchange="handleStopFrame(this)">' +
@@ -6669,6 +6704,7 @@
                     video_base64: stopFrameBase64,
                     video_mode: 'convert',
                     target_format: 'png',
+                    source_format: stopFrameSrcFormat || 'mp4',
                     timestamp: timestamp
                 }})
             });

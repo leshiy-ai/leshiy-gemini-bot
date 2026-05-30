@@ -276,8 +276,9 @@ async function callWorkersAIWeb(config, ...args) {
     // === TTS (Text → Audio) ===
     if (config.FUNCTION.name === 'callWorkersAITextToAudio') {
         const [text, env, voice] = args;
+        // Cloudflare Deepgram Aura model expects 'text' not 'prompt'
         const result = await callCloudflareRestAPI(modelName, {
-            prompt: text,
+            text: text,
             voice: voice || 'female'
         }, env);
         // Возвращаем результат в формате { audioBase64, mimeType } для унификации
