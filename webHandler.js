@@ -457,7 +457,9 @@ async function handleChat(auth, payload, env, monolith) {
                 // Обе функции ожидают (config, buffer, env)
                 const result = await vConfig.FUNCTION(vConfig, imageBuffer, env);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
-            } else if (vConfig.FUNCTION.name === 'callBotHubTextChat' || vConfig.FUNCTION.name === 'callPollinationsChat') {
+            } else if (vConfig.FUNCTION.name === 'callBotHubTextChat' || vConfig.FUNCTION.name === 'callPollinationsChat'
+                       || vConfig.FUNCTION.name === 'callBotHubTextGpt' || vConfig.FUNCTION.name === 'callBotHubTextDeepSeek'
+                       || vConfig.FUNCTION.name === 'callPollinationsGrok') {
                 // callBotHubTextChat(config, history, messageText, envData)
                 // callPollinationsChat(config, history, messageText, envData)
                 // Для чат-моделей с картинкой — добавляем описание картинки в сообщение
