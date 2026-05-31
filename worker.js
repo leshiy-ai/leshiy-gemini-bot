@@ -546,6 +546,15 @@ const AI_MODELS = {
     
     // Pollinations.ai - 0.010 pollen самовосстанавливающиеся каждый час.
 
+    // [Pollinations.ai: Grok для чата] (0.5 /M pollen)
+    TEXT_TO_TEXT_GROK: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsGrok, 
+        MODEL: 'grok', 
+        API_KEY: 'POLLINATIONS_API_KEY', 
+        //BASE_URL: 'https://gen.pollinations.ai/v1/chat/completions'
+        BASE_URL: 'https://gen.pollinations.ai'
+    },
     // [Pollinations.ai: Gemini-fast для чата] (0.01 /M pollen)
     TEXT_TO_TEXT_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
@@ -6618,6 +6627,88 @@ async function callKandinskyText2Img(config, prompt, envData) {
  * Поддерживает системный промпт и унифицированный контракт.
  */
 async function callPollinationsChat(config, history, messageText, envData) {
+    
+    const API_KEY_ENV_NAME = config.API_KEY; 
+    const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const BASE_URL = config.BASE_URL; // Ожидается https://gen.pollinations.ai
+    
+    if (!API_KEY) { 
+        throw new Error(`Pollinations API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
+    }
+
+    // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА (ГЛОБАЛЬНАЯ КОНСТАНТА)
+    const SYSTEM_PROMPT = `
+    ТЫ ДОЛЖЕН СТРОГО СЛЕДОВАТЬ ВСЕМ ИНСТРУКЦИЯМ.
+    Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
+Твои ключевые функции:
+1. Платные функции: Улучшение фото и создание видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
+2. Генерация контента: Ты создаешь новые изображения по текстовым промптам (команда /create) бесплатно и без ограничений.
+3. Распознавание речи: Ты транскрибируешь голосовые сообщения пользователя в текст, который затем обрабатываешь.
+4. Чат: Ты ведешь диалог, отвечаешь на вопросы и сохраняешь контекст беседы.
+
+Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo и /create.
+Ответы должны быть информативными и доброжелательными.
+
+    ${TARIFF_MESSAGE_TEXT}
+`.trim();
+
+    // 1. ПОДГОТОВКА ИСТОРИИ (OpenAI формат)
+    const messages = [];
+
+    // Добавляем твой SYSTEM_PROMPT первым элементом
+    messages.push({ role: "system", content: SYSTEM_PROMPT });
+
+    // Мапим историю: твоё {role: 'model'} -> их {role: 'assistant'}
+    history.forEach(msg => {
+        messages.push({
+            role: msg.role === 'model' ? 'assistant' : 'user',
+            content: msg.text
+        });
+    });
+
+    // Добавляем текущее сообщение пользователя
+    messages.push({ role: "user", content: messageText });
+
+    // 2. ФОРМИРОВАНИЕ ЗАПРОСА
+    const url = `${BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/'}v1/chat/completions`;
+
+    const body = {
+        model: config.MODEL,
+        messages: messages,
+        temperature: config.TEMPERATURE || 0.7,
+        max_tokens: config.MAX_TOKENS || 2048
+    };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations Chat Error: ${response.status} - ${errorText.substring(0, 150)}`);
+    }
+
+    const result = await response.json();
+
+    // 3. ВОЗВРАТ ЧИСТОЙ СТРОКИ
+    if (result.choices && result.choices[0] && result.choices[0].message) {
+        return result.choices[0].message.content;
+    }
+
+    throw new Error("Pollinations API: Empty choices in response");
+}
+
+// ✅ *** 2.30a. callPollinationsGrok (Pollinations.ai: Grok) ***
+/**
+ * Генерирует текстовый ответ через Pollinations.ai (OpenAI-compatible).
+ * Поддерживает системный промпт и унифицированный контракт.
+ */
+async function callPollinationsGrok(config, history, messageText, envData) {
     
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
