@@ -450,6 +450,16 @@ const AI_MODELS = {
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
     },
+    // --- BOTHUB TEXT --- (БЕСПЛАТНО)
+    TEXT_TO_TEXT_BOTHUB_GPT: { 
+        SERVICE: 'BOTHUB', 
+        FUNCTION: callBotHubTextGpt, 
+        //MODEL: 'gpt-oss-20b:free',   
+        MODEL: 'gpt-4.1',       
+        API_KEY: 'BOTHUB_API_KEY', 
+        //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
+        BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
+    },
     TEXT_TO_AUDIO_BOTHUB: { 
         SERVICE: 'BOTHUB', 
         FUNCTION: callBothubTextToAudio, 
@@ -5699,6 +5709,100 @@ async function callBotHubTextChat(config, history, messageText, envData) {
             ctx.waitUntil(logDebug("BOTHUB_EMPTY", "Model returned JSON, but 'choices' or 'content' was empty.", envData));
         }
         // ------------------------------------------
+        throw new Error(`BOTHUB API response error: Received empty content from model.`);
+    }
+}
+
+// ✅ *** 2.20a. callBotHubTextGpt - Обработчик для текстовых чат-запросов BotHub GPT
+/**
+ * @description Отправляет запрос на генерацию текста через BotHub API.
+ * @param {Object} config - Объект конфигурации модели (TEXT_TO_TEXT_BOTHUB_GPT).
+ * @param {Array} history - История чата в формате [{"role": "user/model", "text": "..."}].
+ * @param {string} messageText - Новое сообщение от пользователя.
+ * @param {Object} envData - Объект окружения (включает DEBUG_ENABLED и ctx).
+ * @returns {Promise<string>} Сгенерированный текстовый ответ.
+ */
+async function callBotHubTextGpt(config, history, messageText, envData) {
+    // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА (ГЛОБАЛЬНАЯ КОНСТАНТА)
+    const SYSTEM_PROMPT = `
+    Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
+Твои ключевые функции:
+1. Платные функции: Улучшение фото и создание видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
+2. Генерация контента: Ты создаешь новые изображения по текстовым промптам (команда /create) бесплатно и без ограничений.
+3. Распознавание речи: Ты транскрибируешь голосовые сообщения пользователя в текст, который затем обрабатываешь.
+4. Чат: Ты ведешь диалог, отвечаешь на вопросы и сохраняешь контекст беседы.
+
+Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo и /create.
+Ответы должны быть информативными и доброжелательными.
+
+    ${TARIFF_MESSAGE_TEXT}
+`.trim();
+    
+    const apiKey = envData[config.API_KEY];
+    const baseUrl = config.BASE_URL;
+    const model = config.MODEL;
+    const { DEBUG_ENABLED, ctx } = envData;
+    
+    // ПРОВЕРКА КЛЮЧА
+    if (!apiKey) {
+        throw new Error(`API Key для ${config.SERVICE} не настроен.`);
+    }
+
+    // 1. Формирование истории и промпта
+    const apiMessages = [];
+    
+    // Используем ГЛОБАЛЬНЫЙ ПРОМПТ для обучения бота
+    apiMessages.push({ "role": "system", "content": SYSTEM_PROMPT }); 
+    
+    history.forEach(item => {
+        apiMessages.push({
+            role: item.role === 'model' ? 'assistant' : item.role, 
+            content: item.text 
+        });
+    });
+
+    apiMessages.push({
+        role: 'user',
+        content: messageText
+    });
+    
+    // 2. Формирование тела запроса
+    const body = {
+        model: model,
+        messages: apiMessages,
+        stream: false,
+        temperature: 0.7,
+        max_tokens: 4096,
+    };
+
+    const url = `${baseUrl}/chat/completions`;
+
+    // 3. Отправка запроса
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();       
+        throw new Error(`BOTHUB API error (Status ${response.status}): ${errorText}`);
+    }
+
+    // 4. Обработка ответа
+    const data = await response.json();
+    let responseText = '';
+
+    if (data.choices && data.choices.length > 0) {
+        responseText = data.choices[0].message.content.trim();
+    } 
+    
+    if (responseText) {
+        return responseText;
+    } else {
         throw new Error(`BOTHUB API response error: Received empty content from model.`);
     }
 }
