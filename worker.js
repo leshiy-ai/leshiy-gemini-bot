@@ -871,6 +871,69 @@ async function syncS3Chat(userId, content, role, env, platform) {
     return chatData.messages;
 }
 
+// ---- ЧТЕНИЕ ИСТОРИИ ЧАТА ИЗ S3 (БЕЗ ДОБАВЛЕНИЯ) ----
+async function loadS3ChatHistory(userId, env, platform, offset = 0, limit = 0, knownTotal = 0) {
+    const platformLabel = platform === 'vk' ? 'VK' : 'Telegram';
+    const s3 = new AWS.S3({
+        accessKeyId: env.YANDEX_S3_KEY_ID,
+        secretAccessKey: env.YANDEX_S3_SECRET,
+        endpoint: S3_CONFIG.endpoint,
+        s3ForcePathStyle: true,
+        region: S3_CONFIG.region,
+        apiVersion: 'latest',
+    });
+    const key = `users/${userId}/chats/chat_${platformLabel}.json`;
+    try {
+        const data = await s3.getObject({ Bucket: S3_CONFIG.bucket, Key: key }).promise();
+        const chatData = JSON.parse(data.Body.toString());
+        let messages = chatData.messages || [];
+        const actualTotal = messages.length;
+        // Если limit > 0 — возвращаем последние limit сообщений (для lazy loading)
+        // offset — сколько сообщений с конца уже загружено клиентом
+        // knownTotal — сколько сообщений было total при последней загрузке (для компенсации новых)
+        if (limit > 0) {
+            // Компенсируем: если с момента прошлой загрузки добавились новые сообщения,
+            // offset нужно увеличить на разницу (только при knownTotal > 0)
+            let adjustedOffset = offset;
+            if (knownTotal > 0 && actualTotal > knownTotal) {
+                adjustedOffset = offset + (actualTotal - knownTotal);
+            }
+            const start = Math.max(0, actualTotal - adjustedOffset - limit);
+            const end = actualTotal - adjustedOffset;
+            if (end <= 0) return { messages: [], hasMore: false, total: actualTotal };
+            messages = messages.slice(start, Math.max(start, end));
+            const hasMore = start > 0;
+            return { messages, hasMore, total: actualTotal };
+        }
+        return { messages, hasMore: false, total: actualTotal };
+    } catch (e) {
+        console.log(`[S3] Нет истории для ${userId} (${platform})`);
+        return { messages: [], hasMore: false, total: 0 };
+    }
+}
+
+// ---- ОЧИСТКА ИСТОРИИ ЧАТА В S3 ----
+async function clearS3ChatHistory(userId, env, platform) {
+    const platformLabel = platform === 'vk' ? 'VK' : 'Telegram';
+    const chatTitle = platform === 'vk' ? 'Чат ВКонтакте' : 'Чат в Телеграм';
+    const s3 = new AWS.S3({
+        accessKeyId: env.YANDEX_S3_KEY_ID,
+        secretAccessKey: env.YANDEX_S3_SECRET,
+        endpoint: S3_CONFIG.endpoint,
+        s3ForcePathStyle: true,
+        region: S3_CONFIG.region,
+        apiVersion: 'latest',
+    });
+    const key = `users/${userId}/chats/chat_${platformLabel}.json`;
+    const emptyData = { title: chatTitle, messages: [], lastUpdate: Date.now() };
+    await s3.putObject({
+        Bucket: S3_CONFIG.bucket,
+        Key: key,
+        Body: JSON.stringify(emptyData, null, 2),
+        ContentType: 'application/json',
+    }).promise();
+}
+
 // ----------------------------------------------------
 // --- I. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ TELEGRAM и КОНВЕРТАЦИИ ---
 // ----------------------------------------------------
@@ -17252,7 +17315,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
             }
             // Добавляем ctx в env, чтобы функции воркера могли использовать ctx.waitUntil
             env.ctx = ctx;
-            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat, uploadBase64ImageToPublicUrl, createTaskKieAi, getKieAiTaskResultForWeb });
+            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat, loadS3ChatHistory, clearS3ChatHistory, uploadBase64ImageToPublicUrl, createTaskKieAi, getKieAiTaskResultForWeb });
             return new Response(JSON.stringify(result), {
                 status: 200,
                 headers: {
