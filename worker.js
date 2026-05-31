@@ -172,7 +172,14 @@ const AI_MODELS = {
         SERVICE: 'WORKERS_AI', 
         FUNCTION: callWorkersAIChat, 
         //MODEL: '@cf/google/gemma-2b-it-lora', // тупой ЛЛама
-        //MODEL: '@cf/qwen/qwen2.5-coder-32b-instruct', // программерская
+        MODEL: '@cf/qwen/qwen2.5-coder-32b-instruct', // программерская
+        API_KEY: 'CLOUDFLARE_API_TOKEN', 
+        BASE_URL: 'AI_RUN' // Вызов через env.AI.run
+    },
+    // ✅ [Текст в Текст]
+    TEXT_TO_TEXT_WORKERS_AI: { 
+        SERVICE: 'WORKERS_AI', 
+        FUNCTION: callWorkersAIChatGrok, 
         MODEL: 'xai/grok-4.3',
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'AI_RUN' // Вызов через env.AI.run
@@ -5006,6 +5013,85 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
         console.error("Workers AI call failed:", e);
         throw new Error(`Ошибка Workers AI: ${e.message}`);
     }
+}
+
+// ✅ *** 2.10a. Workers AI Chat API (для текстового общения GROK c историей) ***
+async function callWorkersAIChatGrok(config, chatHistory, userMessageText, envData) {
+    // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
+    const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
+    const MODEL_NAME = config.MODEL; // Сюда прилетит 'xai/grok-4.3'
+    const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${MODEL_NAME}`;
+    
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+          throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
+    }
+
+    // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА
+    const systemPromptText = `🤖 ТЫ — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
+Ты создан для ❔ помощи в чате как 💬 текстом так и 🎙️ голосом (/say), генерации ✏️ промптов (/prompt) для 📷 фото и 🎬 видео (/video), бесплатного создания 🎨 картинок (/create) и ✨ платного улучшения фотографий (/photo) и т.д.
+Твоя задача — вести диалог, отвечать на вопросы, соблюдая контекст и используя информацию о твоих функциях и тарифах (если применимо).
+
+Твои ключевые функции:
+✨ Платные функции: Улучшение 📷 фото и создание 🎬 видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
+🎨 Генерация контента: Ты создаешь новые изображения по текстовым ✏️ промптам (команда /create) бесплатно и без ограничений.
+🎙️ Распознавание речи: Ты транскрибируешь голосовые сообщения пользователя в текст, который затем обрабатываешь.
+💬 Чат: Ты ведешь диалог, отвечать на вопросы, ❔ помогаешь по менюшкам и окнам и сохраняешь контекст беседы.
+
+Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo и /create.
+Ответы должны быть информативными и доброжелательными и по возможности компактными, старайся построить диалог понятно и не сильно рассуждая.
+Информация по тарифам:
+    ${TARIFF_MESSAGE_TEXT}
+`.trim();
+
+    // 2. ФОРМИРОВАНИЕ ИСТОРИИ (messages)
+    const messages = [
+        { role: 'system', content: systemPromptText }
+    ];
+    
+    // Добавляем реальную историю чата
+    chatHistory.forEach(msg => {
+        messages.push({
+            role: msg.role === 'user' ? 'user' : 'assistant',
+            content: msg.text
+        });
+    });
+
+    // Добавляем текущее сообщение пользователя
+    messages.push({ role: 'user', content: userMessageText });
+
+    // *** ДОБАВЛЯЕМ ЛИМИТ ТОКЕНОВ И ТЕМПЕРАТУРУ ***
+    const payload = {
+        messages: messages,
+        stream: false, // Отключаем стриминг, чтобы избежать обрезки
+        max_tokens: 1024, // Увеличиваем лимит токенов для безопасности
+        temperature: 0.7 // Умеренная температура
+    };
+
+    try {
+        // Посылаем на отправку через sendAiRequest
+        const response = await sendAiRequest(payload, URL, config, envData);
+        const data = await response.json();
+
+        // 🌟 УНИВЕРСАЛЬНЫЙ ПАРСЕР ПОД ДОКУ ГРОКА 🌟
+        // 1. Сначала ищем в новом формате OpenAI: data.result.choices[0].message.content
+        // 2. Если пулей летит старый формат Cloudflare: data.result.response
+        const textResult = 
+            data.result?.choices?.[0]?.message?.content || 
+            data.result?.response || 
+            data.result?.description || 
+            data.result;
+
+        if (!textResult) {
+            console.error("Сырой некорректный ответ от Cloudflare:", JSON.stringify(data));
+            throw new Error("Workers AI вернул пустой результат или изменилась структура JSON ответа");
+        }
+
+        return textResult.trim();
+    } catch (e) {
+        console.error("Workers AI call failed:", e);
+        throw new Error(`Ошибка Workers AI: ${e.message}`);
+    }
 }
 
 // ✅ *** 2.11. Workers AI Speech-to-Text (Whisper - голосовые сообщения) ***
