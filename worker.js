@@ -8650,7 +8650,7 @@ async function callZAIASR(config, audioBase64, envData) {
     // Если передан Buffer, конвертируем в base64
     const base64Audio = Buffer.isBuffer(audioBase64) ? audioBase64.toString('base64') : audioBase64;
 
-    const url = `${BASE_URL}/audio/asr`;
+    const url = `${BASE_URL}/chat/completions`;
     const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${API_KEY}`
