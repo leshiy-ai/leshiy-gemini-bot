@@ -453,7 +453,7 @@ const AI_MODELS = {
         SERVICE: 'BOTHUB', 
         FUNCTION: callBotHubTextGpt, 
         //MODEL: 'gpt-oss-20b:free',   
-        MODEL: 'gpt-4.1',       
+        MODEL: 'gpt-5.4-mini',
         API_KEY: 'BOTHUB_API_KEY', 
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
