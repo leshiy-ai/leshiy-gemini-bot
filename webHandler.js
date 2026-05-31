@@ -2735,10 +2735,15 @@ async function handleChatHistory(auth, payload, env, monolith) {
 
     if (action === 'load') {
         try {
-            const messages = await loadS3ChatHistory(chatId, env, s3Platform);
+            const offset = parseInt(payload.offset) || 0;
+            const limit = parseInt(payload.limit) || 10;  // по умолчанию 10 последних
+            const knownTotal = parseInt(payload.knownTotal) || 0;
+            const result = await loadS3ChatHistory(chatId, env, s3Platform, offset, limit, knownTotal);
             return formatResponse(true, null, null, {
                 type: 'chat_history',
-                messages: messages
+                messages: result.messages,
+                hasMore: result.hasMore,
+                total: result.total
             });
         } catch (e) {
             console.error("[WebHandler] Chat history load error:", e.message);

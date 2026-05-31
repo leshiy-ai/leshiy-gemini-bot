@@ -7408,6 +7408,10 @@
         chatArea.innerHTML = '';
         welcomeScreen.style.display = 'flex';
         localStorage.removeItem('gemini_local_history');
+        // Сброс lazy-loading состояния
+        s3HistoryOffset = 0;
+        s3HistoryHasMore = false;
+        s3HistoryTotal = 0;
 
         // Если авторизован — очищаем и на сервере
         if (user) {
@@ -7425,29 +7429,98 @@
     }
 
     // ---- ЗАГРУЗКА ИСТОРИИ ИЗ S3 ПРИ СТАРТЕ ----
-    async function loadS3History() {
+    let s3HistoryOffset = 0;        // сколько сообщений уже загружено с конца
+    let s3HistoryHasMore = false;   // есть ли ещё старые сообщения
+    let s3HistoryFetching = false;  // блокировка параллельных запросов
+    let s3HistoryTotal = 0;         // total при последней загрузке (для компенсации новых сообщений)
+    const S3_HISTORY_BATCH = 10;    // по сколько подгружать
+
+    async function loadS3History(isLoadMore = false) {
         if (!user) return;
+        if (isLoadMore && s3HistoryFetching) return;
+        if (isLoadMore && !s3HistoryHasMore) return;
+
+        s3HistoryFetching = true;
+        const offset = isLoadMore ? s3HistoryOffset : 0;
+        const limit = S3_HISTORY_BATCH;
+
+        // Сохраняем позицию скролла для восстановления при подгрузке старых
+        const oldScrollHeight = chatArea.scrollHeight;
+
         try {
             const resp = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'load' } })
+                body: JSON.stringify({
+                    mode: 'chat_history',
+                    auth: getAuth(),
+                    payload: { action: 'load', offset, limit, knownTotal: s3HistoryTotal }
+                })
             });
             const data = await resp.json();
+
             if (data.success && data.data && data.data.messages && data.data.messages.length > 0) {
-                chatHistory = data.data.messages.map(m => ({
+                const loadedMessages = data.data.messages.map(m => ({
                     role: m.role === 'ai' ? 'assistant' : m.role,
                     content: m.content,
                     text: m.content
                 }));
-                welcomeScreen.style.display = 'none';
-                chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text || msg.content));
-                console.log(`[S3] Загружено ${chatHistory.length} сообщений из истории`);
+
+                if (isLoadMore) {
+                    // Подгрузка старых — вставляем В НАЧАЛО chatHistory и В НАЧАЛО chatArea
+                    chatHistory = [...loadedMessages, ...chatHistory];
+                    // Находим первый message-пузырь в chatArea
+                    const firstMsg = chatArea.querySelector('.message');
+                    loadedMessages.forEach(msg => {
+                        const div = document.createElement('div');
+                        div.className = 'message ' + (msg.role === 'user' ? 'user' : 'bot');
+                        if (msg.role !== 'user') {
+                            div.innerHTML = formatBotMessage(msg.text || msg.content);
+                        } else {
+                            div.textContent = msg.text || msg.content;
+                        }
+                        if (firstMsg) {
+                            chatArea.insertBefore(div, firstMsg);
+                        } else {
+                            chatArea.appendChild(div);
+                        }
+                    });
+                    // Восстанавливаем позицию скролла
+                    requestAnimationFrame(() => {
+                        const newScrollHeight = chatArea.scrollHeight;
+                        chatArea.scrollTop = newScrollHeight - oldScrollHeight;
+                    });
+                } else {
+                    // Первая загрузка — последние N сообщений
+                    chatHistory = loadedMessages;
+                    welcomeScreen.style.display = 'none';
+                    chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text || msg.content));
+                    chatArea.scrollTop = chatArea.scrollHeight;
+                }
+
+                s3HistoryOffset = offset + loadedMessages.length;
+                s3HistoryHasMore = data.data.hasMore || false;
+                s3HistoryTotal = data.data.total || 0;
+                console.log(`[S3] Загружено ${loadedMessages.length} сообщений (offset=${offset}, hasMore=${s3HistoryHasMore}, total=${s3HistoryTotal})`);
+            } else if (!isLoadMore) {
+                // Пустая история — нечего показывать
+                s3HistoryOffset = 0;
+                s3HistoryHasMore = false;
+                s3HistoryTotal = 0;
             }
         } catch(e) {
             console.error('Ошибка загрузки S3 истории:', e);
+        } finally {
+            s3HistoryFetching = false;
         }
     }
+
+    // Скролл вверх — подгрузка старых сообщений
+    chatArea.addEventListener('scroll', () => {
+        if (chatArea.scrollTop < 50 && s3HistoryHasMore && !s3HistoryFetching && user) {
+            loadS3History(true);
+        }
+    });
     function cmdAdmin(arg) {
         // Проверяем статус админа через бэкенд
         if (!user) {
