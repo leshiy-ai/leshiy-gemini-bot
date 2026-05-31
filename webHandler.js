@@ -218,6 +218,54 @@ async function callWorkersAIWeb(config, ...args) {
         return result.result?.response || result.result?.content || JSON.stringify(result.result || result);
     }
 
+    // === ТЕКСТОВЫЙ ЧАТ GROK ===
+    if (config.FUNCTION.name === 'callWorkersAIChatGrok') {
+        const [history, message, env] = args;
+        const messages = (history || []).map(m => ({
+            role: m.role === 'model' ? 'assistant' : 'user',
+            content: m.text || m.content || ''
+        }));
+        if (message) {
+            messages.push({
+                role: 'user',
+                content: message
+            });
+        }
+        const accountId = env.CLOUDFLARE_ACCOUNT_ID;
+        const apiToken = env.CLOUDFLARE_API_TOKEN;
+        if (!accountId || !apiToken) {
+            throw new Error('CLOUDFLARE_ACCOUNT_ID или CLOUDFLARE_API_TOKEN не заданы');
+        }
+        const response = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: modelName,
+                    messages: messages,
+                    temperature: 0.7,
+                    max_completion_tokens: 1024
+                })
+            }
+        );
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(
+                `Cloudflare Grok API error ${response.status}: ${errorText}`
+            );
+        }
+        const json = await response.json();
+        return (
+            json?.choices?.[0]?.message?.content ||
+            json?.result?.choices?.[0]?.message?.content ||
+            ''
+        );
+    }
+
     // === VISION (Image → Text) ===
     if (config.FUNCTION.name === 'callWorkersAIVision') {
         const [imageBuffer, env] = args;
