@@ -5064,10 +5064,7 @@ async function callWorkersAIChatGrok(config, chatHistory, userMessageText, envDa
     // *** ФОРМИРУЕМ НАГРУЗКУ СТРОГО ПО ДОКЕ ***
     const payload = {
         model: MODEL_NAME, // 🌟 ИСПРАВЛЕНО: Передаем имя модели в JSON-теле запроса
-        messages: messages,
-        stream: false, 
-        max_tokens: 1024, 
-        temperature: 0.7 
+        messages: messages
     };
 
     try {
