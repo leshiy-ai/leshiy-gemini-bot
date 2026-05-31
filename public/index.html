@@ -2956,8 +2956,31 @@
             if (target.closest && target.closest('.upload-zone')) return;
 
             // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
-            const input = getDropInput(e);
-            if (!input) return;
+            let input = getDropInput(e);
+            // 🧠 Fallback: если getDropInput не нашёл файлы, но есть _dragState с base64
+            if (!input && _dragState && _dragState.attachment && _dragState.attachment.base64) {
+                try {
+                    const att = _dragState.attachment;
+                    const byteString = atob(att.base64);
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+                    const blob = new Blob([ab], { type: att.type || 'image/png' });
+                    const file = new File([blob], att.name || 'image.png', { type: att.type || 'image/png' });
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input = { files: dt.files, value: '' };
+                } catch(err) {
+                    console.warn('[DragDrop] Fallback File creation failed:', err);
+                }
+            }
+            if (!input) {
+                if (_dragState && _dragState.attachment) {
+                    handleDragStateAttachment(_dragState.attachment, _dragState.attachment.category);
+                    _dragState = null;
+                }
+                return;
+            }
             const files = input.files;
             const file = files[0];
             const fileType = file.type || '';
@@ -7052,9 +7075,27 @@
             setTimeout(() => { _dropJustHappened = false; }, 300);
 
             // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
-            const input = getDropInput(e);
+            let input = getDropInput(e);
+            // 🧠 Fallback: если getDropInput не нашёл файлы, но есть _dragState с base64
+            if (!input && _dragState && _dragState.attachment && _dragState.attachment.base64) {
+                try {
+                    const att = _dragState.attachment;
+                    const byteString = atob(att.base64);
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+                    const blob = new Blob([ab], { type: att.type || 'image/png' });
+                    const file = new File([blob], att.name || 'image.png', { type: att.type || 'image/png' });
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input = { files: dt.files, value: '' };
+                } catch(err) {
+                    console.warn('[DragDrop] Fallback File creation failed:', err);
+                }
+            }
             if (!input || !input.files.length) {
                 console.warn('[DragDrop] No files in drop event on zone:', this.id);
+                _dragState = null;
                 return;
             }
 
@@ -7969,6 +8010,89 @@
     // ============================================================
     //  DRAG-AND-DROP НА INPUT AREA ДЛЯ ЛЮБЫХ ФАЙЛОВ
     // ============================================================
+    // 🧠 Обработка _dragState attachment без base64 — по категории (для drag из результата)
+    function handleDragStateAttachment(att, category) {
+        if (!att) return;
+        const cat = category || att.category || '';
+        const iconMap = { image: '&#128247;', video: '&#127916;', audio: '&#127925;' };
+
+        if (cat === 'image') {
+            if (currentMode === 'image') {
+                // В режиме картинок — добавляем как референс
+                const b64 = att.base64 || (att.previewUrl && att.previewUrl.startsWith('data:') ? att.previewUrl.split(',')[1] : null);
+                if (b64) {
+                    imageRefs[0] = b64;
+                    const slot = document.getElementById('imageRef0');
+                    if (slot) {
+                        const src = att.previewUrl || 'data:image/png;base64,' + b64;
+                        slot.innerHTML = '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" alt="Референс">' +
+                            '<input type="file" id="imageRefInput0" accept="image/*" style="display:none" onchange="handleImageRef(0,this)">' +
+                            '<button onclick="event.stopPropagation();imageRefs[0]=null;this.parentElement.innerHTML=\'<span>+&#8202;Фото</span><input type=file id=imageRefInput0 accept=image/* style=display:none onchange=handleImageRef(0,this)>\'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
+                    }
+                    showToast('Изображение добавлено как референс', 'success');
+                } else if (att.previewUrl) {
+                    // Есть previewUrl но нет base64 — скачиваем и конвертируем
+                    fetch(att.previewUrl).then(r => r.blob()).then(blob => {
+                        const reader = new FileReader();
+                        reader.onloadend = function() {
+                            const b64 = reader.result.split(',')[1];
+                            imageRefs[0] = b64;
+                            const slot = document.getElementById('imageRef0');
+                            if (slot) {
+                                slot.innerHTML = '<img src="' + reader.result + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px" alt="Референс">' +
+                                    '<input type="file" id="imageRefInput0" accept="image/*" style="display:none" onchange="handleImageRef(0,this)">' +
+                                    '<button onclick="event.stopPropagation();imageRefs[0]=null;this.parentElement.innerHTML=\'<span>+&#8202;Фото</span><input type=file id=imageRefInput0 accept=image/* style=display:none onchange=handleImageRef(0,this)>\'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
+                            }
+                            showToast('Изображение добавлено как референс', 'success');
+                        };
+                        reader.readAsDataURL(blob);
+                    }).catch(err => showToast('Не удалось загрузить изображение', 'error'));
+                }
+            } else {
+                // В других режимах — добавляем как вложение чата
+                const attachment = {
+                    name: att.name || 'image.png',
+                    type: att.type || 'image/png',
+                    base64: att.base64 || null,
+                    previewUrl: att.previewUrl || null,
+                    icon: iconMap.image,
+                    category: 'image'
+                };
+                // Если нет base64 но есть previewUrl — скачиваем
+                if (!attachment.base64 && attachment.previewUrl && attachment.previewUrl.startsWith('data:')) {
+                    attachment.base64 = attachment.previewUrl.split(',')[1];
+                }
+                chatAttachments.push(attachment);
+                renderChatAttachments();
+                showToast('Изображение добавлено как вложение', 'success');
+            }
+        } else if (cat === 'audio') {
+            const attachment = {
+                name: att.name || 'audio.mp3',
+                type: att.type || 'audio/mpeg',
+                base64: att.base64,
+                previewUrl: null,
+                icon: iconMap.audio,
+                category: 'audio'
+            };
+            chatAttachments.push(attachment);
+            renderChatAttachments();
+            showToast('Аудио добавлено как вложение', 'success');
+        } else if (cat === 'video') {
+            const attachment = {
+                name: att.name || 'video.mp4',
+                type: att.type || 'video/mp4',
+                base64: att.base64,
+                previewUrl: att.previewUrl || null,
+                icon: iconMap.video,
+                category: 'video'
+            };
+            chatAttachments.push(attachment);
+            renderChatAttachments();
+            showToast('Видео добавлено как вложение', 'success');
+        }
+    }
+
     function initInputAreaDragDrop() {
         const inputArea = document.querySelector('.input-area');
         const overlay = document.getElementById('chatDropOverlay');
@@ -7997,8 +8121,34 @@
             if (overlay) overlay.classList.remove('visible');
 
             // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
-            const input = getDropInput(e);
-            if (!input) return;
+            let input = getDropInput(e);
+            // 🧠 Fallback: если getDropInput не нашёл файлы, но есть _dragState с base64
+            if (!input && _dragState && _dragState.attachment && _dragState.attachment.base64) {
+                try {
+                    const att = _dragState.attachment;
+                    const byteString = atob(att.base64);
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+                    const blob = new Blob([ab], { type: att.type || 'image/png' });
+                    const file = new File([blob], att.name || 'image.png', { type: att.type || 'image/png' });
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input = { files: dt.files, value: '' };
+                } catch(err) {
+                    console.warn('[DragDrop] Fallback File creation failed:', err);
+                }
+            }
+            if (!input) {
+                // 🧠 Последний fallback: _dragState без base64 — пробуем по категории
+                if (_dragState && _dragState.attachment) {
+                    const att = _dragState.attachment;
+                    const category = att.category || '';
+                    handleDragStateAttachment(att, category);
+                    _dragState = null;
+                }
+                return;
+            }
             const files = input.files;
             const file = files[0];
             const fileType = file.type || '';
