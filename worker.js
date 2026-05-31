@@ -176,14 +176,6 @@ const AI_MODELS = {
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'AI_RUN' // Вызов через env.AI.run
     },
-    // ✅ [Текст в Текст]
-    TEXT_TO_TEXT_WORKERSAI_DEEPSEEK: { 
-        SERVICE: 'WORKERS_AI', 
-        FUNCTION: callWorkersAIChatDeepSeek, 
-        MODEL: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
-        API_KEY: 'CLOUDFLARE_API_TOKEN', 
-        BASE_URL: 'https://api.cloudflare.com/client/v4/accounts' // Вызов через внешний API
-    },
     // ✅ [Аудио в Текст]
     AUDIO_TO_TEXT_WORKERS_AI: { 
         SERVICE: 'WORKERS_AI', 
@@ -456,12 +448,22 @@ const AI_MODELS = {
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
     },
-    // --- BOTHUB TEXT --- (БЕСПЛАТНО)
+    // --- BOTHUB TEXT GPT --- (БЕСПЛАТНО)
     TEXT_TO_TEXT_BOTHUB_GPT: { 
         SERVICE: 'BOTHUB', 
         FUNCTION: callBotHubTextGpt, 
         //MODEL: 'gpt-oss-20b:free',   
         MODEL: 'gpt-4.1',       
+        API_KEY: 'BOTHUB_API_KEY', 
+        //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
+        BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
+    },
+    // --- BOTHUB TEXT DeepSeek--- (БЕСПЛАТНО)
+    TEXT_TO_TEXT_BOTHUB_DEEPSEEK: { 
+        SERVICE: 'BOTHUB', 
+        FUNCTION: callBotHubTextDeepSeek, 
+        //MODEL: 'deepseek-chat-v3-0324:free',  
+        MODEL: 'deepseek-chat',
         API_KEY: 'BOTHUB_API_KEY', 
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
@@ -5015,80 +5017,6 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
     }
 }
 
-// ✅ *** 2.10a. Workers AI Chat API (для текстового общения модели DeepSeek c историей) ***
-async function callWorkersAIChatDeepSeek(config, chatHistory, userMessageText, envData) {
-    // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
-    const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
-    const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
-    const BASE_URL = config.BASE_URL;
-    const MODEL_NAME = config.MODEL; // Сюда прилетит имя модели
-    const URL = `${BASE_URL}/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${MODEL_NAME}`;
-    
-    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
-          throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
-    }
-
-    // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА
-    // УДАЛЯЕМ ЛОГИКУ, КОТОРАЯ СТИМУЛИРУЕТ ТЕГИ <think>
-    const systemPromptText = `🤖 ТЫ — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
-Ты создан для ❔ помощи в чате как 💬 текстом так и 🎙️ голосом (/say), генерации ✏️ промптов (/prompt) для 📷 фото и 🎬 видео (/video), бесплатного создания 🎨 картинок (/create) и ✨ платного улучшения фотографий (/photo) и т.д.
-Твоя задача — вести диалог, отвечать на вопросы, соблюдая контекст и используя информацию о твоих функциях и тарифах (если применимо).
-
-Твои ключевые функции:
-✨ Платные функции: Улучшение 📷 фото и создание 🎬 видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
-🎨 Генерация контента: Ты создаешь новые изображения по текстовым ✏️ промптам (команда /create) бесплатно и без ограничений.
-🎙️ Распознавание речи: Ты транскрибируешь голосовые сообщения пользователя в текст, который затем обрабатываешь.
-💬 Чат: Ты ведешь диалог, отвечаешь на вопросы, ❔ помогаешь по менюшкам и окнам и сохраняешь контекст беседы.
-
-Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo и /create.
-Ответы должны быть информативными и доброжелательными и по возможности компактными, старайся построить диалог понятно и не сильно рассуждая.
-Информация по тарифам:
-    ${TARIFF_MESSAGE_TEXT}
-`.trim();
-
-    // 2. ФОРМИРОВАНИЕ ИСТОРИИ (messages) (Оставляем как есть, но используем 'system' для основного промпта)
-
-    // Инициализация массива с СИСТЕМНЫМ КОНТЕКСТОМ.
-    // Используем роль 'system' если модель её поддерживает (Qwen должна),  иначе оставим 'user'.
-    const messages = [
-        { role: 'system', content: systemPromptText },
-        // УДАЛЯЕМ ИСКУССТВЕННЫЙ ДИАЛОГ "role: 'assistant', content: 'Инструкции приняты...'"
-        // Это тратит токены и часто сбивает с толку модели-инструкторы
-    ];
-    
-    // Добавляем реальную историю чата
-    chatHistory.forEach(msg => {
-        messages.push({
-            role: msg.role === 'user' ? 'user' : 'assistant',
-            content: msg.text
-        });
-    });
-
-    // Добавляем текущее сообщение пользователя
-    messages.push({ role: 'user', content: userMessageText });
-
-    // *** ДОБАВЛЯЕМ ЛИМИТ ТОКЕНОВ И ТЕМПЕРАТУРУ ***
-    const payload = {
-        messages: messages,
-        stream: false, // Отключаем стриминг, чтобы избежать обрезки
-        max_tokens: 1024, // Увеличиваем лимит токенов для безопасности
-        temperature: 0.7 // Умеренная температура
-    };
-    try {
-        // Посылаем на отправку через sendAiRequest
-        const response = await sendAiRequest(payload, URL, config, envData);
-        const data = await response.json();
-        // У Workers AI текст лежит в result.response
-        const textResult = data.result?.response || data.result?.description || data.result;
-
-        if (!textResult) throw new Error("Workers AI вернул пустой результат");
-        return textResult.trim();
-    } catch (e) {
-        console.error("Workers AI call failed:", e);
-        throw new Error(`Ошибка Workers AI: ${e.message}`);
-    }
-}
-
 // ✅ *** 2.11. Workers AI Speech-to-Text (Whisper - голосовые сообщения) ***
 /**
  * Транскрибирует аудиофайл (ArrayBuffer), используя Workers AI (Whisper).
@@ -5803,6 +5731,100 @@ async function callBotHubTextChat(config, history, messageText, envData) {
  * @returns {Promise<string>} Сгенерированный текстовый ответ.
  */
 async function callBotHubTextGpt(config, history, messageText, envData) {
+    // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА (ГЛОБАЛЬНАЯ КОНСТАНТА)
+    const SYSTEM_PROMPT = `
+    Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
+Твои ключевые функции:
+1. Платные функции: Улучшение фото и создание видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
+2. Генерация контента: Ты создаешь новые изображения по текстовым промптам (команда /create) бесплатно и без ограничений.
+3. Распознавание речи: Ты транскрибируешь голосовые сообщения пользователя в текст, который затем обрабатываешь.
+4. Чат: Ты ведешь диалог, отвечаешь на вопросы и сохраняешь контекст беседы.
+
+Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo и /create.
+Ответы должны быть информативными и доброжелательными.
+
+    ${TARIFF_MESSAGE_TEXT}
+`.trim();
+    
+    const apiKey = envData[config.API_KEY];
+    const baseUrl = config.BASE_URL;
+    const model = config.MODEL;
+    const { DEBUG_ENABLED, ctx } = envData;
+    
+    // ПРОВЕРКА КЛЮЧА
+    if (!apiKey) {
+        throw new Error(`API Key для ${config.SERVICE} не настроен.`);
+    }
+
+    // 1. Формирование истории и промпта
+    const apiMessages = [];
+    
+    // Используем ГЛОБАЛЬНЫЙ ПРОМПТ для обучения бота
+    apiMessages.push({ "role": "system", "content": SYSTEM_PROMPT }); 
+    
+    history.forEach(item => {
+        apiMessages.push({
+            role: item.role === 'model' ? 'assistant' : item.role, 
+            content: item.text 
+        });
+    });
+
+    apiMessages.push({
+        role: 'user',
+        content: messageText
+    });
+    
+    // 2. Формирование тела запроса
+    const body = {
+        model: model,
+        messages: apiMessages,
+        stream: false,
+        temperature: 0.7,
+        max_tokens: 4096,
+    };
+
+    const url = `${baseUrl}/chat/completions`;
+
+    // 3. Отправка запроса
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();       
+        throw new Error(`BOTHUB API error (Status ${response.status}): ${errorText}`);
+    }
+
+    // 4. Обработка ответа
+    const data = await response.json();
+    let responseText = '';
+
+    if (data.choices && data.choices.length > 0) {
+        responseText = data.choices[0].message.content.trim();
+    } 
+    
+    if (responseText) {
+        return responseText;
+    } else {
+        throw new Error(`BOTHUB API response error: Received empty content from model.`);
+    }
+}
+
+// ✅ *** 2.20a. callBotHubTextDeepSeek - Обработчик для текстовых чат-запросов BotHub DeepSeek
+/**
+ * @description Отправляет запрос на генерацию текста через BotHub API.
+ * @param {Object} config - Объект конфигурации модели (TEXT_TO_TEXT_BOTHUB_DeepSeek).
+ * @param {Array} history - История чата в формате [{"role": "user/model", "text": "..."}].
+ * @param {string} messageText - Новое сообщение от пользователя.
+ * @param {Object} envData - Объект окружения (включает DEBUG_ENABLED и ctx).
+ * @returns {Promise<string>} Сгенерированный текстовый ответ.
+ */
+async function callBotHubTextDeepSeek(config, history, messageText, envData) {
     // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА (ГЛОБАЛЬНАЯ КОНСТАНТА)
     const SYSTEM_PROMPT = `
     Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
