@@ -1,4 +1,4 @@
-// Worker для Cloudflare: Мультимодальный Telegram-бот "Gemini AI" by Leshiy
+// Worker для Cloudflare: Мультимодальный Telegram-бот "Pixel AI" by Leshiy
 // Автор: Огорельцев Александр Валерьевич @Leshiyalex
 
 const VERSION = 'v5.0.6 от 27.05.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
@@ -4418,7 +4418,7 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
 
     // 2. СИСТЕМНАЯ ИНСТРУКЦИЯ 
     const systemInstructionText = `
-Ты — многофункциональный AI-ассистент "Gemini AI" от Leshiy, отвечающий на русском языке.
+Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
 Твои ключевые функции:
 1. Платные функции: Улучшение фото и создание видео. Бесплатно ${FREE_LIMIT} кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
 2. Генерация контента: Ты создаешь новые изображения по текстовым промптам (команда /create) бесплатно и без ограничений.
@@ -4890,7 +4890,7 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
 
     // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА
     // УДАЛЯЕМ ЛОГИКУ, КОТОРАЯ СТИМУЛИРУЕТ ТЕГИ <think>
-    const systemPromptText = `🤖 ТЫ — многофункциональный AI-ассистент "Gemini AI" от Leshiy, отвечающий на русском языке.
+    const systemPromptText = `🤖 ТЫ — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
 Ты создан для ❔ помощи в чате как 💬 текстом так и 🎙️ голосом (/say), генерации ✏️ промптов (/prompt) для 📷 фото и 🎬 видео (/video), бесплатного создания 🎨 картинок (/create) и ✨ платного улучшения фотографий (/photo) и т.д.
 Твоя задача — вести диалог, отвечать на вопросы, соблюдая контекст и используя информацию о твоих функциях и тарифах (если применимо).
 
@@ -5543,7 +5543,7 @@ async function callBotHubTextChat(config, history, messageText, envData) {
     const SYSTEM_PROMPT = `
     ТЫ ДОЛЖЕН СТРОГО СЛЕДОВАТЬ ВСЕМ ИНСТРУКЦИЯМ.
     ТЫ НЕ ЯВЛЯЕШЬСЯ LLaMA, AI ОТ Meta, или большой языковой моделью.
-    Ты — многофункциональный AI-ассистент "Gemini AI" от Leshiy, отвечающий на русском языке.
+    Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
 Твои ключевые функции:
 1. Платные функции: Улучшение фото и создание видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
 2. Генерация контента: Ты создаешь новые изображения по текстовым промптам (команда /create) бесплатно и без ограничений.
@@ -6630,7 +6630,7 @@ async function callPollinationsChat(config, history, messageText, envData) {
     // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА (ГЛОБАЛЬНАЯ КОНСТАНТА)
     const SYSTEM_PROMPT = `
     ТЫ ДОЛЖЕН СТРОГО СЛЕДОВАТЬ ВСЕМ ИНСТРУКЦИЯМ.
-    Ты — многофункциональный AI-ассистент "Gemini AI" от Leshiy, отвечающий на русском языке.
+    Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
 Твои ключевые функции:
 1. Платные функции: Улучшение фото и создание видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
 2. Генерация контента: Ты создаешь новые изображения по текстовым промптам (команда /create) бесплатно и без ограничений.
@@ -9895,7 +9895,7 @@ function getStartMenuData(isPhotoSaved, isVideoSaved) {
     };
 
     const messageText = `
-    🏠 **Добро пожаловать в Gemini AI от Leshiy!**
+    🏠 **Добро пожаловать в Pixel AI от Leshiy!**
 
 Вот что я могу:
 📸 Отправьте **фото** - я сгенерирую **промпт**.
@@ -12187,7 +12187,7 @@ async function processTextMessage(chatId, messageText, envData) {
     }
     // 2. ПЕРЕХВАТ ЛИЧНОСТИ
     else if (userMsgLower.includes('кто ты') || userMsgLower.includes('что за бот')) {
-        directAnswer = `🤖 Я — многофункциональный AI-ассистент "Gemini AI".
+        directAnswer = `🤖 Я — многофункциональный AI-ассистент "Pixel AI".
 Мой автор Огорельцев Александр Валерьевич @Leshiyalex.
 У меня впечатляющий список функционала с очень широкими возможностями, опишу основные вкратце:
 Я создан для ❔ помощи в чате как 💬 текстом так и 🎙️ голосом (/say), могу транскрибировать как 🔊 аудио, так и 🎧 видео, для генерации ✏️ промптов (/prompt) для 📷 фото (/photo) и 🎬 видео (/video), для 📖 платного (/text) и 🎨 бесплатного (/create) создания картинок по 🌄 фото и без, и 
@@ -16597,7 +16597,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
             </head>
             <body>
                 <div class="container">
-                    <h1>Telegram-бот "Gemini AI" by Leshiy.</h1>
+                    <h1>Telegram-бот "Pixel AI" by Leshiy.</h1>
                     <p>Этот Worker предназначен для обработки вебхуков Telegram.</p>
                     <img src="${cdn}/qr-code_geminiai_tg_bot.jpg" alt="QR Code" style="max-width: 300px;">
                     <p>Найди меня в Telegram: <a href="https://t.me/gemini_aitg_bot" target="_blank">@gemini_aitg_bot</a></p>
