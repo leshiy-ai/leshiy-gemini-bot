@@ -714,10 +714,10 @@ const AI_MODELS = {
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'
     },
-    // ✅ Z.AI Video Vision — распознавание видео (бесплатно)
+    // ✅ Z.AI Multinodal — распознавание всего (бесплатно)
     VIDEO_TO_TEXT_ZAI: { 
         SERVICE: 'ZAI', 
-        FUNCTION: callZAIVision, 
+        FUNCTION: callZAIMultimodal, 
         MODEL: 'glm-4.6V-flash', // GLM-4.6V-Flash
         API_KEY: 'ZAI_API_KEY',
         BASE_URL: 'https://api.z.ai/api/paas/v4',
@@ -8628,6 +8628,90 @@ async function callZAIVision(config, imageBuffer, envData) {
 
     if (!textResult) {
         throw new Error(`Z.AI Vision вернул пустой ответ: ${JSON.stringify(data)}`);
+    }
+
+    return textResult.trim();
+}
+
+/**
+ * Универсальный вызов Z.AI (Текст, Изображения, Видео, Аудио/Файлы).
+ * Сигнатура: (config, contentParts, envData)
+ * @param {Object} config - AI_MODELS конфигурация
+ * @param {Array} contentParts - Массив частей контента, например:
+ *   [{ type: 'text', text: 'Опиши это' }, 
+ *    { type: 'image', data: 'base64string' }, 
+ *    { type: 'video', url: 'https://...' }]
+ * @param {Object} envData - env
+ * @returns {Promise<string>} Ответ модели
+ */
+async function callZAIMultimodal(config, contentParts, envData) {
+    const API_KEY = envData[config.API_KEY];
+    const BASE_URL = config.BASE_URL;
+
+    if (!API_KEY) {
+        throw new Error('Z.AI API ключ не настроен (ZAI_API_KEY в env)');
+    }
+
+    // Конвертируем наш внутренний формат в формат, который понимает Z.AI API
+    const formattedContent = contentParts.map(part => {
+        if (part.type === 'text') {
+            return { type: 'text', text: part.text };
+        }
+        if (part.type === 'image') {
+            // Z.AI поддерживает как URL, так и base64 data URI
+            const url = part.url || (part.data ? `data:image/jpeg;base64,${part.data}` : '');
+            return { type: 'image_url', image_url: { url } };
+        }
+        if (part.type === 'video') {
+            // Согласно документации, используется video_url
+            const url = part.url || (part.data ? `data:video/mp4;base64,${part.data}` : '');
+            return { type: 'video_url', video_url: { url } };
+        }
+        if (part.type === 'audio' || part.type === 'file') {
+            // Для аудио и файлов Z.AI использует file_url (согласно OpenAPI спеке)
+            const url = part.url || (part.data ? `data:audio/mp3;base64,${part.data}` : '');
+            return { type: 'file_url', file_url: { url } };
+        }
+        return null;
+    }).filter(Boolean); // Убираем пустые элементы, если что-то не распозналось
+
+    if (formattedContent.length === 0) {
+        throw new Error('Нет валидного контента для отправки в Z.AI');
+    }
+
+    const url = `${BASE_URL}/chat/completions`;
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`
+    };
+
+    const body = {
+        model: config.MODEL,
+        messages: [{
+            role: 'user',
+            content: formattedContent
+        }],
+        stream: false
+    };
+
+    console.log(`[Z.AI] Multimodal request with ${formattedContent.length} parts (Model: ${config.MODEL})`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`Z.AI Multimodal error ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const textResult = data?.choices?.[0]?.message?.content;
+
+    if (!textResult) {
+        throw new Error(`Z.AI вернул пустой ответ: ${JSON.stringify(data)}`);
     }
 
     return textResult.trim();
