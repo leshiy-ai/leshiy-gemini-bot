@@ -715,6 +715,15 @@ const AI_MODELS = {
         ZAI_USER_ID: 'ZAI_USER_ID'
     },
     // ✅ Z.AI Multinodal — распознавание всего (бесплатно)
+    AUDIO_TO_TEXT_ZAI: { 
+        SERVICE: 'ZAI', 
+        FUNCTION: callZAIMultimodal, 
+        MODEL: 'glm-4.6V-flash', // GLM-4.6V-Flash
+        API_KEY: 'ZAI_API_KEY',
+        BASE_URL: 'https://api.z.ai/api/paas/v4',
+        ZAI_USER_ID: 'ZAI_USER_ID'
+    },
+    // ✅ Z.AI Multinodal — распознавание всего (бесплатно)
     VIDEO_TO_TEXT_ZAI: { 
         SERVICE: 'ZAI', 
         FUNCTION: callZAIMultimodal, 
