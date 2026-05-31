@@ -66,6 +66,8 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handleCreditHistory(auth, env, monolith);
             case 'task_status':
                 return await handleTaskStatus(auth, payload, env, monolith);
+            case 'chat_history':
+                return await handleChatHistory(auth, payload, env, monolith);
             default:
                 return formatResponse(false, "Неизвестный режим: " + mode);
         }
@@ -369,11 +371,12 @@ async function handleChat(auth, payload, env, monolith) {
 
     const isAuth = !!(auth && isValidAuthId(auth.id));
     const chatId = isAuth ? String(auth.id) : 'guest';
+    const s3Platform = isAuth ? (auth.provider === 'vk' ? 'vk' : undefined) : undefined; // 'vk' | undefined=telegram
 
     // Авторизованный — сохраняем в S3
     if (isAuth && syncS3Chat) {
         try {
-            const s3History = await syncS3Chat(chatId, userMessage || '[Файлы]', 'user', env);
+            const s3History = await syncS3Chat(chatId, userMessage || '[Файлы]', 'user', env, s3Platform);
             const convertedHistory = s3History.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 text: m.content
@@ -545,7 +548,7 @@ async function handleChat(auth, payload, env, monolith) {
             if (chatModelInfo.config.SERVICE === 'WORKERS_AI') {
                 modelResponse = await callWorkersAIWeb(chatModelInfo.config, historyForModel, combinedMessage, env);
             } else {
-                modelResponse = await chatModelInfo.config.FUNCTION(chatModelInfo.config, historyForModel, combinedMessage, env);
+                modelResponse = await chatModelInfo.config.FUNCTION(chatModelInfo.config, historyForModel, combinedMessage, env, 'web');
             }
             finalResponse = typeof modelResponse === 'string' ? modelResponse : extractAndCleanModelResponse(modelResponse).finalResponse;
         } else {
@@ -554,7 +557,7 @@ async function handleChat(auth, payload, env, monolith) {
             if (chatModelInfo.config.SERVICE === 'WORKERS_AI') {
                 modelResponse = await callWorkersAIWeb(chatModelInfo.config, historyForModel, userMessage, env);
             } else {
-                modelResponse = await chatModelInfo.config.FUNCTION(chatModelInfo.config, historyForModel, userMessage, env);
+                modelResponse = await chatModelInfo.config.FUNCTION(chatModelInfo.config, historyForModel, userMessage, env, 'web');
             }
             if (typeof modelResponse === 'string') {
                 finalResponse = modelResponse;
@@ -571,7 +574,7 @@ async function handleChat(auth, payload, env, monolith) {
     // Авторизованный — сохраняем ответ в S3
     if (isAuth && syncS3Chat) {
         try {
-            await syncS3Chat(chatId, finalResponse, 'assistant', env);
+            await syncS3Chat(chatId, finalResponse, 'assistant', env, s3Platform);
         } catch (e) {
             console.error("[WebHandler] S3 save error:", e.message);
         }
@@ -2710,6 +2713,50 @@ async function getCreditHistory(chatId, env) {
         console.error("[WebHandler] Credit history read error:", e.message);
     }
     return [];
+}
+
+// ============================================================
+// 💬 ЧАТ: ЗАГРУЗКА И ОЧИСТКА ИСТОРИИ ИЗ S3
+// ============================================================
+
+async function handleChatHistory(auth, payload, env, monolith) {
+    const isAuth = !!(auth && isValidAuthId(auth.id));
+    if (!isAuth) {
+        return formatResponse(false, "Требуется авторизация для работы с историей чата");
+    }
+    const chatId = String(auth.id);
+    const s3Platform = auth.provider === 'vk' ? 'vk' : undefined; // 'vk' | undefined=telegram
+    const { loadS3ChatHistory, clearS3ChatHistory } = monolith;
+    if (!loadS3ChatHistory || !clearS3ChatHistory) {
+        return formatResponse(false, "S3 функции недоступны");
+    }
+
+    const action = payload.action || 'load';
+
+    if (action === 'load') {
+        try {
+            const messages = await loadS3ChatHistory(chatId, env, s3Platform);
+            return formatResponse(true, null, null, {
+                type: 'chat_history',
+                messages: messages
+            });
+        } catch (e) {
+            console.error("[WebHandler] Chat history load error:", e.message);
+            return formatResponse(false, "Ошибка загрузки истории: " + e.message);
+        }
+    }
+
+    if (action === 'clear') {
+        try {
+            await clearS3ChatHistory(chatId, env, s3Platform);
+            return formatResponse(true, null, null, { type: 'chat_cleared' });
+        } catch (e) {
+            console.error("[WebHandler] Chat history clear error:", e.message);
+            return formatResponse(false, "Ошибка очистки истории: " + e.message);
+        }
+    }
+
+    return formatResponse(false, "Неизвестное действие chat_history: " + action);
 }
 
 // ============================================================

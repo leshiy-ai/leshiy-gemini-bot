@@ -235,6 +235,7 @@ body {
 
 .sub-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
 .sub-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+#clearChatBtn:hover { color: var(--accent) !important; }
 
 /* Params area inside panels */
 #imageParamsArea, #videoParamsArea {

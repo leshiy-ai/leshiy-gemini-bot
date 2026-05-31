@@ -55,6 +55,8 @@
             <div id="chatModels" class="skeleton" style="height:24px;width:220px"></div>
             <div class="sub-divider"></div>
             <span class="sub-label" id="chatPriceLabel" style="color:var(--free)">&#10003; Бесплатно</span>
+            <div style="flex:1"></div>
+            <button id="clearChatBtn" class="sub-label" style="cursor:pointer;border:none;background:none;color:var(--text-muted);font-size:0.8em;padding:2px 8px;border-radius:4px;transition:color 0.2s" onclick="clearChat()" title="Очистить чат и вернуться на главную">🗑 Очистить</button>
         </div>
         <div class="sub-header wrap-allowed" id="subImage">
             <div id="imageSubModes"></div>
@@ -1469,6 +1471,9 @@
             authBtn.textContent = 'Войти';
             creditsAmount.textContent = '--';
             loadLocalHistory();
+        } else {
+            // Авторизованный — подгружаем историю из S3
+            loadS3History();
         }
 
         // Загружаем сохранённые настройки моделей
@@ -1532,6 +1537,7 @@
             window.history.replaceState({}, document.title, window.location.pathname);
             showToast('Добро пожаловать, ' + (user.name || 'пользователь') + '!', 'success');
             loadServerData();
+            loadS3History();
         }
 
         // СЦЕНАРИЙ 1: Возврат с vk_user_id (из vk.html или VK Mini App)
@@ -7393,6 +7399,54 @@
         chatArea.innerHTML = '';
         welcomeScreen.style.display = 'flex';
         showToast('Состояние сброшено', 'info');
+    }
+
+    // ---- ОЧИСТКА ЧАТА С ВОЗВРАТОМ НА ГЛАВНУЮ ----
+    async function clearChat() {
+        // Очищаем локально
+        chatHistory = [];
+        chatArea.innerHTML = '';
+        welcomeScreen.style.display = 'flex';
+        localStorage.removeItem('gemini_local_history');
+
+        // Если авторизован — очищаем и на сервере
+        if (user) {
+            try {
+                await fetch(API_URL + '/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'clear' } })
+                });
+            } catch(e) {
+                console.error('Ошибка очистки S3 истории:', e);
+            }
+        }
+        showToast('Чат очищен', 'info');
+    }
+
+    // ---- ЗАГРУЗКА ИСТОРИИ ИЗ S3 ПРИ СТАРТЕ ----
+    async function loadS3History() {
+        if (!user) return;
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'load' } })
+            });
+            const data = await resp.json();
+            if (data.success && data.data && data.data.messages && data.data.messages.length > 0) {
+                chatHistory = data.data.messages.map(m => ({
+                    role: m.role === 'ai' ? 'assistant' : m.role,
+                    content: m.content,
+                    text: m.content
+                }));
+                welcomeScreen.style.display = 'none';
+                chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text || msg.content));
+                console.log(`[S3] Загружено ${chatHistory.length} сообщений из истории`);
+            }
+        } catch(e) {
+            console.error('Ошибка загрузки S3 истории:', e);
+        }
     }
     function cmdAdmin(arg) {
         // Проверяем статус админа через бэкенд

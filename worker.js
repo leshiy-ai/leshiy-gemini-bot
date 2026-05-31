@@ -49,7 +49,7 @@ const SUBSCRIPTION_DAYS = 30; // Длительность подписки по 
 const SUBSCRIPTION_END_KEY_SUFFIX = '_sub_end_credit'; // Ключ для хранения метки времени окончания безлимита
 const PAYMENT_LINK = "https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link";
 // 🛑 ЕДИНАЯ КОНСТАНТА, СОДЕРЖАЩАЯ ВСЕ ТАРИФЫ И КРЕДИТЫ (для System Prompts и Перехватов)
-const TARIFF_MESSAGE_TEXT = `Валюта бота: 💰 Кредиты (1 Кредит = ${CREDIT_COST_RUB} руб.)
+const TARIFF_MESSAGE_TEXT = `Валюта бота: 💰¢ Кредиты (1¢ Кредит = ${CREDIT_COST_RUB} руб.)
 💷 Наши тарифы:
     🆓 Бесплатный лимит: ${FREE_LIMIT} бесплатных кредитов для новых пользователей (этого хватит на 4 видео или 20 фото без видео).
 1. Бесплатно! всегда и в любом количестве:
@@ -714,25 +714,16 @@ const AI_MODELS = {
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'
     },
-    // ✅ Z.AI ASR — распознавание аудио (бесплатно)
-    AUDIO_TO_TEXT_ZAI: { 
-        SERVICE: 'ZAI', 
-        FUNCTION: callZAIASR, 
-        MODEL: 'glm-4.6V-flash', // GLM-4.6V-Flash
-        API_KEY: 'ZAI_API_KEY',
-        BASE_URL: 'https://api.z.ai/api/paas/v4',
-        ZAI_USER_ID: 'ZAI_USER_ID'
-    },
-    // ✅ Z.AI Video — распознавание видео (бесплатно, через ASR)
+    // ✅ Z.AI Video Vision — распознавание видео (бесплатно)
     VIDEO_TO_TEXT_ZAI: { 
         SERVICE: 'ZAI', 
-        FUNCTION: callZAIASR, 
+        FUNCTION: callZAIVision, 
         MODEL: 'glm-4.6V-flash', // GLM-4.6V-Flash
         API_KEY: 'ZAI_API_KEY',
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'
     },
-
+    
     /*/ --- ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ (Пример) ---
     IMAGE_TO_IMAGE_FREEPIK: { 
         SERVICE: 'FREEPIK', 
@@ -813,9 +804,10 @@ function generateModelMenuConfig(AI_MODELS) {
     return config;
 }
 
-async function syncS3Chat(userId, content, role, env) {
-    const chatTitle = "Чат в Телеграм";
-    const encodedTitle = encodeURIComponent(chatTitle);
+async function syncS3Chat(userId, content, role, env, platform) {
+    // Отображаемые названия: 'Чат ВКонтакте', 'Чат в Телеграм'
+    const platformLabel = platform === 'vk' ? 'VK' : 'Telegram';
+    const chatTitle = platform === 'vk' ? 'Чат ВКонтакте' : 'Чат в Телеграм';    const encodedTitle = encodeURIComponent(chatTitle);
     // Инициализация S3 клиента внутри функции, используя твои новые ключи
     const s3 = new AWS.S3({
         accessKeyId: env.YANDEX_S3_KEY_ID, 
@@ -826,7 +818,7 @@ async function syncS3Chat(userId, content, role, env) {
         apiVersion: 'latest',
     });
 
-    const key = `users/${userId}/chats/chat_Telegram.json`;
+    const key = `users/${userId}/chats/chat_${platformLabel}.json`;
     
     let chatData = {
         title: chatTitle,
@@ -4476,7 +4468,7 @@ async function callGeminiVideoVision(config, videoBuffer, mimeType, envData) {
  * @param {Object} envData - Объект окружения Cloudflare Worker, содержащий ключ.
  * @returns {Promise<string>} Сгенерированный текстовый ответ.
  */
-async function callGeminiChat(config, chatHistory, userMessageText, envData) {
+async function callGeminiChat(config, chatHistory, userMessageText, envData, platform) {
     
     // --- ДИНАМИЧЕСКИЕ ПАРАМЕТРЫ ИЗ КОНФИГУРАЦИИ ---
     const API_KEY_ENV_NAME = config.API_KEY; 
@@ -4505,7 +4497,11 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
     contents.push({ role: 'user', parts: [{ text: userMessageText }] });
 
     // 2. СИСТЕМНАЯ ИНСТРУКЦИЯ 
-    const systemInstructionText = `
+    let systemInstructionText;
+    if (platform === 'web') {
+        systemInstructionText = 'Ты — AI-ассистент Pixel AI. Отвечай на русском языке. Веди диалог, отвечай на вопросы развёрнуто и доброжелательно. Если спрашивают о твоих возможностях, расскажи что умеешь: чат, генерация изображений, улучшение фото, создание видео, распознавание речи и аудио, конвертация файлов.';
+    } else {
+        systemInstructionText = `
 Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
 Твои ключевые функции:
 1. Платные функции: Улучшение фото и создание видео. Бесплатно ${FREE_LIMIT} кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
@@ -4519,6 +4515,8 @@ async function callGeminiChat(config, chatHistory, userMessageText, envData) {
 
 ${TARIFF_MESSAGE_TEXT}
 `;
+    }
+
     // ТЕЛО ЗАПРОСА
     const body = {
         systemInstruction: {
@@ -8633,60 +8631,6 @@ async function callZAIVision(config, imageBuffer, envData) {
     }
 
     return textResult.trim();
-}
-
-/**
- * ASR с Z.AI (распознавание аудио, бесплатно).
- * Сигнатура: (config, audioBase64, envData)
- * @param {Object} config - AI_MODELS.AUDIO_TO_TEXT_ZAI
- * @param {string} audioBase64 - Base64 аудиоданных
- * @param {Object} envData - env
- * @returns {Promise<string>} Распознанный текст
- */
-async function callZAIASR(config, audioBase64, envData) {
-    const API_KEY = envData[config.API_KEY];
-    const BASE_URL = config.BASE_URL;
-
-    if (!API_KEY) {
-        throw new Error('Z.AI API ключ не настроен (ZAI_API_KEY в env)');
-    }
-
-    // Если передан Buffer, конвертируем в base64
-    const base64Audio = Buffer.isBuffer(audioBase64) ? audioBase64.toString('base64') : audioBase64;
-
-    const url = `${BASE_URL}/chat/completions`;
-    const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
-    };
-
-    const body = {
-        model: config.MODEL,
-        audio: base64Audio
-    };
-
-    console.log(`[Z.AI] ASR request`);
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        throw new Error(`Z.AI ASR error ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    // ASR может возвращать текст в разных форматах
-    const textResult = data?.text || data?.result?.text || data?.choices?.[0]?.message?.content;
-
-    if (!textResult) {
-        throw new Error(`Z.AI ASR вернул пустой ответ: ${JSON.stringify(data)}`);
-    }
-
-    return typeof textResult === 'string' ? textResult.trim() : JSON.stringify(textResult);
 }
 
 // --- СПИСКИ КОМАНД для setMyCommands ---
