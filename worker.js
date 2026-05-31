@@ -177,10 +177,10 @@ const AI_MODELS = {
         BASE_URL: 'AI_RUN' // Вызов через env.AI.run
     },
     // ✅ [Текст в Текст]
-    TEXT_TO_TEXT_XAI_GROK: { 
+    TEXT_TO_TEXT_IBM_GRANITE: { 
         SERVICE: 'WORKERS_AI', 
-        FUNCTION: callWorkersAIChatGrok, 
-        MODEL: 'xai/grok-4.3',
+        FUNCTION: callWorkersAIChatIBM, 
+        MODEL: '@cf/ibm-granite/granite-4.0-h-micro',
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'https://api.cloudflare.com/client/v4/accounts' // Вызов через внешний API
     },
@@ -5015,21 +5015,22 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
     }
 }
 
-// ✅ *** 2.10a. Workers AI Chat API (для текстового общения GROK c историей) ***
-async function callWorkersAIChatGrok(config, chatHistory, userMessageText, envData) {
+// ✅ *** 2.10a. Workers AI Chat API (для текстового общения модели IBM c историей) ***
+async function callWorkersAIChatIBM(config, chatHistory, userMessageText, envData) {
     // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
     const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
     const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
     const BASE_URL = config.BASE_URL;
-    const MODEL_NAME = config.MODEL; // Сюда прилетит 'xai/grok-4.3'
-    const URL = `${BASE_URL}/${CLOUDFLARE_ACCOUNT_ID}/ai/v1/chat/completions`;
+    const MODEL_NAME = config.MODEL; // Сюда прилетит имя модели
+    const URL = `${BASE_URL}/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${MODEL_NAME}`;
     
     if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
           throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
     }
 
     // 1. ОПРЕДЕЛЕНИЕ СИСТЕМНОГО КОНТЕКСТА
-    const systemPromptText = `🤖 ТЫ — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
+    // УДАЛЯЕМ ЛОГИКУ, КОТОРАЯ СТИМУЛИРУЕТ ТЕГИ <think>
+    const systemPromptText = `🤖 ТЫ — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
 Ты создан для ❔ помощи в чате как 💬 текстом так и 🎙️ голосом (/say), генерации ✏️ промптов (/prompt) для 📷 фото и 🎬 видео (/video), бесплатного создания 🎨 картинок (/create) и ✨ платного улучшения фотографий (/photo) и т.д.
 Твоя задача — вести диалог, отвечать на вопросы, соблюдая контекст и используя информацию о твоих функциях и тарифах (если применимо).
 
@@ -5037,58 +5038,55 @@ async function callWorkersAIChatGrok(config, chatHistory, userMessageText, envDa
 ✨ Платные функции: Улучшение 📷 фото и создание 🎬 видео. Бесплатно ${FREE_LIMIT} Кредитов, далее по тарифам (1 Кредит = ${CREDIT_COST_RUB} руб.).
 🎨 Генерация контента: Ты создаешь новые изображения по текстовым ✏️ промптам (команда /create) бесплатно и без ограничений.
 🎙️ Распознавание речи: Ты транскрибируешь голосовые сообщения пользователя в текст, который затем обрабатываешь.
-💬 Чат: Ты ведешь диалог, отвечать на вопросы, ❔ помогаешь по менюшкам и окнам и сохраняешь контекст беседы.
+💬 Чат: Ты ведешь диалог, отвечаешь на вопросы, ❔ помогаешь по менюшкам и окнам и сохраняешь контекст беседы.
 
-Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo and /create.
+Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo и /create.
 Ответы должны быть информативными и доброжелательными и по возможности компактными, старайся построить диалог понятно и не сильно рассуждая.
 Информация по тарифам:
-    ${TARIFF_MESSAGE_TEXT}
+    ${TARIFF_MESSAGE_TEXT}
 `.trim();
 
-    // 2. ФОРМИРОВАНИЕ ИСТОРИИ (messages)
+    // 2. ФОРМИРОВАНИЕ ИСТОРИИ (messages) (Оставляем как есть, но используем 'system' для основного промпта)
+
+    // Инициализация массива с СИСТЕМНЫМ КОНТЕКСТОМ.
+    // Используем роль 'system' если модель её поддерживает (Qwen должна),  иначе оставим 'user'.
     const messages = [
-        { role: 'system', content: systemPromptText }
-    ];
-    
+        { role: 'system', content: systemPromptText },
+        // УДАЛЯЕМ ИСКУССТВЕННЫЙ ДИАЛОГ "role: 'assistant', content: 'Инструкции приняты...'"
+        // Это тратит токены и часто сбивает с толку модели-инструкторы
+    ];
+    
     // Добавляем реальную историю чата
-    chatHistory.forEach(msg => {
-        messages.push({
-            role: msg.role === 'user' ? 'user' : 'assistant',
-            content: msg.text
-        });
-    });
+    chatHistory.forEach(msg => {
+        messages.push({
+            role: msg.role === 'user' ? 'user' : 'assistant',
+            content: msg.text
+        });
+    });
 
-    // Добавляем текущее сообщение пользователя
-    messages.push({ role: 'user', content: userMessageText });
+    // Добавляем текущее сообщение пользователя
+    messages.push({ role: 'user', content: userMessageText });
 
-    // *** ФОРМИРУЕМ НАГРУЗКУ СТРОГО ПО ДОКЕ ***
+    // *** ДОБАВЛЯЕМ ЛИМИТ ТОКЕНОВ И ТЕМПЕРАТУРУ ***
     const payload = {
-        model: MODEL_NAME, // 🌟 ИСПРАВЛЕНО: Передаем имя модели в JSON-теле запроса
-        messages: messages
+        messages: messages,
+        stream: false, // Отключаем стриминг, чтобы избежать обрезки
+        max_tokens: 1024, // Увеличиваем лимит токенов для безопасности
+        temperature: 0.7 // Умеренная температура
     };
-
-    try {
+    try {
         // Посылаем на отправку через sendAiRequest
         const response = await sendAiRequest(payload, URL, config, envData);
         const data = await response.json();
+        // У Workers AI текст лежит в result.response
+        const textResult = data.result?.response || data.result?.description || data.result;
 
-        // 🌟 ИСПРАВЛЕНО: Парсим чистый OpenAI формат без обертки .result
-        const textResult = 
-            data.choices?.[0]?.message?.content || 
-            data.result?.choices?.[0]?.message?.content || // На случай если прокси накрутит сверху свой result
-            data.result?.response ||
-            data.result;
-
-        if (!textResult) {
-            console.error("Сырой некорректный ответ от Cloudflare Gateway:", JSON.stringify(data));
-            throw new Error("Grok вернул пустой результат или структура JSON ответа не совпадает с OpenAI стандартом");
-        }
-
+        if (!textResult) throw new Error("Workers AI вернул пустой результат");
         return textResult.trim();
-    } catch (e) {
-        console.error("Workers AI Grok call failed:", e);
-        throw new Error(`Ошибка при вызове Grok: ${e.message}`);
-    }
+    } catch (e) {
+        console.error("Workers AI call failed:", e);
+        throw new Error(`Ошибка Workers AI: ${e.message}`);
+    }
 }
 
 // ✅ *** 2.11. Workers AI Speech-to-Text (Whisper - голосовые сообщения) ***
