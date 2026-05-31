@@ -903,18 +903,7 @@ async function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPu
     if (imageResult instanceof ArrayBuffer || imageResult instanceof Uint8Array || (imageResult && imageResult.constructor?.name === 'ArrayBuffer')) {
         const base64 = Buffer.from(imageResult).toString('base64');
         console.log(`[WebHandler] ArrayBuffer result: base64 length=${base64.length}`);
-        // Пробуем загрузить в публичный URL (асинхронно!)
-        if (uploadBase64ImageToPublicUrl) {
-            try {
-                const imageUrl = await uploadBase64ImageToPublicUrl(base64, env, chatId);
-                if (imageUrl && typeof imageUrl === 'string') {
-                    console.log(`[WebHandler] Uploaded to public URL: ${imageUrl.substring(0, 80)}`);
-                    return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageUrl });
-                }
-            } catch (e) {
-                console.warn(`[WebHandler] Upload to public URL failed: ${e.message}, returning base64`);
-            }
-        }
+        // Всегда возвращаем base64 напрямую — KV-URL через /kv-images/ может быть недоступен с клиента (404)
         return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
     }
     // Строка — URL или base64
@@ -2403,23 +2392,13 @@ async function handleTaskStatus(auth, payload, env, monolith) {
             if (resultUrl) {
                 // 🧠 Для изображений — скачиваем на сервере и возвращаем base64,
                 // т.к. временные URL (tempfile.aiquickdraw.com) часто недоступны с клиента
-                if (taskType !== 'video') {
+                // Также KV-URL через /kv-images/ может возвращать 404, поэтому всегда base64
+                if (taskType !== 'video' && taskType !== 'audio') {
                     const downloaded = await downloadImageWithProxy(resultUrl, env);
                     if (downloaded) {
                         const imgBase64 = downloaded;
                         console.log(`[WebHandler] Downloaded image: base64 length=${imgBase64.length}`);
-                        // Пробуем загрузить в публичный URL
-                        if (uploadBase64ImageToPublicUrl) {
-                            try {
-                                const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId);
-                                if (uploadedUrl && typeof uploadedUrl === 'string') {
-                                    console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
-                                    return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
-                                }
-                            } catch (e) {
-                                console.warn(`[WebHandler] Re-upload failed: ${e.message}, returning base64`);
-                            }
-                        }
+                        // Всегда возвращаем base64 напрямую — KV-URL может быть недоступен с клиента (404)
                         return formatResponse(true, null, null, { type: 'image_base64', content: imgBase64 });
                     }
                     // Все способы скачивания не удаллись — для изображений это фатально
@@ -2454,7 +2433,16 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 resultUrl = deepFindUrl(result, 0);
 
                 if (resultUrl) {
-                    const resultType = taskType === 'video' ? 'video_url' : taskType === 'audio' ? 'audio_url' : 'image_url';
+                    // Для изображений — скачиваем и возвращаем base64 (та же причина: KV-URL может быть 404)
+                    if (taskType !== 'video' && taskType !== 'audio') {
+                        const downloaded = await downloadImageWithProxy(resultUrl, env);
+                        if (downloaded) {
+                            console.log(`[WebHandler] Deep-found URL, downloaded: base64 length=${downloaded.length}`);
+                            return formatResponse(true, null, null, { type: 'image_base64', content: downloaded });
+                        }
+                        return formatResponse(false, 'Не удалось скачать изображение по найденному URL');
+                    }
+                    const resultType = taskType === 'audio' ? 'audio_url' : 'video_url';
                     return formatResponse(true, null, null, { type: resultType, content: resultUrl });
                 }
 

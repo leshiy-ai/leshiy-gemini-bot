@@ -432,6 +432,7 @@ body {
     display: inline;
     text-decoration: none;
     border-bottom: none;
+    color: var(--accent);
 }
 
 .welcome span a img {
