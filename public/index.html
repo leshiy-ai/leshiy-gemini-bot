@@ -56,7 +56,6 @@
             <div class="sub-divider"></div>
             <span class="sub-label" id="chatPriceLabel" style="color:var(--free)">&#10003; Бесплатно</span>
             <div style="flex:1"></div>
-            <button id="clearChatBtn" class="sub-label" style="cursor:pointer;border:none;background:none;color:var(--text-muted);font-size:0.8em;padding:2px 8px;border-radius:4px;transition:color 0.2s" onclick="clearChat()" title="Очистить чат и вернуться на главную">🗑 Очистить</button>
         </div>
         <div class="sub-header wrap-allowed" id="subImage">
             <div id="imageSubModes"></div>
@@ -7399,33 +7398,6 @@
         chatArea.innerHTML = '';
         welcomeScreen.style.display = 'flex';
         showToast('Состояние сброшено', 'info');
-    }
-
-    // ---- ОЧИСТКА ЧАТА С ВОЗВРАТОМ НА ГЛАВНУЮ ----
-    async function clearChat() {
-        // Очищаем локально
-        chatHistory = [];
-        chatArea.innerHTML = '';
-        welcomeScreen.style.display = 'flex';
-        localStorage.removeItem('gemini_local_history');
-        // Сброс lazy-loading состояния
-        s3HistoryOffset = 0;
-        s3HistoryHasMore = false;
-        s3HistoryTotal = 0;
-
-        // Если авторизован — очищаем и на сервере
-        if (user) {
-            try {
-                await fetch(API_URL + '/api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'clear' } })
-                });
-            } catch(e) {
-                console.error('Ошибка очистки S3 истории:', e);
-            }
-        }
-        showToast('Чат очищен', 'info');
     }
 
     // ---- ЗАГРУЗКА ИСТОРИИ ИЗ S3 ПРИ СТАРТЕ ----
