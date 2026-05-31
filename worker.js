@@ -684,11 +684,20 @@ const AI_MODELS = {
     // --- Z.AI (БЕСПЛАТНЫЙ) ---
 
     // ✅ Z.AI GLM-4.7 — бесплатный чат
-    TEXT_TO_TEXT_ZAI: { 
+    TEXT_TO_TEXT_ZAI47: { 
         SERVICE: 'ZAI', 
-        FUNCTION: callZAIChat, 
+        FUNCTION: callZAI47Chat, 
         MODEL: 'glm-4.7-flash', // Free model
-        API_KEY: 'ZAI_API_KEY',     // env var, value = 'Z.ai'
+        API_KEY: 'ZAI_API_KEY',     // env var, value для 'Z.ai'
+        BASE_URL: 'https://api.z.ai/api/paas/v4',
+        ZAI_USER_ID: 'ZAI_USER_ID'  // env var — user_id для Z.AI
+    },
+    // ✅ Z.AI GLM-4.5 — бесплатный чат
+    TEXT_TO_TEXT_ZAI45: { 
+        SERVICE: 'ZAI', 
+        FUNCTION: callZAI45Chat, 
+        MODEL: 'glm-4.5-flash', // Free model
+        API_KEY: 'ZAI_API_KEY',     // env var, value для 'Z.ai'
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'  // env var — user_id для Z.AI
     },
@@ -8400,7 +8409,7 @@ async function startStabilityImageUpscale(config, unusedPrompt, imageBase64, env
 // ✅ *** Z.AI — бесплатный чат, вижн, ASR (GLM-5) ***
 
 /**
- * Чат с Z.AI GLM-5 (бесплатно).
+ * Чат с Z.AI GLM-4.7 (бесплатно).
  * Сигнатура аналогична callGeminiChat: (config, chatHistory, userMessageText, envData)
  * @param {Object} config - AI_MODELS.TEXT_TO_TEXT_ZAI
  * @param {Array} chatHistory - [{ role, text/content }]
@@ -8408,7 +8417,89 @@ async function startStabilityImageUpscale(config, unusedPrompt, imageBase64, env
  * @param {Object} envData - env с ZAI_API_KEY, ZAI_USER_ID
  * @returns {Promise<string>} Текстовый ответ
  */
-async function callZAIChat(config, chatHistory, userMessageText, envData) {
+async function callZAI47Chat(config, chatHistory, userMessageText, envData) {
+    const API_KEY = envData[config.API_KEY]; // 'Z.ai'
+    const USER_ID = envData[config.ZAI_USER_ID];
+    const BASE_URL = config.BASE_URL;
+    const MODEL = config.MODEL;
+
+    if (!API_KEY) {
+        throw new Error('Z.AI API key не настроен (ZAI_API_KEY)');
+    }
+
+    // Формируем сообщения в OpenAI-формате
+    const messages = [];
+    // Системный промпт
+    messages.push({
+        role: 'system',
+        content: `Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
+Твои ключевые функции:
+1. Чат: ты ведёшь диалог, отвечаешь на вопросы, сохраняешь контекст беседы.
+2. Генерация изображений, видео и аудио — через соответствующие режимы.
+3. Распознавание речи и анализ файлов.
+Ответы должны быть информативными и доброжелательными.`
+    });
+    // История
+    if (chatHistory && chatHistory.length > 0) {
+        for (const msg of chatHistory) {
+            messages.push({
+                role: msg.role === 'model' ? 'assistant' : (msg.role === 'assistant' ? 'assistant' : 'user'),
+                content: msg.text || msg.content || ''
+            });
+        }
+    }
+    // Текущее сообщение
+    if (userMessageText) {
+        messages.push({ role: 'user', content: userMessageText });
+    }
+
+    const url = `${BASE_URL}/chat/completions`;
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+        'X-Z-AI-From': 'Z',
+    };
+    if (USER_ID) headers['X-User-Id'] = USER_ID;
+
+    const body = {
+        model: MODEL,
+        messages: messages,
+        thinking: { type: 'disabled' }
+    };
+
+    console.log(`[Z.AI] Chat request: model=${MODEL}, messages=${messages.length}`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`Z.AI API error ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const textResult = data?.choices?.[0]?.message?.content;
+
+    if (!textResult) {
+        throw new Error(`Z.AI вернул пустой ответ: ${JSON.stringify(data)}`);
+    }
+
+    return textResult.trim();
+}
+
+/**
+ * Чат с Z.AI GLM-4.5 (бесплатно).
+ * Сигнатура аналогична callGeminiChat: (config, chatHistory, userMessageText, envData)
+ * @param {Object} config - AI_MODELS.TEXT_TO_TEXT_ZAI
+ * @param {Array} chatHistory - [{ role, text/content }]
+ * @param {string} userMessageText - Текст сообщения пользователя
+ * @param {Object} envData - env с ZAI_API_KEY, ZAI_USER_ID
+ * @returns {Promise<string>} Текстовый ответ
+ */
+async function callZAI45Chat(config, chatHistory, userMessageText, envData) {
     const API_KEY = envData[config.API_KEY]; // 'Z.ai'
     const USER_ID = envData[config.ZAI_USER_ID];
     const BASE_URL = config.BASE_URL;
