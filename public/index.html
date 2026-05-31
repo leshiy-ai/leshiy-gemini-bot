@@ -54,7 +54,7 @@
         <div class="sub-header active" id="subChat">
             <div id="chatModels" class="skeleton" style="height:24px;width:220px"></div>
             <div class="sub-divider"></div>
-            <span class="sub-label" style="color:var(--free)">&#10003; Бесплатно</span>
+            <span class="sub-label" id="chatPriceLabel" style="color:var(--free)">&#10003; Бесплатно</span>
         </div>
         <div class="sub-header wrap-allowed" id="subImage">
             <div id="imageSubModes"></div>
@@ -2215,6 +2215,19 @@
             sel.appendChild(optgroup);
         }
         container.appendChild(sel);
+
+        // Обновляем ценовую метку рядом с селектом
+        const priceLabel = document.getElementById('chatPriceLabel');
+        if (priceLabel) {
+            const cur = availableModels.chat.find(m => m.key === selected.chat);
+            if (cur && !cur.isFree && cur.cost) {
+                priceLabel.textContent = cur.cost + '\u00A2';
+                priceLabel.style.color = 'var(--accent)';
+            } else {
+                priceLabel.textContent = '\u2713 Бесплатно';
+                priceLabel.style.color = 'var(--free)';
+            }
+        }
     }
 
     function renderImageSubHeader() {
