@@ -59,3 +59,5 @@ jobs:
             YANDEX_API_KEY=${{ secrets.YANDEX_API_KEY }}
             YANDEX_S3_KEY_ID=${{ secrets.YANDEX_S3_KEY_ID }}
             YANDEX_S3_SECRET=${{ secrets.YANDEX_S3_SECRET }}
+            ZAI_API_KEY=${{ secrets.ZAI_API_KEY }}
+            ZAI_USER_ID=${{ secrets.ZAI_USER_ID }}

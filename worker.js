@@ -1,7 +1,7 @@
 // Worker для Cloudflare: Мультимодальный Telegram-бот "Pixel AI" by Leshiy
 // Автор: Огорельцев Александр Валерьевич @Leshiyalex
 
-const VERSION = 'v5.0.6 от 27.05.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
+const VERSION = 'v5.1.0 от 21.05.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
 
 // --- ГЛОБАЛЬНЫЕ КОНСТАНТЫ ---
 const GLOBAL_DEBUG_KEY = 'global_debug_setting'; // Отладка / Debug
@@ -652,6 +652,45 @@ const AI_MODELS = {
         API_KEY: 'STABILITY_API_KEY', 
         BASE_URL: 'https://api.stability.ai/v2beta/stable-image/upscale/fast', // Эндпоинт для Fast Upscaler
         pricing: 2 // 2 кредита за апскейл
+    },
+
+    // --- Z.AI (БЕСПЛАТНЫЙ) ---
+
+    // ✅ Z.AI GLM-5 — бесплатный чат
+    TEXT_TO_TEXT_ZAI: { 
+        SERVICE: 'ZAI', 
+        FUNCTION: callZAIChat, 
+        MODEL: 'glm-5', 
+        API_KEY: 'ZAI_API_KEY',     // env var, value = 'Z.ai'
+        BASE_URL: 'https://api.z.ai/api/paas/v4',
+        ZAI_USER_ID: 'ZAI_USER_ID'  // env var — user_id для Z.AI
+    },
+    // ✅ Z.AI Vision — распознавание изображений (бесплатно)
+    IMAGE_TO_TEXT_ZAI: { 
+        SERVICE: 'ZAI', 
+        FUNCTION: callZAIVision, 
+        MODEL: 'glm-5', 
+        API_KEY: 'ZAI_API_KEY',
+        BASE_URL: 'https://api.z.ai/api/paas/v4',
+        ZAI_USER_ID: 'ZAI_USER_ID'
+    },
+    // ✅ Z.AI ASR — распознавание аудио (бесплатно)
+    AUDIO_TO_TEXT_ZAI: { 
+        SERVICE: 'ZAI', 
+        FUNCTION: callZAIASR, 
+        MODEL: 'glm-5', 
+        API_KEY: 'ZAI_API_KEY',
+        BASE_URL: 'https://api.z.ai/api/paas/v4',
+        ZAI_USER_ID: 'ZAI_USER_ID'
+    },
+    // ✅ Z.AI Video — распознавание видео (бесплатно, через ASR)
+    VIDEO_TO_TEXT_ZAI: { 
+        SERVICE: 'ZAI', 
+        FUNCTION: callZAIASR, 
+        MODEL: 'glm-5', 
+        API_KEY: 'ZAI_API_KEY',
+        BASE_URL: 'https://api.z.ai/api/paas/v4',
+        ZAI_USER_ID: 'ZAI_USER_ID'
     },
 
     /*/ --- ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ (Пример) ---
@@ -8061,6 +8100,209 @@ async function startStabilityImageUpscale(config, unusedPrompt, imageBase64, env
 
     // 4. Возвращаем увеличенное изображение (ArrayBuffer)
     return response.arrayBuffer();
+}
+
+// ✅ *** Z.AI — бесплатный чат, вижн, ASR (GLM-5) ***
+
+/**
+ * Чат с Z.AI GLM-5 (бесплатно).
+ * Сигнатура аналогична callGeminiChat: (config, chatHistory, userMessageText, envData)
+ * @param {Object} config - AI_MODELS.TEXT_TO_TEXT_ZAI
+ * @param {Array} chatHistory - [{ role, text/content }]
+ * @param {string} userMessageText - Текст сообщения пользователя
+ * @param {Object} envData - env с ZAI_API_KEY, ZAI_USER_ID
+ * @returns {Promise<string>} Текстовый ответ
+ */
+async function callZAIChat(config, chatHistory, userMessageText, envData) {
+    const API_KEY = envData[config.API_KEY]; // 'Z.ai'
+    const USER_ID = envData[config.ZAI_USER_ID];
+    const BASE_URL = config.BASE_URL;
+    const MODEL = config.MODEL;
+
+    if (!API_KEY) {
+        throw new Error('Z.AI API key не настроен (ZAI_API_KEY)');
+    }
+
+    // Формируем сообщения в OpenAI-формате
+    const messages = [];
+    // Системный промпт
+    messages.push({
+        role: 'system',
+        content: `Ты — многофункциональный AI-ассистент "Pixel AI" от Leshiy, отвечающий на русском языке.
+Твои ключевые функции:
+1. Чат: ты ведёшь диалог, отвечаешь на вопросы, сохраняешь контекст беседы.
+2. Генерация изображений, видео и аудио — через соответствующие режимы.
+3. Распознавание речи и анализ файлов.
+Ответы должны быть информативными и доброжелательными.`
+    });
+    // История
+    if (chatHistory && chatHistory.length > 0) {
+        for (const msg of chatHistory) {
+            messages.push({
+                role: msg.role === 'model' ? 'assistant' : (msg.role === 'assistant' ? 'assistant' : 'user'),
+                content: msg.text || msg.content || ''
+            });
+        }
+    }
+    // Текущее сообщение
+    if (userMessageText) {
+        messages.push({ role: 'user', content: userMessageText });
+    }
+
+    const url = `${BASE_URL}/chat/completions`;
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+        'X-Z-AI-From': 'Z',
+    };
+    if (USER_ID) headers['X-User-Id'] = USER_ID;
+
+    const body = {
+        model: MODEL,
+        messages: messages,
+        thinking: { type: 'disabled' }
+    };
+
+    console.log(`[Z.AI] Chat request: model=${MODEL}, messages=${messages.length}`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`Z.AI API error ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const textResult = data?.choices?.[0]?.message?.content;
+
+    if (!textResult) {
+        throw new Error(`Z.AI вернул пустой ответ: ${JSON.stringify(data)}`);
+    }
+
+    return textResult.trim();
+}
+
+/**
+ * Vision с Z.AI (распознавание изображений, бесплатно).
+ * Сигнатура: (config, imageBuffer, envData)
+ * @param {Object} config - AI_MODELS.IMAGE_TO_TEXT_ZAI
+ * @param {Buffer} imageBuffer - Буфер изображения
+ * @param {Object} envData - env
+ * @returns {Promise<string>} Описание изображения
+ */
+async function callZAIVision(config, imageBuffer, envData) {
+    const API_KEY = envData[config.API_KEY];
+    const USER_ID = envData[config.ZAI_USER_ID];
+    const BASE_URL = config.BASE_URL;
+
+    if (!API_KEY) {
+        throw new Error('Z.AI API key не настроен');
+    }
+
+    const base64 = Buffer.isBuffer(imageBuffer) ? imageBuffer.toString('base64') : imageBuffer;
+
+    const url = `${BASE_URL}/chat/completions/vision`;
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+        'X-Z-AI-From': 'Z',
+    };
+    if (USER_ID) headers['X-User-Id'] = USER_ID;
+
+    const body = {
+        model: config.MODEL,
+        messages: [{
+            role: 'user',
+            content: [
+                { type: 'text', text: 'Опиши это изображение подробно на русском языке' },
+                { type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } }
+            ]
+        }],
+        thinking: { type: 'disabled' }
+    };
+
+    console.log(`[Z.AI] Vision request`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`Z.AI Vision error ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const textResult = data?.choices?.[0]?.message?.content;
+
+    if (!textResult) {
+        throw new Error(`Z.AI Vision вернул пустой ответ: ${JSON.stringify(data)}`);
+    }
+
+    return textResult.trim();
+}
+
+/**
+ * ASR с Z.AI (распознавание аудио, бесплатно).
+ * Сигнатура: (config, audioBase64, envData)
+ * @param {Object} config - AI_MODELS.AUDIO_TO_TEXT_ZAI
+ * @param {string} audioBase64 - Base64 аудиоданных
+ * @param {Object} envData - env
+ * @returns {Promise<string>} Распознанный текст
+ */
+async function callZAIASR(config, audioBase64, envData) {
+    const API_KEY = envData[config.API_KEY];
+    const USER_ID = envData[config.ZAI_USER_ID];
+    const BASE_URL = config.BASE_URL;
+
+    if (!API_KEY) {
+        throw new Error('Z.AI API key не настроен');
+    }
+
+    const url = `${BASE_URL}/audio/asr`;
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+        'X-Z-AI-From': 'Z',
+    };
+    if (USER_ID) headers['X-User-Id'] = USER_ID;
+
+    // Если передан Buffer, конвертируем в base64
+    const base64Audio = Buffer.isBuffer(audioBase64) ? audioBase64.toString('base64') : audioBase64;
+
+    const body = {
+        model: config.MODEL,
+        audio: base64Audio
+    };
+
+    console.log(`[Z.AI] ASR request`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`Z.AI ASR error ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    // ASR может возвращать текст в разных форматах
+    const textResult = data?.text || data?.result?.text || data?.choices?.[0]?.message?.content;
+
+    if (!textResult) {
+        throw new Error(`Z.AI ASR вернул пустой ответ: ${JSON.stringify(data)}`);
+    }
+
+    return typeof textResult === 'string' ? textResult.trim() : JSON.stringify(textResult);
 }
 
 // --- СПИСКИ КОМАНД для setMyCommands ---
@@ -17058,6 +17300,8 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,
         BOTHUB_API_KEY: env.BOTHUB_API_KEY,
         KIEAI_API_KEY: env.KIEAI_API_KEY,
+        ZAI_API_KEY: env.ZAI_API_KEY,
+        ZAI_USER_ID: ennv.ZAI_USER_ID,
         LAST_PHOTO_STORAGE: env.LAST_PHOTO_STORAGE,
         DEBUG_CHAT_ID: env.DEBUG_CHAT_ID,
         ADMIN_CHAT_ID: env.ADMIN_CHAT_ID,
