@@ -565,7 +565,7 @@ const AI_MODELS = {
     // Pollinations.ai - 0.010 pollen самовосстанавливающиеся каждый час.
 
     // [Pollinations.ai: Polly для чата] бесплатная
-    TEXT_TO_TEXT_GROK: { 
+    TEXT_TO_TEXT_POLLY: { 
         SERVICE: 'POLLINATIONS', 
         FUNCTION: callPollinationsPolly, 
         MODEL: 'polly', 
