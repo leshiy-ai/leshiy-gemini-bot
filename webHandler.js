@@ -1056,7 +1056,8 @@ async function handleVideo(auth, payload, env, monolith) {
             return formatResponse(true, null, null, { type: 'video_base64', content: resultBase64 });
         } catch (e) {
             console.error("[WebHandler] Video convert error:", e.message);
-            return formatResponse(false, "Ошибка конвертации видео: " + e.message);
+            const actionLabel = payload.convert_action === 'resize' ? 'ресайза' : payload.convert_action === 'rotate' ? 'поворота' : 'конвертации';
+            return formatResponse(false, "Ошибка " + actionLabel + " видео: " + e.message);
         }
     }
 
@@ -1749,7 +1750,7 @@ async function handleModels(auth, env, monolith) {
 
             // Показываем ВСЕ модели — юзер сам выбирает. Никакого скрытия!
 
-            const isFree = mapping.freeByDefault || !modelDetails.pricing || modelDetails.SERVICE === 'WORKERS_AI' || modelDetails.SERVICE === 'VOICERSS';
+            const isFree = (!modelDetails.pricing && mapping.freeByDefault) || modelDetails.SERVICE === 'WORKERS_AI' || modelDetails.SERVICE === 'VOICERSS';
             const cost = typeof modelDetails.pricing === 'number' ? modelDetails.pricing : (modelDetails.pricing ? 'дин.' : 0);
             const isDynamicPricing = typeof modelDetails.pricing === 'object' && modelDetails.pricing !== null;
 
