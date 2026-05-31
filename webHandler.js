@@ -410,7 +410,22 @@ async function handleChat(auth, payload, env, monolith) {
         return formatResponse(false, 'Нет доступной модели для чата');
     }
     const chatService = chatModelInfo.config.SERVICE; // GEMINI, WORKERS_AI, BOTHUB и т.д.
-    console.log(`[WebHandler] Chat model: ${chatModelInfo.key} (SERVICE=${chatService})`);
+    const chatPricing = typeof chatModelInfo.config.pricing === 'number' ? chatModelInfo.config.pricing : 0;
+    console.log(`[WebHandler] Chat model: ${chatModelInfo.key} (SERVICE=${chatService}, pricing=${chatPricing})`);
+
+    // Шаг 1.5: Биллинг — если модель платная, проверяем баланс и списываем
+    let creditsLeft = null;
+    if (chatPricing > 0) {
+        if (!isAuth) {
+            return formatResponse(false, `Модель ${chatModelInfo.config.MODEL} платная (${chatPricing}¢). Войдите для оплаты.`);
+        }
+        const balance = await getUserBalance(chatId, env, monolith);
+        if (balance < chatPricing) {
+            return formatResponse(false, `Недостаточно кредитов для ${chatModelInfo.config.MODEL}. Нужно ${chatPricing}¢, у вас ${balance}¢.`, balance);
+        }
+        creditsLeft = await deductCredits(chatId, chatPricing, env, monolith);
+        console.log(`[WebHandler] Chat billed: -${chatPricing}¢, left=${creditsLeft}`);
+    }
 
     // Шаг 2: Для вложений — находим модель ТЕГО ЖЕ СЕРВИСА
     // Если чат = Gemini → вижн/STT тоже Gemini
@@ -562,7 +577,7 @@ async function handleChat(auth, payload, env, monolith) {
         }
     }
 
-    return formatResponse(true, null, null, {
+    return formatResponse(true, null, creditsLeft, {
         type: 'text',
         content: finalResponse
     });
@@ -1727,7 +1742,7 @@ async function handleModels(auth, env, monolith) {
     const models = {
         chat: [], image: [], image_i2i: [], image_vision: [], image_upscale: [],
         video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [], video_upscale: [],
-        audio_tts: [], audio_stt: []
+        audio_tts: [], audio_stt: [], audio_isolation: []
     };
 
     const serviceMapping = {
@@ -1745,7 +1760,7 @@ async function handleModels(auth, env, monolith) {
         'TEXT_TO_AUDIO':    { target: 'audio_tts',     freeByDefault: true  }, // VoiceRSS бесплатный!
         'AUDIO_TO_TEXT':    { target: 'audio_stt',     freeByDefault: true  },
         'VIDEO_TO_TEXT':    { target: 'audio_stt',     freeByDefault: true  },
-        'AUDIO_TO_AUDIO':   { target: 'audio_stt',     freeByDefault: true  },
+        'AUDIO_TO_AUDIO':   { target: 'audio_isolation', freeByDefault: false },
     };
 
     // Не скрываем модели — юзер сам решает
@@ -1779,13 +1794,18 @@ async function handleModels(auth, env, monolith) {
         }
     }
 
-    // Дедупликация по key
-    for (const arr of Object.values(models)) {
+    // Дедупликация: по key (уникальный идентификатор модели),
+    // а для audio_stt — по modelShort+service (чтобы не дублировать
+    // AUDIO_TO_TEXT_GEMINI и VIDEO_TO_TEXT_GEMINI, которые обе в audio_stt)
+    for (const [cat, arr] of Object.entries(models)) {
         const seen = new Set();
         const unique = [];
         for (const m of arr) {
-            if (!seen.has(m.key)) {
-                seen.add(m.key);
+            const dedupKey = cat === 'audio_stt'
+                ? `${m.modelShort}|${m.service}`
+                : m.key;
+            if (!seen.has(dedupKey)) {
+                seen.add(dedupKey);
                 unique.push(m);
             }
         }

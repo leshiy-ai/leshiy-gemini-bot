@@ -437,7 +437,7 @@ const AI_MODELS = {
         
     // --- BOTHUB (ПЛАТНЫЕ, ТЕСТОВЫЕ) ---
 
-    // --- BOTHUB TEXT --- (БЕСПЛАТНО)
+    // --- BOTHUB TEXT --- (1 кредит)
     TEXT_TO_TEXT_BOTHUB: { 
         SERVICE: 'BOTHUB', 
         FUNCTION: callBotHubTextChat, 
@@ -446,9 +446,10 @@ const AI_MODELS = {
         MODEL: 'gemini-2.5-flash',       
         API_KEY: 'BOTHUB_API_KEY', 
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
-        BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
+        BASE_URL: 'https://bothub.chat/api/v2/openai/v1',
+        pricing: 1
     },
-    // --- BOTHUB TEXT GPT --- (БЕСПЛАТНО)
+    // --- BOTHUB TEXT GPT --- (1 кредит)
     TEXT_TO_TEXT_BOTHUB_GPT: { 
         SERVICE: 'BOTHUB', 
         FUNCTION: callBotHubTextGpt, 
@@ -456,7 +457,8 @@ const AI_MODELS = {
         MODEL: 'gpt-5.4-mini',
         API_KEY: 'BOTHUB_API_KEY', 
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
-        BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
+        BASE_URL: 'https://bothub.chat/api/v2/openai/v1',
+        pricing: 1
     },
     // --- BOTHUB TEXT DeepSeek--- (БЕСПЛАТНО)
     TEXT_TO_TEXT_BOTHUB_DEEPSEEK: { 
@@ -580,7 +582,8 @@ const AI_MODELS = {
         MODEL: 'grok', 
         API_KEY: 'POLLINATIONS_API_KEY', 
         //BASE_URL: 'https://gen.pollinations.ai/v1/chat/completions'
-        BASE_URL: 'https://gen.pollinations.ai'
+        BASE_URL: 'https://gen.pollinations.ai',
+        pricing: 1
     },
     // [Pollinations.ai: Gemini-fast для чата] (0.01 /M pollen)
     TEXT_TO_TEXT_POLLINATIONS: { 
@@ -589,7 +592,8 @@ const AI_MODELS = {
         MODEL: 'gemini-fast', 
         API_KEY: 'POLLINATIONS_API_KEY', 
         //BASE_URL: 'https://gen.pollinations.ai/v1/chat/completions'
-        BASE_URL: 'https://gen.pollinations.ai'
+        BASE_URL: 'https://gen.pollinations.ai',
+        pricing: 1
     },
     // [Pollinations.ai: Gemini-fast для распознавания фото]
     IMAGE_TO_TEXT_POLLINATIONS: { 
