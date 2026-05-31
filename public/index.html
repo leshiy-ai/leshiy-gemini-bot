@@ -91,7 +91,6 @@
                     <div class="logo-pulse"></div>
                 </div>
                 <h2>Привет! Я Пиксель.</h2>
-                <span>Мультимодальный ИИ-ассистент от Leshiy-AI</span>
                 <p>Я могу отвечать на вопросы, анализировать файлы, генерировать изображения, видео и аудио. Выбери режим выше!</p>
                 <div class="welcome-suggestions">
                     <button class="suggestion" onclick="useSuggestion('Расскажи о себе')">Расскажи о себе</button>
@@ -1242,12 +1241,14 @@
 
                 // Task completed successfully
                 if (data.data?.type === 'image_url' || data.data?.type === 'video_url' || data.data?.type === 'audio_url') {
+                    console.log('[Poll] Completed with', data.data.type, 'content length:', (data.data.content || '').length);
                     return { completed: true, url: data.data.content, type: data.data.type };
                 }
 
                 // KieAI может вернуть base64 напрямую
                 if (data.data?.type === 'image_base64' && data.data.content) {
                     const dataUrl = 'data:image/png;base64,' + data.data.content;
+                    console.log('[Poll] Completed with image_base64, dataUrl length:', dataUrl.length);
                     return { completed: true, url: dataUrl, type: 'image_url' };
                 }
 
@@ -4746,6 +4747,7 @@
 
             if (contentType.includes('application/json')) {
                 const data = await response.json();
+                console.log('[T2I] Server response:', JSON.stringify(data).substring(0, 500));
                 if (data.credits_left !== undefined) credits = data.credits_left;
                 else if (!model?.isFree) credits -= cost;
 
@@ -4786,10 +4788,12 @@
                             };
 
                             const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 60, 5000);
+                            console.log('[T2I] Poll result:', JSON.stringify(result).substring(0, 300));
 
                             // Display the result
                             if (result.url) {
                                 const imgSrc = result.url;
+                                console.log('[T2I] Image src type:', imgSrc.substring(0, 50) + '... (len=' + imgSrc.length + ')');
                                 storeLastGeneratedImage(imgSrc);
                                 resultArea.innerHTML = '<img class="generated-image" src="' + imgSrc + '" alt="Generated image">' +
                                     '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center">' +
@@ -4797,6 +4801,8 @@
                                     '<button onclick="useImageInVideo()" style="color:var(--accent);font-size:13px;background:var(--accent-light);border:1px solid var(--border);border-radius:12px;padding:4px 12px;cursor:pointer">&#127916; Использовать в видео</button>' +
                                     '</div>';
                                 showToast('Изображение создано!', 'success');
+                            } else {
+                                throw new Error('Poll завершился без URL изображения. Result: ' + JSON.stringify(result).substring(0, 200));
                             }
                         } catch (err) {
                             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
@@ -5098,7 +5104,10 @@
             const data = await response.json();
             if (data.success === false) throw new Error(data.error || 'Ошибка');
             const result = data.data?.content || data.text || 'Не удалось проанализировать';
-            resultArea.innerHTML = '<div class="message bot" style="align-self:stretch">' + formatBotMessage(result) + '</div>';
+            const resultId = 'videoAnalysisResult_' + Date.now();
+            resultArea.innerHTML = '<div class="message bot" style="align-self:stretch;position:relative">' +
+                '<button onclick="copyAnalysisResult(\'' + resultId + '\')" style="position:absolute;top:8px;right:8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;color:var(--text-muted);z-index:2" title="Копировать результат">&#128203; Копировать</button>' +
+                '<div id="' + resultId + '">' + formatBotMessage(result) + '</div></div>';
             showToast('Видео проанализировано!', 'success');
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
@@ -5325,9 +5334,11 @@
 
             if (!response.ok) throw new Error('Ошибка конвертации');
             const contentType = response.headers.get('Content-Type') || '';
+            console.log('[AudioConvert] Response OK, content-type:', contentType);
 
             if (contentType.includes('application/json')) {
                 const data = await response.json();
+                console.log('[AudioConvert] Response data type:', data.data?.type, 'content length:', (data.data?.content || '').length);
                 if (!data.success) throw new Error(data.error || 'Ошибка конвертации');
                 const content = data.data?.content;
                 const resultType = data.data?.type || '';
@@ -5481,6 +5492,25 @@
 
         isProcessing = false;
         sendBtn.disabled = false;
+    }
+
+    // Копирование результата анализа видео
+    function copyAnalysisResult(elementId) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        const text = el.innerText || el.textContent || '';
+        if (!text.trim()) return;
+        navigator.clipboard.writeText(text.trim()).then(function() {
+            showToast('Результат скопирован!', 'success');
+        }).catch(function() {
+            const textarea = document.createElement('textarea');
+            textarea.value = text.trim();
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('Результат скопирован!', 'success');
+        });
     }
 
     // ---- FILE TO BASE64 UTILITY ----
@@ -5727,6 +5757,7 @@
             });
             if (!response.ok) throw new Error('Ошибка апскейла');
             const data = await response.json();
+            console.log('[Upscale] Server response:', JSON.stringify(data).substring(0, 500));
             if (!data.success) throw new Error(data.error || 'Ошибка');
             // KIEAI async task — poll for result
             if (data.data?.type === 'image_task') {
@@ -5750,10 +5781,14 @@
                             }
                         };
                         const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 120, 5000);
+                        console.log('[Upscale] Poll result:', JSON.stringify(result).substring(0, 300));
                         if (result.url) {
+                            console.log('[Upscale] Image src:', result.url.substring(0, 80) + '... (len=' + result.url.length + ')');
                             storeLastGeneratedImage(result.url);
                             resultArea.innerHTML = '<img class="generated-image" src="' + result.url + '" alt="Upscaled"><br><a href="' + result.url + '" download="upscaled.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
                             showToast('Разрешение увеличено!', 'success');
+                        } else {
+                            throw new Error('Poll завершился без URL. Result: ' + JSON.stringify(result).substring(0, 200));
                         }
                     } catch (err) {
                         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
@@ -6048,6 +6083,7 @@
             });
             if (!response.ok) throw new Error('Ошибка конвертации');
             const data = await response.json();
+            console.log('[MediaConvert] Response:', JSON.stringify(data).substring(0, 300));
             if (!data.success) throw new Error(data.error || 'Ошибка');
             const content = data.data?.content;
             const resultType = data.data?.type || '';
@@ -6494,6 +6530,7 @@
             });
             if (!response.ok) throw new Error('Ошибка ресайза');
             const data = await response.json();
+            console.log('[VideoResize] Response:', JSON.stringify(data).substring(0, 300));
             if (!data.success) throw new Error(data.error || 'Ошибка');
             const content = data.data?.content;
             const resultType = data.data?.type || '';
@@ -7042,6 +7079,36 @@
             } else if (id === 'audioConvertZone') {
                 handleAudioConvert(input);
             } else if (id === 'voiceCloneZone') {
+                // Если аудио перетаскивается из результата (а не с десктопа) — добавляем как вложение в чат
+                if (_dragState && _dragState.attachment && _dragState.sourceIndex === -1) {
+                    if (currentMode !== 'chat') switchMode('chat');
+                    const att = _dragState.attachment;
+                    const category = att.category || (att.type?.startsWith('audio/') ? 'audio' : 'other');
+                    const iconMap = { image: '&#128247;', video: '&#127916;', audio: '&#127925;' };
+                    const attachment = {
+                        name: att.name || 'audio.mp3',
+                        type: att.type || 'audio/mpeg',
+                        base64: att.base64,
+                        previewUrl: null,
+                        icon: iconMap[category] || att.icon || '&#127925;',
+                        category: category
+                    };
+                    if (att.base64) {
+                        try {
+                            const byteString = atob(att.base64);
+                            const ab = new ArrayBuffer(byteString.length);
+                            const ia = new Uint8Array(ab);
+                            for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+                            const blob = new Blob([ab], { type: attachment.type });
+                            attachment.previewUrl = URL.createObjectURL(blob);
+                        } catch(err) {}
+                    }
+                    chatAttachments.push(attachment);
+                    renderChatAttachments();
+                    showToast('Аудио добавлено как вложение', 'success');
+                    _dragState = null;
+                    return;
+                }
                 handleVoiceClone(input);
             } else if (id === 'imageResizeZone') {
                 handleImageResizeUpload(input);
