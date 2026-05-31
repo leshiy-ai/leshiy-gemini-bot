@@ -17481,7 +17481,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
         BOTHUB_API_KEY: env.BOTHUB_API_KEY,
         KIEAI_API_KEY: env.KIEAI_API_KEY,
         ZAI_API_KEY: env.ZAI_API_KEY,
-        ZAI_USER_ID: ennv.ZAI_USER_ID,
+        ZAI_USER_ID: env.ZAI_USER_ID,
         LAST_PHOTO_STORAGE: env.LAST_PHOTO_STORAGE,
         DEBUG_CHAT_ID: env.DEBUG_CHAT_ID,
         ADMIN_CHAT_ID: env.ADMIN_CHAT_ID,
