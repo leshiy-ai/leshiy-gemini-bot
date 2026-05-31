@@ -660,7 +660,7 @@ const AI_MODELS = {
     TEXT_TO_TEXT_ZAI: { 
         SERVICE: 'ZAI', 
         FUNCTION: callZAIChat, 
-        MODEL: 'glm-5', 
+        MODEL: 'GLM-4.7-Flash', // Free model
         API_KEY: 'ZAI_API_KEY',     // env var, value = 'Z.ai'
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'  // env var — user_id для Z.AI
