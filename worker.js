@@ -177,12 +177,12 @@ const AI_MODELS = {
         BASE_URL: 'AI_RUN' // Вызов через env.AI.run
     },
     // ✅ [Текст в Текст]
-    TEXT_TO_TEXT_WORKERS_AI: { 
+    TEXT_TO_TEXT_XAI_GROK: { 
         SERVICE: 'WORKERS_AI', 
         FUNCTION: callWorkersAIChatGrok, 
         MODEL: 'xai/grok-4.3',
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
-        BASE_URL: 'AI_RUN' // Вызов через env.AI.run
+        BASE_URL: 'https://api.cloudflare.com/client/v4/accounts' // Вызов через внешний API
     },
     // ✅ [Аудио в Текст]
     AUDIO_TO_TEXT_WORKERS_AI: { 
@@ -5020,8 +5020,9 @@ async function callWorkersAIChatGrok(config, chatHistory, userMessageText, envDa
     // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
     const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
     const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
+    const BASE_URL = config.BASE_URL;
     const MODEL_NAME = config.MODEL; // Сюда прилетит 'xai/grok-4.3'
-    const URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${MODEL_NAME}`;
+    const URL = `${BASE_URL}/${CLOUDFLARE_ACCOUNT_ID}/ai/v1/chat/completions`;
     
     if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
           throw new Error("Не настроены ID аккаунта или API токен Cloudflare.");
@@ -5038,7 +5039,7 @@ async function callWorkersAIChatGrok(config, chatHistory, userMessageText, envDa
 🎙️ Распознавание речи: Ты транскрибируешь голосовые сообщения пользователя в текст, который затем обрабатываешь.
 💬 Чат: Ты ведешь диалог, отвечать на вопросы, ❔ помогаешь по менюшкам и окнам и сохраняешь контекст беседы.
 
-Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo и /create.
+Когда пользователь спрашивает, что ты умеешь, обязательно упомяни о своих навыках работы с изображениями, видео и голосовыми сообщениями (транскрибацией), а также о командах /photo and /create.
 Ответы должны быть информативными и доброжелательными и по возможности компактными, старайся построить диалог понятно и не сильно рассуждая.
 Информация по тарифам:
     ${TARIFF_MESSAGE_TEXT}
@@ -5060,12 +5061,13 @@ async function callWorkersAIChatGrok(config, chatHistory, userMessageText, envDa
     // Добавляем текущее сообщение пользователя
     messages.push({ role: 'user', content: userMessageText });
 
-    // *** ДОБАВЛЯЕМ ЛИМИТ ТОКЕНОВ И ТЕМПЕРАТУРУ ***
+    // *** ФОРМИРУЕМ НАГРУЗКУ СТРОГО ПО ДОКЕ ***
     const payload = {
+        model: MODEL_NAME, // 🌟 ИСПРАВЛЕНО: Передаем имя модели в JSON-теле запроса
         messages: messages,
-        stream: false, // Отключаем стриминг, чтобы избежать обрезки
-        max_tokens: 1024, // Увеличиваем лимит токенов для безопасности
-        temperature: 0.7 // Умеренная температура
+        stream: false, 
+        max_tokens: 1024, 
+        temperature: 0.7 
     };
 
     try {
@@ -5073,24 +5075,22 @@ async function callWorkersAIChatGrok(config, chatHistory, userMessageText, envDa
         const response = await sendAiRequest(payload, URL, config, envData);
         const data = await response.json();
 
-        // 🌟 УНИВЕРСАЛЬНЫЙ ПАРСЕР ПОД ДОКУ ГРОКА 🌟
-        // 1. Сначала ищем в новом формате OpenAI: data.result.choices[0].message.content
-        // 2. Если пулей летит старый формат Cloudflare: data.result.response
+        // 🌟 ИСПРАВЛЕНО: Парсим чистый OpenAI формат без обертки .result
         const textResult = 
-            data.result?.choices?.[0]?.message?.content || 
-            data.result?.response || 
-            data.result?.description || 
+            data.choices?.[0]?.message?.content || 
+            data.result?.choices?.[0]?.message?.content || // На случай если прокси накрутит сверху свой result
+            data.result?.response ||
             data.result;
 
         if (!textResult) {
-            console.error("Сырой некорректный ответ от Cloudflare:", JSON.stringify(data));
-            throw new Error("Workers AI вернул пустой результат или изменилась структура JSON ответа");
+            console.error("Сырой некорректный ответ от Cloudflare Gateway:", JSON.stringify(data));
+            throw new Error("Grok вернул пустой результат или структура JSON ответа не совпадает с OpenAI стандартом");
         }
 
         return textResult.trim();
     } catch (e) {
-        console.error("Workers AI call failed:", e);
-        throw new Error(`Ошибка Workers AI: ${e.message}`);
+        console.error("Workers AI Grok call failed:", e);
+        throw new Error(`Ошибка при вызове Grok: ${e.message}`);
     }
 }
 
