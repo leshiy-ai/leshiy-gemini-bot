@@ -172,9 +172,8 @@ const AI_MODELS = {
         SERVICE: 'WORKERS_AI', 
         FUNCTION: callWorkersAIChat, 
         //MODEL: '@cf/google/gemma-2b-it-lora', // тупой ЛЛама
-        MODEL: '@cf/qwen/qwen2.5-coder-32b-instruct', // программерская
-        //MODEL: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', // думающая
-        //MODEL: '@cf/qwen/qwq-32b', // думающая
+        //MODEL: '@cf/qwen/qwen2.5-coder-32b-instruct', // программерская
+        MODEL: 'xai/grok-4.3',
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'AI_RUN' // Вызов через env.AI.run
     },
