@@ -9406,6 +9406,7 @@ async function handleKieAiCallback(request, env, ctx) { // 🛑 ctx ОБЯЗАТ
     // --- 1. ПЕРЕМЕННЫЕ ИЗ REQUEST ---
     const url = new URL(request.url); 
     const chatId = url.searchParams.get('chatId');
+    const platform = url.searchParams.get('platform') || 'telegram';
     const token = env.TELEGRAM_BOT_TOKEN;
     const numericChatId = Number(chatId);
     
@@ -9435,23 +9436,87 @@ async function handleKieAiCallback(request, env, ctx) { // 🛑 ctx ОБЯЗАТ
         const rawBody = await request.text();
         const rootData = JSON.parse(rawBody);
 
-        const logMessage = `KIEAI_CALLBACK_DATA:\n${rawBody}`;
+        const logMessage = `KIEAI_CALLBACK_DATA (platform=${platform}):\n${rawBody}`;
         ctx.waitUntil(logDebug("INFO", logMessage, envData, ctx));
         
-        // 🛑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: ВЫЗОВ НОВОЙ ФУНКЦИИ
-        await processKieAiCallbackData(rootData, numericChatId, token, envData);
+        // 🧠 WEB PLATFORM: сохраняем результат в KV для поллинга фронтендом
+        if (platform === 'web') {
+            await saveKieAiCallbackForWeb(rootData, chatId, env);
+            // Не отправляем в Telegram — результат заберёт фронтенд через task_status
+        } else {
+            // 🛑 TELEGRAM: вызываем стандартную обработку с отправкой в чат
+            await processKieAiCallbackData(rootData, numericChatId, token, envData);
+        }
         
     } catch (e) {
         const errorMsg = `❌ CRITICAL CALLBACK EXCEPTION. Error: ${e.message.substring(0, 150)}`;
         ctx.waitUntil(logDebug("CRITICAL_FAIL", errorMsg, envData, ctx)); 
         
-        if (numericChatId) {
+        if (platform !== 'web' && numericChatId) {
             await sendMessage(numericChatId, `❌ Критическая ошибка при обработке Callback. Детали в логах Worker.`, token);
         }
     }
     
     // ВСЕГДА возвращаем 200 OK
     return successResponse; 
+}
+
+// ✅ saveKieAiCallbackForWeb - Сохраняет результат KIE.AI callback в KV для веб-поллинга
+// Ключ: task:{taskId}, значение: JSON { state, resultJson, failMsg, ... }
+// TTL: 1 час (хватит для поллинга)
+async function saveKieAiCallbackForWeb(rootData, chatId, env) {
+    const callbackData = rootData.data;
+    if (!callbackData) {
+        console.error('[WebCallback] Missing data field in callback');
+        return;
+    }
+
+    const taskId = callbackData.taskId;
+    const state = callbackData.state;
+    const resultJson = callbackData.resultJson;
+    const failMsg = callbackData.failMsg || null;
+
+    if (!taskId) {
+        console.error('[WebCallback] Missing taskId in callback data');
+        return;
+    }
+
+    // Используем LAST_PHOTO_STORAGE (KV) для хранения результатов
+    // Ключ: web_task:{taskId}
+    const storageKey = `web_task:${taskId}`;
+    const result = {
+        chatId: chatId,
+        state: state, // 'success' | 'fail'
+        resultJson: resultJson || null,
+        failMsg: failMsg,
+        timestamp: Date.now()
+    };
+
+    const storage = env.LAST_PHOTO_STORAGE;
+    if (!storage) {
+        console.error('[WebCallback] LAST_PHOTO_STORAGE binding missing');
+        return;
+    }
+
+    await storage.put(storageKey, JSON.stringify(result), { expirationTtl: 3600 });
+    console.log(`[WebCallback] Saved task ${taskId} state=${state} to KV for web polling`);
+}
+
+// ✅ getKieAiTaskResultForWeb - Отдаёт результат задачи из KV для веб-поллинга
+async function getKieAiTaskResultForWeb(taskId, env) {
+    const storageKey = `web_task:${taskId}`;
+    const storage = env.LAST_PHOTO_STORAGE;
+    if (!storage) return null;
+
+    const raw = await storage.get(storageKey);
+    if (!raw) return null;
+
+    try {
+        return JSON.parse(raw);
+    } catch (e) {
+        console.error('[WebPoll] Failed to parse stored task result:', e.message);
+        return null;
+    }
 }
 
 // ✅ getManagementActionKeyboard (УНИФИЦИРОВАННАЯ КЛАВИАТУРА V4)
@@ -16433,7 +16498,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
             }
             // Добавляем ctx в env, чтобы функции воркера могли использовать ctx.waitUntil
             env.ctx = ctx;
-            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat, uploadBase64ImageToPublicUrl, createTaskKieAi });
+            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat, uploadBase64ImageToPublicUrl, createTaskKieAi, getKieAiTaskResultForWeb });
             return new Response(JSON.stringify(result), {
                 status: 200,
                 headers: {

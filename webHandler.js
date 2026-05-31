@@ -594,7 +594,7 @@ async function handleImage(auth, payload, env, monolith) {
                 }
 
                 const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
                 const input = { image: imageUrl };
 
@@ -787,7 +787,7 @@ async function handleImage(auth, payload, env, monolith) {
                 }
 
                 const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
                 const input = {
                     prompt: prompt,
@@ -843,7 +843,7 @@ async function handleImage(auth, payload, env, monolith) {
             if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
 
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
             // KieAI: aspect_ratio — основной параметр (image_size deprecated)
             const kieRatio = payload.aspect_ratio || '1:1';
@@ -1198,7 +1198,7 @@ async function handleVideo(auth, payload, env, monolith) {
             const modelInfo = getWebModel('VIDEO_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла видео');
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
             const input = {
                 video_base64: payload.video_base64,
@@ -1241,7 +1241,7 @@ async function handleVideo(auth, payload, env, monolith) {
         if (!modelInfo) return formatResponse(false, 'Нет модели для генерации видео');
 
         const workerDomain = env.WORKER_DOMAIN || '';
-        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
         const input = {
             prompt: prompt,
@@ -1530,7 +1530,7 @@ async function handleAudio(auth, payload, env, monolith) {
             const { createTaskKieAi } = monolith;
             if (!createTaskKieAi) return formatResponse(false, 'Kie.AI TTS недоступен');
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
             const input = { text, voice };
             const taskId = await createTaskKieAi(chatId, config, input, env, callbackUrl);
             if (!taskId) return formatResponse(false, 'Не удалось создать задачу TTS');
@@ -2197,13 +2197,70 @@ async function handleTaskStatus(auth, payload, env, monolith) {
     const chatId = String(auth.id);
     const taskId = payload?.task_id;
     const taskType = payload?.task_type || 'image'; // 'image' or 'video'
-    const { uploadBase64ImageToPublicUrl } = monolith || {};
+    const { uploadBase64ImageToPublicUrl, getKieAiTaskResultForWeb } = monolith || {};
 
     if (!taskId) {
         return formatResponse(false, 'Не указан task_id');
     }
 
-    // Get the KieAI API key
+    // 🧠 СНАЧАЛА: проверяем KV — сохранён ли результат из callback (platform=web)
+    if (getKieAiTaskResultForWeb) {
+        try {
+            const storedResult = await getKieAiTaskResultForWeb(taskId, env);
+            if (storedResult) {
+                console.log(`[WebHandler] Found task ${taskId} in KV: state=${storedResult.state}`);
+                
+                if (storedResult.state === 'success' && storedResult.resultJson) {
+                    // Парсим resultJson — формат идентичен callback от KIE.AI
+                    const result = typeof storedResult.resultJson === 'string' 
+                        ? JSON.parse(storedResult.resultJson) 
+                        : storedResult.resultJson;
+                    const mediaUrls = result.resultUrls || [];
+                    
+                    if (mediaUrls.length > 0) {
+                        const resultUrl = mediaUrls[0];
+                        const isVideo = resultUrl.endsWith('.mp4') || resultUrl.endsWith('.webm');
+                        const isAudio = resultUrl.endsWith('.mp3') || resultUrl.endsWith('.wav') || resultUrl.endsWith('.ogg');
+                        
+                        if (isVideo || taskType === 'video') {
+                            return formatResponse(true, null, null, { type: 'video_url', content: resultUrl });
+                        } else if (isAudio || taskType === 'audio') {
+                            return formatResponse(true, null, null, { type: 'audio_url', content: resultUrl });
+                        } else {
+                            // Изображение — скачиваем и возвращаем base64
+                            const downloaded = await downloadImageWithProxy(resultUrl, env);
+                            if (downloaded) {
+                                console.log(`[WebHandler] Downloaded image from KV result: base64 length=${downloaded.length}`);
+                                return formatResponse(true, null, null, { type: 'image_base64', content: downloaded });
+                            }
+                            // Если не скачалось — возвращаем URL (фронтенд попробует сам)
+                            return formatResponse(true, null, null, { type: 'image_url', content: resultUrl });
+                        }
+                    }
+                    
+                    // resultJson есть, но нет resultUrls — ищем URL в других полях
+                    for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src', 'source_url']) {
+                        if (result[field] && typeof result[field] === 'string' && result[field].startsWith('http')) {
+                            return formatResponse(true, null, null, { type: taskType === 'video' ? 'video_url' : taskType === 'audio' ? 'audio_url' : 'image_url', content: result[field] });
+                        }
+                    }
+                    
+                    // URL не найден
+                    return formatResponse(false, 'Задача выполнена, но результат не найден');
+                    
+                } else if (storedResult.state === 'fail') {
+                    return formatResponse(false, 'Задача не удалась: ' + (storedResult.failMsg || 'Неизвестная ошибка'));
+                }
+                
+                // Если state не success и не fail — задача ещё выполняется (callback ещё не пришёл)
+                return formatResponse(true, null, null, { type: 'task_pending', state: storedResult.state || 'processing' });
+            }
+        } catch (e) {
+            console.warn(`[WebHandler] KV lookup failed for task ${taskId}: ${e.message}`);
+        }
+    }
+
+    // 🧠 FALLBACK: Если в KV ничего нет — поллим KIE.AI API напрямую (старый способ)
     const apiKey = env.KIEAI_API_KEY;
     if (!apiKey) {
         return formatResponse(false, 'KieAI API ключ не настроен');
