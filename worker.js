@@ -177,10 +177,10 @@ const AI_MODELS = {
         BASE_URL: 'AI_RUN' // Вызов через env.AI.run
     },
     // ✅ [Текст в Текст]
-    TEXT_TO_TEXT_IBM_GRANITE: { 
+    TEXT_TO_TEXT_WORKERSAI_DEEPSEEK: { 
         SERVICE: 'WORKERS_AI', 
-        FUNCTION: callWorkersAIChatIBM, 
-        MODEL: '@cf/ibm-granite/granite-4.0-h-micro',
+        FUNCTION: callWorkersAIChatDeepSeek, 
+        MODEL: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'https://api.cloudflare.com/client/v4/accounts' // Вызов через внешний API
     },
@@ -5015,8 +5015,8 @@ async function callWorkersAIChat(config, chatHistory, userMessageText, envData) 
     }
 }
 
-// ✅ *** 2.10a. Workers AI Chat API (для текстового общения модели IBM c историей) ***
-async function callWorkersAIChatIBM(config, chatHistory, userMessageText, envData) {
+// ✅ *** 2.10a. Workers AI Chat API (для текстового общения модели DeepSeek c историей) ***
+async function callWorkersAIChatDeepSeek(config, chatHistory, userMessageText, envData) {
     // Получаем учетные данные из окружения (process.env в Яндекс.Облаке)
     const CLOUDFLARE_ACCOUNT_ID = envData.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
     const CLOUDFLARE_API_TOKEN = envData.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
