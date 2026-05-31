@@ -421,6 +421,27 @@ body {
     font-weight: 600;
 }
 
+.welcome span {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.welcome span a {
+    display: inline;
+    text-decoration: none;
+    border-bottom: none;
+}
+
+.welcome span a img {
+    transition: opacity 0.2s;
+}
+
+.welcome span a:hover img {
+    opacity: 0.7;
+}
+
 .welcome p {
     color: var(--text-secondary);
     font-size: 14px;
