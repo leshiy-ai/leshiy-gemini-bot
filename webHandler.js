@@ -372,11 +372,12 @@ async function handleChat(auth, payload, env, monolith) {
     const isAuth = !!(auth && isValidAuthId(auth.id));
     const chatId = isAuth ? String(auth.id) : 'guest';
     const s3Platform = isAuth ? (auth.provider === 'vk' ? 'vk' : undefined) : undefined; // 'vk' | undefined=telegram
+    const activeChatId = payload.chatId || 'default'; // ID текущего чата (мульти-чат)
 
     // Авторизованный — сохраняем в S3
     if (isAuth && syncS3Chat) {
         try {
-            const s3History = await syncS3Chat(chatId, userMessage || '[Файлы]', 'user', env, s3Platform);
+            const s3History = await syncS3Chat(chatId, userMessage || '[Файлы]', 'user', env, s3Platform, activeChatId);
             const convertedHistory = s3History.map(m => ({
                 role: m.role === 'ai' ? 'model' : 'user',
                 text: m.content
@@ -462,6 +463,11 @@ async function handleChat(auth, payload, env, monolith) {
             if (vIsWorkersAI) {
                 const visionResult = await callWorkersAIWeb(vConfig, imageBuffer, env);
                 finalResponse = typeof visionResult === 'string' ? visionResult : String(visionResult);
+            } else if (vConfig.FUNCTION.name === 'callZAIMultimodal') {
+                // Z.AI Multimodal — формируем contentParts массив
+                const contentParts = [{ type: 'text', text: userMessage || 'Опиши это изображение подробно' }, { type: 'image', data: imageBase64 }];
+                const result = await vConfig.FUNCTION(vConfig, contentParts, env);
+                finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else if (vConfig.FUNCTION.name === 'callZAIVision') {
                 // Z.AI Vision — вызываем с imageBuffer
                 const result = await vConfig.FUNCTION(vConfig, imageBuffer, env);
@@ -506,6 +512,10 @@ async function handleChat(auth, payload, env, monolith) {
             let result;
             if (sIsWorkersAI) {
                 result = await callWorkersAIWeb(sConfig, audioBuffer, env);
+            } else if (sConfig.FUNCTION.name === 'callZAIMultimodal') {
+                // Z.AI Multimodal — формируем contentParts массив
+                const contentParts = [{ type: 'text', text: userMessage || 'Транскрибируй это аудио' }, { type: 'audio', data: audioBase64 }];
+                result = await sConfig.FUNCTION(sConfig, contentParts, env);
             } else if (sConfig.FUNCTION.name === 'callZAIASR') {
                 // Z.AI ASR — передаём base64
                 result = await sConfig.FUNCTION(sConfig, audioBase64, env);
@@ -530,6 +540,10 @@ async function handleChat(auth, payload, env, monolith) {
             let result;
             if (vIsWorkersAI) {
                 result = await callWorkersAIWeb(vConfig, videoBuffer, env);
+            } else if (vConfig.FUNCTION.name === 'callZAIMultimodal') {
+                // Z.AI Multimodal — формируем contentParts массив
+                const contentParts = [{ type: 'text', text: userMessage || 'Проанализируй это видео' }, { type: 'video', data: videoBase64 }];
+                result = await vConfig.FUNCTION(vConfig, contentParts, env);
             } else if (vConfig.FUNCTION.name === 'callZAIASR') {
                 // Z.AI ASR для видео — передаём base64
                 result = await vConfig.FUNCTION(vConfig, videoBase64, env);
@@ -574,7 +588,7 @@ async function handleChat(auth, payload, env, monolith) {
     // Авторизованный — сохраняем ответ в S3
     if (isAuth && syncS3Chat) {
         try {
-            await syncS3Chat(chatId, finalResponse, 'assistant', env, s3Platform);
+            await syncS3Chat(chatId, finalResponse, 'assistant', env, s3Platform, activeChatId);
         } catch (e) {
             console.error("[WebHandler] S3 save error:", e.message);
         }
@@ -2724,21 +2738,22 @@ async function handleChatHistory(auth, payload, env, monolith) {
     if (!isAuth) {
         return formatResponse(false, "Требуется авторизация для работы с историей чата");
     }
-    const chatId = String(auth.id);
+    const userId = String(auth.id);
     const s3Platform = auth.provider === 'vk' ? 'vk' : undefined; // 'vk' | undefined=telegram
-    const { loadS3ChatHistory, clearS3ChatHistory } = monolith;
-    if (!loadS3ChatHistory || !clearS3ChatHistory) {
+    const { loadS3ChatHistory, clearS3ChatHistory, loadChatIndex, saveChatIndex, createS3Chat } = monolith;
+    if (!loadS3ChatHistory) {
         return formatResponse(false, "S3 функции недоступны");
     }
 
     const action = payload.action || 'load';
+    const activeChatId = payload.chatId || 'default'; // ID текущего чата
 
     if (action === 'load') {
         try {
             const offset = parseInt(payload.offset) || 0;
-            const limit = parseInt(payload.limit) || 10;  // по умолчанию 10 последних
+            const limit = parseInt(payload.limit) || 10;
             const knownTotal = parseInt(payload.knownTotal) || 0;
-            const result = await loadS3ChatHistory(chatId, env, s3Platform, offset, limit, knownTotal);
+            const result = await loadS3ChatHistory(userId, env, s3Platform, offset, limit, knownTotal, activeChatId);
             return formatResponse(true, null, null, {
                 type: 'chat_history',
                 messages: result.messages,
@@ -2753,11 +2768,93 @@ async function handleChatHistory(auth, payload, env, monolith) {
 
     if (action === 'clear') {
         try {
-            await clearS3ChatHistory(chatId, env, s3Platform);
+            await clearS3ChatHistory(userId, env, s3Platform);
             return formatResponse(true, null, null, { type: 'chat_cleared' });
         } catch (e) {
             console.error("[WebHandler] Chat history clear error:", e.message);
             return formatResponse(false, "Ошибка очистки истории: " + e.message);
+        }
+    }
+
+    // ---- МУЛЬТИ-ЧАТ ДЕЙСТВИЯ ----
+
+    if (action === 'list') {
+        // Получить список чатов и активный чат
+        try {
+            const index = await loadChatIndex(userId, env, s3Platform);
+            return formatResponse(true, null, null, {
+                type: 'chat_list',
+                activeChatId: index.activeChatId || 'default',
+                chats: index.chats || []
+            });
+        } catch (e) {
+            console.error("[WebHandler] Chat list error:", e.message);
+            return formatResponse(false, "Ошибка получения списка чатов: " + e.message);
+        }
+    }
+
+    if (action === 'create') {
+        // Создать новый чат
+        try {
+            if (!createS3Chat) {
+                return formatResponse(false, "Функция создания чата недоступна");
+            }
+            const result = await createS3Chat(userId, env, s3Platform, payload.title || '');
+            return formatResponse(true, null, null, {
+                type: 'chat_created',
+                chatId: result.chatId,
+                title: result.title,
+                chats: result.index.chats,
+                activeChatId: result.chatId
+            });
+        } catch (e) {
+            console.error("[WebHandler] Chat create error:", e.message);
+            return formatResponse(false, "Ошибка создания чата: " + e.message);
+        }
+    }
+
+    if (action === 'switch') {
+        // Переключить активный чат
+        try {
+            const targetChatId = payload.chatId || 'default';
+            const index = await loadChatIndex(userId, env, s3Platform);
+            // Проверяем что чат существует
+            const chatExists = index.chats.some(c => c.id === targetChatId);
+            if (!chatExists) {
+                return formatResponse(false, "Чат не найден: " + targetChatId);
+            }
+            index.activeChatId = targetChatId;
+            await saveChatIndex(userId, env, s3Platform, index);
+            return formatResponse(true, null, null, {
+                type: 'chat_switched',
+                activeChatId: targetChatId
+            });
+        } catch (e) {
+            console.error("[WebHandler] Chat switch error:", e.message);
+            return formatResponse(false, "Ошибка переключения чата: " + e.message);
+        }
+    }
+
+    if (action === 'rename') {
+        // Переименовать чат
+        try {
+            const targetChatId = payload.chatId || 'default';
+            const newTitle = (payload.title || '').trim();
+            if (!newTitle) return formatResponse(false, "Пустое название");
+            const index = await loadChatIndex(userId, env, s3Platform);
+            const entry = index.chats.find(c => c.id === targetChatId);
+            if (!entry) return formatResponse(false, "Чат не найден: " + targetChatId);
+            entry.title = newTitle;
+            await saveChatIndex(userId, env, s3Platform, index);
+            return formatResponse(true, null, null, {
+                type: 'chat_renamed',
+                chatId: targetChatId,
+                title: newTitle,
+                chats: index.chats
+            });
+        } catch (e) {
+            console.error("[WebHandler] Chat rename error:", e.message);
+            return formatResponse(false, "Ошибка переименования чата: " + e.message);
         }
     }
 
