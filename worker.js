@@ -656,11 +656,11 @@ const AI_MODELS = {
 
     // --- Z.AI (БЕСПЛАТНЫЙ) ---
 
-    // ✅ Z.AI GLM-5 — бесплатный чат
+    // ✅ Z.AI GLM-4.7 — бесплатный чат
     TEXT_TO_TEXT_ZAI: { 
         SERVICE: 'ZAI', 
         FUNCTION: callZAIChat, 
-        MODEL: 'GLM-4.7-Flash', // Free model
+        MODEL: 'glm-4.7-flash', // Free model
         API_KEY: 'ZAI_API_KEY',     // env var, value = 'Z.ai'
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'  // env var — user_id для Z.AI
@@ -669,7 +669,7 @@ const AI_MODELS = {
     IMAGE_TO_TEXT_ZAI: { 
         SERVICE: 'ZAI', 
         FUNCTION: callZAIVision, 
-        MODEL: 'glm-5', 
+        MODEL: 'glm-4.6V-flash', // GLM-4.6V-Flash
         API_KEY: 'ZAI_API_KEY',
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'
@@ -678,7 +678,7 @@ const AI_MODELS = {
     AUDIO_TO_TEXT_ZAI: { 
         SERVICE: 'ZAI', 
         FUNCTION: callZAIASR, 
-        MODEL: 'glm-5', 
+        MODEL: 'glm-4.6V-flash', // GLM-4.6V-Flash
         API_KEY: 'ZAI_API_KEY',
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'
@@ -687,7 +687,7 @@ const AI_MODELS = {
     VIDEO_TO_TEXT_ZAI: { 
         SERVICE: 'ZAI', 
         FUNCTION: callZAIASR, 
-        MODEL: 'glm-5', 
+        MODEL: 'glm-4.6V-flash', // GLM-4.6V-Flash
         API_KEY: 'ZAI_API_KEY',
         BASE_URL: 'https://api.z.ai/api/paas/v4',
         ZAI_USER_ID: 'ZAI_USER_ID'
@@ -8189,6 +8189,7 @@ async function callZAIChat(config, chatHistory, userMessageText, envData) {
 /**
  * Vision с Z.AI (распознавание изображений, бесплатно).
  * Сигнатура: (config, imageBuffer, envData)
+ * API: https://api.z.ai/api/paas/v4/chat/completions (OpenAI-совместимый, с image_url)
  * @param {Object} config - AI_MODELS.IMAGE_TO_TEXT_ZAI
  * @param {Buffer} imageBuffer - Буфер изображения
  * @param {Object} envData - env
@@ -8196,22 +8197,19 @@ async function callZAIChat(config, chatHistory, userMessageText, envData) {
  */
 async function callZAIVision(config, imageBuffer, envData) {
     const API_KEY = envData[config.API_KEY];
-    const USER_ID = envData[config.ZAI_USER_ID];
     const BASE_URL = config.BASE_URL;
 
     if (!API_KEY) {
-        throw new Error('Z.AI API key не настроен');
+        throw new Error('Z.AI API ключ не настроен (ZAI_API_KEY в env)');
     }
 
     const base64 = Buffer.isBuffer(imageBuffer) ? imageBuffer.toString('base64') : imageBuffer;
 
-    const url = `${BASE_URL}/chat/completions/vision`;
+    const url = `${BASE_URL}/chat/completions`;
     const headers = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`,
-        'X-Z-AI-From': 'Z',
+        'Authorization': `Bearer ${API_KEY}`
     };
-    if (USER_ID) headers['X-User-Id'] = USER_ID;
 
     const body = {
         model: config.MODEL,
@@ -8221,8 +8219,7 @@ async function callZAIVision(config, imageBuffer, envData) {
                 { type: 'text', text: 'Опиши это изображение подробно на русском языке' },
                 { type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } }
             ]
-        }],
-        thinking: { type: 'disabled' }
+        }]
     };
 
     console.log(`[Z.AI] Vision request`);
@@ -8258,23 +8255,20 @@ async function callZAIVision(config, imageBuffer, envData) {
  */
 async function callZAIASR(config, audioBase64, envData) {
     const API_KEY = envData[config.API_KEY];
-    const USER_ID = envData[config.ZAI_USER_ID];
     const BASE_URL = config.BASE_URL;
 
     if (!API_KEY) {
-        throw new Error('Z.AI API key не настроен');
+        throw new Error('Z.AI API ключ не настроен (ZAI_API_KEY в env)');
     }
+
+    // Если передан Buffer, конвертируем в base64
+    const base64Audio = Buffer.isBuffer(audioBase64) ? audioBase64.toString('base64') : audioBase64;
 
     const url = `${BASE_URL}/audio/asr`;
     const headers = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`,
-        'X-Z-AI-From': 'Z',
+        'Authorization': `Bearer ${API_KEY}`
     };
-    if (USER_ID) headers['X-User-Id'] = USER_ID;
-
-    // Если передан Buffer, конвертируем в base64
-    const base64Audio = Buffer.isBuffer(audioBase64) ? audioBase64.toString('base64') : audioBase64;
 
     const body = {
         model: config.MODEL,

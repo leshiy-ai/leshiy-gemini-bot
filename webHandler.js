@@ -444,6 +444,10 @@ async function handleChat(auth, payload, env, monolith) {
             if (vIsWorkersAI) {
                 const visionResult = await callWorkersAIWeb(vConfig, imageBuffer, env);
                 finalResponse = typeof visionResult === 'string' ? visionResult : String(visionResult);
+            } else if (vConfig.FUNCTION.name === 'callZAIVision') {
+                // Z.AI Vision — вызываем с imageBuffer
+                const result = await vConfig.FUNCTION(vConfig, imageBuffer, env);
+                finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else if (vConfig.FUNCTION.name === 'callGeminiVision' || vConfig.FUNCTION.name === 'callGeminiChat') {
                 const result = await vConfig.FUNCTION(vConfig, imageBuffer, env);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
@@ -482,6 +486,9 @@ async function handleChat(auth, payload, env, monolith) {
             let result;
             if (sIsWorkersAI) {
                 result = await callWorkersAIWeb(sConfig, audioBuffer, env);
+            } else if (sConfig.FUNCTION.name === 'callZAIASR') {
+                // Z.AI ASR — передаём base64
+                result = await sConfig.FUNCTION(sConfig, audioBase64, env);
             } else if (sConfig.FUNCTION.name === 'callGeminiSpeechToText' || sConfig.FUNCTION.name === 'callGeminiChat') {
                 result = await sConfig.FUNCTION(sConfig, audioBuffer, env);
             } else {
@@ -503,6 +510,9 @@ async function handleChat(auth, payload, env, monolith) {
             let result;
             if (vIsWorkersAI) {
                 result = await callWorkersAIWeb(vConfig, videoBuffer, env);
+            } else if (vConfig.FUNCTION.name === 'callZAIASR') {
+                // Z.AI ASR для видео — передаём base64
+                result = await vConfig.FUNCTION(vConfig, videoBase64, env);
             } else if (vConfig.FUNCTION.name === 'callGeminiSpeechToText' || vConfig.FUNCTION.name === 'callGeminiVideoVision') {
                 result = await vConfig.FUNCTION(vConfig, videoBuffer, env);
             } else {
@@ -594,7 +604,7 @@ async function handleImage(auth, payload, env, monolith) {
                 }
 
                 const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
                 const input = { image: imageUrl };
 
@@ -787,7 +797,7 @@ async function handleImage(auth, payload, env, monolith) {
                 }
 
                 const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
                 const input = {
                     prompt: prompt,
@@ -843,7 +853,7 @@ async function handleImage(auth, payload, env, monolith) {
             if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
 
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
             // KieAI: aspect_ratio — основной параметр (image_size deprecated)
             const kieRatio = payload.aspect_ratio || '1:1';
@@ -903,7 +913,18 @@ async function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPu
     if (imageResult instanceof ArrayBuffer || imageResult instanceof Uint8Array || (imageResult && imageResult.constructor?.name === 'ArrayBuffer')) {
         const base64 = Buffer.from(imageResult).toString('base64');
         console.log(`[WebHandler] ArrayBuffer result: base64 length=${base64.length}`);
-        // Всегда возвращаем base64 напрямую — KV-URL через /kv-images/ может быть недоступен с клиента (404)
+        // Пробуем загрузить в публичный URL (асинхронно!)
+        if (uploadBase64ImageToPublicUrl) {
+            try {
+                const imageUrl = await uploadBase64ImageToPublicUrl(base64, env, chatId);
+                if (imageUrl && typeof imageUrl === 'string') {
+                    console.log(`[WebHandler] Uploaded to public URL: ${imageUrl.substring(0, 80)}`);
+                    return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageUrl });
+                }
+            } catch (e) {
+                console.warn(`[WebHandler] Upload to public URL failed: ${e.message}, returning base64`);
+            }
+        }
         return formatResponse(true, null, creditsLeft, { type: 'image_base64', content: base64 });
     }
     // Строка — URL или base64
@@ -1198,7 +1219,7 @@ async function handleVideo(auth, payload, env, monolith) {
             const modelInfo = getWebModel('VIDEO_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла видео');
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
             const input = {
                 video_base64: payload.video_base64,
@@ -1241,7 +1262,7 @@ async function handleVideo(auth, payload, env, monolith) {
         if (!modelInfo) return formatResponse(false, 'Нет модели для генерации видео');
 
         const workerDomain = env.WORKER_DOMAIN || '';
-        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
         const input = {
             prompt: prompt,
@@ -1530,7 +1551,7 @@ async function handleAudio(auth, payload, env, monolith) {
             const { createTaskKieAi } = monolith;
             if (!createTaskKieAi) return formatResponse(false, 'Kie.AI TTS недоступен');
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
             const input = { text, voice };
             const taskId = await createTaskKieAi(chatId, config, input, env, callbackUrl);
             if (!taskId) return formatResponse(false, 'Не удалось создать задачу TTS');
@@ -1807,7 +1828,8 @@ function getShortServiceName(service) {
         'POLLINATIONS': 'Pollinations',
         'FUSIONBRAIN': 'Kandinsky',
         'STABILITY': 'Stability',
-        'VOICERSS': 'VoiceRSS'
+        'VOICERSS': 'VoiceRSS',
+        'ZAI': 'Z.AI'
     };
     return names[service] || service || '';
 }
@@ -1827,6 +1849,7 @@ async function handleKeys(auth, env) {
         BOTHUB_API_KEY: env.BOTHUB_API_KEY || '',
         DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY || '',
         VOICERSS_API_KEY: env.VOICERSS_API_KEY || '',
+        ZAI_API_KEY: env.ZAI_API_KEY || '',
         PROXY_URL: proxyUrl || 'https://d5dtt5rfr7nk66bbrec2.kf69zffa.apigw.yandexcloud.net/ai-proxy',
         PROXY_SECRET_KEY: env.PROXY_SECRET_KEY || env.GEMINI_PROXY_KEY || '',
         FALLBACK_PROXY: env.FALLBACK_PROXY || 'https://leshiy-ai-proxy.leshiyalex.workers.dev',
@@ -2197,70 +2220,13 @@ async function handleTaskStatus(auth, payload, env, monolith) {
     const chatId = String(auth.id);
     const taskId = payload?.task_id;
     const taskType = payload?.task_type || 'image'; // 'image' or 'video'
-    const { uploadBase64ImageToPublicUrl, getKieAiTaskResultForWeb } = monolith || {};
+    const { uploadBase64ImageToPublicUrl } = monolith || {};
 
     if (!taskId) {
         return formatResponse(false, 'Не указан task_id');
     }
 
-    // 🧠 СНАЧАЛА: проверяем KV — сохранён ли результат из callback (platform=web)
-    if (getKieAiTaskResultForWeb) {
-        try {
-            const storedResult = await getKieAiTaskResultForWeb(taskId, env);
-            if (storedResult) {
-                console.log(`[WebHandler] Found task ${taskId} in KV: state=${storedResult.state}`);
-                
-                if (storedResult.state === 'success' && storedResult.resultJson) {
-                    // Парсим resultJson — формат идентичен callback от KIE.AI
-                    const result = typeof storedResult.resultJson === 'string' 
-                        ? JSON.parse(storedResult.resultJson) 
-                        : storedResult.resultJson;
-                    const mediaUrls = result.resultUrls || [];
-                    
-                    if (mediaUrls.length > 0) {
-                        const resultUrl = mediaUrls[0];
-                        const isVideo = resultUrl.endsWith('.mp4') || resultUrl.endsWith('.webm');
-                        const isAudio = resultUrl.endsWith('.mp3') || resultUrl.endsWith('.wav') || resultUrl.endsWith('.ogg');
-                        
-                        if (isVideo || taskType === 'video') {
-                            return formatResponse(true, null, null, { type: 'video_url', content: resultUrl });
-                        } else if (isAudio || taskType === 'audio') {
-                            return formatResponse(true, null, null, { type: 'audio_url', content: resultUrl });
-                        } else {
-                            // Изображение — скачиваем и возвращаем base64
-                            const downloaded = await downloadImageWithProxy(resultUrl, env);
-                            if (downloaded) {
-                                console.log(`[WebHandler] Downloaded image from KV result: base64 length=${downloaded.length}`);
-                                return formatResponse(true, null, null, { type: 'image_base64', content: downloaded });
-                            }
-                            // Если не скачалось — возвращаем URL (фронтенд попробует сам)
-                            return formatResponse(true, null, null, { type: 'image_url', content: resultUrl });
-                        }
-                    }
-                    
-                    // resultJson есть, но нет resultUrls — ищем URL в других полях
-                    for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src', 'source_url']) {
-                        if (result[field] && typeof result[field] === 'string' && result[field].startsWith('http')) {
-                            return formatResponse(true, null, null, { type: taskType === 'video' ? 'video_url' : taskType === 'audio' ? 'audio_url' : 'image_url', content: result[field] });
-                        }
-                    }
-                    
-                    // URL не найден
-                    return formatResponse(false, 'Задача выполнена, но результат не найден');
-                    
-                } else if (storedResult.state === 'fail') {
-                    return formatResponse(false, 'Задача не удалась: ' + (storedResult.failMsg || 'Неизвестная ошибка'));
-                }
-                
-                // Если state не success и не fail — задача ещё выполняется (callback ещё не пришёл)
-                return formatResponse(true, null, null, { type: 'task_pending', state: storedResult.state || 'processing' });
-            }
-        } catch (e) {
-            console.warn(`[WebHandler] KV lookup failed for task ${taskId}: ${e.message}`);
-        }
-    }
-
-    // 🧠 FALLBACK: Если в KV ничего нет — поллим KIE.AI API напрямую (старый способ)
+    // Get the KieAI API key
     const apiKey = env.KIEAI_API_KEY;
     if (!apiKey) {
         return formatResponse(false, 'KieAI API ключ не настроен');
@@ -2449,13 +2415,23 @@ async function handleTaskStatus(auth, payload, env, monolith) {
             if (resultUrl) {
                 // 🧠 Для изображений — скачиваем на сервере и возвращаем base64,
                 // т.к. временные URL (tempfile.aiquickdraw.com) часто недоступны с клиента
-                // Также KV-URL через /kv-images/ может возвращать 404, поэтому всегда base64
-                if (taskType !== 'video' && taskType !== 'audio') {
+                if (taskType !== 'video') {
                     const downloaded = await downloadImageWithProxy(resultUrl, env);
                     if (downloaded) {
                         const imgBase64 = downloaded;
                         console.log(`[WebHandler] Downloaded image: base64 length=${imgBase64.length}`);
-                        // Всегда возвращаем base64 напрямую — KV-URL может быть недоступен с клиента (404)
+                        // Пробуем загрузить в публичный URL
+                        if (uploadBase64ImageToPublicUrl) {
+                            try {
+                                const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId);
+                                if (uploadedUrl && typeof uploadedUrl === 'string') {
+                                    console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
+                                    return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
+                                }
+                            } catch (e) {
+                                console.warn(`[WebHandler] Re-upload failed: ${e.message}, returning base64`);
+                            }
+                        }
                         return formatResponse(true, null, null, { type: 'image_base64', content: imgBase64 });
                     }
                     // Все способы скачивания не удаллись — для изображений это фатально
@@ -2490,16 +2466,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                 resultUrl = deepFindUrl(result, 0);
 
                 if (resultUrl) {
-                    // Для изображений — скачиваем и возвращаем base64 (та же причина: KV-URL может быть 404)
-                    if (taskType !== 'video' && taskType !== 'audio') {
-                        const downloaded = await downloadImageWithProxy(resultUrl, env);
-                        if (downloaded) {
-                            console.log(`[WebHandler] Deep-found URL, downloaded: base64 length=${downloaded.length}`);
-                            return formatResponse(true, null, null, { type: 'image_base64', content: downloaded });
-                        }
-                        return formatResponse(false, 'Не удалось скачать изображение по найденному URL');
-                    }
-                    const resultType = taskType === 'audio' ? 'audio_url' : 'video_url';
+                    const resultType = taskType === 'video' ? 'video_url' : taskType === 'audio' ? 'audio_url' : 'image_url';
                     return formatResponse(true, null, null, { type: resultType, content: resultUrl });
                 }
 
