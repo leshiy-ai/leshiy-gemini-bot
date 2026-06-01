@@ -56,6 +56,8 @@
             <div class="sub-divider"></div>
             <span class="sub-label" id="chatPriceLabel" style="color:var(--free)">&#10003; Бесплатно</span>
             <div style="flex:1"></div>
+            <select id="chatSelector" style="cursor:pointer;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:0.8em;padding:2px 6px;border-radius:4px;max-width:180px;outline:none;transition:border-color 0.2s" onchange="switchChat(this.value)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" title="Выбрать чат"></select>
+            <button id="newChatBtn" class="sub-label" style="cursor:pointer;border:none;background:none;color:var(--text-muted);font-size:0.8em;padding:2px 8px;border-radius:4px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'" onclick="createNewChat()" title="Создать новый чат">➕ Новый чат</button>
         </div>
         <div class="sub-header wrap-allowed" id="subImage">
             <div id="imageSubModes"></div>
@@ -1471,8 +1473,8 @@
             creditsAmount.textContent = '--';
             loadLocalHistory();
         } else {
-            // Авторизованный — подгружаем историю из S3
-            loadS3History();
+            // Авторизованный — подгружаем список чатов и историю из S3
+            loadChatList().then(() => loadS3History());
         }
 
         // Загружаем сохранённые настройки моделей
@@ -1536,7 +1538,7 @@
             window.history.replaceState({}, document.title, window.location.pathname);
             showToast('Добро пожаловать, ' + (user.name || 'пользователь') + '!', 'success');
             loadServerData();
-            loadS3History();
+            loadChatList().then(() => loadS3History());
         }
 
         // СЦЕНАРИЙ 1: Возврат с vk_user_id (из vk.html или VK Mini App)
@@ -3133,70 +3135,7 @@
             _dragState = null; // Сбрасываем после обработки
         });
 
-        // 🧠 INPUT AREA как drop-target: перетаскивание картинок из result-area в поле ввода
-        const inputArea = document.querySelector('.input-area');
-        if (inputArea) {
-            inputArea.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'copy';
-                inputArea.style.outline = '2px dashed var(--accent)';
-                inputArea.style.outlineOffset = '-2px';
-            });
-            inputArea.addEventListener('dragleave', function(e) {
-                inputArea.style.outline = '';
-            });
-            inputArea.addEventListener('drop', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                inputArea.style.outline = '';
-                // Если есть _dragState с медиа — добавляем как вложение в чат
-                if (_dragState && _dragState.attachment) {
-                    const att = _dragState.attachment;
-                    // Переключаемся в чат если не в нём
-                    if (currentMode !== 'chat') switchMode('chat');
-                    // Определяем категорию и иконку по типу
-                    const category = att.category || (att.type?.startsWith('video/') ? 'video' : att.type?.startsWith('audio/') ? 'audio' : 'image');
-                    const iconMap = { image: '&#128247;', video: '&#127916;', audio: '&#127925;' };
-                    // Добавляем вложение
-                    const attachment = {
-                        name: att.name || (category === 'video' ? 'video.mp4' : category === 'audio' ? 'audio.mp3' : 'image.png'),
-                        type: att.type || (category === 'video' ? 'video/mp4' : category === 'audio' ? 'audio/mp3' : 'image/png'),
-                        base64: att.base64,
-                        previewUrl: att.previewUrl || null,
-                        icon: iconMap[category] || att.icon || '&#128247;',
-                        category: category
-                    };
-                    if (!attachment.previewUrl && att.base64) {
-                        attachment.previewUrl = 'data:' + attachment.type + ';base64,' + att.base64.substring(0, 100);
-                    }
-                    // Загружаем previewUrl через URL.createObjectURL если base64 есть
-                    if (att.base64) {
-                        try {
-                            const byteString = atob(att.base64);
-                            const ab = new ArrayBuffer(byteString.length);
-                            const ia = new Uint8Array(ab);
-                            for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
-                            const blob = new Blob([ab], { type: attachment.type });
-                            attachment.previewUrl = URL.createObjectURL(blob);
-                        } catch(err) {}
-                    }
-                    chatAttachments.push(attachment);
-                    renderChatAttachments();
-                    const categoryNames = { image: 'Изображение', video: 'Видео', audio: 'Аудио' };
-                    showToast((categoryNames[category] || 'Файл') + ' добавлено как вложение', 'success');
-                    _dragState = null;
-                    return;
-                }
-                // Файлы с десктопа
-                const input = getDropInput(e);
-                if (input && input.files) {
-                    if (currentMode !== 'chat') switchMode('chat');
-                    processChatFiles(input.files);
-                    _dragState = null;
-                }
-            });
-        }
-
+        // 🧠 INPUT AREA drop-target — обработчик перенесён в initInputAreaDragDrop() (единая точка обработки)
         // Drag-out: удаление вложения при перетаскивании за пределы приложения
         document.querySelector('.app').addEventListener('dragover', function(e) {
             // Если перетаскивают вложение (не внешний файл) — показываем подсказку
@@ -4645,7 +4584,8 @@
             const payload = {
                 prompt: text || 'Опиши прикреплённые файлы подробно',
                 history: chatHistory,
-                model: selected.chat  // 🧠 ВАЖНО: НЕ подменяем модель! Бэкенд сам найдёт модель того же СЕРВИСА для вложений
+                model: selected.chat,
+                chatId: activeChatId  // Мульти-чат: ID текущего чата
             };
 
             // Прикрепляем файлы — классифицируем по типу
@@ -7400,6 +7340,127 @@
         showToast('Состояние сброшено', 'info');
     }
 
+    // ---- ОЧИСТКА ЧАТА С ВОЗВРАТОМ НА ГЛАВНУЮ ----
+    // ---- МУЛЬТИ-ЧАТ: УПРАВЛЕНИЕ ----
+    let activeChatId = 'default';    // ID текущего чата
+    let chatList = [];               // Список чатов [{ id, title, createdAt, lastMessage, lastUpdate }]
+
+    // Загрузить список чатов с сервера
+    async function loadChatList() {
+        if (!user) return;
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'list' } })
+            });
+            const data = await resp.json();
+            if (data.success && data.data) {
+                chatList = data.data.chats || [];
+                activeChatId = data.data.activeChatId || 'default';
+                renderChatSelector();
+            }
+        } catch(e) {
+            console.error('Ошибка загрузки списка чатов:', e);
+        }
+    }
+
+    // Отрендерить выпадающий список чатов
+    function renderChatSelector() {
+        const sel = document.getElementById('chatSelector');
+        if (!sel) return;
+        sel.innerHTML = '';
+        if (chatList.length <= 1) {
+            // Один чат — скрываем селектор (нечего переключать)
+            sel.style.display = 'none';
+            return;
+        }
+        sel.style.display = '';
+        // Сортируем: по lastUpdate (новые сверху)
+        const sorted = [...chatList].sort((a, b) => (b.lastUpdate || 0) - (a.lastUpdate || 0));
+        sorted.forEach(chat => {
+            const opt = document.createElement('option');
+            opt.value = chat.id;
+            opt.textContent = chat.title || 'Чат';
+            if (chat.id === activeChatId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    // Создать новый чат
+    async function createNewChat() {
+        if (!user) {
+            // Для неавторизованных — просто очистить локально
+            chatHistory = [];
+            chatArea.innerHTML = '';
+            welcomeScreen.style.display = 'flex';
+            localStorage.removeItem('gemini_local_history');
+            s3HistoryOffset = 0;
+            s3HistoryHasMore = false;
+            s3HistoryTotal = 0;
+            showToast('Чат очищен', 'info');
+            return;
+        }
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'create' } })
+            });
+            const data = await resp.json();
+            if (data.success && data.data) {
+                activeChatId = data.data.chatId;
+                chatList = data.data.chats || chatList;
+                renderChatSelector();
+                // Очистить чат локально и показать welcome
+                chatHistory = [];
+                chatArea.innerHTML = '';
+                welcomeScreen.style.display = 'flex';
+                localStorage.removeItem('gemini_local_history');
+                s3HistoryOffset = 0;
+                s3HistoryHasMore = false;
+                s3HistoryTotal = 0;
+                showToast('Новый чат создан', 'success');
+            }
+        } catch(e) {
+            console.error('Ошибка создания чата:', e);
+            showToast('Ошибка создания чата', 'error');
+        }
+    }
+
+    // Переключить чат
+    async function switchChat(chatId) {
+        if (chatId === activeChatId) return;
+        activeChatId = chatId;
+        // Очищаем локально
+        chatHistory = [];
+        chatArea.innerHTML = '';
+        welcomeScreen.style.display = 'flex';
+        s3HistoryOffset = 0;
+        s3HistoryHasMore = false;
+        s3HistoryTotal = 0;
+        localStorage.removeItem('gemini_local_history');
+        // Уведомляем сервер
+        if (user) {
+            try {
+                await fetch(API_URL + '/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'switch', chatId } })
+                });
+            } catch(e) {
+                console.error('Ошибка переключения чата:', e);
+            }
+            // Загружаем историю нового чата
+            loadS3History();
+        }
+    }
+
+    async function clearChat() {
+        // Для обратной совместимости — создаёт новый чат (не удаляет старый)
+        await createNewChat();
+    }
+
     // ---- ЗАГРУЗКА ИСТОРИИ ИЗ S3 ПРИ СТАРТЕ ----
     let s3HistoryOffset = 0;        // сколько сообщений уже загружено с конца
     let s3HistoryHasMore = false;   // есть ли ещё старые сообщения
@@ -7426,7 +7487,7 @@
                 body: JSON.stringify({
                     mode: 'chat_history',
                     auth: getAuth(),
-                    payload: { action: 'load', offset, limit, knownTotal: s3HistoryTotal }
+                    payload: { action: 'load', offset, limit, knownTotal: s3HistoryTotal, chatId: activeChatId }
                 })
             });
             const data = await resp.json();
