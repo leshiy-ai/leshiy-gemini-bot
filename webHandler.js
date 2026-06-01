@@ -1128,7 +1128,7 @@ async function handleVideo(auth, payload, env, monolith) {
     // === ANALYSIS (анализ видео через AI модели) ===
     if (videoMode === 'analysis') {
         if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для анализа');
-        const prompt = (payload.prompt || 'Проанализируй это видео подробно').trim();
+        const prompt = (payload.prompt || 'Проанализируй это видео подробно. Опиши что происходит, какие объекты и действия видны. Отвечай на русском языке.').trim();
 
         let result;
         try {

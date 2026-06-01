@@ -5098,7 +5098,7 @@
             const result = data.data?.content || data.text || 'Не удалось проанализировать';
             const resultId = 'videoAnalysisResult_' + Date.now();
             resultArea.innerHTML = '<div class="message bot" style="align-self:stretch;position:relative">' +
-                '<button onclick="copyAnalysisResult(\'' + resultId + '\')" style="position:absolute;top:8px;right:8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;color:var(--text-muted);z-index:2" title="Копировать результат">&#128203; Копировать</button>' +
+                '<button class="copy-btn" onclick="copyAnalysisResult(\'' + resultId + '\', this)" title="Копировать"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>' +
                 '<div id="' + resultId + '">' + formatBotMessage(result) + '</div></div>';
             showToast('Видео проанализировано!', 'success');
         } catch (err) {
@@ -5487,13 +5487,17 @@
     }
 
     // Копирование результата анализа видео
-    function copyAnalysisResult(elementId) {
+    function copyAnalysisResult(elementId, btn) {
         const el = document.getElementById(elementId);
         if (!el) return;
         const text = el.innerText || el.textContent || '';
         if (!text.trim()) return;
         navigator.clipboard.writeText(text.trim()).then(function() {
-            showToast('Результат скопирован!', 'success');
+            if (btn) {
+                btn.innerHTML = '&#10003;';
+                btn.classList.add('copied');
+                setTimeout(function() { btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'; btn.classList.remove('copied'); }, 2000);
+            }
         }).catch(function() {
             const textarea = document.createElement('textarea');
             textarea.value = text.trim();
@@ -5501,7 +5505,11 @@
             textarea.select();
             document.execCommand('copy');
             document.body.removeChild(textarea);
-            showToast('Результат скопирован!', 'success');
+            if (btn) {
+                btn.innerHTML = '&#10003;';
+                btn.classList.add('copied');
+                setTimeout(function() { btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'; btn.classList.remove('copied'); }, 2000);
+            }
         });
     }
 
@@ -8435,6 +8443,70 @@
     }
 
     initInputAreaDragDrop();
+
+    // ============================================================
+    //  📋 ВСТАВКА ИЗОБРАЖЕНИЙ ИЗ БУФЕРА ОБМЕНА (Ctrl+V / Cmd+V)
+    // ============================================================
+    (function() {
+        const userInput = document.getElementById('userInput');
+        if (!userInput) return;
+
+        // Обрабатываем paste на уровне textarea — если в буфере есть изображение,
+        // добавляем его как вложение в чат (скриншоты, копии из редакторов и т.д.)
+        userInput.addEventListener('paste', function(e) {
+            const clipboardData = e.clipboardData || window.clipboardData;
+            if (!clipboardData) return;
+
+            // Ищем изображение в буфере
+            const items = clipboardData.items;
+            if (!items) return;
+
+            let hasImage = false;
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.type && item.type.startsWith('image/')) {
+                    e.preventDefault(); // Не вставляем как текст
+                    hasImage = true;
+                    const file = item.getAsFile();
+                    if (!file) continue;
+
+                    // Генерируем имя файла, если его нет (скриншоты часто без имени)
+                    const ext = item.type.split('/')[1] || 'png';
+                    const namedFile = new File([file], 'screenshot_' + Date.now() + '.' + ext, { type: file.type });
+                    processChatFiles([namedFile]);
+                }
+            }
+
+            // Если были изображения — не даём тексту из буфера вставиться
+            // (некоторые буферы содержат и текст, и картинку одновременно)
+        });
+
+        // Также слушаем paste на document — если фокус НЕ на textarea,
+        // но пользователь нажал Ctrl+V (например, кликнул на область чата)
+        document.addEventListener('paste', function(e) {
+            // Если фокус на textarea — textarea-обработчик уже всё сделает
+            if (document.activeElement && document.activeElement.id === 'userInput') return;
+            // Вставка картинок работает только в режиме чата
+            if (currentMode !== 'chat') return;
+
+            const clipboardData = e.clipboardData || window.clipboardData;
+            if (!clipboardData) return;
+            const items = clipboardData.items;
+            if (!items) return;
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.type && item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (!file) continue;
+                    const ext = item.type.split('/')[1] || 'png';
+                    const namedFile = new File([file], 'screenshot_' + Date.now() + '.' + ext, { type: file.type });
+                    processChatFiles([namedFile]);
+                }
+            }
+        });
+    })();
 
     // ============================================================
     //  PINCH-TO-ZOOM ДЛЯ ИЗОБРАЖЕНИЙ В ЛАЙТБОКСЕ

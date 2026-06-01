@@ -8740,17 +8740,26 @@ async function callZAIMultimodal(config, contentParts, envData) {
         }
         if (part.type === 'image') {
             // Z.AI поддерживает как URL, так и base64 data URI
-            const url = part.url || (part.data ? `data:image/jpeg;base64,${part.data}` : '');
+            const mime = part.mime || 'image/jpeg';
+            const url = part.url || (part.data ? `data:${mime};base64,${part.data}` : '');
             return { type: 'image_url', image_url: { url } };
         }
         if (part.type === 'video') {
             // Согласно документации, используется video_url
-            const url = part.url || (part.data ? `data:video/mp4;base64,${part.data}` : '');
+            const mime = part.mime || 'video/mp4';
+            const url = part.url || (part.data ? `data:${mime};base64,${part.data}` : '');
             return { type: 'video_url', video_url: { url } };
         }
-        if (part.type === 'audio' || part.type === 'file') {
-            // Для аудио и файлов Z.AI использует file_url (согласно OpenAPI спеке)
-            const url = part.url || (part.data ? `data:audio/mp3;base64,${part.data}` : '');
+        if (part.type === 'audio') {
+            // Для аудио Z.AI использует audio_url (как OpenAI)
+            const mime = part.mime || 'audio/mpeg';
+            const url = part.url || (part.data ? `data:${mime};base64,${part.data}` : '');
+            return { type: 'audio_url', audio_url: { url } };
+        }
+        if (part.type === 'file') {
+            // Для файлов Z.AI использует file_url
+            const mime = part.mime || 'application/octet-stream';
+            const url = part.url || (part.data ? `data:${mime};base64,${part.data}` : '');
             return { type: 'file_url', file_url: { url } };
         }
         return null;
@@ -8768,10 +8777,16 @@ async function callZAIMultimodal(config, contentParts, envData) {
 
     const body = {
         model: config.MODEL,
-        messages: [{
-            role: 'user',
-            content: formattedContent
-        }],
+        messages: [
+            {
+                role: 'system',
+                content: 'Ты — умный ассистент. Всегда отвечай на русском языке. Если тебя просят проанализировать медиа, давай подробный анализ на русском.'
+            },
+            {
+                role: 'user',
+                content: formattedContent
+            }
+        ],
         stream: false
     };
 
