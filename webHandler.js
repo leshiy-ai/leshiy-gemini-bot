@@ -175,6 +175,7 @@ async function callCloudflareRestAPI(modelName, requestBody, env) {
         headers: {
             'Authorization': `Bearer ${apiToken}`,
             'Content-Type': 'application/json',
+            'Accept': 'image/png, audio/mpeg, application/json',
         },
         body: JSON.stringify(requestBody),
     });
@@ -302,6 +303,18 @@ async function callWorkersAIWeb(config, ...args) {
         }, env);
         // Возвращаем бинарный результат (изображение)
         if (result.binary) return result.data;
+        // Cloudflare иногда возвращает JSON с base64 вместо бинарника
+        if (result.result) {
+            // Может быть { image: "base64..." } или просто base64 строка
+            if (typeof result.result === 'string' && result.result.length > 100) {
+                return Buffer.from(result.result, 'base64');
+            }
+            if (result.result.image && typeof result.result.image === 'string') {
+                return Buffer.from(result.result.image, 'base64');
+            }
+        }
+        // Если JSON содержит { success: true, result: { image: "..." } }
+        console.log('[WebHandler] SDXL unexpected result format:', JSON.stringify(result).substring(0, 300));
         return result.result;
     }
 
@@ -1049,8 +1062,12 @@ async function handleVideo(auth, payload, env, monolith) {
             } else if (payload.convert_action === 'resize') {
                 const res = payload.resolution || '720p';
                 endpoint = '/resize-video?resolution=' + encodeURIComponent(res);
+            } else if (sourceFormat === 'mp4' && targetFormat === 'mp4') {
+                // MP4 → MP4 (re-encode, same format) — используем webm2mp4 endpoint,
+                // он принимает любой видео формат
+                endpoint = '/webm2mp4';
             } else {
-                // По умолчанию — webm2mp4 (самый частый кейс)
+                // По умолчанию — webm2mp4 (универсальный конвертер, принимает любой видео)
                 endpoint = '/webm2mp4';
             }
 
@@ -1059,7 +1076,7 @@ async function handleVideo(auth, payload, env, monolith) {
             // Multipart/form-data
             const boundary = '----FormBoundary' + Date.now().toString(36);
             const fileName = 'input.' + (sourceFormat || 'webm');
-            const fileMime = sourceFormat === 'gif' ? 'image/gif' : sourceFormat === 'mp4' ? 'video/mp4' : 'video/webm';
+            const fileMime = sourceFormat === 'gif' ? 'image/gif' : sourceFormat === 'mp4' ? 'video/mp4' : sourceFormat === 'avi' ? 'video/x-msvideo' : sourceFormat === 'mov' ? 'video/quicktime' : 'video/webm';
             const bodyParts = [
                 '--' + boundary,
                 'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',

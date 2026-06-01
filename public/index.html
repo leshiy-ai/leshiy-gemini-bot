@@ -377,6 +377,11 @@
                         <!-- Аудио -->
                         <button class="size-option" data-group="audio" onclick="selectConvertFormat('ogg2mp3',this)">OGG&#8594;MP3</button>
                         <button class="size-option" data-group="audio" onclick="selectConvertFormat('wav2mp3',this)">WAV&#8594;MP3</button>
+                        <!-- Изображения -->
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('webp2png',this)">WEBP&#8594;PNG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('heic2jpg',this)">HEIC&#8594;JPG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('png2jpg',this)">PNG&#8594;JPG</button>
+                        <button class="size-option" data-group="image" onclick="selectConvertFormat('jpg2png',this)">JPG&#8594;PNG</button>
                     </div>
                 </div>
                 <div id="gifParamsArea" style="display:none;margin-top:8px">
@@ -2972,6 +2977,10 @@
             // (upload-zone сама обработает через свой drop handler)
             const target = e.target;
             if (target.closest && target.closest('.upload-zone')) return;
+            // 🧠 Если дроп попал на .input-area и мы НЕ в режиме чата — НЕ обрабатываем здесь
+            // (initInputAreaDragDrop обработает, там роутинг по другим режимам)
+            // В режиме чата — обрабатываем здесь (один раз), input-area не обрабатывает
+            if (target.closest && target.closest('.input-area') && currentMode !== 'chat') return;
 
             // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
             let input = getDropInput(e);
@@ -7514,7 +7523,14 @@
                     chatHistory = loadedMessages;
                     welcomeScreen.style.display = 'none';
                     chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text || msg.content));
-                    chatArea.scrollTop = chatArea.scrollHeight;
+                    // Скроллим вниз после рендера — через requestAnimationFrame для надёжности
+                    requestAnimationFrame(() => {
+                        chatArea.scrollTop = chatArea.scrollHeight;
+                        // Двойной RAF — на случай если первый рендер ещё не завершился
+                        requestAnimationFrame(() => {
+                            chatArea.scrollTop = chatArea.scrollHeight;
+                        });
+                    });
                 }
 
                 s3HistoryOffset = offset + loadedMessages.length;
