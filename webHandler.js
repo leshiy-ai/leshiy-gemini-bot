@@ -659,7 +659,7 @@ async function handleImage(auth, payload, env, monolith) {
                 }
 
                 const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
                 const input = { image: imageUrl };
 
@@ -852,7 +852,7 @@ async function handleImage(auth, payload, env, monolith) {
                 }
 
                 const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
                 const input = {
                     prompt: prompt,
@@ -908,7 +908,7 @@ async function handleImage(auth, payload, env, monolith) {
             if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
 
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
             // KieAI: aspect_ratio — основной параметр (image_size deprecated)
             const kieRatio = payload.aspect_ratio || '1:1';
@@ -1286,7 +1286,7 @@ async function handleVideo(auth, payload, env, monolith) {
             const modelInfo = getWebModel('VIDEO_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла видео');
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
             const input = {
                 video_base64: payload.video_base64,
@@ -1329,7 +1329,7 @@ async function handleVideo(auth, payload, env, monolith) {
         if (!modelInfo) return formatResponse(false, 'Нет модели для генерации видео');
 
         const workerDomain = env.WORKER_DOMAIN || '';
-        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
         const input = {
             prompt: prompt,
@@ -1625,7 +1625,7 @@ async function handleAudio(auth, payload, env, monolith) {
             const { createTaskKieAi } = monolith;
             if (!createTaskKieAi) return formatResponse(false, 'Kie.AI TTS недоступен');
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
             const input = { text, voice };
             const taskId = await createTaskKieAi(chatId, config, input, env, callbackUrl);
             if (!taskId) return formatResponse(false, 'Не удалось создать задачу TTS');
