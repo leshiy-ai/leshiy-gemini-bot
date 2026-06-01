@@ -56,8 +56,6 @@
             <div class="sub-divider"></div>
             <span class="sub-label" id="chatPriceLabel" style="color:var(--free)">&#10003; Бесплатно</span>
             <div style="flex:1"></div>
-            <select id="chatSelector" style="cursor:pointer;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:0.8em;padding:2px 6px;border-radius:4px;max-width:180px;outline:none;transition:border-color 0.2s" onchange="switchChat(this.value)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" title="Выбрать чат"></select>
-            <button id="newChatBtn" class="sub-label" style="cursor:pointer;border:none;background:none;color:var(--text-muted);font-size:0.8em;padding:2px 8px;border-radius:4px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'" onclick="createNewChat()" title="Создать новый чат">➕ Новый чат</button>
         </div>
         <div class="sub-header wrap-allowed" id="subImage">
             <div id="imageSubModes"></div>
@@ -7385,80 +7383,6 @@
             if (chat.id === activeChatId) opt.selected = true;
             sel.appendChild(opt);
         });
-    }
-
-    // Создать новый чат
-    async function createNewChat() {
-        if (!user) {
-            // Для неавторизованных — просто очистить локально
-            chatHistory = [];
-            chatArea.innerHTML = '';
-            welcomeScreen.style.display = 'flex';
-            localStorage.removeItem('gemini_local_history');
-            s3HistoryOffset = 0;
-            s3HistoryHasMore = false;
-            s3HistoryTotal = 0;
-            showToast('Чат очищен', 'info');
-            return;
-        }
-        try {
-            const resp = await fetch(API_URL + '/api', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'create' } })
-            });
-            const data = await resp.json();
-            if (data.success && data.data) {
-                activeChatId = data.data.chatId;
-                chatList = data.data.chats || chatList;
-                renderChatSelector();
-                // Очистить чат локально и показать welcome
-                chatHistory = [];
-                chatArea.innerHTML = '';
-                welcomeScreen.style.display = 'flex';
-                localStorage.removeItem('gemini_local_history');
-                s3HistoryOffset = 0;
-                s3HistoryHasMore = false;
-                s3HistoryTotal = 0;
-                showToast('Новый чат создан', 'success');
-            }
-        } catch(e) {
-            console.error('Ошибка создания чата:', e);
-            showToast('Ошибка создания чата', 'error');
-        }
-    }
-
-    // Переключить чат
-    async function switchChat(chatId) {
-        if (chatId === activeChatId) return;
-        activeChatId = chatId;
-        // Очищаем локально
-        chatHistory = [];
-        chatArea.innerHTML = '';
-        welcomeScreen.style.display = 'flex';
-        s3HistoryOffset = 0;
-        s3HistoryHasMore = false;
-        s3HistoryTotal = 0;
-        localStorage.removeItem('gemini_local_history');
-        // Уведомляем сервер
-        if (user) {
-            try {
-                await fetch(API_URL + '/api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode: 'chat_history', auth: getAuth(), payload: { action: 'switch', chatId } })
-                });
-            } catch(e) {
-                console.error('Ошибка переключения чата:', e);
-            }
-            // Загружаем историю нового чата
-            loadS3History();
-        }
-    }
-
-    async function clearChat() {
-        // Для обратной совместимости — создаёт новый чат (не удаляет старый)
-        await createNewChat();
     }
 
     // ---- ЗАГРУЗКА ИСТОРИИ ИЗ S3 ПРИ СТАРТЕ ----
