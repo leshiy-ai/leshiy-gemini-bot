@@ -7504,8 +7504,10 @@
                     });
                     // Восстанавливаем позицию скролла
                     requestAnimationFrame(() => {
-                        const newScrollHeight = chatArea.scrollHeight;
-                        chatArea.scrollTop = newScrollHeight - oldScrollHeight;
+                        chatArea.scrollTop = chatArea.scrollHeight;
+                        requestAnimationFrame(() => {
+                            chatArea.scrollTop = chatArea.scrollHeight;
+                        });
                     });
                 } else {
                     // Первая загрузка — последние N сообщений
