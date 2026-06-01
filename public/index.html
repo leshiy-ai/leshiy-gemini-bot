@@ -8273,9 +8273,16 @@
 
         inputArea.addEventListener('drop', function(e) {
             e.preventDefault();
-            e.stopPropagation(); // ✅ Не даём событию всплыть к .app — иначе двойная обработка
             dragCounter = 0;
             if (overlay) overlay.classList.remove('visible');
+
+            // 🧠 В режиме чата — НЕ обрабатываем дроп здесь, пусть всплывает к .app
+            // Иначе оба обработчика (.input-area и .app) добавят вложение → дубликат
+            if (currentMode === 'chat') {
+                return; // Не вызываем stopPropagation — .app обработает один раз
+            }
+
+            e.stopPropagation(); // ✅ В остальных режимах не даём всплыть к .app
 
             // 🧠 Используем getDropInput — работает и для десктопа, и для вложений
             let input = getDropInput(e);

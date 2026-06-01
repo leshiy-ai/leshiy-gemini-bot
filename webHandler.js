@@ -465,7 +465,8 @@ async function handleChat(auth, payload, env, monolith) {
                 finalResponse = typeof visionResult === 'string' ? visionResult : String(visionResult);
             } else if (vConfig.FUNCTION.name === 'callZAIMultimodal') {
                 // Z.AI Multimodal — формируем contentParts массив
-                const contentParts = [{ type: 'text', text: userMessage || 'Опиши это изображение подробно' }, { type: 'image', data: imageBase64 }];
+                const imageMime = imageAttachments[0].type || 'image/jpeg';
+                const contentParts = [{ type: 'text', text: userMessage || 'Опиши это изображение подробно' }, { type: 'image', data: imageBase64, mime: imageMime }];
                 const result = await vConfig.FUNCTION(vConfig, contentParts, env);
                 finalResponse = typeof result === 'string' ? result : (extractAndCleanModelResponse(result).finalResponse || String(result));
             } else if (vConfig.FUNCTION.name === 'callZAIVision') {
@@ -514,7 +515,8 @@ async function handleChat(auth, payload, env, monolith) {
                 result = await callWorkersAIWeb(sConfig, audioBuffer, env);
             } else if (sConfig.FUNCTION.name === 'callZAIMultimodal') {
                 // Z.AI Multimodal — формируем contentParts массив
-                const contentParts = [{ type: 'text', text: userMessage || 'Транскрибируй это аудио' }, { type: 'audio', data: audioBase64 }];
+                const audioMime = audioAttachments[0].type || 'audio/mpeg';
+                const contentParts = [{ type: 'text', text: userMessage || 'Транскрибируй это аудио' }, { type: 'audio', data: audioBase64, mime: audioMime }];
                 result = await sConfig.FUNCTION(sConfig, contentParts, env);
             } else if (sConfig.FUNCTION.name === 'callZAIASR') {
                 // Z.AI ASR — передаём base64
@@ -542,7 +544,8 @@ async function handleChat(auth, payload, env, monolith) {
                 result = await callWorkersAIWeb(vConfig, videoBuffer, env);
             } else if (vConfig.FUNCTION.name === 'callZAIMultimodal') {
                 // Z.AI Multimodal — формируем contentParts массив
-                const contentParts = [{ type: 'text', text: userMessage || 'Проанализируй это видео' }, { type: 'video', data: videoBase64 }];
+                const videoMime = videoAttachments[0].type || 'video/mp4';
+                const contentParts = [{ type: 'text', text: userMessage || 'Проанализируй это видео' }, { type: 'video', data: videoBase64, mime: videoMime }];
                 result = await vConfig.FUNCTION(vConfig, contentParts, env);
             } else if (vConfig.FUNCTION.name === 'callZAIASR') {
                 // Z.AI ASR для видео — передаём base64
@@ -1127,6 +1130,10 @@ async function handleVideo(auth, payload, env, monolith) {
                     result = await config.FUNCTION(config, videoBuffer, videoMime, env);
                 } else if (config.FUNCTION.name === 'callBothubVideoVision') {
                     result = await config.FUNCTION(config, videoBuffer, videoMime, env);
+                } else if (config.FUNCTION.name === 'callZAIMultimodal') {
+                    // Z.AI Multimodal — формируем contentParts массив
+                    const contentParts = [{ type: 'text', text: prompt }, { type: 'video', data: payload.video_base64, mime: videoMime }];
+                    result = await config.FUNCTION(config, contentParts, env);
                 } else if (config.FUNCTION.name === 'callWorkersAISpeechToText') {
                     result = await callWorkersAIWeb(config, videoBuffer, env);
                 } else if (config.FUNCTION.name === 'callBotHubAudioToText') {
@@ -1171,6 +1178,10 @@ async function handleVideo(auth, payload, env, monolith) {
                                     result = await fallbackModel.FUNCTION(fallbackModel, videoBuffer, env);
                                 } else if (fallbackModel.FUNCTION.name === 'callGeminiVideoVision') {
                                     result = await fallbackModel.FUNCTION(fallbackModel, videoBuffer, videoMime, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callZAIMultimodal') {
+                                    const videoMime = payload.video_mime_type || 'video/mp4';
+                                    const contentParts = [{ type: 'text', text: prompt }, { type: 'video', data: payload.video_base64, mime: videoMime }];
+                                    result = await fallbackModel.FUNCTION(fallbackModel, contentParts, env);
                                 } else {
                                     result = await fallbackModel.FUNCTION(fallbackModel, videoBuffer, env);
                                 }
@@ -1365,6 +1376,10 @@ async function handleAudio(auth, payload, env, monolith) {
                     result = await callBotHubSTTWeb(config, audioBuffer, env, audioMimeType);
                 } else if (config.FUNCTION.name === 'callPollinationsSTT') {
                     result = await callPollinationsSTTWeb(config, audioBuffer, env, audioMimeType);
+                } else if (config.FUNCTION.name === 'callZAIMultimodal') {
+                    // Z.AI Multimodal — формируем contentParts массив
+                    const contentParts = [{ type: 'text', text: 'Транскрибируй это аудио. Отвечай на русском языке.' }, { type: 'audio', data: payload.audio_base64, mime: audioMimeType }];
+                    result = await config.FUNCTION(config, contentParts, env);
                 } else {
                     try {
                         result = await config.FUNCTION(config, audioBuffer, env);
@@ -1392,6 +1407,9 @@ async function handleAudio(auth, payload, env, monolith) {
                                     result = await callPollinationsSTTWeb(fallbackModel, audioBuffer, env, audioMimeType);
                                 } else if (fallbackModel.FUNCTION.name === 'callGeminiSpeechToText') {
                                     result = await fallbackModel.FUNCTION(fallbackModel, audioBuffer, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callZAIMultimodal') {
+                                    const contentParts = [{ type: 'text', text: 'Транскрибируй это аудио. Отвечай на русском языке.' }, { type: 'audio', data: payload.audio_base64, mime: audioMimeType }];
+                                    result = await fallbackModel.FUNCTION(fallbackModel, contentParts, env);
                                 } else {
                                     result = await fallbackModel.FUNCTION(fallbackModel, audioBuffer, env);
                                 }
