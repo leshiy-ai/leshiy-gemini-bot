@@ -3027,116 +3027,19 @@
             }
 
             if (effectiveType.startsWith('image/')) {
-                // Image files → image mode (or chat with vision)
-                if (currentMode === 'chat') {
-                    processChatFiles(files);
-                } else if (currentMode === 'image') {
-                    if (selected.imageSubMode === 'upscale') {
-                        handleImageUpscale(input);
-                    } else if (selected.imageSubMode === 'rotate') {
-                        handleImageRotateUpload(input);
-                    } else if (selected.imageSubMode === 'resize') {
-                        handleImageResizeUpload(input);
-                    } else if (selected.imageSubMode === 'convert') {
-                        handleImageConvertUpload(input);
-                    } else {
-                        // Generate mode: add as reference
-                        handleImageRef(0, input);
-                    }
-                } else if (currentMode === 'video') {
-                    if (selected.videoSubMode === 'convert' || fileType === 'image/gif') {
-                        // Video convert: accept GIF as well (GIF→MP4)
-                        handleMediaConvertUpload(input);
-                    } else {
-                        // In video mode, image → i2v
-                        selected.videoSubMode = 'i2v';
-                        renderVideoSubHeader();
-                        switchVideoSubMode('i2v');
-                        handleVideoRef('image', input);
-                    }
-                } else {
-                    // In any other mode → switch to image generate
-                    switchMode('image');
-                    selected.imageSubMode = 'generate';
-                    renderImageSubHeader();
-                    switchImageSubMode('generate');
-                    handleImageRef(0, input);
-                }
+                // 🛑 ИСПРАВЛЕНИЕ: DnD ВСЕГДА приаттачивает в чат-инпут (как Ctrl+V)
+                // Ранее в режиме "Картинки" уводило в референсное поле — неправильно
+                // Пользователь хочет: перетаскивание = вставка в чат, всегда и везде
+                processChatFiles(files);
             } else if (effectiveType.startsWith('video/')) {
-                // Video files → video sub-mode or chat
-                if (currentMode === 'chat') {
-                    processChatFiles(files);
-                } else if (currentMode === 'video') {
-                    if (selected.videoSubMode === 'v2v') {
-                        handleVideoRef('video', input);
-                    } else if (selected.videoSubMode === 'convert') {
-                        handleMediaConvertUpload(input);
-                    } else if (selected.videoSubMode === 'resize') {
-                        handleVideoResizeUpload(input);
-                    } else if (selected.videoSubMode === 'stopframe') {
-                        handleStopFrame(input);
-                    } else if (selected.videoSubMode === 'upscale') {
-                        handleVideoUpscaleUpload(input);
-                    } else {
-                        // Default: analysis (free)
-                        selected.videoSubMode = 'analysis';
-                        renderVideoSubHeader();
-                        switchVideoSubMode('analysis');
-                        handleVideoConvert(input);
-                    }
-                } else {
-                    // Switch to video analysis
-                    switchMode('video');
-                    selected.videoSubMode = 'analysis';
-                    renderVideoSubHeader();
-                    switchVideoSubMode('analysis');
-                    handleVideoConvert(input);
-                }
+                // Видео тоже всегда в чат-инпут
+                processChatFiles(files);
             } else if (effectiveType.startsWith('audio/')) {
-                // Audio files → route to correct audio zone based on current sub-mode
-                if (currentMode === 'audio') {
-                    if (selected.audioSubMode === 'convert') {
-                        handleAudioConvert(input);
-                    } else if (selected.audioSubMode === 'voice_clone') {
-                        handleVoiceClone(input);
-                    } else if (selected.audioSubMode === 'tts') {
-                        // Audio in TTS mode → switch to Свой голос and upload as voice sample
-                        selected.audioSubMode = 'voice_clone';
-                        saveSelected();
-                        renderAudioSubHeader();
-                        switchAudioSubMode('voice_clone');
-                        handleVoiceClone(input);
-                    } else if (selected.audioSubMode === 'stt') {
-                        handleAudioUpload(input);
-                    } else {
-                        // Default: STT (free)
-                        selected.audioSubMode = 'stt';
-                        renderAudioSubHeader();
-                        switchAudioSubMode('stt');
-                        handleAudioUpload(input);
-                    }
-                } else if (currentMode === 'chat') {
-                    // In chat mode: add audio as attachment
-                    processChatFiles(files);
-                } else if (currentMode === 'video') {
-                    // Audio in video mode → a2v
-                    selected.videoSubMode = 'a2v';
-                    renderVideoSubHeader();
-                    switchVideoSubMode('a2v');
-                    handleVideoRef('audio', input);
-                } else {
-                    // In any other mode → add as chat attachment (not auto-switch to STT)
-                    processChatFiles(files);
-                }
+                // Аудио тоже всегда в чат-инпут
+                processChatFiles(files);
             } else {
-                // Other files → chat (vision/document analysis)
-                if (currentMode === 'chat') {
-                    processChatFiles(files);
-                } else {
-                    // Switch to chat and process
-                    switchMode('chat');
-                    processChatFiles(files);
-                }
+                // Другие файлы — в чат (vision/document analysis)
+                processChatFiles(files);
             }
 
             _dragState = null; // Сбрасываем после обработки
@@ -8343,100 +8246,9 @@
             const file = files[0];
             const fileType = file.type || '';
 
-            // Smart cross-mode routing — same logic as the main .app drop handler
-            // This ensures drag-and-drop works correctly regardless of current mode
-            if (fileType.startsWith('image/')) {
-                if (currentMode === 'chat') {
-                    processChatFiles(files);
-                } else if (currentMode === 'image') {
-                    if (selected.imageSubMode === 'upscale') handleImageUpscale(input);
-                    else if (selected.imageSubMode === 'rotate') handleImageRotateUpload(input);
-                    else if (selected.imageSubMode === 'resize') handleImageResizeUpload(input);
-                    else if (selected.imageSubMode === 'convert') handleImageConvertUpload(input);
-                    else handleImageRef(0, input);
-                } else if (currentMode === 'video') {
-                    if (selected.videoSubMode === 'convert') {
-                        handleMediaConvertUpload(input);
-                    } else {
-                        selected.videoSubMode = 'i2v';
-                        renderVideoSubHeader();
-                        switchVideoSubMode('i2v');
-                        handleVideoRef('image', input);
-                    }
-                } else {
-                    switchMode('image');
-                    selected.imageSubMode = 'generate';
-                    renderImageSubHeader();
-                    switchImageSubMode('generate');
-                    handleImageRef(0, input);
-                }
-            } else if (fileType.startsWith('video/')) {
-                if (currentMode === 'chat') {
-                    processChatFiles(files);
-                } else if (currentMode === 'video') {
-                    if (selected.videoSubMode === 'v2v') {
-                        handleVideoRef('video', input);
-                    } else if (selected.videoSubMode === 'convert') {
-                        handleMediaConvertUpload(input);
-                    } else if (selected.videoSubMode === 'resize') {
-                        handleVideoResizeUpload(input);
-                    } else if (selected.videoSubMode === 'stopframe') {
-                        handleStopFrame(input);
-                    } else if (selected.videoSubMode === 'upscale') {
-                        handleVideoUpscaleUpload(input);
-                    } else {
-                        selected.videoSubMode = 'analysis';
-                        renderVideoSubHeader();
-                        switchVideoSubMode('analysis');
-                        handleVideoConvert(input);
-                    }
-                } else {
-                    switchMode('video');
-                    selected.videoSubMode = 'analysis';
-                    renderVideoSubHeader();
-                    switchVideoSubMode('analysis');
-                    handleVideoConvert(input);
-                }
-            } else if (fileType.startsWith('audio/')) {
-                if (currentMode === 'audio') {
-                    if (selected.audioSubMode === 'convert') handleAudioConvert(input);
-                    else if (selected.audioSubMode === 'voice_clone') handleVoiceClone(input);
-                    else if (selected.audioSubMode === 'tts') {
-                        // Audio in TTS mode → switch to Свой голос and upload as voice sample
-                        selected.audioSubMode = 'voice_clone';
-                        saveSelected();
-                        renderAudioSubHeader();
-                        switchAudioSubMode('voice_clone');
-                        handleVoiceClone(input);
-                    } else if (selected.audioSubMode === 'stt') {
-                        handleAudioUpload(input);
-                    } else {
-                        selected.audioSubMode = 'stt';
-                        renderAudioSubHeader();
-                        switchAudioSubMode('stt');
-                        handleAudioUpload(input);
-                    }
-                } else if (currentMode === 'chat') {
-                    // In chat mode: add audio as attachment
-                    processChatFiles(files);
-                } else if (currentMode === 'video') {
-                    selected.videoSubMode = 'a2v';
-                    renderVideoSubHeader();
-                    switchVideoSubMode('a2v');
-                    handleVideoRef('audio', input);
-                } else {
-                    // In any other mode → add as chat attachment (not auto-switch to STT)
-                    processChatFiles(files);
-                }
-            } else {
-                // Other files → chat (vision/document analysis)
-                if (currentMode === 'chat') {
-                    processChatFiles(files);
-                } else {
-                    switchMode('chat');
-                    processChatFiles(files);
-                }
-            }
+            // Smart cross-mode routing — DnD ВСЕГДА приаттачивает в чат-инпут (как Ctrl+V)
+            // Для загрузки в референсные поля — используй кнопку загрузки или .upload-zone
+            processChatFiles(files);
 
             _dragState = null; // Сбрасываем после обработки
         });

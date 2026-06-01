@@ -99,6 +99,7 @@ const monolithContext = {
     syncS3Chat: worker.syncS3Chat,
     uploadBase64ImageToPublicUrl: worker.uploadBase64ImageToPublicUrl,
     createTaskKieAi: worker.createTaskKieAi,
+    getKieAiTaskResultForWeb: worker.getKieAiTaskResultForWeb,
 };
 
 module.exports.handler = async (event, context) => {

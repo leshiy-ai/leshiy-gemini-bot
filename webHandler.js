@@ -42,6 +42,11 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
         };
     }
 
+    // 🛑 Платформа: помечаем все запросы от веба как platform=web
+    // Это нужно для createTaskKieAi — чтобы callback URL содержал &platform=web
+    // и результат сохранялся в KV (saveKieAiCallbackForWeb), а не уходил в Telegram
+    env.platform = 'web';
+
     try {
         switch (mode) {
             case 'chat':
@@ -654,7 +659,7 @@ async function handleImage(auth, payload, env, monolith) {
                 }
 
                 const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
                 const input = { image: imageUrl };
 
@@ -847,7 +852,7 @@ async function handleImage(auth, payload, env, monolith) {
                 }
 
                 const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
                 const input = {
                     prompt: prompt,
@@ -903,7 +908,7 @@ async function handleImage(auth, payload, env, monolith) {
             if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
 
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
             // KieAI: aspect_ratio — основной параметр (image_size deprecated)
             const kieRatio = payload.aspect_ratio || '1:1';
@@ -1281,7 +1286,7 @@ async function handleVideo(auth, payload, env, monolith) {
             const modelInfo = getWebModel('VIDEO_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
             if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла видео');
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
             const input = {
                 video_base64: payload.video_base64,
@@ -1324,7 +1329,7 @@ async function handleVideo(auth, payload, env, monolith) {
         if (!modelInfo) return formatResponse(false, 'Нет модели для генерации видео');
 
         const workerDomain = env.WORKER_DOMAIN || '';
-        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+        const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
 
         const input = {
             prompt: prompt,
@@ -1620,7 +1625,7 @@ async function handleAudio(auth, payload, env, monolith) {
             const { createTaskKieAi } = monolith;
             if (!createTaskKieAi) return formatResponse(false, 'Kie.AI TTS недоступен');
             const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
+            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}` : null;
             const input = { text, voice };
             const taskId = await createTaskKieAi(chatId, config, input, env, callbackUrl);
             if (!taskId) return formatResponse(false, 'Не удалось создать задачу TTS');
@@ -2285,6 +2290,229 @@ async function downloadImageWithProxy(imageUrl, env) {
 // ============================================================
 // 🔄 TASK STATUS — Polling KieAI task results
 // ============================================================
+
+/**
+ * 🛑 Общая функция обработки ответа KieAI (из KV callback или API polling)
+ * Извлекает URL результата из любого формата ответа KieAI
+ */
+async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl) {
+    const state = result.data?.state;
+    const output = result.data?.output;
+    const resultJson = result.data?.resultJson;
+
+    if (state === 'success' || state === 'succeeded') {
+        let resultUrl = null;
+
+        // -1. KieAI format: resultJson — JSON-строка с resultUrls[]
+        if (!resultUrl && resultJson) {
+            try {
+                const parsed = typeof resultJson === 'string' ? JSON.parse(resultJson) : resultJson;
+                if (Array.isArray(parsed?.resultUrls) && parsed.resultUrls.length > 0) {
+                    resultUrl = parsed.resultUrls[0];
+                    console.log(`[WebHandler] Found URL in resultJson.resultUrls[0]: ${String(resultUrl || '').substring(0, 100)}`);
+                }
+                if (!resultUrl) {
+                    for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'outputUrl', 'src', 'source_url']) {
+                        if (parsed?.[field] && typeof parsed[field] === 'string' && parsed[field].startsWith('http')) {
+                            resultUrl = parsed[field];
+                            console.log(`[WebHandler] Found URL in resultJson.${field}: ${String(resultUrl || '').substring(0, 100)}`);
+                            break;
+                        }
+                    }
+                }
+                if (!resultUrl) {
+                    for (const field of ['images', 'videos', 'urls', 'outputs']) {
+                        if (Array.isArray(parsed?.[field]) && parsed[field].length > 0) {
+                            const first = parsed[field][0];
+                            if (typeof first === 'string' && first.startsWith('http')) {
+                                resultUrl = first;
+                                console.log(`[WebHandler] Found URL in resultJson.${field}[0]`);
+                                break;
+                            } else if (typeof first === 'object' && first?.url) {
+                                resultUrl = first.url;
+                                console.log(`[WebHandler] Found URL in resultJson.${field}[0].url`);
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn(`[WebHandler] Failed to parse resultJson: ${e.message}`);
+            }
+        }
+
+        // 0. KieAI часто возвращает output как массив строк-URL
+        if (Array.isArray(output) && output.length > 0) {
+            for (const item of output) {
+                if (typeof item === 'string' && item.startsWith('http')) {
+                    resultUrl = item;
+                    console.log(`[WebHandler] Found URL in output array: ${String(resultUrl || '').substring(0, 100)}`);
+                    break;
+                } else if (typeof item === 'object' && item !== null) {
+                    for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src', 'source_url']) {
+                        if (item[field] && typeof item[field] === 'string' && item[field].startsWith('http')) {
+                            resultUrl = item[field];
+                            console.log(`[WebHandler] Found URL in output[].${field}: ${String(resultUrl || '').substring(0, 100)}`);
+                            break;
+                        }
+                    }
+                    if (resultUrl) break;
+                }
+            }
+        }
+
+        // 1. Прямые URL поля
+        if (!resultUrl) {
+            const urlFields = ['videoUrl', 'url', 'video_url', 'imageUrl', 'image_url', 'outputUrl', 'output_url', 'downloadUrl', 'download_url', 'resultUrl', 'result_url', 'source_url', 'src'];
+            for (const field of urlFields) {
+                if (output?.[field] && typeof output[field] === 'string' && output[field].startsWith('http')) {
+                    resultUrl = output[field];
+                    console.log(`[WebHandler] Found URL in output.${field}: ${String(resultUrl || '').substring(0, 100)}`);
+                    break;
+                }
+            }
+        }
+
+        // 2. Массивы URL
+        if (!resultUrl) {
+            const arrayFields = ['videos', 'images', 'urls', 'outputs', 'results', 'files'];
+            for (const field of arrayFields) {
+                if (Array.isArray(output?.[field]) && output[field].length > 0) {
+                    const item = output[field][0];
+                    if (typeof item === 'string' && item.startsWith('http')) {
+                        resultUrl = item;
+                    } else if (typeof item === 'object') {
+                        const urlFields = ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src'];
+                        for (const subField of urlFields) {
+                            if (item[subField] && typeof item[subField] === 'string' && item[subField].startsWith('http')) {
+                                resultUrl = item[subField];
+                                break;
+                            }
+                        }
+                    }
+                    if (resultUrl) {
+                        console.log(`[WebHandler] Found URL in output.${field}[0]`);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 3. Если output — сам строка URL
+        if (!resultUrl && typeof output === 'string' && output.startsWith('http')) {
+            resultUrl = output;
+        }
+
+        // 3b. Если output — строка base64
+        if (!resultUrl && typeof output === 'string' && output.length > 100) {
+            console.log(`[WebHandler] Output is a long string (${output.length} chars), treating as base64`);
+            return formatResponse(true, null, null, { type: 'image_base64', content: output });
+        }
+
+        // 4. Проверяем data.result/data.output на верхнем уровне
+        if (!resultUrl) {
+            const topLevel = result.data || result;
+            const urlFields = ['videoUrl', 'url', 'video_url', 'imageUrl', 'image_url', 'outputUrl', 'output_url', 'downloadUrl', 'download_url', 'resultUrl', 'result_url', 'source_url', 'src'];
+            for (const field of urlFields) {
+                if (topLevel?.[field] && typeof topLevel[field] === 'string' && topLevel[field].startsWith('http')) {
+                    resultUrl = topLevel[field];
+                    break;
+                }
+            }
+        }
+
+        // 5. Проверяем data.images / data.videos
+        if (!resultUrl && result.data) {
+            const imgOrVidFields = ['images', 'videos', 'results', 'output_images', 'output_videos'];
+            for (const field of imgOrVidFields) {
+                const arr = result.data[field];
+                if (Array.isArray(arr) && arr.length > 0) {
+                    const first = arr[0];
+                    if (typeof first === 'string' && first.startsWith('http')) {
+                        resultUrl = first;
+                        console.log(`[WebHandler] Found URL in data.${field}[0]`);
+                        break;
+                    } else if (typeof first === 'object' && first !== null) {
+                        for (const subField of ['url', 'imageUrl', 'videoUrl', 'downloadUrl', 'src']) {
+                            if (first[subField] && typeof first[subField] === 'string' && first[subField].startsWith('http')) {
+                                resultUrl = first[subField];
+                                console.log(`[WebHandler] Found URL in data.${field}[0].${subField}`);
+                                break;
+                            }
+                        }
+                        if (resultUrl) break;
+                    }
+                }
+            }
+        }
+
+        if (resultUrl) {
+            // Для изображений — скачиваем на сервере
+            if (taskType !== 'video') {
+                const downloaded = await downloadImageWithProxy(resultUrl, env);
+                if (downloaded) {
+                    const imgBase64 = downloaded;
+                    console.log(`[WebHandler] Downloaded image: base64 length=${imgBase64.length}`);
+                    if (uploadBase64ImageToPublicUrl) {
+                        try {
+                            const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId);
+                            if (uploadedUrl && typeof uploadedUrl === 'string') {
+                                console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
+                                return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
+                            }
+                        } catch (e) {
+                            console.warn(`[WebHandler] Re-upload failed: ${e.message}, returning base64`);
+                        }
+                    }
+                    return formatResponse(true, null, null, { type: 'image_base64', content: imgBase64 });
+                }
+                console.error(`[WebHandler] All download methods failed for: ${resultUrl.substring(0, 100)}`);
+                return formatResponse(false, 'Не удалось скачать изображение. Попробуйте другую модель.');
+            }
+            if (taskType === 'audio') {
+                return formatResponse(true, null, null, { type: 'audio_url', content: resultUrl });
+            }
+            return formatResponse(true, null, null, { type: 'video_url', content: resultUrl });
+        } else {
+            // 6. Глубокий рекурсивный поиск
+            const deepFindUrl = (obj, depth) => {
+                if (depth > 5 || !obj || typeof obj !== 'object') return null;
+                for (const key of Object.keys(obj)) {
+                    const val = obj[key];
+                    if (typeof val === 'string' && val.startsWith('http') && (val.includes('.png') || val.includes('.jpg') || val.includes('.webp') || val.includes('.mp4') || val.includes('.mp3') || val.includes('/image') || val.includes('/video') || val.includes('/audio') || val.includes('storage') || val.includes('cdn') || val.includes('s3') || val.includes('blob'))) {
+                        console.log(`[WebHandler] Deep found URL at depth ${depth} key="${key}": ${val.substring(0, 100)}`);
+                        return val;
+                    }
+                    if (typeof val === 'string' && val.startsWith('http') && val.length > 50) {
+                        console.log(`[WebHandler] Deep found possible URL at depth ${depth} key="${key}": ${val.substring(0, 100)}`);
+                        return val;
+                    }
+                    const nested = deepFindUrl(val, depth + 1);
+                    if (nested) return nested;
+                }
+                return null;
+            };
+            resultUrl = deepFindUrl(result, 0);
+            if (resultUrl) {
+                const resultType = taskType === 'video' ? 'video_url' : taskType === 'audio' ? 'audio_url' : 'image_url';
+                return formatResponse(true, null, null, { type: resultType, content: resultUrl });
+            }
+            const safeOutput = output != null ? (JSON.stringify(output) || '').substring(0, 2000) : 'null';
+            const safeResult = result != null ? (JSON.stringify(result) || '').substring(0, 2000) : 'null';
+            console.log(`[WebHandler] KieAI success but no URL found. Full output:`, safeOutput);
+            console.log(`[WebHandler] Full result:`, safeResult);
+            return formatResponse(false, 'Задача не удалась: результат не найден в ответе KieAI');
+        }
+    } else if (state === 'waiting' || state === 'processing' || state === 'queued') {
+        return formatResponse(true, null, null, { type: 'task_pending', state: state });
+    } else if (state === 'failed') {
+        const errorMsg = output?.error || output?.message || result.data?.error || 'Задача не удалась';
+        return formatResponse(false, 'Задача не удалась: ' + errorMsg);
+    } else {
+        return formatResponse(true, null, null, { type: 'task_pending', state: state || 'unknown' });
+    }
+}
+
 // Web frontend polls this endpoint to check if an async KieAI
 // task (image/video generation) has completed.
 async function handleTaskStatus(auth, payload, env, monolith) {
@@ -2294,13 +2522,41 @@ async function handleTaskStatus(auth, payload, env, monolith) {
     const chatId = String(auth.id);
     const taskId = payload?.task_id;
     const taskType = payload?.task_type || 'image'; // 'image' or 'video'
-    const { uploadBase64ImageToPublicUrl } = monolith || {};
+    const { uploadBase64ImageToPublicUrl, getKieAiTaskResultForWeb } = monolith || {};
 
     if (!taskId) {
         return formatResponse(false, 'Не указан task_id');
     }
 
-    // Get the KieAI API key
+    // 🛑 ПУТЬ 1: Проверяем KV — callback с platform=web уже мог сохранить результат
+    if (getKieAiTaskResultForWeb) {
+        try {
+            const kvResult = await getKieAiTaskResultForWeb(taskId, env);
+            if (kvResult) {
+                console.log(`[WebHandler] Found task ${taskId} in KV (callback), state=${kvResult.state}`);
+                if (kvResult.state === 'success' || kvResult.state === 'succeeded') {
+                    // Преобразуем KV-данные в формат API ответа для унифицированной обработки ниже
+                    // kvResult.resultJson — это тот же JSON, что и result.data.resultJson из API
+                    const simulatedApiResult = {
+                        code: 200,
+                        data: {
+                            state: kvResult.state,
+                            resultJson: kvResult.resultJson,
+                            output: kvResult.resultJson // Иногда результат в output
+                        }
+                    };
+                    return await processKieAiApiResponse(simulatedApiResult, taskType, chatId, env, uploadBase64ImageToPublicUrl);
+                } else if (kvResult.state === 'failed' || kvResult.state === 'fail') {
+                    return formatResponse(false, 'Задача не удалась: ' + (kvResult.failMsg || 'Ошибка'));
+                }
+                // Если state — processing/waiting — продолжаем к API polling
+            }
+        } catch (e) {
+            console.warn(`[WebHandler] KV check failed for task ${taskId}: ${e.message}`);
+        }
+    }
+
+    // 🛑 ПУТЬ 2: Fallback — прямое API-опрашивание KieAI
     const apiKey = env.KIEAI_API_KEY;
     if (!apiKey) {
         return formatResponse(false, 'KieAI API ключ не настроен');
@@ -2325,243 +2581,13 @@ async function handleTaskStatus(auth, payload, env, monolith) {
         const result = await response.json();
         // ✅ Логируем полный ответ KieAI для дебага (безопасно)
         const safeLogResult = result != null ? (JSON.stringify(result) || '').substring(0, 2000) : 'null';
-        console.log(`[WebHandler] KieAI task ${taskId} response:`, safeLogResult);
+        console.log(`[WebHandler] KieAI task ${taskId} API response:`, safeLogResult);
 
         if (result.code !== 200 && result.code !== undefined) {
             return formatResponse(false, 'KieAI API ошибка: ' + (result.msg || result.message || 'Unknown error'));
         }
 
-        const state = result.data?.state;
-        const output = result.data?.output;
-        const resultJson = result.data?.resultJson; // KieAI использует resultJson для хранения URL
-
-        if (state === 'success' || state === 'succeeded') {
-            // ✅ Улучшенное извлечение результата: проверяем все возможные форматы ответа KieAI
-            let resultUrl = null;
-
-            // -1. KieAI format: resultJson — JSON-строка с resultUrls[]
-            if (!resultUrl && resultJson) {
-                try {
-                    const parsed = typeof resultJson === 'string' ? JSON.parse(resultJson) : resultJson;
-                    // resultUrls — основной формат KieAI для изображений и видео
-                    if (Array.isArray(parsed?.resultUrls) && parsed.resultUrls.length > 0) {
-                        resultUrl = parsed.resultUrls[0];
-                        console.log(`[WebHandler] Found URL in resultJson.resultUrls[0]: ${String(resultUrl || '').substring(0, 100)}`);
-                    }
-                    // Также проверяем другие поля в resultJson
-                    if (!resultUrl) {
-                        for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'outputUrl', 'src', 'source_url']) {
-                            if (parsed?.[field] && typeof parsed[field] === 'string' && parsed[field].startsWith('http')) {
-                                resultUrl = parsed[field];
-                                console.log(`[WebHandler] Found URL in resultJson.${field}: ${String(resultUrl || '').substring(0, 100)}`);
-                                break;
-                            }
-                        }
-                    }
-                    // images/videos массивы
-                    if (!resultUrl) {
-                        for (const field of ['images', 'videos', 'urls', 'outputs']) {
-                            if (Array.isArray(parsed?.[field]) && parsed[field].length > 0) {
-                                const first = parsed[field][0];
-                                if (typeof first === 'string' && first.startsWith('http')) {
-                                    resultUrl = first;
-                                    console.log(`[WebHandler] Found URL in resultJson.${field}[0]`);
-                                    break;
-                                } else if (typeof first === 'object' && first?.url) {
-                                    resultUrl = first.url;
-                                    console.log(`[WebHandler] Found URL in resultJson.${field}[0].url`);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`[WebHandler] Failed to parse resultJson: ${e.message}`);
-                }
-            }
-
-            // 0. KieAI часто возвращает output как массив строк-URL
-            if (Array.isArray(output) && output.length > 0) {
-                for (const item of output) {
-                    if (typeof item === 'string' && item.startsWith('http')) {
-                        resultUrl = item;
-                        console.log(`[WebHandler] Found URL in output array: ${String(resultUrl || '').substring(0, 100)}`);
-                        break;
-                    } else if (typeof item === 'object' && item !== null) {
-                        for (const field of ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src', 'source_url']) {
-                            if (item[field] && typeof item[field] === 'string' && item[field].startsWith('http')) {
-                                resultUrl = item[field];
-                                console.log(`[WebHandler] Found URL in output[].${field}: ${String(resultUrl || '').substring(0, 100)}`);
-                                break;
-                            }
-                        }
-                        if (resultUrl) break;
-                    }
-                }
-            }
-
-            // 1. Прямые URL поля
-            if (!resultUrl) {
-                const urlFields = ['videoUrl', 'url', 'video_url', 'imageUrl', 'image_url', 'outputUrl', 'output_url', 'downloadUrl', 'download_url', 'resultUrl', 'result_url', 'source_url', 'src'];
-                for (const field of urlFields) {
-                    if (output?.[field] && typeof output[field] === 'string' && output[field].startsWith('http')) {
-                        resultUrl = output[field];
-                        console.log(`[WebHandler] Found URL in output.${field}: ${String(resultUrl || '').substring(0, 100)}`);
-                        break;
-                    }
-                }
-            }
-
-            // 2. Массивы URL
-            if (!resultUrl) {
-                const arrayFields = ['videos', 'images', 'urls', 'outputs', 'results', 'files'];
-                for (const field of arrayFields) {
-                    if (Array.isArray(output?.[field]) && output[field].length > 0) {
-                        const item = output[field][0];
-                        if (typeof item === 'string' && item.startsWith('http')) {
-                            resultUrl = item;
-                        } else if (typeof item === 'object') {
-                            const urlFields = ['url', 'videoUrl', 'imageUrl', 'downloadUrl', 'src'];
-                            for (const subField of urlFields) {
-                                if (item[subField] && typeof item[subField] === 'string' && item[subField].startsWith('http')) {
-                                    resultUrl = item[subField];
-                                    break;
-                                }
-                            }
-                        }
-                        if (resultUrl) {
-                            console.log(`[WebHandler] Found URL in output.${field}[0]`);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // 3. Если output — сам строка URL
-            if (!resultUrl && typeof output === 'string' && output.startsWith('http')) {
-                resultUrl = output;
-            }
-
-            // 3b. Если output — строка base64 (без http префикса)
-            if (!resultUrl && typeof output === 'string' && output.length > 100) {
-                // Может быть base64 данные изображения
-                console.log(`[WebHandler] Output is a long string (${output.length} chars), treating as base64`);
-                return formatResponse(true, null, null, { type: 'image_base64', content: output });
-            }
-
-            // 4. Проверяем data.result/data.output на верхнем уровне
-            if (!resultUrl) {
-                const topLevel = result.data || result;
-                const urlFields = ['videoUrl', 'url', 'video_url', 'imageUrl', 'image_url', 'outputUrl', 'output_url', 'downloadUrl', 'download_url', 'resultUrl', 'result_url', 'source_url', 'src'];
-                for (const field of urlFields) {
-                    if (topLevel?.[field] && typeof topLevel[field] === 'string' && topLevel[field].startsWith('http')) {
-                        resultUrl = topLevel[field];
-                        break;
-                    }
-                }
-            }
-
-            // 5. Проверяем data.images / data.videos (KieAI T2I/I2I формат)
-            if (!resultUrl && result.data) {
-                const imgOrVidFields = ['images', 'videos', 'results', 'output_images', 'output_videos'];
-                for (const field of imgOrVidFields) {
-                    const arr = result.data[field];
-                    if (Array.isArray(arr) && arr.length > 0) {
-                        const first = arr[0];
-                        if (typeof first === 'string' && first.startsWith('http')) {
-                            resultUrl = first;
-                            console.log(`[WebHandler] Found URL in data.${field}[0]`);
-                            break;
-                        } else if (typeof first === 'object' && first !== null) {
-                            for (const subField of ['url', 'imageUrl', 'videoUrl', 'downloadUrl', 'src']) {
-                                if (first[subField] && typeof first[subField] === 'string' && first[subField].startsWith('http')) {
-                                    resultUrl = first[subField];
-                                    console.log(`[WebHandler] Found URL in data.${field}[0].${subField}`);
-                                    break;
-                                }
-                            }
-                            if (resultUrl) break;
-                        }
-                    }
-                }
-            }
-
-            if (resultUrl) {
-                // 🧠 Для изображений — скачиваем на сервере и возвращаем base64,
-                // т.к. временные URL (tempfile.aiquickdraw.com) часто недоступны с клиента
-                if (taskType !== 'video') {
-                    const downloaded = await downloadImageWithProxy(resultUrl, env);
-                    if (downloaded) {
-                        const imgBase64 = downloaded;
-                        console.log(`[WebHandler] Downloaded image: base64 length=${imgBase64.length}`);
-                        // Пробуем загрузить в публичный URL
-                        if (uploadBase64ImageToPublicUrl) {
-                            try {
-                                const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId);
-                                if (uploadedUrl && typeof uploadedUrl === 'string') {
-                                    console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
-                                    return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
-                                }
-                            } catch (e) {
-                                console.warn(`[WebHandler] Re-upload failed: ${e.message}, returning base64`);
-                            }
-                        }
-                        return formatResponse(true, null, null, { type: 'image_base64', content: imgBase64 });
-                    }
-                    // Все способы скачивания не удаллись — для изображений это фатально
-                    console.error(`[WebHandler] All download methods failed for: ${resultUrl.substring(0, 100)}`);
-                    return formatResponse(false, 'Не удалось скачать изображение. Попробуйте другую модель.');
-                }
-                // Для видео — возвращаем URL как есть
-                if (taskType === 'audio') {
-                    return formatResponse(true, null, null, { type: 'audio_url', content: resultUrl });
-                }
-                return formatResponse(true, null, null, { type: 'video_url', content: resultUrl });
-            } else {
-                // 6. Глубокий рекурсивный поиск URL во всём ответе
-                const deepFindUrl = (obj, depth) => {
-                    if (depth > 5 || !obj || typeof obj !== 'object') return null;
-                    for (const key of Object.keys(obj)) {
-                        const val = obj[key];
-                        if (typeof val === 'string' && val.startsWith('http') && (val.includes('.png') || val.includes('.jpg') || val.includes('.webp') || val.includes('.mp4') || val.includes('.mp3') || val.includes('/image') || val.includes('/video') || val.includes('/audio') || val.includes('storage') || val.includes('cdn') || val.includes('s3') || val.includes('blob'))) {
-                            console.log(`[WebHandler] Deep found URL at depth ${depth} key="${key}": ${val.substring(0, 100)}`);
-                            return val;
-                        }
-                        if (typeof val === 'string' && val.startsWith('http') && val.length > 50) {
-                            console.log(`[WebHandler] Deep found possible URL at depth ${depth} key="${key}": ${val.substring(0, 100)}`);
-                            return val;
-                        }
-                        const nested = deepFindUrl(val, depth + 1);
-                        if (nested) return nested;
-                    }
-                    return null;
-                };
-
-                resultUrl = deepFindUrl(result, 0);
-
-                if (resultUrl) {
-                    const resultType = taskType === 'video' ? 'video_url' : taskType === 'audio' ? 'audio_url' : 'image_url';
-                    return formatResponse(true, null, null, { type: resultType, content: resultUrl });
-                }
-
-                // Output exists but no recognizable URL — логируем полный ответ для дебага
-                const safeOutput = output != null ? (JSON.stringify(output) || '').substring(0, 2000) : 'null';
-                const safeResult = result != null ? (JSON.stringify(result) || '').substring(0, 2000) : 'null';
-                console.log(`[WebHandler] KieAI success but no URL found. Full output:`, safeOutput);
-                console.log(`[WebHandler] Full result:`, safeResult);
-                // 🛑 ФАТАЛЬНАЯ ошибка — НЕ повторять! Задача выполнена но результат не найден
-                return formatResponse(false, 'Задача не удалась: результат не найден в ответе KieAI');
-            }
-        } else if (state === 'waiting' || state === 'processing' || state === 'queued') {
-            // Task still in progress
-            return formatResponse(true, null, null, { type: 'task_pending', state: state });
-        } else if (state === 'failed') {
-            const errorMsg = output?.error || output?.message || result.data?.error || 'Задача не удалась';
-            return formatResponse(false, 'Задача не удалась: ' + errorMsg);
-        } else {
-            // Unknown state — treat as pending
-            return formatResponse(true, null, null, { type: 'task_pending', state: state || 'unknown' });
-        }
+        return await processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl);
     } catch (e) {
         console.error("[WebHandler] Task status check error:", e.message);
         return formatResponse(false, 'Ошибка проверки статуса: ' + e.message);

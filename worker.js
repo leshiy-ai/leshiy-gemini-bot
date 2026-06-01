@@ -1464,33 +1464,72 @@ async function loadActiveConfig(serviceType, envData, chatId) {
  * @returns {Promise<string>} - Публичный URL изображения.
  */
 async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
-    const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE; 
     const PUBLIC_DOMAIN = envData.WORKER_DOMAIN.startsWith('http') 
         ? envData.WORKER_DOMAIN 
         : `https://${envData.WORKER_DOMAIN}`;
     
-    if (!IMAGE_STORAGE) {
-         throw new Error("Critical: LAST_PHOTO_STORAGE binding is missing.");
-    }
-
     // Убираем префикс (поддерживаем jpeg и png)
     const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
-    // Читаем режим (creativeMode) из базы, как у тебя заведено
-    const mode = (await IMAGE_STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX))|| 'I2I';
-    // Декодируем (Buffer — самый надежный способ в Node.js/Yandex)
+    
+    // Определяем режим (I2I/T2I/upscale и т.д.)
+    let mode = 'I2I';
+    const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE;
+    if (IMAGE_STORAGE) {
+        try {
+            mode = (await IMAGE_STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX)) || 'I2I';
+        } catch(e) {}
+    }
+    
+    // Декодируем base64 → Buffer
     const buffer = Buffer.from(base64, 'base64');
     
-    // Создаем ключ (как в твоем оригинале)
+    // Формируем ключ и URL
     const imageKey = `${mode}/${chatId}/${Date.now()}.png`;
+    const publicUrl = `${PUBLIC_DOMAIN}/kv-images/${imageKey}`;
 
-    // Сохраняем (в Яндексе put принимает Buffer напрямую)
+    // 🛑 ПРИОРИТЕТ: S3 (Yandex Cloud) — API Gateway раздаёт /kv-images/ напрямую из S3
+    // Это решает проблему 404 при отдаче картинок через KV/YDB
+    if (envData.YANDEX_S3_KEY_ID && envData.YANDEX_S3_SECRET) {
+        try {
+            const s3 = new AWS.S3({
+                accessKeyId: envData.YANDEX_S3_KEY_ID,
+                secretAccessKey: envData.YANDEX_S3_SECRET,
+                endpoint: S3_CONFIG.endpoint,
+                s3ForcePathStyle: true,
+                region: S3_CONFIG.region,
+                apiVersion: 'latest',
+            });
+
+            // Ключ в S3: kv-images/{mode}/{chatId}/{timestamp}.png
+            // API Gateway /kv-images/{folder}/{subfolder}/{file} → S3 object kv-images/{folder}/{subfolder}/{file}
+            const s3Key = `kv-images/${imageKey}`;
+            
+            await s3.putObject({
+                Bucket: S3_CONFIG.bucket,  // leshiy-storage-history
+                Key: s3Key,
+                Body: buffer,
+                ContentType: 'image/png',
+                ACL: 'public-read',  // Публичный доступ для чтения
+            }).promise();
+            
+            console.log(`[uploadBase64Image] Uploaded to S3: ${s3Key} (${buffer.length} bytes)`);
+            return publicUrl;
+        } catch (s3Err) {
+            console.error(`[uploadBase64Image] S3 upload failed: ${s3Err.message}, falling back to KV`);
+        }
+    }
+
+    // 🛑 FALLBACK: KV/YDB (Cloudflare Workers — там KV работает надёжно)
+    if (!IMAGE_STORAGE) {
+        throw new Error("Critical: No S3 credentials and LAST_PHOTO_STORAGE binding missing.");
+    }
+    
     await IMAGE_STORAGE.put(imageKey, buffer, {
         httpMetadata: { contentType: 'image/png' },
         expirationTtl: 3600 
     });
 
-    // Возвращаем URL
-    return `${PUBLIC_DOMAIN}/kv-images/${imageKey}`;
+    return publicUrl;
 }
 
 // ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
@@ -11841,7 +11880,10 @@ async function createTaskKieAi(chatId, modelConfig, input, envData, callBackUrl 
     // 🛑 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ #2: Унифицированное формирование Callback URL
     let calculatedCallBackUrl = null;
     if (envData.chatId && envData.WORKER_DOMAIN) {
-        calculatedCallBackUrl = `${envData.WORKER_DOMAIN}/api/kieai-callback?chatId=${envData.chatId}`;
+        // 🛑 ИСПРАВЛЕНИЕ: Добавляем platform=web для веб-задач, чтобы callback
+        // сохранял результат в KV (через saveKieAiCallbackForWeb), а не в Telegram
+        const platformParam = envData.platform === 'web' ? '&platform=web' : '';
+        calculatedCallBackUrl = `${envData.WORKER_DOMAIN}/api/kieai-callback?chatId=${envData.chatId}${platformParam}`;
     }
 
     // 1. Формирование тела запроса
