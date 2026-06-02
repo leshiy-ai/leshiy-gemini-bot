@@ -7007,6 +7007,16 @@
                 handleVideoConvert(input);
             } else if (id === 'audioConvertZone') {
                 handleAudioConvert(input);
+            } else if (id === 'videoRotateZone') {
+                handleVideoRotateUpload(input);
+            } else if (id === 'videoResizeZone') {
+                handleVideoResizeUpload(input);
+            } else if (id === 'imageResizeZone') {
+                handleImageResizeUpload(input);
+            } else if (id === 'imageConvertZone') {
+                handleImageConvertUpload(input);
+            } else if (id === 'videoStopFrameZone') {
+                handleStopFrame(input);
             } else if (id === 'voiceCloneZone') {
                 // Если аудио перетаскивается из результата (а не с десктопа) — добавляем как вложение в чат
                 if (_dragState && _dragState.attachment && _dragState.sourceIndex === -1) {
