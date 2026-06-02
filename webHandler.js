@@ -873,7 +873,7 @@ async function handleImage(auth, payload, env, monolith) {
                 // Загружаем референсное изображение в публичный URL
                 let imageUrl;
                 try {
-                    imageUrl = await uploadBase64ImageToPublicUrl(refImage, env, chatId, 'i2i');
+                    imageUrl = await uploadBase64ImageToPublicUrl(refImage, env, chatId, 'I2I');
                     if (!imageUrl) throw new Error('Не удалось загрузить изображение');
                 } catch (e) {
                     return formatResponse(false, 'Ошибка загрузки изображения: ' + e.message);
@@ -905,7 +905,7 @@ async function handleImage(auth, payload, env, monolith) {
         }
 
         const creditsLeft = await deductCredits(chatId, 4, env, monolith);
-        return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 'i2i');
+        return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 'I2I');
     }
 
     // === T2I (Text-to-Image, default) ===
@@ -969,7 +969,7 @@ async function handleImage(auth, payload, env, monolith) {
         creditsLeft = await deductCredits(chatId, 4, env, monolith);
     }
 
-    return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 't2i');
+    return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 'T2I');
 }
 
 // Helper: форматирование результата изображения
@@ -2431,7 +2431,7 @@ async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase
                     console.log(`[WebHandler] Downloaded image: base64 length=${imgBase64.length}`);
                     if (uploadBase64ImageToPublicUrl) {
                         try {
-                            const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId, s3Mode || 'img');
+                            const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId, s3Mode || 'IMG');
                             if (uploadedUrl && typeof uploadedUrl === 'string') {
                                 console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
                                 return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
@@ -2501,8 +2501,9 @@ async function handleTaskStatus(auth, payload, env, monolith) {
     const imageMode = payload?.image_mode || null; // 't2i', 'i2i', 'recognition', 'vid', 'tts' и т.д.
     const { uploadBase64ImageToPublicUrl, getKieAiTaskResultForWeb } = monolith || {};
 
-    // 🛑 Формируем mode для S3-папки из imageMode или taskType
-    const s3Mode = imageMode || (taskType === 'video' ? 'vid' : taskType === 'audio' ? 'aud' : 'img');
+    // 🛑 Формируем mode для S3-папки из imageMode или taskType (ЗАГЛАВНЫМИ — как в боте)
+    const rawMode = imageMode || (taskType === 'video' ? 'vid' : taskType === 'audio' ? 'aud' : 'img');
+    const s3Mode = rawMode.toUpperCase(); // T2I, I2I, VID, AUD, IMG — единообразно с ботом
 
     if (!taskId) {
         return formatResponse(false, 'Не указан task_id');
