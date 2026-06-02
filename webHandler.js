@@ -1070,16 +1070,17 @@ function mapKieAiVideoParams(ratio, duration, quality) {
     const ratioMap = { '16:9': '3:2', '9:16': '2:3', '3:4': '2:3', '1:1': '1:1' };
     const mappedRatio = ratioMap[ratio] || ratioMap['16:9']; // дефолт 3:2
 
-    // duration: KIE.AI принимает только 6 или 8
+    // duration: KIE.AI принимает только 6 или 8 (ЧИСЛО, не строка!)
     const d = parseInt(duration) || 6;
-    const mappedDuration = d >= 8 ? '8' : '6';
+    const mappedDuration = d >= 8 ? 8 : 6;
 
-    // quality: 580p → 720p, остальное как есть
-    const qualityMap = { '580p': '720p' };
-    const mappedQuality = qualityMap[quality] || quality || '480p';
+    // resolution: 580p → 720p, остальное как есть
+    // 🛑 KIE.AI API использует поле "resolution", НЕ "quality"!
+    const resolutionMap = { '580p': '720p' };
+    const mappedResolution = resolutionMap[quality] || quality || '480p';
 
-    console.log(`[mapKieAiVideoParams] ratio: ${ratio}→${mappedRatio}, duration: ${duration}→${mappedDuration}, quality: ${quality}→${mappedQuality}`);
-    return { ratio: mappedRatio, duration: mappedDuration, quality: mappedQuality };
+    console.log(`[mapKieAiVideoParams] ratio: ${ratio}→${mappedRatio}, duration: ${duration}→${mappedDuration}, resolution: ${quality}→${mappedResolution}`);
+    return { ratio: mappedRatio, duration: mappedDuration, resolution: mappedResolution };
 }
 
 // ============================================================
@@ -1361,13 +1362,13 @@ async function handleVideo(auth, payload, env, monolith) {
 
         if (videoSubMode === 't2v') {
             // === TEXT-TO-VIDEO: только промпт и параметры, БЕЗ референсов ===
-            // 🛑 МАППИНГ: KIE.AI не понимает 16:9/5 сек — маппим как в боте!
+            // 🛑 По API-докаиентации KIE.AI: prompt, aspect_ratio, mode, duration, resolution
             const t2vParams = mapKieAiVideoParams(payload.aspect_ratio, payload.duration, payload.quality);
             input = {
                 prompt: prompt,
                 aspect_ratio: t2vParams.ratio,
                 duration: t2vParams.duration,
-                quality: t2vParams.quality,
+                resolution: t2vParams.resolution,
                 mode: 'normal'
             };
         } else if (videoSubMode === 'i2v') {
@@ -1377,14 +1378,14 @@ async function handleVideo(auth, payload, env, monolith) {
                 payload.reference_image, env, chatId, 'I2V', 'image', 'png', uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl
             );
             if (!imageUrl) return formatResponse(false, 'Не удалось загрузить изображение для I2V');
-            // 🛑 МАППИНГ: KIE.AI не понимает 16:9/5 сек — маппим как в боте!
+            // 🛑 По API-документации KIE.AI: prompt, mode, duration, resolution
+            // 🛑 aspect_ratio НЕДЕЙСТВИТЕЛЕН для одного изображения (дока: "invalid if it is a single image")
             const i2vParams = mapKieAiVideoParams(payload.aspect_ratio, payload.duration, payload.quality);
             input = {
                 image_urls: [imageUrl],
                 prompt: prompt,
-                aspect_ratio: i2vParams.ratio,
                 duration: i2vParams.duration,
-                quality: i2vParams.quality,
+                resolution: i2vParams.resolution,
                 mode: 'normal'
             };
         } else if (videoSubMode === 'v2v') {
@@ -1402,23 +1403,21 @@ async function handleVideo(auth, payload, env, monolith) {
             // Wan и Kling модели используют разные поля
             const modelKey = modelInfo.key || '';
             if (modelKey.includes('Kling')) {
-                // 🛑 МАППИНГ качества: 580p → 720p для Kling
-                const klingQuality = mapKieAiVideoParams(null, null, payload.quality).quality;
+                const klingResolution = mapKieAiVideoParams(null, null, payload.quality).resolution;
                 input = {
                     input_urls: imageUrl,
                     video_urls: videoUrl,
                     prompt: prompt || 'Change character from photo on video',
                     character_orientation: 'video',
-                    mode: klingQuality
+                    mode: klingResolution
                 };
             } else {
-                // Wan (по умолчанию)
-                // 🛑 МАППИНГ качества: 580p → 720p для Wan
-                const wanQuality = mapKieAiVideoParams(null, null, payload.quality).quality;
+                // Wan (по умолчанию): input.video_url, input.image_url, resolution
+                const wanResolution = mapKieAiVideoParams(null, null, payload.quality).resolution;
                 input = {
                     video_url: videoUrl,
                     image_url: imageUrl,
-                    resolution: wanQuality
+                    resolution: wanResolution
                 };
             }
         } else if (videoSubMode === 'a2v') {
@@ -1433,13 +1432,13 @@ async function handleVideo(auth, payload, env, monolith) {
             );
             if (!imageUrl) return formatResponse(false, 'Не удалось загрузить фото для A2V');
             if (!audioUrl) return formatResponse(false, 'Не удалось загрузить аудио для A2V');
-            // 🛑 МАППИНГ качества: 580p → 720p для A2V
-            const a2vQuality = mapKieAiVideoParams(null, null, payload.quality).quality;
+            // 🛑 По API-документации KIE.AI: input.image_url, input.audio_url, input.prompt, input.resolution
+            const a2vResolution = mapKieAiVideoParams(null, null, payload.quality).resolution;
             input = {
                 image_url: imageUrl,
                 audio_url: audioUrl,
                 prompt: prompt || 'A detailed talking avatar video.',
-                resolution: a2vQuality
+                resolution: a2vResolution
             };
         } else {
             // Неизвестный подтип — просто промпт с маппингом
@@ -1448,7 +1447,7 @@ async function handleVideo(auth, payload, env, monolith) {
                 prompt: prompt,
                 aspect_ratio: defaultParams.ratio,
                 duration: defaultParams.duration,
-                quality: defaultParams.quality,
+                resolution: defaultParams.resolution,
                 mode: 'normal'
             };
         }
@@ -2380,6 +2379,157 @@ async function downloadImageWithProxy(imageUrl, env) {
     return null;
 }
 
+/**
+ * 🛑 Скачивает видео с CDN KIE.AI сервер-сайд и возвращает base64.
+ * Аналог downloadImageWithProxy, но для видео (увеличенные таймауты, большие размеры).
+ * Нужен потому что браузер не может загрузить видео с CDN KIE.AI из-за CORS.
+ */
+async function downloadVideoWithProxy(videoUrl, env) {
+    console.log(`[WebHandler] downloadVideoWithProxy: ${videoUrl.substring(0, 100)}`);
+
+    // --- ПОПЫТКА 1: Прямой fetch (с увеличенным таймаутом для видео) ---
+    try {
+        const vidResponse = await fetch(videoUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'video/*,*/*;q=0.8'
+            },
+            signal: AbortSignal.timeout(60000) // 60 сек — видео может быть большим
+        });
+        if (vidResponse.ok) {
+            const vidBuffer = Buffer.from(await vidResponse.arrayBuffer());
+            if (vidBuffer.length > 1000) { // Видео должно быть > 1KB
+                console.log(`[WebHandler] Direct video download OK: ${vidBuffer.length} bytes`);
+                return vidBuffer.toString('base64');
+            }
+            console.warn(`[WebHandler] Direct video download suspicious: only ${vidBuffer.length} bytes`);
+        } else {
+            console.warn(`[WebHandler] Direct video download failed: HTTP ${vidResponse.status}`);
+        }
+    } catch (e) {
+        console.warn(`[WebHandler] Direct video download error: ${e.message}`);
+    }
+
+    // --- ПОПЫТКА 2: Через Cloudflare Fallback Proxy ---
+    const fallbackProxy = env.FALLBACK_PROXY || 'https://leshiy-ai-proxy.leshiyalex.workers.dev';
+    if (fallbackProxy) {
+        try {
+            console.log(`[WebHandler] Trying CF fallback proxy for video...`);
+            const proxyResponse = await fetch(fallbackProxy, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Target-URL': videoUrl,
+                    'X-Proxy-Secret': env.PROXY_SECRET_KEY || env.GEMINI_PROXY_KEY || '',
+                    'X-HTTP-Method': 'GET'
+                },
+                body: JSON.stringify({ _proxy_target: videoUrl }),
+                signal: AbortSignal.timeout(60000)
+            });
+            if (proxyResponse.ok) {
+                const ct = proxyResponse.headers.get('content-type') || '';
+                if (ct.includes('json')) {
+                    try {
+                        const jsonData = await proxyResponse.json();
+                        const proxyUrl = jsonData.url || jsonData.data?.url || jsonData.video_url;
+                        if (proxyUrl) {
+                            console.log(`[WebHandler] CF proxy returned URL: ${proxyUrl.substring(0, 80)}`);
+                            const vidResponse = await fetch(proxyUrl, { signal: AbortSignal.timeout(60000) });
+                            if (vidResponse.ok) {
+                                const vidBuffer = Buffer.from(await vidResponse.arrayBuffer());
+                                if (vidBuffer.length > 1000) return vidBuffer.toString('base64');
+                            }
+                        }
+                    } catch (_) {}
+                } else {
+                    const vidBuffer = Buffer.from(await proxyResponse.arrayBuffer());
+                    if (vidBuffer.length > 1000) {
+                        console.log(`[WebHandler] CF proxy video download OK: ${vidBuffer.length} bytes`);
+                        return vidBuffer.toString('base64');
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn(`[WebHandler] CF proxy video error: ${e.message}`);
+        }
+    }
+
+    // --- ПОПЫТКА 3: Через Yandex Cloud Proxy ---
+    const yandexProxy = env.LESHIY_AI_PROXY;
+    if (yandexProxy && typeof yandexProxy.fetch === 'function') {
+        try {
+            console.log(`[WebHandler] Trying Yandex proxy for video...`);
+            const proxyResponse = await yandexProxy.fetch(videoUrl, {
+                method: 'GET',
+                headers: {
+                    'X-Target-URL': videoUrl,
+                    'X-Proxy-Secret': env.PROXY_SECRET_KEY || env.GEMINI_PROXY_KEY || '',
+                    'Accept': 'video/*,*/*;q=0.8'
+                }
+            });
+            if (proxyResponse.ok) {
+                const vidBuffer = Buffer.from(await proxyResponse.arrayBuffer());
+                if (vidBuffer.length > 1000) {
+                    console.log(`[WebHandler] Yandex proxy video download OK: ${vidBuffer.length} bytes`);
+                    return vidBuffer.toString('base64');
+                }
+            }
+        } catch (e) {
+            console.warn(`[WebHandler] Yandex proxy video error: ${e.message}`);
+        }
+    }
+
+    // --- ПОПЫТКА 4: Через Gemini Proxy ---
+    const geminiProxy = env.GEMINI_PROXY || 'https://gemini-proxy.leshiyalex.workers.dev';
+    const geminiProxyKey = env.GEMINI_PROXY_KEY || env.PROXY_SECRET_KEY || '';
+    if (geminiProxy) {
+        try {
+            console.log(`[WebHandler] Trying Gemini proxy for video...`);
+            const proxyUrl = `${geminiProxy.startsWith('http') ? geminiProxy : 'https://' + geminiProxy}/proxy-image`;
+            const proxyResponse = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Proxy-Secret': geminiProxyKey,
+                    'X-Target-URL': videoUrl
+                },
+                body: JSON.stringify({ url: videoUrl }),
+                signal: AbortSignal.timeout(60000)
+            });
+            if (proxyResponse.ok) {
+                const vidBuffer = Buffer.from(await proxyResponse.arrayBuffer());
+                if (vidBuffer.length > 1000) {
+                    console.log(`[WebHandler] Gemini proxy video download OK: ${vidBuffer.length} bytes`);
+                    return vidBuffer.toString('base64');
+                }
+            }
+        } catch (e) {
+            console.warn(`[WebHandler] Gemini proxy video error: ${e.message}`);
+        }
+    }
+
+    // --- ПОПЫТКА 5: Повторный прямой fetch с минимальными заголовками ---
+    try {
+        console.log(`[WebHandler] Final video retry with minimal headers...`);
+        const vidResponse = await fetch(videoUrl, {
+            redirect: 'follow',
+            signal: AbortSignal.timeout(60000)
+        });
+        if (vidResponse.ok) {
+            const vidBuffer = Buffer.from(await vidResponse.arrayBuffer());
+            if (vidBuffer.length > 1000) {
+                console.log(`[WebHandler] Final video retry OK: ${vidBuffer.length} bytes`);
+                return vidBuffer.toString('base64');
+            }
+        }
+    } catch (e) {
+        console.warn(`[WebHandler] Final video retry failed: ${e.message}`);
+    }
+
+    console.error(`[WebHandler] All 5 video download attempts failed for: ${videoUrl.substring(0, 100)}`);
+    return null;
+}
+
 // ============================================================
 // 🔄 TASK STATUS — Polling KieAI task results
 // ============================================================
@@ -2388,7 +2538,7 @@ async function downloadImageWithProxy(imageUrl, env) {
  * 🛑 Общая функция обработки ответа KieAI (из KV callback или API polling)
  * Извлекает URL результата из любого формата ответа KieAI
  */
-async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode) {
+async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode, uploadBase64MediaToPublicUrl) {
     const state = result.data?.state;
     const output = result.data?.output;
     const resultJson = result.data?.resultJson;
@@ -2540,8 +2690,8 @@ async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase
         }
 
         if (resultUrl) {
-            // Для изображений — скачиваем на сервере
-            if (taskType !== 'video') {
+            // Для изображений — скачиваем на сервере и ре-аплоадим в S3
+            if (taskType !== 'video' && taskType !== 'audio') {
                 const downloaded = await downloadImageWithProxy(resultUrl, env);
                 if (downloaded) {
                     const imgBase64 = downloaded;
@@ -2562,10 +2712,42 @@ async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase
                 console.error(`[WebHandler] All download methods failed for: ${resultUrl.substring(0, 100)}`);
                 return formatResponse(false, 'Не удалось скачать изображение. Попробуйте другую модель.');
             }
+
+            // 🛑 Для видео — скачиваем на сервере и ре-аплоадим в S3!
+            // Без этого браузер не может загрузить видео с CDN KIE.AI (CORS).
+            // В Telegram работает, т.к. бот скачивает сервер-сайд. Веб должен делать так же!
+            if (taskType === 'video') {
+                console.log(`[WebHandler] Downloading video from KIE.AI: ${resultUrl.substring(0, 100)}`);
+                const videoBase64 = await downloadVideoWithProxy(resultUrl, env);
+                if (videoBase64) {
+                    console.log(`[WebHandler] Downloaded video: base64 length=${videoBase64.length}`);
+                    // Ре-аплоадим в наш S3 — браузер сможет загрузить с нашего домена
+                    if (uploadBase64MediaToPublicUrl) {
+                        try {
+                            const uploadedUrl = await uploadBase64MediaToPublicUrl(videoBase64, env, chatId, s3Mode || 'VID', 'video', 'mp4');
+                            if (uploadedUrl && typeof uploadedUrl === 'string') {
+                                console.log(`[WebHandler] Video re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
+                                return formatResponse(true, null, null, { type: 'video_url', content: uploadedUrl });
+                            }
+                        } catch (e) {
+                            console.warn(`[WebHandler] Video re-upload failed: ${e.message}`);
+                        }
+                    }
+                    // Фоллбэк: если S3 недоступен — пробуем отдать base64 (но это может быть слишком большим)
+                    if (videoBase64.length < 10 * 1024 * 1024) { // < 10MB base64
+                        console.log(`[WebHandler] Returning video as base64 (${videoBase64.length} chars)`);
+                        return formatResponse(true, null, null, { type: 'video_base64', content: videoBase64 });
+                    }
+                }
+                // 🛑 Если скачивание не удалось — всё равно вернём прямой URL (может повезёт с CORS)
+                console.warn(`[WebHandler] Video download failed, returning direct URL (CORS may block): ${resultUrl.substring(0, 100)}`);
+                return formatResponse(true, null, null, { type: 'video_url', content: resultUrl });
+            }
+
+            // Для аудио — пока возвращаем прямой URL (аудио обычно меньше и CORS меньше проблема)
             if (taskType === 'audio') {
                 return formatResponse(true, null, null, { type: 'audio_url', content: resultUrl });
             }
-            return formatResponse(true, null, null, { type: 'video_url', content: resultUrl });
         } else {
             // 6. Глубокий рекурсивный поиск
             const deepFindUrl = (obj, depth) => {
@@ -2616,7 +2798,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
     const taskId = payload?.task_id;
     const taskType = payload?.task_type || 'image'; // 'image' or 'video'
     const imageMode = payload?.image_mode || null; // 't2i', 'i2i', 'recognition', 'vid', 'tts' и т.д.
-    const { uploadBase64ImageToPublicUrl, getKieAiTaskResultForWeb } = monolith || {};
+    const { uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl, getKieAiTaskResultForWeb } = monolith || {};
 
     // 🛑 Формируем mode для S3-папки из imageMode или taskType (ЗАГЛАВНЫМИ — как в боте)
     const rawMode = imageMode || (taskType === 'video' ? 'vid' : taskType === 'audio' ? 'aud' : 'img');
@@ -2643,7 +2825,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                             output: kvResult.resultJson // Иногда результат в output
                         }
                     };
-                    return await processKieAiApiResponse(simulatedApiResult, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode);
+                    return await processKieAiApiResponse(simulatedApiResult, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode, uploadBase64MediaToPublicUrl);
                 } else if (kvResult.state === 'failed' || kvResult.state === 'fail') {
                     return formatResponse(false, 'Задача не удалась: ' + (kvResult.failMsg || 'Ошибка'));
                 }
@@ -2685,7 +2867,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
             return formatResponse(false, 'KieAI API ошибка: ' + (result.msg || result.message || 'Unknown error'));
         }
 
-        return await processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode);
+        return await processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode, uploadBase64MediaToPublicUrl);
     } catch (e) {
         console.error("[WebHandler] Task status check error:", e.message);
         return formatResponse(false, 'Ошибка проверки статуса: ' + e.message);

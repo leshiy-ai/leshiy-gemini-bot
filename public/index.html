@@ -852,6 +852,19 @@
                     isProcessing = false;
                     const sendBtn = document.getElementById('sendBtn');
                     if (sendBtn) sendBtn.disabled = false;
+                } else if (data.data?.type === 'video_base64' && data.data.content) {
+                    // 🛑 Видео скачано сервер-сайд и ре-аплоадено — может быть URL или base64
+                    const url = data.data.content.startsWith('http') ? data.data.content : 'data:video/mp4;base64,' + data.data.content;
+                    delete activeVideoTasks[taskId];
+                    const resultArea = document.getElementById(task.resultAreaId);
+                    if (resultArea) {
+                        resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + url + '" type="video/mp4"></video>' +
+                            '<div style="margin-top:8px;text-align:center"><a href="' + url + '" download="video.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать видео</a></div>';
+                    }
+                    showToast('🎬 Видео готово!', 'success');
+                    isProcessing = false;
+                    const sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) sendBtn.disabled = false;
                 }
                 // task_pending — продолжаем ждать
             } catch (err) {
@@ -1384,6 +1397,13 @@
                     const dataUrl = 'data:image/png;base64,' + data.data.content;
                     console.log('[Poll] Completed with image_base64, dataUrl length:', dataUrl.length);
                     return { completed: true, url: dataUrl, type: 'image_url' };
+                }
+
+                // KieAI видео может вернуть video_base64 (скачанное сервер-сайд)
+                if (data.data?.type === 'video_base64' && data.data.content) {
+                    const dataUrl = 'data:video/mp4;base64,' + data.data.content;
+                    console.log('[Poll] Completed with video_base64, dataUrl length:', dataUrl.length);
+                    return { completed: true, url: dataUrl, type: 'video_url' };
                 }
 
                 // KieAI TTS может вернуть audio_base64
