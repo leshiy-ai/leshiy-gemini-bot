@@ -197,7 +197,7 @@ const AI_MODELS = {
     IMAGE_TO_TEXT_WORKERS_AI: { 
         SERVICE: 'WORKERS_AI', 
         FUNCTION: callWorkersAIVision,
-        MODEL: '@cf/huggingface/llava-1.5-7b', 
+        MODEL: '@cf/llava-hf/llava-1.5-7b-hf', 
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'AI_RUN'
     },
