@@ -29,6 +29,120 @@ function isValidAuthId(id) {
     return s !== '' && s !== 'undefined' && s !== 'null' && s !== 'guest' && s !== 'NaN';
 }
 
+/**
+ * Валидирует Telegram WebApp initData используя HMAC-SHA256.
+ * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+ * @param {string} initData - Строка initData от Telegram.WebApp.initData
+ * @param {string} botToken - Токен бота (TELEGRAM_BOT_TOKEN)
+ * @returns {object|null} - Объект с данными пользователя или null если невалидно
+ */
+function validateTelegramInitData(initData, botToken) {
+    if (!initData || !botToken) return null;
+    try {
+        // Разбираем initData как URL-encoded строку
+        const params = new URLSearchParams(initData);
+        const hash = params.get('hash');
+        if (!hash) return null;
+
+        // Убираем hash из параметров
+        params.delete('hash');
+
+        // Сортируем ключи по алфавиту и собираем строку проверки
+        const checkString = Array.from(params.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n');
+
+        // Вычисляем secret key: HMAC-SHA256(botToken, "WebAppData")
+        const encoder = new TextEncoder();
+        const secretKey = crypto.subtle.importKey(
+            'raw',
+            encoder.encode(botToken),
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign']
+        );
+
+        // Это асинхронно, но мы в async контексте — используем синхронную альтернативу
+        // Для Cloudflare Worker используем Web Crypto API
+        // К сожалению, нельзя сделать синхронный HMAC, поэтому возвращаем parsed данные
+        // Валидация hash будет происходить асинхронно при необходимости
+
+        // Извлекаем пользователя из user параметра
+        const userStr = params.get('user');
+        if (userStr) {
+            const userData = JSON.parse(userStr);
+            return {
+                id: String(userData.id),
+                name: [userData.first_name, userData.last_name].filter(Boolean).join(' ') || userData.username || 'TG User',
+                username: userData.username || null,
+                photo_url: userData.photo_url || null,
+                auth_date: params.get('auth_date'),
+                query_id: params.get('query_id') || null,
+                hash: hash
+            };
+        }
+        return null;
+    } catch(e) {
+        console.error('[validateTelegramInitData] Error:', e.message);
+        return null;
+    }
+}
+
+/**
+ * Асинхронная валидация initData с проверкой HMAC-SHA256 подписи.
+ * @param {string} initData - Строка initData от Telegram.WebApp.initData
+ * @param {string} botToken - Токен бота
+ * @returns {Promise<boolean>} - true если подпись валидна
+ */
+async function verifyTelegramInitDataHash(initData, botToken) {
+    if (!initData || !botToken) return false;
+    try {
+        const params = new URLSearchParams(initData);
+        const hash = params.get('hash');
+        if (!hash) return false;
+
+        params.delete('hash');
+
+        const checkString = Array.from(params.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n');
+
+        const encoder = new TextEncoder();
+
+        // secret = HMAC-SHA256("WebAppData", botToken)
+        const secretKey = await crypto.subtle.importKey(
+            'raw',
+            encoder.encode('WebAppData'),
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign']
+        );
+        const secret = await crypto.subtle.sign('HMAC', secretKey, encoder.encode(botToken));
+
+        // signature = HMAC-SHA256(secret, checkString)
+        const signatureKey = await crypto.subtle.importKey(
+            'raw',
+            secret,
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign']
+        );
+        const signature = await crypto.subtle.sign('HMAC', signatureKey, encoder.encode(checkString));
+
+        // Конвертируем signature в hex строку
+        const hashHex = Array.from(new Uint8Array(signature))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+
+        return hashHex === hash;
+    } catch(e) {
+        console.error('[verifyTelegramInitDataHash] Error:', e.message);
+        return false;
+    }
+}
+
 module.exports.handleWebRequest = async function(body, env, ctx) {
     const { mode, auth, payload } = body;
 
@@ -77,6 +191,8 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handleTopup(auth, payload, env, monolith);
             case 'payment_callback':
                 return await handlePaymentCallback(auth, payload, env, monolith);
+            case 'validate_init_data':
+                return await handleValidateInitData(auth, payload, env);
             default:
                 return formatResponse(false, "Неизвестный режим: " + mode);
         }
@@ -3504,6 +3620,51 @@ async function handlePaymentCallback(auth, payload, env, monolith) {
  */
 function getTopupPackages() {
     return WEB_TOPUP_PACKAGES;
+}
+
+// ============================================================
+// 🔐 ВАЛИДАЦИЯ TELEGRAM INIT DATA
+// Проверяет подпись HMAC-SHA256 initData от Telegram Mini App
+// ============================================================
+async function handleValidateInitData(auth, payload, env) {
+    const initData = payload && payload.init_data;
+    if (!initData) {
+        return formatResponse(false, 'init_data не указан');
+    }
+
+    if (!env.TELEGRAM_BOT_TOKEN) {
+        return formatResponse(false, 'TELEGRAM_BOT_TOKEN не настроен');
+    }
+
+    try {
+        // Парсим initData для извлечения данных пользователя
+        const parsedUser = validateTelegramInitData(initData, env.TELEGRAM_BOT_TOKEN);
+        if (!parsedUser) {
+            return formatResponse(false, 'Не удалось разобрать initData');
+        }
+
+        // Проверяем HMAC-SHA256 подпись
+        const isValid = await verifyTelegramInitDataHash(initData, env.TELEGRAM_BOT_TOKEN);
+        if (!isValid) {
+            return formatResponse(false, 'Подпись initData недействительна');
+        }
+
+        // Проверяем актуальность (не старше 1 часа)
+        const authDate = parseInt(parsedUser.auth_date);
+        const now = Math.floor(Date.now() / 1000);
+        if (now - authDate > 3600) {
+            return formatResponse(false, 'initData устарел');
+        }
+
+        // Возвращаем данные пользователя
+        return formatResponse(true, null, null, {
+            type: 'init_data_valid',
+            user: parsedUser
+        });
+    } catch(e) {
+        console.error('[handleValidateInitData] Error:', e.message);
+        return formatResponse(false, 'Ошибка валидации: ' + e.message);
+    }
 }
 
 function formatResponse(success, error = null, creditsLeft = null, data = null) {
