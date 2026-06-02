@@ -1362,14 +1362,14 @@ async function handleVideo(auth, payload, env, monolith) {
 
         if (videoSubMode === 't2v') {
             // === TEXT-TO-VIDEO: только промпт и параметры, БЕЗ референсов ===
-            // 🛑 По API-докаиентации KIE.AI: prompt, aspect_ratio, mode, duration, resolution
+            // 🛑 По API-документации KIE.AI: prompt, aspect_ratio, mode, duration, resolution
             const t2vParams = mapKieAiVideoParams(payload.aspect_ratio, payload.duration, payload.quality);
             input = {
                 prompt: prompt,
                 aspect_ratio: t2vParams.ratio,
                 duration: t2vParams.duration,
                 resolution: t2vParams.resolution,
-                mode: 'normal'
+                mode: payload.video_mode_param || 'normal'
             };
         } else if (videoSubMode === 'i2v') {
             // === IMAGE-TO-VIDEO: загружаем картинку в S3, передаём image_urls[] ===
@@ -1386,7 +1386,7 @@ async function handleVideo(auth, payload, env, monolith) {
                 prompt: prompt,
                 duration: i2vParams.duration,
                 resolution: i2vParams.resolution,
-                mode: 'normal'
+                mode: payload.video_mode_param || 'normal'
             };
         } else if (videoSubMode === 'v2v') {
             // === VIDEO-TO-VIDEO: нужно фото персонажа (image_url) + видео (video_url) ===
@@ -1409,7 +1409,7 @@ async function handleVideo(auth, payload, env, monolith) {
                     video_urls: videoUrl,
                     prompt: prompt || 'Change character from photo on video',
                     character_orientation: 'video',
-                    mode: klingResolution
+                    mode: payload.video_mode_param || klingResolution  // Kling mode = standard/performance или resolution
                 };
             } else {
                 // Wan (по умолчанию): input.video_url, input.image_url, resolution

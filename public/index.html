@@ -1132,6 +1132,40 @@
                 } catch(e) {
                     console.warn('[MobileDnD] Failed to create File:', e);
                 }
+            } else if (fileData.url) {
+                // 🛑 Нет base64, но есть URL — скачиваем и вызываем обработчик
+                showToast('Загружаю файл...', 'info');
+                fetch(fileData.url)
+                    .then(r => r.blob())
+                    .then(blob => {
+                        var file = new File([blob], fileData.name || 'file', { type: fileData.type || blob.type || 'application/octet-stream' });
+                        var dt = new DataTransfer();
+                        dt.items.add(file);
+                        var fakeInput = { files: dt.files, value: '' };
+                        // Route to handler
+                        if (zoneId === 'videoI2VRefImg') handleVideoRef('image', fakeInput);
+                        else if (zoneId === 'videoV2VRefImg') handleVideoRef('image_v2v', fakeInput);
+                        else if (zoneId === 'videoV2VRefVideo') handleVideoRef('video', fakeInput);
+                        else if (zoneId === 'videoA2VRefImg') handleVideoRef('image_a2v', fakeInput);
+                        else if (zoneId === 'videoA2VRefAudio') handleVideoRef('audio', fakeInput);
+                        else if (zoneId === 'videoConvertZone') handleVideoConvert(fakeInput);
+                        else if (zoneId === 'videoRotateZone') handleVideoRotateUpload(fakeInput);
+                        else if (zoneId === 'videoResizeZone') handleVideoResizeUpload(fakeInput);
+                        else if (zoneId === 'videoStopFrameZone') handleStopFrame(fakeInput);
+                        else if (zoneId === 'imageRecognitionZone') handleImageRecognition(fakeInput);
+                        else if (zoneId === 'imageRotateZone') handleImageRotateUpload(fakeInput);
+                        else if (zoneId === 'imageResizeZone') handleImageResizeUpload(fakeInput);
+                        else if (zoneId === 'imageConvertZone') handleImageConvertUpload(fakeInput);
+                        else if (zoneId === 'audioUploadZone') handleAudioUpload(fakeInput);
+                        else if (zoneId === 'audioConvertZone') handleAudioConvert(fakeInput);
+                        else if (zoneId === 'voiceCloneZone') handleVoiceClone(fakeInput);
+                        else if (zoneId === 'mediaConvertZone') handleMediaConvertUpload(fakeInput);
+                        else if (zoneId.startsWith('imageRef')) {
+                            var refIdx = parseInt(zoneId.replace('imageRef', ''));
+                            handleImageRef(refIdx, fakeInput);
+                        }
+                    })
+                    .catch(e => showToast('Не удалось загрузить файл: ' + e.message, 'error'));
             }
         }
     }
@@ -1228,14 +1262,43 @@
         videoEl.style.cursor = 'grab';
         const fmt = format || 'mp4';
         const mime = 'video/' + fmt;
-        initMobileDrag(videoEl, function() { return { name: 'video.' + fmt, type: mime, base64: base64Data || null, icon: '&#127916;', category: 'video' }; });
+
+        // 🛑 Если base64 нет, но есть URL — пробуем получить base64 в фоне
+        if (!base64Data) {
+            const src = videoEl.querySelector('source')?.src || videoEl.src || '';
+            if (src && src.startsWith('http')) {
+                videoEl.dataset.videoUrl = src;
+                fetch(src)
+                    .then(r => r.blob())
+                    .then(blob => {
+                        return new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                            reader.readAsDataURL(blob);
+                        });
+                    })
+                    .then(b64 => {
+                        if (b64) {
+                            videoEl.dataset.videoBase64 = b64;
+                        }
+                    })
+                    .catch(() => {}); // Тихо — если не удалось, drag будет по URL
+            }
+        }
+
+        initMobileDrag(videoEl, function() {
+            const b64 = base64Data || videoEl.dataset.videoBase64 || null;
+            return { name: 'video.' + fmt, type: mime, base64: b64, icon: '&#127916;', category: 'video', url: (!b64 && videoEl.dataset.videoUrl) ? videoEl.dataset.videoUrl : null };
+        });
         videoEl.addEventListener('dragstart', function(e) {
             e.dataTransfer.effectAllowed = 'copy';
-            const att = { name: 'video.' + fmt, type: mime, base64: base64Data, icon: '&#127916;', category: 'video' };
+            const b64 = base64Data || videoEl.dataset.videoBase64 || null;
+            const videoUrl = (!b64 && videoEl.dataset.videoUrl) ? videoEl.dataset.videoUrl : null;
+            const att = { name: 'video.' + fmt, type: mime, base64: b64, icon: '&#127916;', category: 'video', url: videoUrl };
             _dragState = { attachment: att, sourceIndex: -1 };
-            if (base64Data) {
+            if (b64) {
                 try {
-                    const byteString = atob(base64Data);
+                    const byteString = atob(b64);
                     const ab = new ArrayBuffer(byteString.length);
                     const ia = new Uint8Array(ab);
                     for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
@@ -1243,6 +1306,10 @@
                     const file = new File([blob], 'video.' + fmt, { type: mime });
                     e.dataTransfer.items.add(file);
                 } catch(err) {}
+            } else if (videoUrl) {
+                // Нет base64, но есть URL — скачиваем файл для drag в фоне
+                // К сожалению, drag event синхронный — ставим URL как текст
+                try { e.dataTransfer.setData('text/uri-list', videoUrl); } catch(err) {}
             }
             videoEl.style.opacity = '0.5';
         });
@@ -1559,8 +1626,65 @@
         voice: 'Female',
         videoQuality: '480p',
         videoDuration: '5',
+        videoMode: 'normal',  // 'fun', 'normal', 'spicy' — режим генерации KIE.AI
         imageSize: '1024x1024'
     };
+
+    // ---- ДИНАМИЧЕСКИЕ ПАРАМЕТРЫ ВИДЕО ПО МОДЕЛЯМ ----
+    // Каждая модель поддерживает свой набор параметров.
+    // Ключи — modelKey (как в availableModels[cat].key)
+    const VIDEO_MODEL_PARAMS = {
+        // T2V: grok-imagine/text-to-video — полный набор
+        'TEXT_TO_VIDEO_KIEAI': {
+            aspect_ratio: ['16:9', '9:16', '1:1'],
+            duration: ['5', '6', '8', '10'],
+            resolution: ['480p', '720p', '1080p'],
+            mode: ['fun', 'normal', 'spicy']
+        },
+        // I2V: grok-imagine/image-to-video — нет aspect_ratio для одного изображения
+        'IMAGE_TO_VIDEO_KIEAI': {
+            aspect_ratio: [],  // недоступно для single image
+            duration: ['5', '6', '8', '10'],
+            resolution: ['480p', '720p', '1080p'],
+            mode: ['fun', 'normal', 'spicy']
+        },
+        // V2V Wan: wan/2-2-animate-replace — только resolution
+        'VIDEO_TO_VIDEO_KIEAI_WAN': {
+            aspect_ratio: [],
+            duration: [],
+            resolution: ['480p', '580p', '720p', '1080p'],
+            mode: []
+        },
+        // V2V Kling: kling-2.6/motion-control — resolution + mode
+        'VIDEO_TO_VIDEO_KIEAI_Kling': {
+            aspect_ratio: [],
+            duration: [],
+            resolution: ['720p', '1080p'],
+            mode: ['standard', 'performance']  // Kling mode = стандарт/производительность
+        },
+        // A2V: infinitalk/from-audio — только resolution
+        'AUDIO_TO_VIDEO_KIEAI': {
+            aspect_ratio: [],
+            duration: [],
+            resolution: ['480p', '580p', '720p', '1080p'],
+            mode: []
+        }
+    };
+
+    // Дефолтные параметры для неизвестных моделей (полный набор)
+    const VIDEO_DEFAULT_PARAMS = {
+        aspect_ratio: ['16:9', '9:16', '1:1'],
+        duration: ['5', '6', '8', '10'],
+        resolution: ['480p', '720p', '1080p'],
+        mode: ['fun', 'normal', 'spicy']
+    };
+
+    // Получить поддерживаемые параметры для текущей выбранной видео-модели
+    function getVideoModelParams() {
+        const modelCat = 'video_' + selected.videoSubMode;
+        const modelKey = selected[modelCat];
+        return VIDEO_MODEL_PARAMS[modelKey] || VIDEO_DEFAULT_PARAMS;
+    }
 
     // ---- DOM REFS ----
     const chatArea = document.getElementById('chatArea');
@@ -1592,9 +1716,70 @@
                 zone.classList.remove('drag-over');
                 _dropJustHappened = true;
                 setTimeout(function() { _dropJustHappened = false; }, 300);
-                // Если это внутренний drag (из chat attachments) — обрабатываем через _dragState
+                // Если это внутренний drag (из chat attachments / результатов) — обрабатываем через _dragState
                 if (_dragState && _dragState.attachment) {
-                    // Обработано через мобильный DnD роутинг
+                    var att = _dragState.attachment;
+                    // Если есть base64 — создаём File и маршрутизируем
+                    if (att.base64) {
+                        try {
+                            var byteStr = atob(att.base64);
+                            var ab2 = new ArrayBuffer(byteStr.length);
+                            var ia2 = new Uint8Array(ab2);
+                            for (var jj = 0; jj < byteStr.length; jj++) ia2[jj] = byteStr.charCodeAt(jj);
+                            var blob2 = new Blob([ia2], { type: att.type || 'application/octet-stream' });
+                            var file2 = new File([blob2], att.name || 'file', { type: att.type || 'application/octet-stream' });
+                            var dt2 = new DataTransfer();
+                            dt2.items.add(file2);
+                            var fi2 = { files: dt2.files, value: '' };
+                            var zid = zone.id;
+                            if (zid === 'videoI2VRefImg') handleVideoRef('image', fi2);
+                            else if (zid === 'videoV2VRefImg') handleVideoRef('image_v2v', fi2);
+                            else if (zid === 'videoV2VRefVideo') handleVideoRef('video', fi2);
+                            else if (zid === 'videoA2VRefImg') handleVideoRef('image_a2v', fi2);
+                            else if (zid === 'videoA2VRefAudio') handleVideoRef('audio', fi2);
+                            else if (zid === 'videoConvertZone') handleVideoConvert(fi2);
+                            else if (zid === 'videoRotateZone') handleVideoRotateUpload(fi2);
+                            else if (zid === 'videoResizeZone') handleVideoResizeUpload(fi2);
+                            else if (zid === 'videoStopFrameZone') handleStopFrame(fi2);
+                            else if (zid === 'imageRecognitionZone') handleImageRecognition(fi2);
+                            else if (zid === 'imageRotateZone') handleImageRotateUpload(fi2);
+                            else if (zid === 'imageResizeZone') handleImageResizeUpload(fi2);
+                            else if (zid === 'imageConvertZone') handleImageConvertUpload(fi2);
+                            else if (zid === 'audioUploadZone') handleAudioUpload(fi2);
+                            else if (zid === 'audioConvertZone') handleAudioConvert(fi2);
+                            else if (zid === 'voiceCloneZone') handleVoiceClone(fi2);
+                            else if (zid === 'mediaConvertZone') handleMediaConvertUpload(fi2);
+                            else if (zid.startsWith('imageRef')) handleImageRef(parseInt(zid.replace('imageRef', '')), fi2);
+                        } catch(err) { console.warn('[Drop] Failed to create File from _dragState:', err); }
+                    } else if (att.url) {
+                        // Нет base64 но есть URL — скачиваем и обрабатываем
+                        showToast('Загружаю файл...', 'info');
+                        fetch(att.url).then(r => r.blob()).then(blob => {
+                            var file3 = new File([blob], att.name || 'file', { type: att.type || blob.type || 'application/octet-stream' });
+                            var dt3 = new DataTransfer();
+                            dt3.items.add(file3);
+                            var fi3 = { files: dt3.files, value: '' };
+                            var zid = zone.id;
+                            if (zid === 'videoI2VRefImg') handleVideoRef('image', fi3);
+                            else if (zid === 'videoV2VRefImg') handleVideoRef('image_v2v', fi3);
+                            else if (zid === 'videoV2VRefVideo') handleVideoRef('video', fi3);
+                            else if (zid === 'videoA2VRefImg') handleVideoRef('image_a2v', fi3);
+                            else if (zid === 'videoA2VRefAudio') handleVideoRef('audio', fi3);
+                            else if (zid === 'videoConvertZone') handleVideoConvert(fi3);
+                            else if (zid === 'videoRotateZone') handleVideoRotateUpload(fi3);
+                            else if (zid === 'videoResizeZone') handleVideoResizeUpload(fi3);
+                            else if (zid === 'videoStopFrameZone') handleStopFrame(fi3);
+                            else if (zid === 'imageRecognitionZone') handleImageRecognition(fi3);
+                            else if (zid === 'imageRotateZone') handleImageRotateUpload(fi3);
+                            else if (zid === 'imageResizeZone') handleImageResizeUpload(fi3);
+                            else if (zid === 'imageConvertZone') handleImageConvertUpload(fi3);
+                            else if (zid === 'audioUploadZone') handleAudioUpload(fi3);
+                            else if (zid === 'audioConvertZone') handleAudioConvert(fi3);
+                            else if (zid === 'voiceCloneZone') handleVoiceClone(fi3);
+                            else if (zid === 'mediaConvertZone') handleMediaConvertUpload(fi3);
+                            else if (zid.startsWith('imageRef')) handleImageRef(parseInt(zid.replace('imageRef', '')), fi3);
+                        }).catch(err => showToast('Не удалось загрузить файл: ' + err.message, 'error'));
+                    }
                     return;
                 }
                 // Внешний файл — направляем в обработчик зоны
@@ -1688,7 +1873,6 @@
                     parsed.video_t2v = parsed.video;
                     delete parsed.video;
                 }
-                if (parsed.videoMode) delete parsed.videoMode;
                 if (parsed.videoSubMode === 'generate') parsed.videoSubMode = 't2v';
                 if (parsed.imageSubMode === 't2i' || parsed.imageSubMode === 'i2i') parsed.imageSubMode = 'generate';
                 if (parsed.imageSubMode === 'convert') { /* конверт теперь есть и в картинках */ }
@@ -2758,40 +2942,84 @@
         const activeParamsId = {t2v:'videoT2VParams',i2v:'videoI2VParams',v2v:'videoV2VParams',a2v:'videoA2VParams'}[selected.videoSubMode];
         const paramsContainer = document.getElementById(activeParamsId);
         if (isGenerate && paramsContainer) {
-            ['16:9', '9:16', '1:1'].forEach(r => {
-                const btn = document.createElement('button');
-                btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
-                btn.dataset.ratio = r;
-                btn.onclick = () => { selected.ratio = r; saveSelected(); renderVideoSubHeader(); };
-                btn.textContent = r;
-                paramsContainer.appendChild(btn);
-            });
-            // Divider
-            const divider1 = document.createElement('div');
-            divider1.className = 'sub-divider';
-            paramsContainer.appendChild(divider1);
-            // Качество
-            ['480p', '580p', '720p', '1080p'].forEach(q => {
-                const btn = document.createElement('button');
-                btn.className = 'sub-option' + (selected.videoQuality === q ? ' active' : '');
-                btn.dataset.quality = q;
-                btn.onclick = () => { selected.videoQuality = q; saveSelected(); renderVideoSubHeader(); };
-                btn.textContent = q;
-                paramsContainer.appendChild(btn);
-            });
-            // Divider
-            const divider2 = document.createElement('div');
-            divider2.className = 'sub-divider';
-            paramsContainer.appendChild(divider2);
-            // Длительность
-            ['5', '6', '8', '10'].forEach(d => {
-                const btn = document.createElement('button');
-                btn.className = 'sub-option' + (selected.videoDuration === d ? ' active' : '');
-                btn.dataset.duration = d;
-                btn.onclick = () => { selected.videoDuration = d; saveSelected(); renderVideoSubHeader(); };
-                btn.textContent = d + ' сек';
-                paramsContainer.appendChild(btn);
-            });
+            // 🧠 ДИНАМИЧЕСКИЕ ПАРАМЕТРЫ: зависят от выбранной модели
+            const mp = getVideoModelParams();
+            let hasPrevSection = false;
+
+            // Режим генерации (fun/normal/spicy) — для моделей, которые поддерживают
+            if (mp.mode && mp.mode.length > 0) {
+                const modeLabels = { 'fun': '🎭 Fun', 'normal': '📋 Normal', 'spicy': '🌶️ Spicy', 'standard': '📋 Стандарт', 'performance': '⚡ Произв.' };
+                mp.mode.forEach(m => {
+                    const btn = document.createElement('button');
+                    btn.className = 'sub-option' + (selected.videoMode === m ? ' active' : '');
+                    btn.dataset.videomode = m;
+                    btn.onclick = () => { selected.videoMode = m; saveSelected(); renderVideoSubHeader(); };
+                    btn.textContent = modeLabels[m] || m;
+                    paramsContainer.appendChild(btn);
+                });
+                const divider0 = document.createElement('div');
+                divider0.className = 'sub-divider';
+                paramsContainer.appendChild(divider0);
+                hasPrevSection = true;
+            } else {
+                selected.videoMode = 'normal'; // сброс если модель не поддерживает
+            }
+
+            // Соотношение сторон — только для моделей с aspect_ratio
+            if (mp.aspect_ratio && mp.aspect_ratio.length > 0) {
+                // Если текущее соотношение не поддерживается — сброс на первое доступное
+                if (!mp.aspect_ratio.includes(selected.ratio)) {
+                    selected.ratio = mp.aspect_ratio[0];
+                }
+                mp.aspect_ratio.forEach(r => {
+                    const btn = document.createElement('button');
+                    btn.className = 'sub-option' + (selected.ratio === r ? ' active' : '');
+                    btn.dataset.ratio = r;
+                    btn.onclick = () => { selected.ratio = r; saveSelected(); renderVideoSubHeader(); };
+                    btn.textContent = r;
+                    paramsContainer.appendChild(btn);
+                });
+                const divider1 = document.createElement('div');
+                divider1.className = 'sub-divider';
+                paramsContainer.appendChild(divider1);
+                hasPrevSection = true;
+            }
+
+            // Разрешение (качество) — для моделей с resolution
+            if (mp.resolution && mp.resolution.length > 0) {
+                if (!mp.resolution.includes(selected.videoQuality)) {
+                    selected.videoQuality = mp.resolution[0]; // минимальное по умолчанию
+                }
+                mp.resolution.forEach(q => {
+                    const btn = document.createElement('button');
+                    btn.className = 'sub-option' + (selected.videoQuality === q ? ' active' : '');
+                    btn.dataset.quality = q;
+                    btn.onclick = () => { selected.videoQuality = q; saveSelected(); renderVideoSubHeader(); };
+                    btn.textContent = q;
+                    paramsContainer.appendChild(btn);
+                });
+                const divider2 = document.createElement('div');
+                divider2.className = 'sub-divider';
+                paramsContainer.appendChild(divider2);
+                hasPrevSection = true;
+            }
+
+            // Длительность — для моделей с duration
+            if (mp.duration && mp.duration.length > 0) {
+                if (!mp.duration.includes(selected.videoDuration)) {
+                    selected.videoDuration = mp.duration[0]; // минимальная по умолчанию
+                }
+                mp.duration.forEach(d => {
+                    const btn = document.createElement('button');
+                    btn.className = 'sub-option' + (selected.videoDuration === d ? ' active' : '');
+                    btn.dataset.duration = d;
+                    btn.onclick = () => { selected.videoDuration = d; saveSelected(); renderVideoSubHeader(); };
+                    btn.textContent = d + ' сек';
+                    paramsContainer.appendChild(btn);
+                });
+            }
+
+            saveSelected();
         }
     }
 
@@ -5003,7 +5231,8 @@
                 quality: selected.videoQuality,
                 duration: selected.videoDuration,
                 video_mode: selected.videoSubMode,
-                video_submode: selected.videoSubMode
+                video_submode: selected.videoSubMode,
+                video_mode_param: selected.videoMode  // fun / normal / spicy
             };
 
             // I2V: референсное изображение
@@ -8371,17 +8600,45 @@
             renderChatAttachments();
             showToast('Аудио добавлено как вложение', 'success');
         } else if (cat === 'video') {
-            const attachment = {
-                name: att.name || 'video.mp4',
-                type: att.type || 'video/mp4',
-                base64: att.base64,
-                previewUrl: att.previewUrl || null,
-                icon: iconMap.video,
-                category: 'video'
-            };
-            chatAttachments.push(attachment);
-            renderChatAttachments();
-            showToast('Видео добавлено как вложение', 'success');
+            // 🛑 Если нет base64 но есть URL — скачиваем видео и добавляем
+            if (!att.base64 && att.url) {
+                showToast('Загружаю видео для вложения...', 'info');
+                fetch(att.url)
+                    .then(r => r.blob())
+                    .then(blob => {
+                        return new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                            reader.readAsDataURL(blob);
+                        });
+                    })
+                    .then(b64 => {
+                        const attachment = {
+                            name: att.name || 'video.mp4',
+                            type: att.type || 'video/mp4',
+                            base64: b64,
+                            previewUrl: null,
+                            icon: iconMap.video,
+                            category: 'video'
+                        };
+                        chatAttachments.push(attachment);
+                        renderChatAttachments();
+                        showToast('Видео добавлено как вложение', 'success');
+                    })
+                    .catch(err => showToast('Не удалось загрузить видео: ' + err.message, 'error'));
+            } else {
+                const attachment = {
+                    name: att.name || 'video.mp4',
+                    type: att.type || 'video/mp4',
+                    base64: att.base64,
+                    previewUrl: att.previewUrl || null,
+                    icon: iconMap.video,
+                    category: 'video'
+                };
+                chatAttachments.push(attachment);
+                renderChatAttachments();
+                showToast('Видео добавлено как вложение', 'success');
+            }
         }
     }
 
