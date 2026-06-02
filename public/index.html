@@ -1951,8 +1951,17 @@
         }
 
         // СЦЕНАРИЙ 0-B: VK Mini App — vk_user_id из URL (VK добавляет в iframe URL)
-        if (vkUserId) {
+        // Если мы в VK-контексте (vkBridge), НЕ авторизуем сразу с "VK User" —
+        // ждём VKWebAppGetUserInfo для получения реального имени (асинхронно, в VK MINI APP INIT ниже)
+        if (vkUserId && !window.vkBridge) {
             const name = params.get('vk_user_name') || 'VK User';
+            const photo = params.get('vk_user_photo') || null;
+            applyAuthGlobal({ id: vkUserId, name: name, provider: 'vk', hash: null, photo: photo }, true);
+            return;
+        }
+        // В VK-контексте: если есть vk_user_name в URL — используем, иначе ждём VKWebAppGetUserInfo
+        if (vkUserId && window.vkBridge && params.get('vk_user_name')) {
+            const name = params.get('vk_user_name');
             const photo = params.get('vk_user_photo') || null;
             applyAuthGlobal({ id: vkUserId, name: name, provider: 'vk', hash: null, photo: photo }, true);
             return;
@@ -7525,6 +7534,7 @@
         localStorage.removeItem('vk_user_photo');
         localStorage.removeItem('tg_user_id');
         localStorage.removeItem('tg_username');
+        localStorage.removeItem('tg_init_data');
         localStorage.removeItem('vk_return_to');
         localStorage.removeItem('tg_return_to');
         authBtn.textContent = 'Войти';
@@ -7614,23 +7624,34 @@
     if (window.vkBridge) {
         vkBridge.send('VKWebAppInit').then(() => {
             console.log('VK Mini App initialized');
-            // Автоавторизация через VKWebAppGetUserInfo (если ещё не авторизован)
-            if (!user) {
-                vkBridge.send('VKWebAppGetUserInfo').then(userInfo => {
-                    if (userInfo && userInfo.id && !user) {
-                        const name = [userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ') || 'VK User';
+            // Автоавторизация через VKWebAppGetUserInfo
+            vkBridge.send('VKWebAppGetUserInfo').then(userInfo => {
+                if (userInfo && userInfo.id) {
+                    const realName = [userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ') || 'VK User';
+                    const realPhoto = userInfo.photo_100 || userInfo.photo_200 || userInfo.photo || null;
+                    if (!user) {
+                        // Ещё не авторизован — полная авторизация
                         applyAuthGlobal({
                             id: String(userInfo.id),
-                            name: name,
+                            name: realName,
                             provider: 'vk',
                             hash: null,
-                            photo: userInfo.photo_100 || userInfo.photo_200 || userInfo.photo || null
+                            photo: realPhoto
                         }, false);
+                    } else if (user.provider === 'vk' && String(user.id) === String(userInfo.id) && (user.name === 'VK User' || !user.name)) {
+                        // Уже авторизован как VK User, но без имени — обновляем имя и фото
+                        user.name = realName;
+                        user.photo = realPhoto;
+                        localStorage.setItem('gemini_user', JSON.stringify(user));
+                        localStorage.setItem('vk_user_name', realName);
+                        if (realPhoto) localStorage.setItem('vk_user_photo', realPhoto);
+                        authBtn.textContent = realName;
+                        showToast('Добро пожаловать, ' + realName + '!', 'success');
                     }
-                }).catch(err => {
-                    console.log('VKWebAppGetUserInfo error:', err);
-                });
-            }
+                }
+            }).catch(err => {
+                console.log('VKWebAppGetUserInfo error:', err);
+            });
         }).catch(err => {
             console.log('Not in VK context:', err);
         });
