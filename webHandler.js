@@ -1062,6 +1062,27 @@ async function uploadMediaToPublicUrl(base64Data, env, chatId, mode, mediaType, 
 }
 
 // ============================================================
+// 🛑 МАППИНГ ПАРАМЕТРОВ ВИДЕО — как в боте (getUserVideoParams)
+// KIE.AI не понимает 16:9, 9:16, 5 сек, 580p — нужен маппинг!
+// ============================================================
+function mapKieAiVideoParams(ratio, duration, quality) {
+    // aspect_ratio: 16:9 → 3:2, 9:16 → 2:3, 1:1 → 1:1
+    const ratioMap = { '16:9': '3:2', '9:16': '2:3', '3:4': '2:3', '1:1': '1:1' };
+    const mappedRatio = ratioMap[ratio] || ratioMap['16:9']; // дефолт 3:2
+
+    // duration: KIE.AI принимает только 6 или 8
+    const d = parseInt(duration) || 6;
+    const mappedDuration = d >= 8 ? '8' : '6';
+
+    // quality: 580p → 720p, остальное как есть
+    const qualityMap = { '580p': '720p' };
+    const mappedQuality = qualityMap[quality] || quality || '480p';
+
+    console.log(`[mapKieAiVideoParams] ratio: ${ratio}→${mappedRatio}, duration: ${duration}→${mappedDuration}, quality: ${quality}→${mappedQuality}`);
+    return { ratio: mappedRatio, duration: mappedDuration, quality: mappedQuality };
+}
+
+// ============================================================
 // 🎬 ВИДЕО — Поддержка generate, convert, recognition, rotate
 // ============================================================
 async function handleVideo(auth, payload, env, monolith) {
@@ -1340,11 +1361,13 @@ async function handleVideo(auth, payload, env, monolith) {
 
         if (videoSubMode === 't2v') {
             // === TEXT-TO-VIDEO: только промпт и параметры, БЕЗ референсов ===
+            // 🛑 МАППИНГ: KIE.AI не понимает 16:9/5 сек — маппим как в боте!
+            const t2vParams = mapKieAiVideoParams(payload.aspect_ratio, payload.duration, payload.quality);
             input = {
                 prompt: prompt,
-                aspect_ratio: payload.aspect_ratio || '16:9',
-                duration: payload.duration || '5',
-                quality: payload.quality || '480p',
+                aspect_ratio: t2vParams.ratio,
+                duration: t2vParams.duration,
+                quality: t2vParams.quality,
                 mode: 'normal'
             };
         } else if (videoSubMode === 'i2v') {
@@ -1354,12 +1377,14 @@ async function handleVideo(auth, payload, env, monolith) {
                 payload.reference_image, env, chatId, 'I2V', 'image', 'png', uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl
             );
             if (!imageUrl) return formatResponse(false, 'Не удалось загрузить изображение для I2V');
+            // 🛑 МАППИНГ: KIE.AI не понимает 16:9/5 сек — маппим как в боте!
+            const i2vParams = mapKieAiVideoParams(payload.aspect_ratio, payload.duration, payload.quality);
             input = {
                 image_urls: [imageUrl],
                 prompt: prompt,
-                aspect_ratio: payload.aspect_ratio || '16:9',
-                duration: payload.duration || '5',
-                quality: payload.quality || '480p',
+                aspect_ratio: i2vParams.ratio,
+                duration: i2vParams.duration,
+                quality: i2vParams.quality,
                 mode: 'normal'
             };
         } else if (videoSubMode === 'v2v') {
@@ -1377,19 +1402,23 @@ async function handleVideo(auth, payload, env, monolith) {
             // Wan и Kling модели используют разные поля
             const modelKey = modelInfo.key || '';
             if (modelKey.includes('Kling')) {
+                // 🛑 МАППИНГ качества: 580p → 720p для Kling
+                const klingQuality = mapKieAiVideoParams(null, null, payload.quality).quality;
                 input = {
                     input_urls: imageUrl,
                     video_urls: videoUrl,
                     prompt: prompt || 'Change character from photo on video',
                     character_orientation: 'video',
-                    mode: payload.quality || '720p'
+                    mode: klingQuality
                 };
             } else {
                 // Wan (по умолчанию)
+                // 🛑 МАППИНГ качества: 580p → 720p для Wan
+                const wanQuality = mapKieAiVideoParams(null, null, payload.quality).quality;
                 input = {
                     video_url: videoUrl,
                     image_url: imageUrl,
-                    resolution: payload.quality || '480p'
+                    resolution: wanQuality
                 };
             }
         } else if (videoSubMode === 'a2v') {
@@ -1404,19 +1433,22 @@ async function handleVideo(auth, payload, env, monolith) {
             );
             if (!imageUrl) return formatResponse(false, 'Не удалось загрузить фото для A2V');
             if (!audioUrl) return formatResponse(false, 'Не удалось загрузить аудио для A2V');
+            // 🛑 МАППИНГ качества: 580p → 720p для A2V
+            const a2vQuality = mapKieAiVideoParams(null, null, payload.quality).quality;
             input = {
                 image_url: imageUrl,
                 audio_url: audioUrl,
                 prompt: prompt || 'A detailed talking avatar video.',
-                resolution: payload.quality || '480p'
+                resolution: a2vQuality
             };
         } else {
-            // Неизвестный подтип — просто промпт
+            // Неизвестный подтип — просто промпт с маппингом
+            const defaultParams = mapKieAiVideoParams(payload.aspect_ratio, payload.duration, payload.quality);
             input = {
                 prompt: prompt,
-                aspect_ratio: payload.aspect_ratio || '16:9',
-                duration: payload.duration || '5',
-                quality: payload.quality || '480p',
+                aspect_ratio: defaultParams.ratio,
+                duration: defaultParams.duration,
+                quality: defaultParams.quality,
                 mode: 'normal'
             };
         }
