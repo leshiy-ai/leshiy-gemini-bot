@@ -738,23 +738,14 @@ async function handleImage(auth, payload, env, monolith) {
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const imageBuffer = Buffer.from(payload.image_base64, 'base64');
-                // Converter expects multipart/form-data for rotate-image
-                const boundary = '----FormBoundary' + Date.now().toString(36);
-                const bodyParts = [
-                    '--' + boundary,
-                    'Content-Disposition: form-data; name="image"; filename="input.png"',
-                    'Content-Type: image/png',
-                    '',
-                    ''
-                ];
-                const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
-                const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
-                const fullBody = Buffer.concat([headerBytes, imageBuffer, footerBytes]);
+                // FormData — как в боте
+                const formData = new FormData();
+                const imageBlob = new Blob([imageBuffer], { type: 'image/png' });
+                formData.append('image', imageBlob, 'input.png');
 
-                const response = await fetch(`${baseUrl}/rotate-image?angle=${angle}`, {
+                const response = await fetch(`${baseUrl}/rotate-image?angle=${encodeURIComponent(angle)}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-                    body: fullBody
+                    body: formData
                 });
                 if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
                 const resultBuffer = Buffer.from(await response.arrayBuffer());
@@ -811,26 +802,16 @@ async function handleImage(auth, payload, env, monolith) {
 
             console.log(`[WebHandler] Image convert: ${sourceFormat || 'auto'} → ${targetFormat}, endpoint: ${endpoint}`);
 
-            // 🧠 Отправляем через multipart/form-data (конвертер ожидает formData!)
-            // В Cloudflare Workers нет FormData API для fetch — собираем вручную
-            const boundary = '----FormBoundary' + Date.now().toString(36);
+            // FormData — как в боте
             const fileName = 'input.' + (sourceFormat || 'png');
             const fileMime = sourceFormat === 'heic' ? 'image/heic' : sourceFormat === 'gif' ? 'image/gif' : sourceFormat === 'webp' ? 'image/webp' : 'image/png';
-            const bodyParts = [
-                '--' + boundary,
-                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
-                'Content-Type: ' + fileMime,
-                '',
-                '' // placeholder — binary data follows
-            ];
-            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
-            const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
-            const fullBody = Buffer.concat([headerBytes, imageBuffer, footerBytes]);
+            const formData = new FormData();
+            const imageBlob = new Blob([imageBuffer], { type: fileMime });
+            formData.append(fieldName, imageBlob, fileName);
 
             const response = await fetch(`${baseUrl}${endpoint}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-                body: fullBody
+                body: formData
             });
             if (!response.ok) {
                 const errText = await response.text();
@@ -1125,25 +1106,16 @@ async function handleVideo(auth, payload, env, monolith) {
 
             console.log(`[WebHandler] Video convert: ${sourceFormat || 'auto'} → ${targetFormat}, endpoint: ${endpoint}`);
 
-            // Multipart/form-data
-            const boundary = '----FormBoundary' + Date.now().toString(36);
-            const fileName = 'input.' + (sourceFormat || 'webm');
+            // FormData — как в боте (sendMediaToConverterInBackground)
+            const fileName = 'input.' + (sourceFormat || 'mp4');
             const fileMime = sourceFormat === 'gif' ? 'image/gif' : sourceFormat === 'mp4' ? 'video/mp4' : sourceFormat === 'avi' ? 'video/x-msvideo' : sourceFormat === 'mov' ? 'video/quicktime' : 'video/webm';
-            const bodyParts = [
-                '--' + boundary,
-                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
-                'Content-Type: ' + fileMime,
-                '',
-                ''
-            ];
-            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
-            const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
-            const fullBody = Buffer.concat([headerBytes, videoBuffer, footerBytes]);
+            const formData = new FormData();
+            const videoBlob = new Blob([videoBuffer], { type: fileMime });
+            formData.append(fieldName, videoBlob, fileName);
 
             const response = await fetch(`${baseUrl}${endpoint}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-                body: fullBody
+                body: formData
             });
             if (!response.ok) {
                 const errText = await response.text();
@@ -1287,31 +1259,25 @@ async function handleVideo(auth, payload, env, monolith) {
     // === ROTATE (бесплатно через конвертер) ===
     if (videoMode === 'rotate') {
         if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для поворота');
-        const angle = payload.angle || '-90';
+        const angle = payload.angle || '90';
         try {
             const converterUrl = getConverterUrl(env);
             if (converterUrl) {
                 const baseUrl = converterUrl.endsWith('/') ? converterUrl.slice(0, -1) : converterUrl;
                 const videoBuffer = Buffer.from(payload.video_base64, 'base64');
-                // Converter expects multipart/form-data for rotate-video
-                const boundary = '----FormBoundary' + Date.now().toString(36);
-                const bodyParts = [
-                    '--' + boundary,
-                    'Content-Disposition: form-data; name="video"; filename="input.mp4"',
-                    'Content-Type: video/mp4',
-                    '',
-                    ''
-                ];
-                const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
-                const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
-                const fullBody = Buffer.concat([headerBytes, videoBuffer, footerBytes]);
+                // FormData — как в боте (runVideoRotationInBackground)
+                const formData = new FormData();
+                const videoBlob = new Blob([videoBuffer], { type: 'video/mp4' });
+                formData.append('video', videoBlob, 'input.mp4');
 
-                const response = await fetch(`${baseUrl}/rotate-video?angle=${angle}`, {
+                const response = await fetch(`${baseUrl}/rotate-video?angle=${encodeURIComponent(angle)}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-                    body: fullBody
+                    body: formData
                 });
-                if (!response.ok) throw new Error('Ошибка конвертера: ' + response.status);
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error('Ошибка конвертера: ' + response.status + ' ' + errText.substring(0, 200));
+                }
                 const resultBuffer = Buffer.from(await response.arrayBuffer());
                 const resultBase64 = resultBuffer.toString('base64');
                 return formatResponse(true, null, null, { type: 'video_base64', content: resultBase64 });
@@ -1525,38 +1491,30 @@ async function handleAudio(auth, payload, env, monolith) {
                 endpoint = '/ogg2mp3';
             }
 
-            // Multipart/form-data
-            const boundary = '----FormBoundary' + Date.now().toString(36);
+            // FormData — как в боте
             const fileName = 'input.' + (sourceFormat || 'ogg');
             const mimeMap = { wav: 'audio/wav', mp3: 'audio/mpeg', ogg: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac', m4a: 'audio/mp4', aac: 'audio/aac' };
             const fileMime = mimeMap[sourceFormat] || 'audio/ogg';
-            const bodyParts = [
-                '--' + boundary,
-                'Content-Disposition: form-data; name="' + fieldName + '"; filename="' + fileName + '"',
-                'Content-Type: ' + fileMime,
-                '',
-                ''
-            ];
-            const headerBytes = Buffer.from(bodyParts.join('\r\n') + '\r\n', 'utf8');
-            const footerBytes = Buffer.from('\r\n--' + boundary + '--\r\n', 'utf8');
-            const fullBody = Buffer.concat([headerBytes, audioBuffer, footerBytes]);
+            const formData = new FormData();
+            const audioBlob = new Blob([audioBuffer], { type: fileMime });
+            formData.append(fieldName, audioBlob, fileName);
 
             console.log(`[WebHandler] Audio convert: ${sourceFormat || 'auto'} → ${targetFormat}, endpoint: ${endpoint}`);
 
             const response = await fetch(`${baseUrl}${endpoint}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-                body: fullBody
+                body: formData
             });
             if (!response.ok) {
                 // If the /convert endpoint failed, fallback to ogg2mp3 for mp3 target
                 if (endpoint !== '/ogg2mp3' && targetFormat === 'mp3') {
                     console.log('[WebHandler] Audio convert: fallback to ogg2mp3');
-                    const fallbackBody = Buffer.concat([headerBytes, audioBuffer, footerBytes]);
+                    const fbFormData = new FormData();
+                    const fbAudioBlob = new Blob([audioBuffer], { type: fileMime });
+                    fbFormData.append(fieldName, fbAudioBlob, fileName);
                     const fallbackResp = await fetch(`${baseUrl}/ogg2mp3`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
-                        body: fallbackBody
+                        body: fbFormData
                     });
                     if (!fallbackResp.ok) throw new Error('Конвертер вернул ' + fallbackResp.status);
                     const resultBuffer = Buffer.from(await fallbackResp.arrayBuffer());

@@ -999,6 +999,8 @@
                         handleVideoRef('audio', fakeInput);
                     } else if (zoneId === 'videoConvertZone') {
                         handleVideoConvert(fakeInput);
+                    } else if (zoneId === 'videoRotateZone') {
+                        handleVideoRotateUpload(fakeInput);
                     }
                 } catch(e) {
                     console.warn('[MobileDnD] Failed to create File:', e);
@@ -1438,6 +1440,60 @@
 
     // ---- ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ ----
     document.addEventListener('DOMContentLoaded', () => {
+        // Инициализация drop-обработчиков для всех .upload-zone (внешний drag-and-drop файлов)
+        document.querySelectorAll('.upload-zone').forEach(function(zone) {
+            zone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = 'copy';
+                zone.classList.add('drag-over');
+            });
+            zone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                zone.classList.remove('drag-over');
+            });
+            zone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                zone.classList.remove('drag-over');
+                _dropJustHappened = true;
+                setTimeout(function() { _dropJustHappened = false; }, 300);
+                // Если это внутренний drag (из chat attachments) — обрабатываем через _dragState
+                if (_dragState && _dragState.attachment) {
+                    // Обработано через мобильный DnD роутинг
+                    return;
+                }
+                // Внешний файл — направляем в обработчик зоны
+                const files = e.dataTransfer.files;
+                if (!files || files.length === 0) return;
+                const file = files[0];
+                const zoneId = zone.id;
+                // Создаём fake input для совместимости с onchange handlers
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                const fakeInput = { files: dt.files, value: '' };
+                if (zoneId === 'imageRecognitionZone') handleImageRecognition(fakeInput);
+                else if (zoneId === 'imageRotateZone') handleImageRotateUpload(fakeInput);
+                else if (zoneId === 'imageResizeZone') handleImageResizeUpload(fakeInput);
+                else if (zoneId === 'imageConvertZone') handleImageConvertUpload(fakeInput);
+                else if (zoneId === 'videoConvertZone') handleVideoConvert(fakeInput);
+                else if (zoneId === 'videoRotateZone') handleVideoRotateUpload(fakeInput);
+                else if (zoneId === 'videoResizeZone') handleVideoResizeUpload(fakeInput);
+                else if (zoneId === 'mediaConvertZone') handleMediaConvertUpload(fakeInput);
+                else if (zoneId === 'videoStopFrameZone') handleStopFrame(fakeInput);
+                else if (zoneId === 'audioUploadZone') handleAudioUpload(fakeInput);
+                else if (zoneId === 'audioConvertZone') handleAudioConvert(fakeInput);
+                else if (zoneId === 'voiceCloneZone') handleVoiceClone(fakeInput);
+                else if (zoneId && zoneId.startsWith('videoI2V')) handleVideoRef('image', fakeInput);
+                else if (zoneId && zoneId.startsWith('videoV2V')) handleVideoRef('video', fakeInput);
+                else if (zoneId && zoneId.startsWith('videoA2V')) handleVideoRef('audio', fakeInput);
+                else if (zoneId === 'imageRef0') handleImageRef(0, fakeInput);
+                else if (zoneId === 'imageRef1') handleImageRef(1, fakeInput);
+                else if (zoneId === 'imageRef2') handleImageRef(2, fakeInput);
+                else if (zoneId === 'imageRef3') handleImageRef(3, fakeInput);
+            });
+        });
+
         // Проверяем авторизацию из URL (возврат из vk.html/tg.html)
         // initAuthFromURL сама обновит кнопку и вызовет loadServerData если найдёт параметры
         initAuthFromURL();
