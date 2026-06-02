@@ -1826,10 +1826,19 @@
             const savedUser = localStorage.getItem('gemini_user');
             if (savedUser) {
                 try {
-                    user = JSON.parse(savedUser);
-                    authBtn.textContent = user.name || (user.provider === 'vk' ? 'VK' : user.provider === 'tg' ? 'TG' : 'Аккаунт');
-                    authBtn.classList.add('logged-in');
-                    loadServerData();
+                    const parsed = JSON.parse(savedUser);
+                    // Валидация: id должен быть реальным числом/строкой, не null/undefined
+                    if (parsed && parsed.id && String(parsed.id) !== 'null' && String(parsed.id) !== 'undefined' && String(parsed.id) !== '') {
+                        user = parsed;
+                        authBtn.textContent = user.name || (user.provider === 'vk' ? 'VK' : user.provider === 'tg' ? 'TG' : 'Аккаунт');
+                        authBtn.classList.add('logged-in');
+                        console.log('[Auth] Восстановлена сессия из localStorage:', user.provider, user.id, user.name);
+                        loadServerData();
+                    } else {
+                        // Невалидные данные — чистим
+                        console.warn('[Auth] Невалидные данные в gemini_user, очищаем:', parsed);
+                        localStorage.removeItem('gemini_user');
+                    }
                 } catch(e) {
                     localStorage.removeItem('gemini_user');
                 }
@@ -1850,6 +1859,7 @@
                     localStorage.setItem('gemini_user', JSON.stringify(user));
                     authBtn.textContent = user.name;
                     authBtn.classList.add('logged-in');
+                    console.log('[Auth] Восстановлена сессия из фоллбэк-ключей:', user.provider, user.id);
                     loadServerData();
                 }
             }
@@ -7390,7 +7400,6 @@
     }
 
     function openAuthDialog() {
-        // Определяем контекст мини-приложения и обновляем UI кнопок
         const vkContainer = document.getElementById('vkAuthContainer');
         const tgContainer = document.getElementById('tgAuthContainer');
         const hint = document.getElementById('miniAppContextHint');
@@ -7402,6 +7411,7 @@
             hint.style.display = (isInVK || isInTG) ? 'block' : 'none';
         }
 
+        // Обновляем кнопки в зависимости от контекста
         if (vkContainer) {
             const btn = vkContainer.querySelector('.auth-provider-btn');
             if (btn) {
@@ -7411,6 +7421,7 @@
                 } else {
                     btn.innerHTML = '&#9670; Войти через VK';
                     btn.style.background = '';
+                    btn.style.display = '';
                 }
             }
         }
@@ -7569,7 +7580,7 @@
                 window.location.href = BASE_URL + '/vk.html?returnTo=' + returnTo;
             });
         } else {
-            // Не в VK — редирект на vk.html с OAuth2
+            // Обычный браузер — редирект на vk.html с OAuth2
             const returnTo = encodeURIComponent(BASE_URL + '/');
             window.location.href = BASE_URL + '/vk.html?returnTo=' + returnTo;
         }

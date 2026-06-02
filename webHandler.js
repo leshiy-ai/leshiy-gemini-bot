@@ -193,6 +193,8 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handlePaymentCallback(auth, payload, env, monolith);
             case 'validate_init_data':
                 return await handleValidateInitData(auth, payload, env);
+            case 'vk_profile':
+                return await handleVkProfile(auth, payload, env);
             default:
                 return formatResponse(false, "Неизвестный режим: " + mode);
         }
@@ -3665,6 +3667,39 @@ async function handleValidateInitData(auth, payload, env) {
         console.error('[handleValidateInitData] Error:', e.message);
         return formatResponse(false, 'Ошибка валидации: ' + e.message);
     }
+}
+
+// ============================================================
+// 📋 VK PROFILE — получение профиля VK через access_token (обход CORS)
+// ============================================================
+async function handleVkProfile(auth, payload, env) {
+    const userId = payload && payload.user_id;
+    const accessToken = payload && payload.access_token;
+
+    if (!userId) {
+        return formatResponse(false, 'user_id не указан');
+    }
+
+    // Если есть access_token — получаем профиль через VK API
+    if (accessToken) {
+        try {
+            const vkApiUrl = `https://api.vk.com/method/users.get?user_ids=${userId}&fields=photo_100&access_token=${accessToken}&v=5.131`;
+            const resp = await fetch(vkApiUrl);
+            const data = await resp.json();
+
+            if (data.response && data.response[0]) {
+                const u = data.response[0];
+                const name = `${u.first_name} ${u.last_name}`.trim();
+                const photo = u.photo_100 || null;
+                return formatResponse(true, null, null, { name, photo, user_id: String(u.id) });
+            }
+        } catch(e) {
+            console.error('[handleVkProfile] VK API error:', e.message);
+        }
+    }
+
+    // Фоллбэк — возвращаем минимальные данные
+    return formatResponse(true, null, null, { name: null, photo: null, user_id: String(userId) });
 }
 
 function formatResponse(success, error = null, creditsLeft = null, data = null) {
