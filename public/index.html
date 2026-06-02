@@ -7,8 +7,14 @@
     <meta name="description" content="Pixel-AI — чат с ИИ, генерация изображений, видео и аудио">
     <meta name="theme-color" content="#1a1a2e">
     <link rel="icon" type="image/svg+xml" href="/images/gemini_purple.svg">
+
     <!-- VK Bridge SDK — нужен для авторизации и оплаты внутри VK Mini App -->
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+    <!-- Telegram WebApp SDK — загружаем async, в РФ не загрузится (заблокирован),
+         но TG Mini App инжектит window.Telegram самостоятельно через WebView.
+         Для обычного браузера — не нужен, авторизация через tg.html -->
+    <script src="https://telegram.org/js/telegram-web-app.js" async onerror="console.log('TG SDK blocked in RF, ok')"></script>
+
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -1953,6 +1959,37 @@
                 photo: tgUser.photo_url || null,
                 initData: window.Telegram.WebApp.initData || null
             }, true);
+            return;
+        }
+
+        // СЦЕНАРИЙ 0-A2: Telegram Mini App — initData есть но user пустой → валидация на бэкенде
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData && !window.Telegram.WebApp.initDataUnsafe?.user) {
+            const initData = window.Telegram.WebApp.initData;
+            console.log('[Auth] TG Mini App: initData есть но user пустой, отправляем на валидацию');
+            fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'validate_init_data',
+                    auth: { provider: null, id: null },
+                    payload: { init_data: initData }
+                })
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success && result.data && result.data.user) {
+                    const u = result.data.user;
+                    applyAuthGlobal({
+                        id: String(u.id),
+                        name: u.name || u.username || 'TG User',
+                        provider: 'tg',
+                        hash: initData,
+                        photo: u.photo_url || null,
+                        initData: initData
+                    }, true);
+                }
+            })
+            .catch(err => console.error('[Auth] TG validate error:', err));
             return;
         }
 
@@ -7588,7 +7625,7 @@
 
     function authTG() {
         closeAuthDialog();
-        // Если мы внутри Telegram Mini App — авторизуемся через initDataUnsafe
+        // СЦЕНАРИЙ 1: TG Mini App — initDataUnsafe.user есть → мгновенная авторизация
         if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
             const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
             const tgName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'TG User';
@@ -7600,8 +7637,43 @@
                 photo: tgUser.photo_url || null,
                 initData: window.Telegram.WebApp.initData || null
             }, false);
-        } else {
-            // Не в TG — редирект на tg.html с Login Widget
+        }
+        // СЦЕНАРИЙ 2: TG Mini App — initData есть но user пустой → валидация на бэкенде
+        else if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+            const initData = window.Telegram.WebApp.initData;
+            showToast('Проверяем данные Telegram...', 'info');
+            fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'validate_init_data',
+                    auth: { provider: null, id: null },
+                    payload: { init_data: initData }
+                })
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success && result.data && result.data.user) {
+                    const u = result.data.user;
+                    applyAuthGlobal({
+                        id: String(u.id),
+                        name: u.name || u.username || 'TG User',
+                        provider: 'tg',
+                        hash: initData,
+                        photo: u.photo_url || null,
+                        initData: initData
+                    }, false);
+                } else {
+                    showToast('Ошибка авторизации Telegram', 'error');
+                }
+            })
+            .catch(err => {
+                console.error('TG validate error:', err);
+                showToast('Ошибка подключения', 'error');
+            });
+        }
+        // СЦЕНАРИЙ 3: Не в TG — редирект на tg.html с Login Widget
+        else {
             const returnTo = encodeURIComponent(BASE_URL + '/');
             window.location.href = BASE_URL + '/tg.html?returnTo=' + returnTo;
         }
