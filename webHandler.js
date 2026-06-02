@@ -622,7 +622,7 @@ async function handleChat(auth, payload, env, monolith) {
 }
 
 // ============================================================
-// 🎨 ИЗОБРАЖЕНИЕ — Поддержка t2i, i2i, upscale, rotate, convert
+// 🎨 ИЗОБРАЖЕНИЕ — Поддержка t2i, i2i, recognition, rotate, convert
 // ============================================================
 async function handleImage(auth, payload, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG, uploadBase64ImageToPublicUrl } = monolith;
@@ -630,55 +630,97 @@ async function handleImage(auth, payload, env, monolith) {
     const chatId = isAuth ? String(auth.id) : 'guest';
     const imageMode = payload.image_mode || 't2i';
 
-    // === UPSCALE ===
-    if (imageMode === 'upscale') {
-        if (!payload.image_base64) return formatResponse(false, 'Нет изображения для апскейла');
-        if (!isAuth) return formatResponse(false, 'Нужна авторизация для апскейла');
+    // === RECOGNITION (I2T — бесплатно) ===
+    if (imageMode === 'recognition') {
+        if (!payload.image_base64) return formatResponse(false, 'Нет изображения для распознавания');
 
-        const balance = await getUserBalance(chatId, env, monolith);
-        if (balance < 2) return formatResponse(false, 'Недостаточно кредитов. Нужно 2¢.', balance);
+        const prompt = (payload.prompt || 'Опиши это изображение подробно: что на нём изображено, какие объекты, цвета, атмосфера. Отвечай на русском языке.').trim();
 
-        let imageResult;
+        let result;
         try {
-            const modelInfo = getWebModel('IMAGE_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
-            if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла');
-            console.log(`[WebHandler] Upscale using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
+            let modelInfo = getWebModel('IMAGE_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+            if (!modelInfo) return formatResponse(false, 'Нет модели для распознавания');
+            console.log(`[WebHandler] Image recognition using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
-            if (modelInfo.config.SERVICE === 'KIEAI') {
-                // 🛑 KIEAI: вызываем createTaskKieAi напрямую с chatId в callbackUrl
-                const { createTaskKieAi } = monolith;
-                if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
+            const config = modelInfo.config;
+            const imageBuffer = Buffer.from(payload.image_base64, 'base64');
 
-                // Загружаем изображение в публичный URL для KIEAI
-                let imageUrl;
-                try {
-                    imageUrl = await uploadBase64ImageToPublicUrl(payload.image_base64, env, chatId);
-                    if (!imageUrl) throw new Error('Не удалось загрузить изображение');
-                } catch (e) {
-                    return formatResponse(false, 'Ошибка загрузки изображения: ' + e.message);
+            try {
+                if (config.FUNCTION.name === 'callWorkersAIVision' || config.SERVICE === 'WORKERS_AI') {
+                    result = await callWorkersAIWeb(config, imageBuffer, env);
+                } else if (config.FUNCTION.name === 'callZAIMultimodal') {
+                    const imageMime = payload.image_mime_type || 'image/jpeg';
+                    const contentParts = [{ type: 'text', text: prompt }, { type: 'image', data: payload.image_base64, mime: imageMime }];
+                    result = await config.FUNCTION(config, contentParts, env);
+                } else if (config.FUNCTION.name === 'callZAIVision') {
+                    result = await config.FUNCTION(config, imageBuffer, env);
+                } else if (config.FUNCTION.name === 'callGeminiVision' || config.FUNCTION.name === 'callGeminiChat') {
+                    result = await config.FUNCTION(config, imageBuffer, env);
+                } else if (config.FUNCTION.name === 'callPollinationsVision') {
+                    result = await config.FUNCTION(config, imageBuffer, env);
+                } else if (config.FUNCTION.name === 'callBotHubVisionChat') {
+                    result = await config.FUNCTION(config, imageBuffer, env);
+                } else {
+                    // Fallback — try direct function call
+                    try {
+                        result = await config.FUNCTION(config, prompt, env, payload.image_base64);
+                    } catch(_) {
+                        try {
+                            result = await config.FUNCTION(config, imageBuffer, env);
+                        } catch(__) {
+                            result = await config.FUNCTION(config, payload.image_base64, env);
+                        }
+                    }
                 }
-
-                const workerDomain = env.WORKER_DOMAIN || '';
-                const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
-
-                const input = { image: imageUrl };
-
-                const taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
-                if (!taskId) return formatResponse(false, 'Не удалось создать задачу апскейла');
-
-                const creditsLeft = await deductCredits(chatId, 2, env, monolith);
-                return formatResponse(true, null, creditsLeft, { type: 'image_task', content: taskId });
+            } catch (modelErr) {
+                // 🛑 Фоллбэк: если основная модель не работает — пробуем другую
+                if (modelErr.message && (modelErr.message.includes('key is missing') || modelErr.message.includes('API key'))) {
+                    console.warn(`[WebHandler] Image recognition model ${modelInfo.key} failed (missing key), trying fallback...`);
+                    const menuConfig = AI_MODEL_MENU_CONFIG['IMAGE_TO_TEXT'];
+                    if (menuConfig && menuConfig.models) {
+                        for (const [fallbackKey] of Object.entries(menuConfig.models)) {
+                            if (fallbackKey === modelInfo.key) continue;
+                            const fallbackModel = AI_MODELS[fallbackKey];
+                            if (!fallbackModel) continue;
+                            console.log(`[WebHandler] Trying fallback: ${fallbackKey} (${fallbackModel.SERVICE})`);
+                            try {
+                                const fbBuffer = Buffer.from(payload.image_base64, 'base64');
+                                if (fallbackModel.SERVICE === 'WORKERS_AI') {
+                                    result = await callWorkersAIWeb(fallbackModel, fbBuffer, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callZAIMultimodal') {
+                                    const contentParts = [{ type: 'text', text: prompt }, { type: 'image', data: payload.image_base64, mime: 'image/jpeg' }];
+                                    result = await fallbackModel.FUNCTION(fallbackModel, contentParts, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callZAIVision') {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, fbBuffer, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callGeminiVision' || fallbackModel.FUNCTION.name === 'callGeminiChat') {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, fbBuffer, env);
+                                } else if (fallbackModel.FUNCTION.name === 'callPollinationsVision') {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, fbBuffer, env);
+                                } else {
+                                    result = await fallbackModel.FUNCTION(fallbackModel, fbBuffer, env);
+                                }
+                                if (result) break;
+                            } catch (fbErr) {
+                                console.warn(`[WebHandler] Fallback ${fallbackKey} also failed:`, fbErr.message);
+                                continue;
+                            }
+                        }
+                    }
+                    if (!result) throw modelErr;
+                } else {
+                    throw modelErr;
+                }
             }
 
-            // Другие сервисы (STABILITY и т.д.) — вызываем напрямую
-            imageResult = await modelInfo.config.FUNCTION(modelInfo.config, payload.image_base64, env);
+            if (typeof result === 'string') {
+                return formatResponse(true, null, null, { type: 'text', content: result });
+            }
+            const cleaned = extractAndCleanModelResponse(result);
+            return formatResponse(true, null, null, { type: 'text', content: cleaned.finalResponse || String(result) });
         } catch (e) {
-            console.error("[WebHandler] Upscale error:", e.message);
-            return formatResponse(false, "Ошибка апскейла: " + e.message);
+            console.error('[WebHandler] Image recognition error:', e.message);
+            return formatResponse(false, 'Ошибка распознавания: ' + e.message);
         }
-
-        const creditsLeft = await deductCredits(chatId, 2, env, monolith);
-        return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId);
     }
 
     // === ROTATE (бесплатно через конвертер) ===
@@ -845,7 +887,7 @@ async function handleImage(auth, payload, env, monolith) {
                 // Загружаем референсное изображение в публичный URL
                 let imageUrl;
                 try {
-                    imageUrl = await uploadBase64ImageToPublicUrl(refImage, env, chatId);
+                    imageUrl = await uploadBase64ImageToPublicUrl(refImage, env, chatId, 'i2i');
                     if (!imageUrl) throw new Error('Не удалось загрузить изображение');
                 } catch (e) {
                     return formatResponse(false, 'Ошибка загрузки изображения: ' + e.message);
@@ -877,7 +919,7 @@ async function handleImage(auth, payload, env, monolith) {
         }
 
         const creditsLeft = await deductCredits(chatId, 4, env, monolith);
-        return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId);
+        return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 'i2i');
     }
 
     // === T2I (Text-to-Image, default) ===
@@ -941,11 +983,11 @@ async function handleImage(auth, payload, env, monolith) {
         creditsLeft = await deductCredits(chatId, 4, env, monolith);
     }
 
-    return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId);
+    return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 't2i');
 }
 
 // Helper: форматирование результата изображения
-async function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId) {
+async function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, mode) {
     // Логируем тип результата для дебага
     const resultType = imageResult === null ? 'null' : imageResult === undefined ? 'undefined' :
         (imageResult instanceof ArrayBuffer || imageResult?.constructor?.name === 'ArrayBuffer') ? 'ArrayBuffer' :
@@ -971,7 +1013,7 @@ async function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPu
         // Пробуем загрузить в публичный URL (асинхронно!)
         if (uploadBase64ImageToPublicUrl) {
             try {
-                const imageUrl = await uploadBase64ImageToPublicUrl(base64, env, chatId);
+                const imageUrl = await uploadBase64ImageToPublicUrl(base64, env, chatId, mode);
                 if (imageUrl && typeof imageUrl === 'string') {
                     console.log(`[WebHandler] Uploaded to public URL: ${imageUrl.substring(0, 80)}`);
                     return formatResponse(true, null, creditsLeft, { type: 'image_url', content: imageUrl });
@@ -1016,7 +1058,7 @@ async function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPu
 }
 
 // ============================================================
-// 🎬 ВИДЕО — Поддержка generate, convert, upscale, rotate
+// 🎬 ВИДЕО — Поддержка generate, convert, recognition, rotate
 // ============================================================
 async function handleVideo(auth, payload, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse } = monolith;
@@ -1130,8 +1172,8 @@ async function handleVideo(auth, payload, env, monolith) {
         }
     }
 
-    // === ANALYSIS (анализ видео через AI модели) ===
-    if (videoMode === 'analysis') {
+    // === RECOGNITION (V2T — бесплатно, алиас для analysis) ===
+    if (videoMode === 'recognition' || videoMode === 'analysis') {
         if (!payload.video_base64) return formatResponse(false, 'Нет видеофайла для анализа');
         const prompt = (payload.prompt || 'Проанализируй это видео подробно. Опиши что происходит, какие объекты и действия видны. Отвечай на русском языке.').trim();
 
@@ -1269,40 +1311,6 @@ async function handleVideo(auth, payload, env, monolith) {
             console.error("[WebHandler] Video rotate error:", e.message);
             return formatResponse(false, "Ошибка поворота видео: " + e.message);
         }
-    }
-
-    // === UPSCALE (10¢) ===
-    if (videoMode === 'upscale') {
-        if (!isAuth) return formatResponse(false, 'Нужна авторизация');
-        const balance = await getUserBalance(chatId, env, monolith);
-        if (balance < 10) return formatResponse(false, 'Недостаточно кредитов. Нужно 10¢.', balance);
-
-        // KIE.AI upscale — используем startKieAiVideoUpscale через createTaskKieAi
-        const { createTaskKieAi } = monolith;
-        if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
-
-        let taskId;
-        try {
-            const modelInfo = getWebModel('VIDEO_TO_UPSCALE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
-            if (!modelInfo) return formatResponse(false, 'Нет модели для апскейла видео');
-            const workerDomain = env.WORKER_DOMAIN || '';
-            const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
-
-            const input = {
-                video_base64: payload.video_base64,
-                quality: payload.quality || '720p'
-            };
-
-            taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
-        } catch (e) {
-            console.error("[WebHandler] Video upscale error:", e.message);
-            return formatResponse(false, "Ошибка апскейла видео: " + e.message);
-        }
-
-        if (!taskId) return formatResponse(false, 'Не удалось создать задачу апскейла видео');
-
-        const creditsLeft = await deductCredits(chatId, 10, env, monolith);
-        return formatResponse(true, null, creditsLeft, { type: 'video_task', content: taskId });
     }
 
     // === GENERATE (default, 20¢) ===
@@ -1797,8 +1805,8 @@ async function handleModels(auth, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
 
     const models = {
-        chat: [], image: [], image_i2i: [], image_vision: [], image_upscale: [],
-        video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [], video_upscale: [],
+        chat: [], image: [], image_i2i: [], image_vision: [],
+        video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [],
         audio_tts: [], audio_stt: [], audio_isolation: []
     };
 
@@ -1807,13 +1815,13 @@ async function handleModels(auth, env, monolith) {
         'IMAGE_TO_TEXT':    { target: 'image_vision',  freeByDefault: true  },
         'TEXT_TO_IMAGE':    { target: 'image',         freeByDefault: false },
         'IMAGE_TO_IMAGE':   { target: 'image_i2i',     freeByDefault: false },
-        'IMAGE_TO_UPSCALE': { target: 'image_upscale', freeByDefault: false },
+        // IMAGE_TO_UPSCALE removed — replaced by recognition (IMAGE_TO_TEXT)
         'TEXT_TO_VIDEO':    { target: 'video_t2v',     freeByDefault: false },
         'IMAGE_TO_VIDEO':   { target: 'video_i2v',     freeByDefault: false },
         'VIDEO_TO_VIDEO':   { target: 'video_v2v',     freeByDefault: false },
         'AUDIO_TO_VIDEO':   { target: 'video_a2v',     freeByDefault: false },
-        'VIDEO_TO_UPSCALE': { target: 'video_upscale', freeByDefault: false },
         'VIDEO_TO_ANALYSIS':{ target: 'video_analysis', freeByDefault: true  },
+        // VIDEO_TO_UPSCALE removed — replaced by recognition (VIDEO_TO_ANALYSIS)
         'TEXT_TO_AUDIO':    { target: 'audio_tts',     freeByDefault: true  }, // VoiceRSS бесплатный!
         'AUDIO_TO_TEXT':    { target: 'audio_stt',     freeByDefault: true  },
         'VIDEO_TO_TEXT':    { target: 'audio_stt',     freeByDefault: true  },
@@ -2295,7 +2303,7 @@ async function downloadImageWithProxy(imageUrl, env) {
  * 🛑 Общая функция обработки ответа KieAI (из KV callback или API polling)
  * Извлекает URL результата из любого формата ответа KieAI
  */
-async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl) {
+async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode) {
     const state = result.data?.state;
     const output = result.data?.output;
     const resultJson = result.data?.resultJson;
@@ -2455,7 +2463,7 @@ async function processKieAiApiResponse(result, taskType, chatId, env, uploadBase
                     console.log(`[WebHandler] Downloaded image: base64 length=${imgBase64.length}`);
                     if (uploadBase64ImageToPublicUrl) {
                         try {
-                            const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId);
+                            const uploadedUrl = await uploadBase64ImageToPublicUrl(imgBase64, env, chatId, s3Mode || 'img');
                             if (uploadedUrl && typeof uploadedUrl === 'string') {
                                 console.log(`[WebHandler] Re-uploaded to: ${uploadedUrl.substring(0, 80)}`);
                                 return formatResponse(true, null, null, { type: 'image_url', content: uploadedUrl });
@@ -2522,7 +2530,11 @@ async function handleTaskStatus(auth, payload, env, monolith) {
     const chatId = String(auth.id);
     const taskId = payload?.task_id;
     const taskType = payload?.task_type || 'image'; // 'image' or 'video'
+    const imageMode = payload?.image_mode || null; // 't2i', 'i2i', 'recognition', 'vid', 'tts' и т.д.
     const { uploadBase64ImageToPublicUrl, getKieAiTaskResultForWeb } = monolith || {};
+
+    // 🛑 Формируем mode для S3-папки из imageMode или taskType
+    const s3Mode = imageMode || (taskType === 'video' ? 'vid' : taskType === 'audio' ? 'aud' : 'img');
 
     if (!taskId) {
         return formatResponse(false, 'Не указан task_id');
@@ -2545,7 +2557,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
                             output: kvResult.resultJson // Иногда результат в output
                         }
                     };
-                    return await processKieAiApiResponse(simulatedApiResult, taskType, chatId, env, uploadBase64ImageToPublicUrl);
+                    return await processKieAiApiResponse(simulatedApiResult, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode);
                 } else if (kvResult.state === 'failed' || kvResult.state === 'fail') {
                     return formatResponse(false, 'Задача не удалась: ' + (kvResult.failMsg || 'Ошибка'));
                 }
@@ -2587,7 +2599,7 @@ async function handleTaskStatus(auth, payload, env, monolith) {
             return formatResponse(false, 'KieAI API ошибка: ' + (result.msg || result.message || 'Unknown error'));
         }
 
-        return await processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl);
+        return await processKieAiApiResponse(result, taskType, chatId, env, uploadBase64ImageToPublicUrl, s3Mode);
     } catch (e) {
         console.error("[WebHandler] Task status check error:", e.message);
         return formatResponse(false, 'Ошибка проверки статуса: ' + e.message);

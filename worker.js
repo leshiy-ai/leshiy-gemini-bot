@@ -1463,7 +1463,7 @@ async function loadActiveConfig(serviceType, envData, chatId) {
  * @param {string} chatId - ID чата.
  * @returns {Promise<string>} - Публичный URL изображения.
  */
-async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
+async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId, mode) {
     const PUBLIC_DOMAIN = envData.WORKER_DOMAIN.startsWith('http') 
         ? envData.WORKER_DOMAIN 
         : `https://${envData.WORKER_DOMAIN}`;
@@ -1471,20 +1471,24 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId) {
     // Убираем префикс (поддерживаем jpeg и png)
     const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
     
-    // Определяем режим (I2I/T2I/upscale и т.д.)
-    let mode = 'I2I';
-    const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE;
-    if (IMAGE_STORAGE) {
-        try {
-            mode = (await IMAGE_STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX)) || 'I2I';
-        } catch(e) {}
+    // 🛑 Определяем режим (T2I/I2I/upscale/vid/aud и т.д.)
+    // Приоритет: явно переданный mode > KV (для бота) > дефолт 'img'
+    let folderMode = mode || null;
+    if (!folderMode) {
+        const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE;
+        if (IMAGE_STORAGE && envData.CREATIVE_MODE_KEY_SUFFIX) {
+            try {
+                folderMode = await IMAGE_STORAGE.get(chatId + envData.CREATIVE_MODE_KEY_SUFFIX);
+            } catch(e) {}
+        }
     }
+    if (!folderMode) folderMode = 'img';
     
     // Декодируем base64 → Buffer
     const buffer = Buffer.from(base64, 'base64');
     
     // Формируем ключ и URL
-    const imageKey = `${mode}/${chatId}/${Date.now()}.png`;
+    const imageKey = `${folderMode}/${chatId}/${Date.now()}.png`;
     const publicUrl = `${PUBLIC_DOMAIN}/kv-images/${imageKey}`;
 
     // 🛑 ПРИОРИТЕТ: S3 (Yandex Cloud) — API Gateway раздаёт /kv-images/ напрямую из S3
@@ -8790,10 +8794,10 @@ async function callZAIMultimodal(config, contentParts, envData) {
             return { type: 'video_url', video_url: { url } };
         }
         if (part.type === 'audio') {
-            // Для аудио Z.AI использует audio_url (как OpenAI)
+            // Для аудио Z.AI использует file_url (audio_url НЕ поддерживается — даёт type error 400)
             const mime = part.mime || 'audio/mpeg';
             const url = part.url || (part.data ? `data:${mime};base64,${part.data}` : '');
-            return { type: 'audio_url', audio_url: { url } };
+            return { type: 'file_url', file_url: { url } };
         }
         if (part.type === 'file') {
             // Для файлов Z.AI использует file_url

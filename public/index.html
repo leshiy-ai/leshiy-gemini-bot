@@ -220,20 +220,20 @@
                 </div>
             </div>
 
-            <!-- Апскейл -->
-            <div class="panel-subsection" id="imageUpscaleSection">
+            <!-- Распознавание изображения (I2T) -->
+            <div class="panel-subsection" id="imageRecognitionSection">
                 <div>
-                    <h3>&#128269; Увеличение разрешения</h3>
-                    <p>Загрузите фото — я увеличу разрешение в 4 раза. Стоимость: 2&#162;.</p>
+                    <h3>&#128065; Распознавание изображения</h3>
+                    <p>Загрузите фото — я опишу что на нём. Бесплатно.</p>
                 </div>
-                <div class="upload-zone" id="imageUpscaleZone" onclick="if(!_dropJustHappened)document.getElementById('imageUpscaleInput').click()">
+                <div class="upload-zone" id="imageRecognitionZone" onclick="if(!_dropJustHappened)document.getElementById('imageRecognitionInput').click()">
                     <div class="icon">&#128247;</div>
-                    <div class="label">Загрузить изображение для апскейла</div>
+                    <div class="label">Загрузить изображение для распознавания</div>
                     <div class="hint">JPG, PNG, WebP — до 10 МБ</div>
-                    <input type="file" id="imageUpscaleInput" accept="image/*" style="display:none" onchange="handleImageUpscale(this)">
+                    <input type="file" id="imageRecognitionInput" accept="image/*" style="display:none" onchange="handleImageRecognition(this)">
                 </div>
-                <div class="result-area" id="imageUpscaleResult">
-                    <span class="result-placeholder">Здесь появится увеличенное изображение</span>
+                <div class="result-area" id="imageRecognitionResult">
+                    <span class="result-placeholder">Здесь появится описание изображения</span>
                 </div>
             </div>
         </div>
@@ -320,11 +320,11 @@
                 </div>
             </div>
 
-            <!-- Анализ видео (бесплатно) -->
+            <!-- Распознавание видео (V2T) -->
             <div class="panel-subsection" id="videoAnalysisSection">
                 <div>
-                    <h3>&#128065; Анализ видео</h3>
-                    <p>Загрузите видеофайл для распознавания контента и анализа. Бесплатно.</p>
+                    <h3>&#128065; Распознавание видео</h3>
+                    <p>Загрузите видеофайл — я опишу что на нём происходит. Бесплатно.</p>
                 </div>
                 <div class="upload-zone" id="videoConvertZone" onclick="if(!_dropJustHappened)document.getElementById('videoConvertInput').click()">
                     <div class="icon">&#127916;</div>
@@ -334,23 +334,6 @@
                 </div>
                 <div class="result-area" id="videoConvertResult">
                     <span class="result-placeholder">Здесь появится результат анализа</span>
-                </div>
-            </div>
-
-            <!-- Апскейл видео -->
-            <div class="panel-subsection" id="videoUpscaleSection">
-                <div>
-                    <h3>&#128269; Увеличение разрешения видео</h3>
-                    <p>Загрузите видео — я увеличу разрешение. Стоимость: от 5&#162;.</p>
-                </div>
-                <div class="upload-zone" id="videoUpscaleZone" onclick="if(!_dropJustHappened)document.getElementById('videoUpscaleInput').click()">
-                    <div class="icon">&#128269;</div>
-                    <div class="label">Загрузить видео для апскейла</div>
-                    <div class="hint">MP4, AVI, MOV, WebM — до 50 МБ</div>
-                    <input type="file" id="videoUpscaleInput" accept="video/*" style="display:none" onchange="handleVideoUpscaleUpload(this)">
-                </div>
-                <div class="result-area" id="videoUpscaleResult">
-                    <span class="result-placeholder">Здесь появится увеличенное видео</span>
                 </div>
             </div>
 
@@ -963,8 +946,8 @@
                     if (zoneId === 'imageRef0' || zoneId === 'imageRef1' || zoneId === 'imageRef2' || zoneId === 'imageRef3') {
                         var refIdx = parseInt(zoneId.replace('imageRef', ''));
                         handleImageRef(refIdx, fakeInput);
-                    } else if (zoneId === 'imageUpscaleZone') {
-                        handleImageUpscale(fakeInput);
+                    } else if (zoneId === 'imageRecognitionZone') {
+                        handleImageRecognition(fakeInput);
                     } else if (zoneId === 'imageRotateZone') {
                         handleImageRotateUpload(fakeInput);
                     } else if (zoneId === 'mediaConvertZone') {
@@ -1116,7 +1099,7 @@
     }
 
     // 🧠 MutationObserver: автоматически делает ВСЕ появляющиеся .generated-image перетаскиваемыми
-    // Работает для генерации, апскейла, поворота, конвертации — везде где появляются картинки
+    // Работает для генерации, распознавания, поворота, конвертации — везде где появляются картинки
     (function() {
         const observer = new MutationObserver(function(mutations) {
             mutations.forEach(function(m) {
@@ -1209,7 +1192,7 @@
     // ---- KIEAI TASK POLLING ----
     // Polls the backend for KieAI async task status (image/video generation)
     // Returns: { completed: true, data } or { completed: false, state } or throws on error
-    async function pollTaskStatus(taskId, taskType, maxAttempts, intervalMs) {
+    async function pollTaskStatus(taskId, taskType, maxAttempts, intervalMs, imageMode) {
         maxAttempts = maxAttempts || 120; // ✅ Увеличено до 120 попыток (10 минут при 5сек интервале)
         intervalMs = intervalMs || 5000;
 
@@ -1221,7 +1204,7 @@
                     body: JSON.stringify({
                         mode: 'task_status',
                         auth: getAuth(),
-                        payload: { task_id: taskId, task_type: taskType }
+                        payload: { task_id: taskId, task_type: taskType, image_mode: imageMode || null }
                     })
                 });
 
@@ -1313,8 +1296,8 @@
     // НИКАКОГО ХАРДКОДА — модели загружаются ТОЛЬКО из /api (mode=models)
     // Пустые массивы = состояние загрузки, пока API не ответит
     const FALLBACK_MODELS = {
-        chat: [], image: [], image_i2i: [], image_vision: [], image_upscale: [],
-        video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [], video_upscale: [],
+        chat: [], image: [], image_i2i: [], image_vision: [],
+        video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [],
         audio_tts: [], audio_stt: []
     };
 
@@ -1374,13 +1357,13 @@
         'IMAGE_TO_TEXT': 'image_vision',
         'TEXT_TO_IMAGE': 'image',
         'IMAGE_TO_IMAGE': 'image_i2i',
-        'IMAGE_TO_UPSCALE': 'image_upscale',
+        // IMAGE_TO_UPSCALE removed — replaced by recognition (IMAGE_TO_TEXT)
         'TEXT_TO_VIDEO': 'video_t2v',
         'IMAGE_TO_VIDEO': 'video_i2v',
         'VIDEO_TO_VIDEO': 'video_v2v',
         'AUDIO_TO_VIDEO': 'video_a2v',
         'VIDEO_TO_ANALYSIS': 'video_analysis',
-        'VIDEO_TO_UPSCALE': 'video_upscale',
+        // VIDEO_TO_UPSCALE removed — replaced by recognition (VIDEO_TO_ANALYSIS)
         'TEXT_TO_AUDIO': 'audio_tts',
         'AUDIO_TO_TEXT': 'audio_stt',
         'VIDEO_TO_TEXT': 'audio_stt',
@@ -1401,15 +1384,13 @@
         image: null,
         image_i2i: null,
         image_vision: null,
-        image_upscale: null,
-        imageSubMode: 'generate',  // 'generate', 'upscale', 'rotate'
+        imageSubMode: 'generate',  // 'generate', 'recognition', 'rotate'
         video_t2v: null,
         video_i2v: null,
         video_v2v: null,
         video_a2v: null,
         video_analysis: null,
-        video_upscale: null,
-        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'upscale', 'analysis', 'convert', 'resize', 'stopframe'
+        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'recognition', 'convert', 'resize', 'stopframe'
         audio_tts: null,
         audio_stt: null,
         audioSubMode: 'tts',  // 'tts', 'stt', 'convert', 'voice_clone'
@@ -1708,12 +1689,12 @@
             'chat': { label: '&#128172; Чат', models: availableModels.chat || [] },
             'image': { label: '&#10024; Генерация картинок', models: availableModels.image || [] },
             'image_i2i': { label: '&#127912; Картинка&#8594;Картинка', models: availableModels.image_i2i || [] },
-            'image_upscale': { label: '&#128269; Апскейл', models: availableModels.image_upscale || [] },
+            'image_vision': { label: '\uD83D\uDC41 Распознавание', models: availableModels.image_vision || [] },
             'video_t2v': { label: '&#127916; Текст&#8594;Видео', models: availableModels.video_t2v || [] },
             'video_i2v': { label: '&#128444; Картинка&#8594;Видео', models: availableModels.video_i2v || [] },
             'video_v2v': { label: '&#127909; Видео&#8594;Видео', models: availableModels.video_v2v || [] },
             'video_a2v': { label: '&#128483; Аудио&#8594;Аватар', models: availableModels.video_a2v || [] },
-            'video_analysis': { label: '&#128065; Анализ видео', models: availableModels.video_analysis || [] },
+            'video_analysis': { label: '\uD83D\uDC41 Распознавание видео', models: availableModels.video_analysis || [] },
             'audio_tts': { label: '&#128266; Озвучка (TTS)', models: availableModels.audio_tts || [] },
             'audio_stt': { label: '&#127908; Распознавание (STT)', models: availableModels.audio_stt || [] }
         };
@@ -2153,8 +2134,7 @@
             selected.image_i2i = availableModels.image_i2i?.find(m => m.isFree)?.key || availableModels.image_i2i?.[0]?.key;
         if (!selected.image_vision || !availableModels.image_vision?.find(m => m.key === selected.image_vision))
             selected.image_vision = availableModels.image_vision?.find(m => m.isFree)?.key || availableModels.image_vision?.[0]?.key;
-        if (!selected.image_upscale || !availableModels.image_upscale?.find(m => m.key === selected.image_upscale))
-            selected.image_upscale = availableModels.image_upscale?.[0]?.key;
+        // image_upscale removed — recognition uses image_vision
         // Видео — по подкатегориям
         if (!selected.video_t2v || !availableModels.video_t2v?.find(m => m.key === selected.video_t2v))
             selected.video_t2v = availableModels.video_t2v?.[0]?.key;
@@ -2166,8 +2146,7 @@
             selected.video_a2v = availableModels.video_a2v?.[0]?.key;
         if (!selected.video_analysis || !availableModels.video_analysis?.find(m => m.key === selected.video_analysis))
             selected.video_analysis = availableModels.video_analysis?.find(m => m.isFree)?.key || availableModels.video_analysis?.[0]?.key;
-        if (!selected.video_upscale || !availableModels.video_upscale?.find(m => m.key === selected.video_upscale))
-            selected.video_upscale = availableModels.video_upscale?.[0]?.key;
+        // video_upscale removed — recognition uses video_analysis
         if (!selected.audio_tts || !availableModels.audio_tts?.find(m => m.key === selected.audio_tts)) {
             // VoiceRSS — бесплатный, без авторизации, должен быть по умолчанию
             const voicerss = availableModels.audio_tts?.find(m => m.service === 'VOICERSS');
@@ -2243,7 +2222,7 @@
     function renderImageSubHeader() {
         const hasRefs = imageRefs.some(r => r !== null);
 
-        // Кнопки подрежимов: Генерация / Поворот / Ресайз / Конверт / Апскейл
+        // Кнопки подрежимов: Генерация / Поворот / Ресайз / Конверт / Распознавание
         const subModesContainer = document.getElementById('imageSubModes');
         subModesContainer.innerHTML = '';
         [
@@ -2251,7 +2230,7 @@
             { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
             { key: 'convert', label: '📦 Конверт', cls: 'free' },
-            { key: 'upscale', label: '🔍 Апскейл', cls: '' }
+            { key: 'recognition', label: '👁 Распознавание', cls: 'free' }
         ].forEach(sm => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.imageSubMode === sm.key ? ' active' : '') + (sm.cls ? ' ' + sm.cls : '');
@@ -2281,9 +2260,9 @@
         const modeTag = document.getElementById('imageModeTag');
         if (modeTag) {
             const isFreeModel = currentModel?.isFree;
-            if (selected.imageSubMode === 'upscale') {
-                modeTag.className = 'mode-tag txt-to-img';
-                modeTag.textContent = 'апскейл';
+            if (selected.imageSubMode === 'recognition') {
+                modeTag.className = 'mode-tag by-photo';
+                modeTag.textContent = 'распознавание';
             } else if (selected.imageSubMode === 'rotate') {
                 modeTag.className = 'mode-tag by-photo';
                 modeTag.textContent = 'поворот';
@@ -2338,16 +2317,16 @@
                 sel.appendChild(optgroup);
             }
             modelsContainer.appendChild(sel);
-        } else if (selected.imageSubMode === 'upscale') {
-            // Показываем выбор модели для апскейла (с группировкой по сервису)
-            const upscaleModels = availableModels.image_upscale || [];
-            if (upscaleModels.length > 0) {
+        } else if (selected.imageSubMode === 'recognition') {
+            // Распознавание — модели IMAGE_TO_TEXT (vision)
+            const visionModels = availableModels.image_vision || [];
+            if (visionModels.length > 0) {
                 const sel = document.createElement('select');
-                sel.className = 'model-select';
-                sel.value = selected.image_upscale || upscaleModels[0]?.key;
-                sel.onchange = () => { selected.image_upscale = sel.value; saveSelected(); renderImageSubHeader(); };
+                sel.className = 'model-select model-free';
+                sel.value = selected.image_vision || visionModels[0]?.key;
+                sel.onchange = () => { selected.image_vision = sel.value; saveSelected(); renderImageSubHeader(); };
                 const groups = {};
-                upscaleModels.forEach(m => {
+                visionModels.forEach(m => {
                     const lbl = m.serviceLabel || m.service || 'Другие';
                     if (!groups[lbl]) groups[lbl] = [];
                     groups[lbl].push(m);
@@ -2358,7 +2337,7 @@
                     models.forEach(m => {
                         const opt = document.createElement('option');
                         opt.value = m.key;
-                        opt.selected = (selected.image_upscale || upscaleModels[0]?.key) === m.key;
+                        opt.selected = (selected.image_vision || visionModels[0]?.key) === m.key;
                         opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
                         optgroup.appendChild(opt);
                     });
@@ -2366,7 +2345,7 @@
                 }
                 modelsContainer.appendChild(sel);
             } else {
-                modelsContainer.innerHTML = '<span class="sub-label">2\u00A2 за апскейл</span>';
+                modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
             }
         } else if (selected.imageSubMode === 'rotate') {
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
@@ -2432,7 +2411,7 @@
         selected.imageSubMode = mode;
         saveSelected();
         document.getElementById('imageGenSection').classList.toggle('active', mode === 'generate');
-        document.getElementById('imageUpscaleSection').classList.toggle('active', mode === 'upscale');
+        document.getElementById('imageRecognitionSection').classList.toggle('active', mode === 'recognition');
         document.getElementById('imageRotateSection').classList.toggle('active', mode === 'rotate');
         document.getElementById('imageResizeSection').classList.toggle('active', mode === 'resize');
         document.getElementById('imageConvertSection').classList.toggle('active', mode === 'convert');
@@ -2448,8 +2427,7 @@
             { key: 'i2v', label: '🎬 Картинка→Видео', cls: '' },
             { key: 'v2v', label: '🎥 Видео→Видео', cls: '' },
             { key: 'a2v', label: '🗣 Аудио→Аватар', cls: '' },
-            { key: 'upscale', label: '🔍 Апскейл', cls: '' },
-            { key: 'analysis', label: '👀 Анализ', cls: 'free' },
+            { key: 'recognition', label: '👁 Распознавание', cls: 'free' },
             { key: 'convert', label: '🔄 Конвертация', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
             { key: 'stopframe', label: '📷 Стоп-кадр', cls: 'free' }
@@ -2510,8 +2488,8 @@
             } else {
                 modelsContainer.innerHTML = '<span class="sub-label">Нет моделей</span>';
             }
-        } else if (selected.videoSubMode === 'analysis') {
-            // Анализ видео — Vision модели (с optgroup по сервису)
+        } else if (selected.videoSubMode === 'recognition') {
+            // Распознавание видео — Vision модели (V2T)
             const modelList = availableModels.video_analysis || [];
             if (modelList.length > 0) {
                 const sel = document.createElement('select');
@@ -2547,35 +2525,6 @@
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         } else if (selected.videoSubMode === 'stopframe') {
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
-        } else if (selected.videoSubMode === 'upscale') {
-            const upscaleModels = availableModels.video_upscale || [];
-            if (upscaleModels.length > 0) {
-                const sel = document.createElement('select');
-                sel.className = 'model-select';
-                sel.value = selected.video_upscale || upscaleModels[0]?.key;
-                sel.onchange = () => { selected.video_upscale = sel.value; saveSelected(); renderVideoSubHeader(); };
-                const groups = {};
-                upscaleModels.forEach(m => {
-                    const lbl = m.serviceLabel || m.service || 'Другие';
-                    if (!groups[lbl]) groups[lbl] = [];
-                    groups[lbl].push(m);
-                });
-                for (const [grp, models] of Object.entries(groups)) {
-                    const optgroup = document.createElement('optgroup');
-                    optgroup.label = grp;
-                    models.forEach(m => {
-                        const opt = document.createElement('option');
-                        opt.value = m.key;
-                        opt.selected = (selected.video_upscale || upscaleModels[0]?.key) === m.key;
-                        opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
-                        optgroup.appendChild(opt);
-                    });
-                    sel.appendChild(optgroup);
-                }
-                modelsContainer.appendChild(sel);
-            } else {
-                modelsContainer.innerHTML = '<span class="sub-label">5\u00A2 за апскейл</span>';
-            }
         }
 
         // Ratio — для генерации — теперь in per-section params areas
@@ -2764,8 +2713,7 @@
         document.getElementById('videoI2VSection').classList.toggle('active', mode === 'i2v');
         document.getElementById('videoV2VSection').classList.toggle('active', mode === 'v2v');
         document.getElementById('videoA2VSection').classList.toggle('active', mode === 'a2v');
-        document.getElementById('videoUpscaleSection').classList.toggle('active', mode === 'upscale');
-        document.getElementById('videoAnalysisSection').classList.toggle('active', mode === 'analysis');
+        document.getElementById('videoAnalysisSection').classList.toggle('active', mode === 'recognition');
         document.getElementById('videoConvertMediaSection').classList.toggle('active', mode === 'convert');
         document.getElementById('videoResizeSection').classList.toggle('active', mode === 'resize');
         document.getElementById('videoStopFrameSection').classList.toggle('active', mode === 'stopframe');
@@ -2788,14 +2736,14 @@
             const hasRefs = imageRefs.some(r => r !== null);
             const phMap = {
                 generate: hasRefs ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
-                upscale: 'Загрузите фото выше для увеличения разрешения',
+                recognition: 'Загрузите фото выше для распознавания',
                 rotate: 'Загрузите фото выше и выберите угол поворота',
                 resize: 'Загрузите фото выше и укажите размер',
                 convert: 'Загрузите фото выше и выберите формат'
             };
             const hintMap = {
                 generate: hasRefs ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
-                upscale: 'Апскейл — 2¢ за изображение',
+                recognition: 'Распознавание изображения — бесплатно',
                 rotate: 'Поворот изображения — бесплатно',
                 resize: 'Ресайз изображения — бесплатно',
                 convert: 'Конвертация — бесплатно'
@@ -2812,22 +2760,20 @@
                 i2v: 'Опишите анимацию для картинки...',
                 v2v: 'Опишите трансформацию видео...',
                 a2v: 'Опишите аватар для генерации...',
-                analysis: 'Загрузите видеофайл выше для анализа',
+                recognition: 'Загрузите видеофайл выше для распознавания',
                 convert: 'Загрузите файл выше и выберите формат',
                 resize: 'Загрузите видео/фото выше и укажите размер',
-                stopframe: 'Загрузите видео выше для стоп-кадра',
-                upscale: 'Загрузите видео выше для увеличения разрешения'
+                stopframe: 'Загрузите видео выше для стоп-кадра'
             };
             const hintMap = {
                 t2v: 'Стоимость: от 20\u00A2',
                 i2v: 'Обязательно загрузите картинку выше',
                 v2v: 'Обязательно загрузите видео выше',
                 a2v: 'Обязательно загрузите аудио выше',
-                analysis: 'Анализ видео — бесплатно',
+                recognition: 'Распознавание видео — бесплатно',
                 convert: 'Конвертация медиа — бесплатно',
                 resize: 'Ресайз — бесплатно',
-                stopframe: 'Стоп-кадр — бесплатно',
-                upscale: 'Апскейл видео — от 5\u00A2'
+                stopframe: 'Стоп-кадр — бесплатно'
             };
             userInput.placeholder = phMap[selected.videoSubMode] || 'Опишите видео...';
             inputHint.textContent = hintMap[selected.videoSubMode] || '';
@@ -2911,13 +2857,13 @@
         const placeholders = {
             chat: 'Напишите сообщение или перетащите файл...',
             image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Опишите результат на основе референса...' : 'Опишите изображение на английском или русском...',
-            video: ['t2v','i2v','v2v','a2v'].includes(selected.videoSubMode) ? 'Опишите видео-сцену для ИИ...' : selected.videoSubMode === 'upscale' ? 'Загрузите видео выше для апскейла' : 'Загрузите файл выше',
+            video: ['t2v','i2v','v2v','a2v'].includes(selected.videoSubMode) ? 'Опишите видео-сцену для ИИ...' : selected.videoSubMode === 'recognition' ? 'Загрузите видео выше для распознавания' : 'Загрузите файл выше',
             audio: 'Введите текст для озвучки...'
         };
         const hints = {
             chat: user ? 'Enter — отправить, Shift+Enter — новая строка' : 'Анонимный чат',
             image: (selected.imageSubMode === 'generate' && imageRefs.some(r => r !== null)) ? 'Режим «по фото» — генерация на основе референса' : 'Стоимость зависит от модели',
-            video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : selected.videoSubMode === 'upscale' ? 'Апскейл видео — от 5\u00A2' : ['analysis','convert','resize','stopframe'].includes(selected.videoSubMode) ? '\u2713 Бесплатно' : 'Стоимость зависит от режима',
+            video: ['t2v','i2v'].includes(selected.videoSubMode) ? 'Стоимость: от 20\u00A2' : ['recognition','convert','resize','stopframe'].includes(selected.videoSubMode) ? '\u2713 Бесплатно' : 'Стоимость зависит от режима',
             audio: selected.audioSubMode === 'tts' ? 'Стоимость озвучки зависит от модели' : 'Бесплатно'
         };
         userInput.placeholder = placeholders[mode];
@@ -4414,11 +4360,11 @@
 
     async function sendOrGenerate() {
         const text = userInput.value.trim();
-        // 🧠 Для upscale/rotate/convert промпт не нужен — проверяем только isProcessing
-        const isImageToolMode = currentMode === 'image' && ['upscale', 'rotate', 'resize', 'convert'].includes(selected.imageSubMode);
-        const isVideoAnalysis = currentMode === 'video' && selected.videoSubMode === 'analysis';
+        // 🧠 Для recognition/rotate/convert промпт не нужен — проверяем только isProcessing
+        const isImageToolMode = currentMode === 'image' && ['recognition', 'rotate', 'resize', 'convert'].includes(selected.imageSubMode);
+        const isVideoAnalysis = currentMode === 'video' && selected.videoSubMode === 'recognition';
         const isVideoConvert = currentMode === 'video' && selected.videoSubMode === 'convert';
-        const isVideoTool = currentMode === 'video' && ['analysis', 'convert', 'resize', 'stopframe', 'upscale'].includes(selected.videoSubMode);
+        const isVideoTool = currentMode === 'video' && ['recognition', 'convert', 'resize', 'stopframe'].includes(selected.videoSubMode);
         const isAudioToolMode = currentMode === 'audio' && ['stt', 'convert', 'voice_clone'].includes(selected.audioSubMode);
         if (isProcessing) return;
         // Требуем текст или вложения ТОЛЬКО для режимов где промпт нужен
@@ -4427,8 +4373,8 @@
         if (currentMode === 'chat') {
             await sendChat(text);
         } else if (currentMode === 'image') {
-            if (selected.imageSubMode === 'upscale') {
-                await executeImageUpscale(); return;
+            if (selected.imageSubMode === 'recognition') {
+                await executeImageRecognition(); return;
             } else if (selected.imageSubMode === 'rotate') {
                 await executeImageRotate(); return;
             } else if (selected.imageSubMode === 'resize') {
@@ -4439,7 +4385,7 @@
             if (!text) { showToast('Опишите изображение', 'info'); return; }
             await generateImage(text);
         } else if (currentMode === 'video') {
-            if (selected.videoSubMode === 'analysis') {
+            if (selected.videoSubMode === 'recognition') {
                 showToast('Для этого режима загрузите видеофайл', 'info');
                 return;
             } else if (selected.videoSubMode === 'convert') {
@@ -4449,8 +4395,6 @@
             } else if (selected.videoSubMode === 'stopframe') {
                 if (stopFrameBase64) { await extractFrame(); return; }
                 showToast('Загрузите видеофайл выше для стоп-кадра', 'info'); return;
-            } else if (selected.videoSubMode === 'upscale') {
-                await executeVideoUpscale(); return;
             }
             if (!text) { showToast('Опишите видео-сцену', 'info'); return; }
             await generateVideo(text);
@@ -4682,7 +4626,7 @@
                                 }
                             };
 
-                            const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 60, 5000);
+                            const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 60, 5000, isI2I ? 'i2i' : 't2i');
                             console.log('[T2I] Poll result:', JSON.stringify(result).substring(0, 300));
 
                             // Display the result
@@ -4759,7 +4703,7 @@
             } else {
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
-                // Convert blob to base64 for storeLastGeneratedImage (needed for upscale/rotate)
+                // Convert blob to base64 for storeLastGeneratedImage (needed for recognition/rotate)
                 const base64 = await new Promise(resolve => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result.split(',')[1] || reader.result);
@@ -4889,7 +4833,7 @@
                                 }
                             };
 
-                            const result = await pollTaskStatus.call(pollCtx, taskId, 'video', 60, 5000);
+                            const result = await pollTaskStatus.call(pollCtx, taskId, 'video', 60, 5000, 'vid');
 
                             // Display the result
                             if (result.url) {
@@ -4972,8 +4916,8 @@
         }
 
         const resultArea = document.getElementById('videoConvertResult');
-        const prompt = userInput.value.trim() || 'Проанализируй это видео подробно: опиши что происходит, кто в кадре, какая атмосфера';
-        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Анализирую видео...</span>';
+        const prompt = userInput.value.trim() || 'Проанализируй это видео подробно: опиши что происходит, кто в кадре, какая атмосфера. Отвечай на русском языке.';
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Распознаю видео...</span>';
 
         try {
             const base64 = await fileToBase64(file);
@@ -4989,7 +4933,7 @@
                         prompt: prompt,
                         video_base64: base64,
                         video_mime_type: file.type || 'video/mp4',
-                        video_mode: 'analysis',
+                        video_mode: 'recognition',
                         model: analysisModel
                     }
                 })
@@ -5080,7 +5024,7 @@
                         const pollResult = await pollTaskStatus.call({_updateProgress: function(state, attempt, maxAttempts, pct) {
                             const el = document.getElementById('audioTTSPollProgress');
                             if (el) el.textContent = state + ' (' + pct + '%)';
-                        }}, taskId, 'audio', 60, 5000);
+                        }}, taskId, 'audio', 60, 5000, 'tts');
                         if (pollResult?.url) {
                             const audioSrc = pollResult.url;
                             resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '"></audio><br><a href="' + audioSrc + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
@@ -5615,36 +5559,37 @@
         selectedRotateAngle = btn.dataset.angle;
     }
 
-    // ---- IMAGE UPSCALE ----
-    let upscaleImageBase64 = null;
-    async function handleImageUpscale(input) {
+    // ---- IMAGE RECOGNITION (I2T) ----
+    let recognitionImageBase64 = null;
+    async function handleImageRecognition(input) {
         const file = (input.files && input.files[0]) || null;
         if (!file) return;
         try {
-            upscaleImageBase64 = await fileToBase64(file);
+            recognitionImageBase64 = await fileToBase64(file);
             // Показываем предпросмотр изображения в зоне загрузки
-            const src = 'data:' + (file.type || 'image/png') + ';base64,' + upscaleImageBase64;
-            const zone = document.getElementById('imageUpscaleZone');
+            const src = 'data:' + (file.type || 'image/png') + ';base64,' + recognitionImageBase64;
+            const zone = document.getElementById('imageRecognitionZone');
             if (zone) {
-                zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для апскейла">' +
-                    '<input type="file" id="imageUpscaleInput" accept="image/*" style="display:none" onchange="handleImageUpscale(this)">' +
-                    '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Нажмите отправить для увеличения.</div>';
-                zone.onclick = function() { document.getElementById('imageUpscaleInput').click(); };
+                zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для распознавания">' +
+                    '<input type="file" id="imageRecognitionInput" accept="image/*" style="display:none" onchange="handleImageRecognition(this)">' +
+                    '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение загружено. Нажмите отправить для распознавания.</div>';
+                zone.onclick = function() { document.getElementById('imageRecognitionInput').click(); };
             }
-            document.getElementById('imageUpscaleResult').innerHTML = '<span class="result-placeholder">Здесь появится увеличенное изображение</span>';
-            showToast('Фото загружено. Нажмите отправить для апскейла.', 'info');
+            document.getElementById('imageRecognitionResult').innerHTML = '<span class="result-placeholder">Здесь появится описание изображения</span>';
+            showToast('Фото загружено. Нажмите отправить для распознавания.', 'info');
         } catch (err) {
             showToast('Ошибка загрузки фото', 'error');
         }
         input.value = '';
     }
 
-    async function executeImageUpscale() {
-        if (!upscaleImageBase64) { showToast('Сначала загрузите фото', 'info'); return; }
-        const resultArea = document.getElementById('imageUpscaleResult');
-        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Увеличиваю разрешение...</span>';
+    async function executeImageRecognition() {
+        if (!recognitionImageBase64) { showToast('Сначала загрузите фото', 'info'); return; }
+        const resultArea = document.getElementById('imageRecognitionResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Распознаю изображение...</span>';
         try {
-            const upscaleModel = selected.image_upscale || 'IMAGE_TO_UPSCALE_KIEAI';
+            const visionModel = selected.image_vision || 'IMAGE_TO_TEXT_GEMINI';
+            const prompt = userInput.value.trim() || 'Опиши это изображение подробно: что на нём изображено, какие объекты, цвета, атмосфера. Отвечай на русском языке.';
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -5652,61 +5597,22 @@
                     mode: 'image',
                     auth: getAuth(),
                     payload: {
-                        image_base64: upscaleImageBase64,
-                        image_mode: 'upscale',
-                        model: upscaleModel
+                        image_base64: recognitionImageBase64,
+                        image_mode: 'recognition',
+                        model: visionModel,
+                        prompt: prompt
                     }
                 })
             });
-            if (!response.ok) throw new Error('Ошибка апскейла');
+            if (!response.ok) throw new Error('Ошибка распознавания');
             const data = await response.json();
-            console.log('[Upscale] Server response:', JSON.stringify(data).substring(0, 500));
             if (!data.success) throw new Error(data.error || 'Ошибка');
-            // KIEAI async task — poll for result
-            if (data.data?.type === 'image_task') {
-                const taskId = data.data.content;
-                if (data.credits_left !== undefined) { credits = data.credits_left; updateCreditsDisplay(); }
-                resultArea.innerHTML = '<div style="text-align:center;padding:20px">' +
-                    '<div style="font-size:24px;margin-bottom:8px">&#9203;</div>' +
-                    '<div style="color:var(--accent);font-weight:600">Увеличиваю разрешение...</div>' +
-                    '<div id="upscalePollProgress" style="margin-top:8px;font-size:12px;color:var(--text-muted)">Ожидание результата (0%)</div>' +
-                    '<div style="margin-top:8px;width:100%;height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden">' +
-                    '<div id="upscalePollBar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width 0.5s ease"></div>' +
-                    '</div></div>';
-                (async () => {
-                    try {
-                        const progressEl = document.getElementById('upscalePollProgress');
-                        const barEl = document.getElementById('upscalePollBar');
-                        const pollCtx = {
-                            _updateProgress: function(state, attempt, maxAttempts, pct) {
-                                if (progressEl) progressEl.textContent = 'Обработка (' + pct + '%)';
-                                if (barEl) barEl.style.width = pct + '%';
-                            }
-                        };
-                        const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 120, 5000);
-                        console.log('[Upscale] Poll result:', JSON.stringify(result).substring(0, 300));
-                        if (result.url) {
-                            console.log('[Upscale] Image src:', result.url.substring(0, 80) + '... (len=' + result.url.length + ')');
-                            storeLastGeneratedImage(result.url);
-                            resultArea.innerHTML = '<img class="generated-image" src="' + result.url + '" alt="Upscaled"><br><a href="' + result.url + '" download="upscaled.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
-                            showToast('Разрешение увеличено!', 'success');
-                        } else {
-                            throw new Error('Poll завершился без URL. Result: ' + JSON.stringify(result).substring(0, 200));
-                        }
-                    } catch (err) {
-                        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-                        showToast('Ошибка апскейла: ' + err.message, 'error');
-                    }
-                })();
-                return;
-            }
-            const content = data.data?.content;
-            if (content) {
-                const src = content.startsWith('http') ? content : 'data:image/png;base64,' + content;
-                resultArea.innerHTML = '<img class="generated-image" src="' + src + '" alt="Upscaled"><br><a href="' + src + '" download="upscaled.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a>';
-                showToast('Разрешение увеличено!', 'success');
-                if (data.credits_left !== undefined) { credits = data.credits_left; updateCreditsDisplay(); }
-            } else throw new Error('Сервер не вернул изображение');
+            const result = data.data?.content || 'Не удалось распознать';
+            const resultId = 'imageRecognitionResult_' + Date.now();
+            resultArea.innerHTML = '<div class="message bot" style="align-self:stretch;position:relative">' +
+                '<button class="copy-btn" onclick="copyAnalysisResult(\'' + resultId + '\', this)" title="Копировать"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>' +
+                '<div id="' + resultId + '">' + formatBotMessage(result) + '</div></div>';
+            showToast('Изображение распознано!', 'success');
         } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка: ' + err.message, 'error');
@@ -6470,105 +6376,6 @@
         }
     }
 
-    // ---- VIDEO UPSCALE ----
-    let videoUpscaleBase64 = null;
-
-    async function handleVideoUpscaleUpload(input) {
-        const file = (input.files && input.files[0]) || null;
-        if (!file) return;
-        try {
-            videoUpscaleBase64 = await fileToBase64(file);
-            const zone = document.getElementById('videoUpscaleZone');
-            if (zone) {
-                const objUrl = URL.createObjectURL(file);
-                const videoEl = document.createElement('video');
-                videoEl.src = objUrl;
-                videoEl.muted = true;
-                videoEl.onloadeddata = function() {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 160; canvas.height = 120;
-                        canvas.getContext('2d').drawImage(videoEl, 0, 0, 160, 120);
-                        const thumb = canvas.toDataURL('image/jpeg', 0.6);
-                        zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
-                            '<input type="file" id="videoUpscaleInput" accept="video/*" style="display:none" onchange="handleVideoUpscaleUpload(this)">' +
-                            '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено (' + videoEl.videoWidth + '&#215;' + videoEl.videoHeight + '). Нажмите отправить.</div>';
-                    } catch(e) {}
-                    URL.revokeObjectURL(objUrl);
-                };
-                zone.onclick = function() { document.getElementById('videoUpscaleInput').click(); };
-            }
-            document.getElementById('videoUpscaleResult').innerHTML = '<span class="result-placeholder">Нажмите отправить для апскейла видео</span>';
-        } catch (err) {
-            showToast('Ошибка загрузки файла', 'error');
-        }
-        input.value = '';
-    }
-
-    async function executeVideoUpscale() {
-        if (!videoUpscaleBase64) { showToast('Сначала загрузите видео', 'info'); return; }
-        const resultArea = document.getElementById('videoUpscaleResult');
-        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Апскейл видео...</span>';
-        try {
-            const response = await fetch(API_URL + '/api', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'video', auth: getAuth(), payload: {
-                    video_base64: videoUpscaleBase64,
-                    video_mode: 'upscale',
-                    model: selected.video_upscale
-                }})
-            });
-            if (!response.ok) throw new Error('Ошибка апскейла');
-            const data = await response.json();
-            if (!data.success) throw new Error(data.error || 'Ошибка');
-            const content = data.data?.content;
-            const resultType = data.data?.type || '';
-            if (content) {
-                if (resultType === 'video_task') {
-                    // Async task — poll for result
-                    const taskId = content;
-                    if (data.credits_left !== undefined) credits = data.credits_left;
-                    updateCreditsDisplay();
-                    resultArea.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:24px;margin-bottom:8px">&#9883;</div><div style="color:var(--accent);font-weight:600">Видео увеличивается...</div><div id="videoUpscalePollProgress" style="margin-top:8px;font-size:12px;color:var(--text-muted)">Ожидание результата</div></div>';
-                    (async () => {
-                        try {
-                            const result = await pollTaskStatus.call({_updateProgress: function(state, attempt, maxAttempts, pct) {
-                                const el = document.getElementById('videoUpscalePollProgress');
-                                if (el) el.textContent = (state === 'processing' ? 'Обработка' : 'В очереди') + ' (' + pct + '%)';
-                            }}, taskId, 'video', 60, 5000);
-                            if (result.url) {
-                                resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + result.url + '" type="video/mp4"></video><div style="margin-top:8px;text-align:center"><a href="' + result.url + '" download="upscaled.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать видео</a></div>';
-                                showToast('Видео увеличено!', 'success');
-                            }
-                        } catch (err) {
-                            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-                        } finally { isProcessing = false; sendBtn.disabled = false; }
-                    })();
-                    return;
-                }
-                if (resultType === 'video_base64' || resultType === 'video') {
-                    var byteStr = atob(content);
-                    var ab = new ArrayBuffer(byteStr.length);
-                    var ia = new Uint8Array(ab);
-                    for (var j = 0; j < byteStr.length; j++) ia[j] = byteStr.charCodeAt(j);
-                    var blob = new Blob([ab], { type: 'video/mp4' });
-                    var blobUrl = URL.createObjectURL(blob);
-                    resultArea.innerHTML = '<video src="' + blobUrl + '" controls autoplay loop style="max-width:100%;max-height:300px;border-radius:8px"></video><br><a href="' + blobUrl + '" download="upscaled.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать MP4</a>';
-                } else {
-                    const src = content.startsWith('http') ? content : 'data:video/mp4;base64,' + content;
-                    resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + src + '" type="video/mp4"></video><br><a href="' + src + '" download="upscaled.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать MP4</a>';
-                }
-                if (data.credits_left !== undefined) credits = data.credits_left;
-                updateCreditsDisplay();
-                showToast('Видео увеличено!', 'success');
-            } else throw new Error('Сервер не вернул результат');
-        } catch (err) {
-            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-            showToast('Ошибка: ' + err.message, 'error');
-        }
-    }
-
     // ---- EXTRACT AUDIO FROM VIDEO ----
     // NOTE: Extract submode was removed from UI — Video→MP3 is now in Конвертация mode
     let extractAudioBase64 = null;
@@ -6981,8 +6788,8 @@
             if (id.startsWith('imageRef')) {
                 const index = parseInt(id.replace('imageRef', ''));
                 handleImageRef(index, input);
-            } else if (id === 'imageUpscaleZone') {
-                handleImageUpscale(input);
+            } else if (id === 'imageRecognitionZone') {
+                handleImageRecognition(input);
             } else if (id === 'imageRotateZone') {
                 handleImageRotateUpload(input);
             } else if (id === 'mediaConvertZone') {
@@ -7039,8 +6846,6 @@
                 handleVideoResizeUpload(input);
             } else if (id === 'videoStopFrameZone') {
                 handleStopFrame(input);
-            } else if (id === 'videoUpscaleZone') {
-                handleVideoUpscaleUpload(input);
             }
 
             // Сбрасываем _dragState после успешного дропа
@@ -7061,7 +6866,7 @@
         { cmd: '/video', desc: '\uD83C\uDFAC Генерация видео', handler: cmdVideo },
         { cmd: '/avatar', desc: '\uD83D\uDC64 Аватар из аудио', handler: cmdAvatar },
         { cmd: '/say', desc: '\uD83C\uDF99 Озвучка текста', handler: cmdSay },
-        { cmd: '/upscale', desc: '\uD83D\uDD0D Увеличить разрешение', handler: cmdUpscale },
+        { cmd: '/recognize', desc: '\uD83D\uDC41 Распознать изображение', handler: cmdRecognize },
         { cmd: '/resize', desc: '\uD83D\uDCE6 Изменить размер', handler: cmdResize },
         { cmd: '/prompt', desc: '\u270F\uFE0F Создать промпт', handler: cmdPrompt },
         { cmd: '/media', desc: '\uD83D\uDCBE Мои медиа', handler: cmdMedia },
@@ -7170,11 +6975,11 @@
     function cmdStart(arg) {
         addMessage('\uD83C\uDFE0 **Pixel-AI** — главное меню\n\n' +
             '\uD83D\uDCAC Чат — общение с ИИ, анализ файлов\n' +
-            '\uD83C\uDFA8 Изображения — генерация, апскейл, поворот, ресайз, конверт\n' +
+            '\uD83C\uDFA8 Изображения — генерация, распознавание, поворот, ресайз, конверт\n' +
             '\uD83C\uDFAC Видео — генерация, анализ, конвертация, ресайз, экстракт, стоп-кадр\n' +
             '\uD83C\uDF99 Аудио — озвучка, распознавание, конвертация\n\n' +
             'Используй кнопки режимов сверху или команды:\n' +
-            '/create /photo /video /say /upscale', 'bot');
+            '/create /photo /video /say /recognize', 'bot');
     }
     function cmdBuy(arg) { openPurchaseDialog(); }
     function cmdBalance(arg) {
@@ -7237,11 +7042,11 @@
             showToast('Введите текст для озвучки', 'info');
         }
     }
-    function cmdUpscale(arg) {
-        switchMode('image'); selected.imageSubMode = 'upscale'; renderImageSubHeader(); switchImageSubMode('upscale');
-        showToast('Загрузите изображение для апскейла', 'info');
+    function cmdRecognize(arg) {
+        switchMode('image'); selected.imageSubMode = 'recognition'; renderImageSubHeader(); switchImageSubMode('recognition');
+        showToast('Загрузите изображение для распознавания', 'info');
     }
-    function cmdResize(arg) { cmdUpscale(arg); }
+    function cmdResize(arg) { switchMode('image'); selected.imageSubMode = 'resize'; renderImageSubHeader(); switchImageSubMode('resize'); showToast('Загрузите фото для ресайза', 'info'); }
     function cmdPrompt(arg) {
         if (arg) {
             addMessage('\u270F\uFE0F Улучшенный промпт:\n\n' + arg, 'bot');
@@ -7972,7 +7777,7 @@
     // ============================================================
 
     // Обновлённая функция: после генерации изображения сохраняем его
-    // Always ensures base64 is available for use in upscale/rotate/convert
+    // Always ensures base64 is available for use in recognition/rotate/convert
     function storeLastGeneratedImage(src) {
         if (!src) return;
         if (src.startsWith('data:')) {
@@ -7980,7 +7785,7 @@
             lastGeneratedImage = { base64: base64, url: null };
         } else {
             lastGeneratedImage = { base64: null, url: src };
-            // Asynchronously fetch the URL and convert to base64 for upscale/rotate/convert
+            // Asynchronously fetch the URL and convert to base64 for recognition/rotate/convert
             // (which require base64 data)
             fetch(src)
                 .then(r => r.blob())
@@ -8002,24 +7807,24 @@
         }
     }
 
-    // Обновлённая switchImageSubMode — переносим изображение в upscale/rotate/convert
+    // Обновлённая switchImageSubMode — переносим изображение в recognition/rotate/convert
     const _origSwitchImageSubMode = switchImageSubMode;
     switchImageSubMode = function(mode) {
         _origSwitchImageSubMode(mode);
 
-        // Если переключаемся в upscale/rotate/convert и есть lastGeneratedImage — подставляем
+        // Если переключаемся в recognition/rotate/convert и есть lastGeneratedImage — подставляем
         if (lastGeneratedImage && mode !== 'generate') {
             const src = lastGeneratedImage.url || (lastGeneratedImage.base64 ? 'data:image/png;base64,' + lastGeneratedImage.base64 : null);
             if (!src) return;
 
-            if (mode === 'upscale') {
-                upscaleImageBase64 = lastGeneratedImage.base64;
-                const zone = document.getElementById('imageUpscaleZone');
+            if (mode === 'recognition') {
+                recognitionImageBase64 = lastGeneratedImage.base64;
+                const zone = document.getElementById('imageRecognitionZone');
                 if (zone) {
-                    zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для апскейла">' +
-                        '<input type="file" id="imageUpscaleInput" accept="image/*" style="display:none" onchange="handleImageUpscale(this)">' +
+                    zone.innerHTML = '<img src="' + src + '" style="max-width:100%;max-height:120px;border-radius:8px;object-fit:contain" alt="Для распознавания">' +
+                        '<input type="file" id="imageRecognitionInput" accept="image/*" style="display:none" onchange="handleImageRecognition(this)">' +
                         '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Изображение перенесено из генерации</div>';
-                    zone.onclick = function() { document.getElementById('imageUpscaleInput').click(); };
+                    zone.onclick = function() { document.getElementById('imageRecognitionInput').click(); };
                 }
             } else if (mode === 'rotate') {
                 rotateImageBase64 = lastGeneratedImage.base64;
