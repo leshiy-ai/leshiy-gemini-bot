@@ -245,10 +245,13 @@
         }
         // ============================================================
         //  СЦЕНАРИЙ 4: Обычный браузер — показываем TG Login Widget
+        //  Но если telegram.org заблокирован (РФ) — widget не загрузится,
+        //  показываем fallback-кнопку через 3 секунды
         // ============================================================
         else {
             document.getElementById('authSubtitle').textContent = 'Используйте Telegram для безопасного доступа';
             
+            // Пытаемся загрузить TG Login Widget
             const widgetScript = document.createElement('script');
             widgetScript.src = 'https://telegram.org/js/telegram-widget.js?22';
             widgetScript.setAttribute('data-telegram-login', 'gemini_aitg_bot');
@@ -257,6 +260,25 @@
             widgetScript.setAttribute('data-request-access', 'write');
             widgetScript.async = true;
             document.getElementById('authContent').appendChild(widgetScript);
+
+            // Fallback: если виджет не появился за 3 секунды — показываем кнопку вручную
+            setTimeout(() => {
+                const widgetIframe = document.querySelector('iframe[src*="telegram"]');
+                const tgLoginBtn = document.querySelector('.tg-login-btn-fallback');
+                if (!widgetIframe && !tgLoginBtn) {
+                    // Виджет не загрузился (РФ — telegram.org заблокирован)
+                    document.getElementById('authSubtitle').textContent = 'Telegram Login Widget недоступен (заблокирован в РФ). Откройте приложение через бота в Telegram.';
+                    document.getElementById('authContent').innerHTML = `
+                        <div style="padding:12px;background:#fff3cd;border-radius:8px;margin-bottom:12px;font-size:13px;color:#856404">
+                            Telegram Login Widget заблокирован в вашем регионе.<br>
+                            Для входа откройте бота <b>@gemini_aigt_bot</b> в Telegram и нажмите <b>Start</b>.
+                        </div>
+                        <a href="https://t.me/gemini_aigt_bot" target="_blank" class="tg-btn" style="text-decoration:none;display:block;margin-bottom:8px">
+                            Открыть бота в Telegram
+                        </a>
+                    `;
+                }
+            }, 3000);
         }
     </script>
 </body>

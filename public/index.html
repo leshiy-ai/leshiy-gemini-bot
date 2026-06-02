@@ -13,7 +13,41 @@
     <!-- Telegram WebApp SDK — загружаем async, в РФ не загрузится (заблокирован),
          но TG Mini App инжектит window.Telegram самостоятельно через WebView.
          Для обычного браузера — не нужен, авторизация через tg.html -->
-    <script src="https://telegram.org/js/telegram-web-app.js" async onerror="console.log('TG SDK blocked in RF, ok')"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js" async onload="window.__tgSdkLoaded=true" onerror="console.log('TG SDK blocked in RF, ok')"></script>
+    <script>
+        // Когда async TG SDK загрузится — проверяем ещё раз автовход
+        document.addEventListener('DOMContentLoaded', function() {
+            var checkTgSdk = setInterval(function() {
+                if (window.__tgSdkLoaded && window.Telegram && window.Telegram.WebApp) {
+                    clearInterval(checkTgSdk);
+                    // SDK загрузился — инициализируем
+                    if (typeof window.Telegram.WebApp.ready === 'function') {
+                        window.Telegram.WebApp.ready();
+                        window.Telegram.WebApp.expand();
+                    }
+                    // Если ещё не авторизован — пробуем через initData
+                    if (!window.user && window.Telegram.WebApp.initData) {
+                        if (window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+                            var tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+                            var tgName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'TG User';
+                            if (typeof window.applyAuthGlobal === 'function') {
+                                window.applyAuthGlobal({
+                                    id: String(tgUser.id), name: tgName, provider: 'tg',
+                                    hash: window.Telegram.WebApp.initData,
+                                    photo: tgUser.photo_url || null,
+                                    initData: window.Telegram.WebApp.initData || null
+                                }, false);
+                            }
+                        } else if (typeof window.validateTgInitData === 'function') {
+                            window.validateTgInitData(window.Telegram.WebApp.initData);
+                        }
+                    }
+                }
+            }, 200);
+            // Прекращаем проверку через 5 секунд
+            setTimeout(function() { clearInterval(checkTgSdk); }, 5000);
+        });
+    </script>
 
     <link rel="stylesheet" href="style.css">
 </head>
@@ -773,6 +807,8 @@
     let isProcessing = false;
     let selectedPlan = 'base'; // default package id
     let user = null; // { id, name, provider, hash, photo }
+    // Геттер для доступа из инлайн-скриптов (TG SDK onload)
+    Object.defineProperty(window, 'user', { get: () => user, configurable: true });
     let chatHistory = [];
     let chatAttachments = []; // [{name, type, base64, previewUrl}] — файлы для чата
     let selectedAudioConvertFormat = 'mp3';
@@ -1934,6 +1970,39 @@
         loadServerData();
         loadChatList().then(() => loadS3History());
     }
+
+    // Глобальная функция для валидации initData TG (вызывается из инлайн-скрипта в <head>)
+    function validateTgInitData(initData) {
+        console.log('[Auth] validateTgInitData called');
+        fetch(API_URL + '/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mode: 'validate_init_data',
+                auth: { provider: null, id: null },
+                payload: { init_data: initData }
+            })
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.success && result.data && result.data.user) {
+                const u = result.data.user;
+                applyAuthGlobal({
+                    id: String(u.id),
+                    name: u.name || u.username || 'TG User',
+                    provider: 'tg',
+                    hash: initData,
+                    photo: u.photo_url || null,
+                    initData: initData
+                }, false);
+            } else {
+                console.warn('[Auth] TG validate failed:', result.error);
+            }
+        })
+        .catch(err => console.error('[Auth] TG validate error:', err));
+    }
+    window.validateTgInitData = validateTgInitData;
+    window.applyAuthGlobal = applyAuthGlobal;
 
     // ---- АВТОРИЗАЦИЯ ИЗ URL (после возврата из vk.html/tg.html, TG Widget или бэкенда) ----
     // Работает как в Хранилке: читаем параметры из URL, сохраняем в localStorage, обновляем UI
@@ -7732,23 +7801,63 @@
     }
 
     // ---- Telegram WebApp Init ----
+    // В TG Mini App window.Telegram инжектится нативно ДО загрузки страницы.
+    // telegram-web-app.js (async) может ещё не загрузиться, но базовые свойства
+    // (initData, initDataUnsafe) уже доступны.
     if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-        // Автоавторизация через initDataUnsafe (если ещё не авторизован)
-        // Примечание: основной сценарий обрабатывается в initAuthFromURL(),
-        // но на случай если скрипт загрузился позже — проверяем ещё раз
-        if (!user && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
-            const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
-            const tgName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'TG User';
-            applyAuthGlobal({
-                id: String(tgUser.id),
-                name: tgName,
-                provider: 'tg',
-                hash: window.Telegram.WebApp.initData,
-                photo: tgUser.photo_url || null,
-                initData: window.Telegram.WebApp.initData || null
-            }, false);
+        console.log('[Auth] TG WebApp detected. initData:', !!window.Telegram.WebApp.initData, 'user:', !!window.Telegram.WebApp.initDataUnsafe?.user);
+
+        // Вызываем ready() только если метод существует (SDK загружен)
+        if (typeof window.Telegram.WebApp.ready === 'function') {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+        }
+
+        // Автоавторизация: если ещё не авторизован
+        if (!user) {
+            if (window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+                // СЦЕНАРИЙ A: user есть в initDataUnsafe — мгновенная авторизация
+                const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+                const tgName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'TG User';
+                applyAuthGlobal({
+                    id: String(tgUser.id),
+                    name: tgName,
+                    provider: 'tg',
+                    hash: window.Telegram.WebApp.initData,
+                    photo: tgUser.photo_url || null,
+                    initData: window.Telegram.WebApp.initData || null
+                }, false);
+            } else if (window.Telegram.WebApp.initData) {
+                // СЦЕНАРИЙ B: initData есть но user пустой — валидация на бэкенде
+                const initData = window.Telegram.WebApp.initData;
+                console.log('[Auth] TG Mini App: initData есть, user пустой — валидация на бэкенде');
+                fetch(API_URL + '/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'validate_init_data',
+                        auth: { provider: null, id: null },
+                        payload: { init_data: initData }
+                    })
+                })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success && result.data && result.data.user) {
+                        const u = result.data.user;
+                        applyAuthGlobal({
+                            id: String(u.id),
+                            name: u.name || u.username || 'TG User',
+                            provider: 'tg',
+                            hash: initData,
+                            photo: u.photo_url || null,
+                            initData: initData
+                        }, false);
+                    } else {
+                        console.warn('[Auth] TG validate failed:', result.error);
+                    }
+                })
+                .catch(err => console.error('[Auth] TG validate error:', err));
+            }
         }
     }
 
