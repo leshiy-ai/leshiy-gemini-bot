@@ -17665,8 +17665,14 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
             
             // Парсим payload, чтобы узнать, сколько кредитов начислить
             let creditsToAdd = 0;
-            if (payload.startsWith('credits_')) {
-                // 🔥 ЭТОТ ПАРСИНГ РАБОТАЕТ, если `payload` был правильно сформирован в Шаге 1
+            let isWebPayment = false;
+            if (payload.startsWith('web_credits_')) {
+                // Веб-оплата: формат web_credits_{CREDITS}_{CHATID}_{TIMESTAMP}
+                const parts = payload.split('_');
+                creditsToAdd = parseInt(parts[2]); // web_credits_{CREDITS}_...
+                isWebPayment = true;
+            } else if (payload.startsWith('credits_')) {
+                // Обычная оплата через бота: формат credits_{CREDITS}_{TIMESTAMP}
                 creditsToAdd = parseInt(payload.split('_')[1]);
             }
 
@@ -17705,6 +17711,22 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                 // Лог админу
                 const adminLog = `💰 [PAYMENT] User ${payChatId} paid ${totalAmount} Stars for ${creditsToAdd} Credits.`;
                 ctx.waitUntil(logDebug("PAYMENT_SUCCESS", adminLog, env, ctx));
+
+                // 💳 ВЕБ-ОПЛАТА: Подтверждаем pending-транзакцию для поллинга
+                if (isWebPayment && storage) {
+                    try {
+                        const txKey = `tx_${payload}`;
+                        const txData = await storage.get(txKey);
+                        if (txData) {
+                            const tx = JSON.parse(txData);
+                            tx.status = 'confirmed';
+                            await storage.put(txKey, JSON.stringify(tx));
+                            console.log(`[Web Payment] TX confirmed: ${payload}`);
+                        }
+                    } catch (txErr) {
+                        console.error('[Web Payment] TX confirm error:', txErr.message);
+                    }
+                }
             }
             return new Response('OK', { status: 200 });
             } catch (e) {

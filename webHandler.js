@@ -73,6 +73,10 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handleTaskStatus(auth, payload, env, monolith);
             case 'chat_history':
                 return await handleChatHistory(auth, payload, env, monolith);
+            case 'topup':
+                return await handleTopup(auth, payload, env, monolith);
+            case 'payment_callback':
+                return await handlePaymentCallback(auth, payload, env, monolith);
             default:
                 return formatResponse(false, "Неизвестный режим: " + mode);
         }
@@ -3212,6 +3216,294 @@ function bufferToBase64(buffer) {
         return Buffer.from(buffer).toString('base64');
     if (typeof buffer === 'string') return buffer;
     return '';
+}
+
+// ============================================================
+// 💳 ПОПОЛНЕНИЕ БАЛАНСА — Два способа: Telegram Stars + VK Pay
+// ============================================================
+
+// Пакеты пополнения (как в Telegram боте — STARS_PACKAGES)
+const WEB_TOPUP_PACKAGES = [
+    { id: 'photo',   stars: 10,  credits: 4,   rub: 20,    label: 'Одно фото (4¢)',       desc: '4¢ ≈ 20₽ — 1 генерация фото' },
+    { id: 'video',   stars: 50,  credits: 20,  rub: 100,   label: 'Одно видео (20¢)',     desc: '20¢ ≈ 100₽ — 1 генерация видео' },
+    { id: 'start',   stars: 75,  credits: 30,  rub: 150,   label: 'Начало (30¢)',          desc: '30¢ ≈ 150₽' },
+    { id: 'base',    stars: 100, credits: 42,  rub: 210,   label: 'Базовый (42¢)',         desc: '42¢ ≈ 210₽ + бонус' },
+    { id: 'norm',    stars: 150, credits: 58,  rub: 290,   label: 'Норма (58¢)',           desc: '58¢ ≈ 290₽ + бонус' },
+    { id: 'pro',     stars: 250, credits: 100, rub: 500,   label: 'Профи (100¢)',          desc: '100¢ ≈ 500₽ + бонус' },
+    { id: 'max',     stars: 500, credits: 250, rub: 1200,  label: 'Макс (250¢)',           desc: '250¢ ≈ 1200₽ + бонус' },
+    { id: 'unlim',   stars: 750, credits: 400, rub: 2000,  label: 'Анлим (400¢)',          desc: '400¢ ≈ 2000₽ + бонус' },
+];
+
+/**
+ * 💳 Создание инвойса для пополнения баланса.
+ *
+ * payload.method: 'telegram' | 'vk'
+ * payload.package_id: 'photo' | 'video' | 'start' | 'base' | 'norm' | 'pro' | 'max' | 'unlim'
+ *
+ * Telegram: Вызывает createInvoiceLink Bot API → возвращает ссылку на оплату
+ * VK: Возвращает параметры для VK Pay формы
+ */
+async function handleTopup(auth, payload, env, monolith) {
+    if (!auth || !isValidAuthId(auth.id)) {
+        return formatResponse(false, 'Не авторизован. Войдите для покупки кредитов.');
+    }
+
+    const method = payload.method; // 'telegram' | 'vk'
+    const packageId = payload.package_id;
+
+    if (!method || !packageId) {
+        return formatResponse(false, 'Укажите метод оплаты (telegram/vk) и пакет (package_id)');
+    }
+
+    // Находим пакет
+    const pkg = WEB_TOPUP_PACKAGES.find(p => p.id === packageId);
+    if (!pkg) {
+        return formatResponse(false, 'Неизвестный пакет: ' + packageId);
+    }
+
+    const chatId = String(auth.id);
+
+    // ===== TELEGRAM STARS PAYMENT =====
+    if (method === 'telegram') {
+        if (!env.TELEGRAM_BOT_TOKEN) {
+            return formatResponse(false, 'TELEGRAM_BOT_TOKEN не настроен');
+        }
+
+        try {
+            // Вызываем createInvoiceLink API Telegram
+            // https://core.telegram.org/bots/api#createinvoicelink
+            const token = env.TELEGRAM_BOT_TOKEN;
+            const cdn = "https://storage.yandexcloud.net/leshiy-storage-images";
+            const invoicePhotoUrl = `${cdn}/qr-code_geminiai_tg_bot.jpg`;
+
+            // Формируем уникальный payload для идентификации платежа
+            // Формат: web_credits_{CREDITS}_{CHATID}_{TIMESTAMP}
+            const paymentPayload = `web_credits_${pkg.credits}_${chatId}_${Date.now()}`;
+
+            const invoiceBody = {
+                title: `${pkg.credits} Кредитов Pixel-AI`,
+                description: `Пополнение баланса на ${pkg.credits}¢ для веб-приложения Pixel-AI Premium. 1¢ = 5₽. Пакет: ${pkg.label}`,
+                payload: paymentPayload,
+                currency: "XTR",
+                prices: [{ label: "Цена", amount: pkg.stars }],
+                provider_token: "",
+                is_flexible: false,
+                photo_url: invoicePhotoUrl,
+                photo_width: 300,
+                photo_height: 300
+            };
+
+            const apiUrl = `https://api.telegram.org/bot${token}/createInvoiceLink`;
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(invoiceBody)
+            });
+
+            const result = await response.json();
+
+            if (!result.ok) {
+                console.error('[WebHandler] createInvoiceLink error:', JSON.stringify(result));
+                return formatResponse(false, 'Ошибка создания счёта Telegram: ' + (result.description || 'unknown'));
+            }
+
+            const invoiceLink = result.result;
+            console.log(`[WebHandler] Invoice created: ${pkg.credits}¢ for ${chatId}, link: ${invoiceLink.substring(0, 50)}...`);
+
+            // Сохраняем pending-транзакцию в KV для верификации
+            if (env.LAST_PHOTO_STORAGE) {
+                try {
+                    const txKey = `tx_${paymentPayload}`;
+                    await env.LAST_PHOTO_STORAGE.put(txKey, JSON.stringify({
+                        chatId: chatId,
+                        credits: pkg.credits,
+                        stars: pkg.stars,
+                        method: 'telegram',
+                        createdAt: Date.now(),
+                        status: 'pending'
+                    }), { expirationTtl: 3600 }); // 1 час на оплату
+                } catch (e) {
+                    console.error('[WebHandler] TX save error:', e.message);
+                }
+            }
+
+            return formatResponse(true, null, null, {
+                type: 'topup_link',
+                method: 'telegram',
+                url: invoiceLink,
+                package_id: packageId,
+                credits: pkg.credits,
+                stars: pkg.stars,
+                payload: paymentPayload
+            });
+
+        } catch (e) {
+            console.error('[WebHandler] Telegram invoice error:', e.message);
+            return formatResponse(false, 'Ошибка создания счёта: ' + e.message);
+        }
+    }
+
+    // ===== VK PAY PAYMENT =====
+    if (method === 'vk') {
+        // VK Pay для VK Mini App (через bridge) или для standalone (через VK Pay Merchant API)
+        // Для VK Mini App: фронтенд вызовет VKWebAppOpenPayForm
+        // Для standalone: формируем VK Pay URL
+
+        const vkAppId = env.VK_APP_ID || env.VK_CLIENT_ID || '54467300';
+        const vkGroupId = env.VK_GROUP_ID || ''; // ID группы для получения оплаты
+
+        // Формируем уникальный order_id для отслеживания
+        const orderId = `vk_${chatId}_${pkg.credits}_${Date.now()}`;
+
+        // Сохраняем pending-транзакцию
+        if (env.LAST_PHOTO_STORAGE) {
+            try {
+                const txKey = `tx_${orderId}`;
+                await env.LAST_PHOTO_STORAGE.put(txKey, JSON.stringify({
+                    chatId: chatId,
+                    credits: pkg.credits,
+                    rub: pkg.rub,
+                    method: 'vk',
+                    createdAt: Date.now(),
+                    status: 'pending'
+                }), { expirationTtl: 3600 });
+            } catch (e) {
+                console.error('[WebHandler] VK TX save error:', e.message);
+            }
+        }
+
+        // Возвращаем параметры для VK Pay формы
+        // Фронтенд сам решит, как открыть: через bridge (если в VK) или через URL
+        return formatResponse(true, null, null, {
+            type: 'topup_vk',
+            method: 'vk',
+            package_id: packageId,
+            credits: pkg.credits,
+            rub: pkg.rub,
+            app_id: vkAppId,
+            group_id: vkGroupId,
+            order_id: orderId,
+            description: `Пополнение на ${pkg.credits}¢ — ${pkg.label}`
+        });
+    }
+
+    return formatResponse(false, 'Неизвестный метод оплаты: ' + method);
+}
+
+/**
+ * 🔄 Обработка callback после оплаты (подтверждение зачисления).
+ *
+ * Для Telegram: вызывается после успешной оплаты Stars (webhook обрабатывает worker.js,
+ * но мы проверяем баланс через polling).
+ * Для VK: вызывается после VK Pay callback.
+ *
+ * payload.payment_payload: уникальный ID транзакции
+ * payload.method: 'telegram' | 'vk'
+ * payload.vk_order_id: для VK Pay
+ */
+async function handlePaymentCallback(auth, payload, env, monolith) {
+    if (!auth || !isValidAuthId(auth.id)) {
+        return formatResponse(false, 'Не авторизован');
+    }
+
+    const chatId = String(auth.id);
+    const method = payload.method;
+
+    // ===== TELEGRAM: Проверяем, зачислились ли кредиты =====
+    // Worker.js обрабатывает successful_payment webhook и зачисляет кредиты.
+    // Фронтенд вызывает этот endpoint для polling'а — проверяем, изменился ли баланс.
+    if (method === 'telegram' && payload.payment_payload) {
+        try {
+            // Проверяем статус транзакции в KV
+            const txKey = `tx_${payload.payment_payload}`;
+            if (env.LAST_PHOTO_STORAGE) {
+                const txData = await env.LAST_PHOTO_STORAGE.get(txKey);
+                if (txData) {
+                    const tx = JSON.parse(txData);
+                    // Если транзакция уже подтверждена — возвращаем успех
+                    if (tx.status === 'confirmed') {
+                        const balance = await getUserBalance(chatId, env, monolith);
+                        await env.LAST_PHOTO_STORAGE.delete(txKey);
+                        return formatResponse(true, null, balance, {
+                            type: 'payment_confirmed',
+                            method: 'telegram',
+                            credits_added: tx.credits,
+                            new_balance: balance
+                        });
+                    }
+                }
+            }
+            // Транзакция ещё не подтверждена — возвращаем pending
+            return formatResponse(true, null, null, {
+                type: 'payment_pending',
+                method: 'telegram',
+                message: 'Оплата обрабатывается. Проверьте баланс через несколько секунд.'
+            });
+        } catch (e) {
+            console.error('[WebHandler] Payment callback error:', e.message);
+            return formatResponse(false, 'Ошибка проверки платежа: ' + e.message);
+        }
+    }
+
+    // ===== VK PAY: Обработка подтверждения оплаты =====
+    if (method === 'vk' && payload.vk_order_id) {
+        try {
+            const txKey = `tx_${payload.vk_order_id}`;
+            if (env.LAST_PHOTO_STORAGE) {
+                const txData = await env.LAST_PHOTO_STORAGE.get(txKey);
+                if (txData) {
+                    const tx = JSON.parse(txData);
+
+                    // VK Pay подтверждение — зачисляем кредиты
+                    if (tx.status === 'pending' && tx.chatId === chatId) {
+                        const balanceKey = chatId + '_credit_balance';
+                        let currentBalance = parseInt(await env.LAST_PHOTO_STORAGE.get(balanceKey)) || 0;
+                        const newBalance = currentBalance + tx.credits;
+                        await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
+                        await logCreditTransaction(chatId, tx.credits, 'purchase', env,
+                            `Покупка через VK Pay: ${tx.credits}¢ (${tx.rub}₽)`);
+
+                        // Помечаем транзакцию как подтверждённую
+                        tx.status = 'confirmed';
+                        await env.LAST_PHOTO_STORAGE.put(txKey, JSON.stringify(tx));
+
+                        console.log(`[WebHandler] VK Pay: +${tx.credits}¢ for ${chatId}, new balance: ${newBalance}`);
+                        return formatResponse(true, null, newBalance, {
+                            type: 'payment_confirmed',
+                            method: 'vk',
+                            credits_added: tx.credits,
+                            new_balance: newBalance
+                        });
+                    }
+
+                    if (tx.status === 'confirmed') {
+                        const balance = await getUserBalance(chatId, env, monolith);
+                        await env.LAST_PHOTO_STORAGE.delete(txKey);
+                        return formatResponse(true, null, balance, {
+                            type: 'payment_confirmed',
+                            method: 'vk',
+                            credits_added: tx.credits,
+                            new_balance: balance
+                        });
+                    }
+                }
+            }
+            return formatResponse(false, 'Транзакция не найдена или устарела');
+        } catch (e) {
+            console.error('[WebHandler] VK payment callback error:', e.message);
+            return formatResponse(false, 'Ошибка обработки VK платежа: ' + e.message);
+        }
+    }
+
+    return formatResponse(false, 'Неизвестный метод callback');
+}
+
+/**
+ * 📋 Возвращает список доступных пакетов пополнения.
+ * Вызывается фронтендом для отображения магазина.
+ */
+function getTopupPackages() {
+    return WEB_TOPUP_PACKAGES;
 }
 
 function formatResponse(success, error = null, creditsLeft = null, data = null) {

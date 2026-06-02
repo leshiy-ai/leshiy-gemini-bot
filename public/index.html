@@ -162,8 +162,8 @@
                     <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Угол поворота:</label>
                     <div class="size-selector" id="imageRotateAngle">
                         <button class="size-option active" data-angle="-90" onclick="selectRotateAngle(this)">&#8634; 90&#176; влево</button>
-                        <button class="size-option" data-angle="90" onclick="selectRotateAngle(this)">&#8635; 90&#176; вправо</button>
                         <button class="size-option" data-angle="180" onclick="selectRotateAngle(this)">&#128260; 180&#176;</button>
+                        <button class="size-option" data-angle="90" onclick="selectRotateAngle(this)">&#8635; 90&#176; вправо</button>
                     </div>
                 </div>
                 <div class="result-area" id="imageRotateResult">
@@ -599,37 +599,35 @@
 
     <!-- PURCHASE DIALOG -->
     <div class="dialog-overlay" id="purchaseDialog">
-        <div class="dialog">
+        <div class="dialog" style="max-width:440px">
             <h3>&#9733; Купить кредиты</h3>
-            <p>Кредиты нужны для генерации медиа. 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
-            
-            <div class="plan-card selected" onclick="selectPlan(this, 200)">
-                <div class="plan-name">200 &#162;</div>
-                <div class="plan-price">1 000 &#8381;</div>
-                <div class="plan-desc">~50 изображений или 10 видео</div>
-            </div>
-            <div class="plan-card" onclick="selectPlan(this, 500)">
-                <div class="plan-name">500 &#162;</div>
-                <div class="plan-price">2 500 &#8381;</div>
-                <div class="plan-desc">~125 изображений или 25 видео</div>
-            </div>
-            <div class="plan-card" onclick="selectPlan(this, 1000)">
-                <div class="plan-name">1 000 &#162;</div>
-                <div class="plan-price">5 000 &#8381;</div>
-                <div class="plan-desc">~250 изображений или 50 видео</div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Кредиты нужны для генерации медиа. 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
+
+            <!-- Способ оплаты -->
+            <div style="margin-bottom:14px">
+                <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Способ оплаты:</label>
+                <div class="size-selector" id="paymentMethodSelector">
+                    <button class="size-option active" data-method="telegram" onclick="selectPaymentMethod('telegram',this)">&#9733; Telegram Stars</button>
+                    <button class="size-option" data-method="vk" onclick="selectPaymentMethod('vk',this)">&#9670; VK Pay</button>
+                </div>
             </div>
 
-            <div style="margin-top:12px">
-                <div class="plan-card" onclick="selectPlan(this, 'vip')">
-                    <div class="plan-name">&#128081; VIP — 30 дней</div>
-                    <div class="plan-price">1 000 &#8385;/мес</div>
-                    <div class="plan-desc">Безлимитный чат + 100&#162;/день на медиа</div>
+            <!-- Пакеты пополнения -->
+            <div style="margin-bottom:14px">
+                <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Выберите пакет:</label>
+                <div id="topupPackages" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto">
+                    <!-- Заполняется динамически из JS -->
                 </div>
+            </div>
+
+            <!-- Инфо о выбранном методе -->
+            <div id="paymentMethodInfo" style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:12px">
+                &#9733; Оплата через Telegram Stars — мгновенное зачисление. Нажмите «Оплатить» и откроется ссылка на оплату в Telegram.
             </div>
 
             <div class="dialog-actions">
                 <button class="btn-secondary" onclick="closePurchaseDialog()">Отмена</button>
-                <button class="btn-primary" onclick="purchaseCredits()">Оплатить</button>
+                <button class="btn-primary" id="topupPayBtn" onclick="purchaseCredits()">&#9733; Оплатить</button>
             </div>
         </div>
     </div>
@@ -763,7 +761,7 @@
     let currentMode = 'chat';
     let credits = 0;
     let isProcessing = false;
-    let selectedPlan = 200;
+    let selectedPlan = 'base'; // default package id
     let user = null; // { id, name, provider, hash, photo }
     let chatHistory = [];
     let chatAttachments = []; // [{name, type, base64, previewUrl}] — файлы для чата
@@ -2016,15 +2014,11 @@
                 if (data.success && data.data) {
                     const display = document.getElementById('creditsDisplay');
                     // VIP статус
+                    updateCreditsDisplay(data.data.balance ?? 0, data.data.isVip);
                     if (data.data.isVip) {
-                        creditsAmount.textContent = 'VIP';
                         display.classList.add('vip');
-                        display.classList.add('is-vip');
                     } else {
-                        credits = data.data.balance ?? 0;
-                        creditsAmount.textContent = credits;
                         display.classList.remove('vip');
-                        display.classList.remove('is-vip');
                     }
                     // Admin статус
                     if (data.data.isAdmin) {
@@ -6059,9 +6053,16 @@
         if (el && el.parentNode) el.parentNode.removeChild(el);
     }
 
-    function updateCreditsDisplay() {
-        if (typeof creditsAmount !== 'undefined' && creditsAmount) {
-            creditsAmount.textContent = credits;
+    function updateCreditsDisplay(balance, isVip) {
+        if (balance !== undefined && balance !== null) {
+            credits = balance;
+        }
+        const el = document.getElementById('creditsAmount');
+        if (el) el.textContent = isVip ? '∞' : credits;
+        const display = document.getElementById('creditsDisplay');
+        if (display) {
+            if (isVip) display.classList.add('is-vip');
+            else display.classList.remove('is-vip');
         }
     }
 
@@ -7134,7 +7135,72 @@
     }
 
     // ---- PURCHASE DIALOG ----
+    // Пакеты пополнения (синхронизированы с webHandler.js WEB_TOPUP_PACKAGES)
+    const TOPUP_PACKAGES = [
+        { id: 'photo',   stars: 10,  credits: 4,   rub: 20,    label: 'Одно фото (4\u00A2)',       desc: '4\u00A2 \u2248 20\u20BD \u2014 1 генерация фото' },
+        { id: 'video',   stars: 50,  credits: 20,  rub: 100,   label: 'Одно видео (20\u00A2)',     desc: '20\u00A2 \u2248 100\u20BD \u2014 1 генерация видео' },
+        { id: 'start',   stars: 75,  credits: 30,  rub: 150,   label: 'Начало (30\u00A2)',          desc: '30\u00A2 \u2248 150\u20BD' },
+        { id: 'base',    stars: 100, credits: 42,  rub: 210,   label: 'Базовый (42\u00A2)',         desc: '42\u00A2 \u2248 210\u20BD + бонус' },
+        { id: 'norm',    stars: 150, credits: 58,  rub: 290,   label: 'Норма (58\u00A2)',           desc: '58\u00A2 \u2248 290\u20BD + бонус' },
+        { id: 'pro',     stars: 250, credits: 100, rub: 500,   label: 'Профи (100\u00A2)',          desc: '100\u00A2 \u2248 500\u20BD + бонус' },
+        { id: 'max',     stars: 500, credits: 250, rub: 1200,  label: 'Макс (250\u00A2)',           desc: '250\u00A2 \u2248 1200\u20BD + бонус' },
+        { id: 'unlim',   stars: 750, credits: 400, rub: 2000,  label: 'Анлим (400\u00A2)',          desc: '400\u00A2 \u2248 2000\u20BD + бонус' },
+    ];
+
+    let selectedPaymentMethod = 'telegram'; // 'telegram' | 'vk'
+    let pendingPaymentPayload = null; // Для polling проверки оплаты
+
+    function renderTopupPackages() {
+        const container = document.getElementById('topupPackages');
+        if (!container) return;
+        container.innerHTML = '';
+        TOPUP_PACKAGES.forEach(pkg => {
+            const isSelected = selectedPlan === pkg.id;
+            const starsLabel = selectedPaymentMethod === 'telegram'
+                ? `\u2B50 ${pkg.stars} XTR`
+                : `${pkg.rub} \u20BD`;
+            const card = document.createElement('div');
+            card.className = 'plan-card' + (isSelected ? ' selected' : '');
+            card.onclick = () => selectTopupPackage(pkg.id);
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+                    <div>
+                        <div class="plan-name" style="font-size:14px">${pkg.label}</div>
+                        <div class="plan-desc" style="font-size:11px;margin-top:2px">${pkg.desc}</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div class="plan-price" style="font-size:14px;font-weight:600">${starsLabel}</div>
+                    </div>
+                </div>`;
+            container.appendChild(card);
+        });
+    }
+
+    function selectPaymentMethod(method, btn) {
+        selectedPaymentMethod = method;
+        document.querySelectorAll('#paymentMethodSelector .size-option').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        // Обновляем отображение пакетов (Stars vs Rub)
+        renderTopupPackages();
+        // Обновляем инфо
+        const info = document.getElementById('paymentMethodInfo');
+        const payBtn = document.getElementById('topupPayBtn');
+        if (method === 'telegram') {
+            info.innerHTML = '\u2B50 Оплата через Telegram Stars \u2014 мгновенное зачисление. Нажмите \u00ABОплатить\u00BB и откроется ссылка на оплату в Telegram.';
+            payBtn.innerHTML = '\u2B50 Оплатить Stars';
+        } else {
+            info.innerHTML = '\u25C6 Оплата через VK Pay \u2014 быстро и удобно. Если вы в VK Mini App, оплата пройдёт внутри приложения.';
+            payBtn.innerHTML = '\u25C6 Оплатить VK Pay';
+        }
+    }
+
+    function selectTopupPackage(pkgId) {
+        selectedPlan = pkgId;
+        renderTopupPackages();
+    }
+
     function openPurchaseDialog() {
+        renderTopupPackages();
         document.getElementById('purchaseDialog').classList.add('open');
     }
 
@@ -7142,19 +7208,147 @@
         document.getElementById('purchaseDialog').classList.remove('open');
     }
 
-    function selectPlan(el, plan) {
-        document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
-        el.classList.add('selected');
-        selectedPlan = plan;
+    async function purchaseCredits() {
+        if (!user) {
+            closePurchaseDialog();
+            openAuthDialog();
+            return;
+        }
+
+        const pkg = TOPUP_PACKAGES.find(p => p.id === selectedPlan);
+        if (!pkg) {
+            showToast('Выберите пакет пополнения', 'error');
+            return;
+        }
+
+        const payBtn = document.getElementById('topupPayBtn');
+        payBtn.disabled = true;
+        payBtn.textContent = 'Создаю счёт...';
+
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'topup',
+                    auth: getAuth(),
+                    payload: {
+                        method: selectedPaymentMethod,
+                        package_id: selectedPlan
+                    }
+                })
+            });
+
+            const result = await resp.json();
+
+            if (!result.success) {
+                showToast(result.error || 'Ошибка создания платежа', 'error');
+                payBtn.disabled = false;
+                payBtn.textContent = selectedPaymentMethod === 'telegram' ? '\u2B50 Оплатить Stars' : '\u25C6 Оплатить VK Pay';
+                return;
+            }
+
+            const data = result.data;
+
+            if (selectedPaymentMethod === 'telegram' && data.type === 'topup_link') {
+                // Открываем ссылку на оплату в Telegram
+                pendingPaymentPayload = data.payload;
+                showToast('Открываю Telegram для оплаты...', 'info');
+
+                // Открываем ссылку в новом окне
+                window.open(data.url, '_blank');
+
+                // Начинаем polling баланса
+                closePurchaseDialog();
+                startBalancePolling(pkg.credits);
+
+            } else if (selectedPaymentMethod === 'vk' && data.type === 'topup_vk') {
+                // VK Pay — пытаемся использовать VK Bridge если в Mini App
+                if (window.vkBridge) {
+                    try {
+                        await window.vkBridge.send('VKWebAppOpenPayForm', {
+                            app_id: data.app_id,
+                            action: 'pay-to-group',
+                            params: {
+                                amount: data.rub,
+                                description: data.description,
+                                data: data.order_id
+                            }
+                        });
+                        // VK обрабатывает результат через событие
+                        closePurchaseDialog();
+                        startBalancePolling(pkg.credits);
+                    } catch (vkErr) {
+                        console.error('VK Pay error:', vkErr);
+                        // Если VK Bridge не сработал — показываем ссылку на Boosty
+                        showToast('VK Pay пока недоступен. Пополните через Telegram Stars или Boosty.', 'info');
+                    }
+                } else {
+                    // Не в VK — предлагаем альтернативу
+                    // Попробуем открыть VK Pay через URL
+                    const vkPayUrl = `https://vk.com/paytofriend?uid=79656428&amount=${data.rub}&purpose=${encodeURIComponent(data.description)}`;
+                    showToast('Открываю VK Pay...', 'info');
+                    window.open(vkPayUrl, '_blank');
+                    closePurchaseDialog();
+                    startBalancePolling(pkg.credits);
+                }
+            } else {
+                showToast('Неизвестный формат ответа', 'error');
+            }
+
+        } catch (e) {
+            console.error('Topup error:', e);
+            showToast('Ошибка: ' + e.message, 'error');
+        } finally {
+            payBtn.disabled = false;
+            payBtn.textContent = selectedPaymentMethod === 'telegram' ? '\u2B50 Оплатить Stars' : '\u25C6 Оплатить VK Pay';
+        }
     }
 
-    function purchaseCredits() {
-        if (selectedPlan === 'vip') {
-            showToast('VIP-подписка — оплата через Telegram-бота (скоро!)', 'info');
-        } else {
-            showToast('Оплата ' + selectedPlan + '\u00A2 через Telegram-бота (скоро!)', 'info');
-        }
-        closePurchaseDialog();
+    // Polling баланса после оплаты
+    let balancePollingInterval = null;
+    let balanceBeforeTopup = 0;
+
+    function startBalancePolling(expectedCredits) {
+        balanceBeforeTopup = credits;
+        let attempts = 0;
+        const maxAttempts = 60; // 5 минут (каждые 5 сек)
+
+        if (balancePollingInterval) clearInterval(balancePollingInterval);
+
+        showToast('\u23F3 Ожидание подтверждения оплаты...', 'info');
+
+        balancePollingInterval = setInterval(async () => {
+            attempts++;
+            try {
+                const resp = await fetch(API_URL + '/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'balance', auth: getAuth(), payload: {} })
+                });
+                const result = await resp.json();
+                if (result.success && result.data) {
+                    const newBalance = result.data.balance;
+                    updateCreditsDisplay(newBalance, result.data.isVip);
+                    // Если баланс увеличился — оплата прошла!
+                    if (newBalance > balanceBeforeTopup) {
+                        clearInterval(balancePollingInterval);
+                        balancePollingInterval = null;
+                        const added = newBalance - balanceBeforeTopup;
+                        showToast(`\u2705 Оплата прошла! Начислено ${added}\u00A2. Баланс: ${newBalance}\u00A2`, 'success');
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('Balance polling error:', e);
+            }
+
+            if (attempts >= maxAttempts) {
+                clearInterval(balancePollingInterval);
+                balancePollingInterval = null;
+                showToast('\u23F0 Время ожидания истекло. Проверьте баланс позже.', 'warning');
+            }
+        }, 5000); // Каждые 5 секунд
     }
 
     // ---- AUTH DIALOG ----
