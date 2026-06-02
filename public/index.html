@@ -162,8 +162,8 @@
                     <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Угол поворота:</label>
                     <div class="size-selector" id="imageRotateAngle">
                         <button class="size-option active" data-angle="-90" onclick="selectRotateAngle(this)">&#8634; 90&#176; влево</button>
-                        <button class="size-option" data-angle="90" onclick="selectRotateAngle(this)">&#8635; 90&#176; вправо</button>
                         <button class="size-option" data-angle="180" onclick="selectRotateAngle(this)">&#128260; 180&#176;</button>
+                        <button class="size-option" data-angle="90" onclick="selectRotateAngle(this)">&#8635; 90&#176; вправо</button>
                     </div>
                 </div>
                 <div class="result-area" id="imageRotateResult">
@@ -773,6 +773,96 @@
     let convertFileCategory = 'image'; // 'image', 'video', 'audio'
     let convertFileSrcFormat = ''; // исходный формат: 'webp', 'heic', 'webm', 'ogg', 'wav' etc.
 
+    // 🔄 ГЛОБАЛЬНЫЙ РЕЕСТР АКТИВНЫХ ЗАДАЧ ВИДЕО
+    // Когда задача запущена, регистрируем её здесь. Даже если пользователь
+    // переключил режим — фоновый опрос продолжится и покажет тост с результатом.
+    let activeVideoTasks = {}; // { taskId: { taskType, resultAreaId, startTime, subMode } }
+
+    // Фоновый опрос активных задач — вызывается раз в 10 секунд
+    async function pollActiveVideoTasks() {
+        const taskIds = Object.keys(activeVideoTasks);
+        if (taskIds.length === 0) return;
+        const now = Date.now();
+
+        for (const taskId of taskIds) {
+            const task = activeVideoTasks[taskId];
+            // ⏳ Автоочистка: удаляем задачи старше 1 часа
+            if (now - task.startTime > 3600000) {
+                delete activeVideoTasks[taskId];
+                console.log('[BackgroundPoll] Cleaned up old task:', taskId);
+                continue;
+            }
+            try {
+                const resp = await fetch(API_URL + '/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'task_status',
+                        auth: getAuth(),
+                        payload: { task_id: taskId, task_type: task.taskType || 'video', image_mode: task.imageMode || 'vid' }
+                    })
+                });
+                if (!resp.ok) continue;
+                const data = await resp.json();
+                if (!data.success) {
+                    // Задача провалилась
+                    if (data.error && (data.error.includes('не удалась') || data.error.includes('failed') || data.error.includes('Задача не удалась'))) {
+                        delete activeVideoTasks[taskId];
+                        showToast('❌ Задача провалилась: ' + data.error, 'error');
+                    }
+                    continue;
+                }
+                // Задача завершена успешно
+                if (data.data?.type === 'video_url' || data.data?.type === 'image_url') {
+                    const url = data.data.content;
+                    delete activeVideoTasks[taskId];
+                    const resultArea = document.getElementById(task.resultAreaId);
+                    if (resultArea) {
+                        if (task.taskType === 'video') {
+                            resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + url + '" type="video/mp4"></video>' +
+                                '<div style="margin-top:8px;text-align:center"><a href="' + url + '" download="video.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать видео</a></div>';
+                        } else {
+                            resultArea.innerHTML = '<img class="generated-image" src="' + url + '" alt="Result">' +
+                                '<div style="margin-top:8px;text-align:center"><a href="' + url + '" download="generated.png" style="color:var(--accent);font-size:13px">&#128229; Скачать</a></div>';
+                        }
+                    }
+                    showToast('🎬 Результат готов! ' + (task.subMode ? '(' + task.subMode.toUpperCase() + ')' : ''), 'success');
+                    isProcessing = false;
+                    const sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) sendBtn.disabled = false;
+                } else if (data.data?.type === 'audio_url') {
+                    const url = data.data.content;
+                    delete activeVideoTasks[taskId];
+                    const resultArea = document.getElementById(task.resultAreaId);
+                    if (resultArea) {
+                        resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + url + '"></audio><br><a href="' + url + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
+                    }
+                    showToast('🔊 Аудио готово!', 'success');
+                    isProcessing = false;
+                    const sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) sendBtn.disabled = false;
+                } else if (data.data?.type === 'image_base64' && data.data.content) {
+                    const url = 'data:image/png;base64,' + data.data.content;
+                    delete activeVideoTasks[taskId];
+                    const resultArea = document.getElementById(task.resultAreaId);
+                    if (resultArea) {
+                        resultArea.innerHTML = '<img class="generated-image" src="' + url + '" style="max-width:100%;border-radius:8px" alt="Результат">';
+                    }
+                    showToast('🎨 Изображение готово!', 'success');
+                    isProcessing = false;
+                    const sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) sendBtn.disabled = false;
+                }
+                // task_pending — продолжаем ждать
+            } catch (err) {
+                console.warn('[BackgroundPoll] Error for task', taskId, err.message);
+            }
+        }
+    }
+
+    // Запускаем фоновый опрос каждые 10 секунд
+    setInterval(pollActiveVideoTasks, 10000);
+
     function selectConvertFormat(format, btn) {
         selectedImageConvertFormat = format;
         selectedMediaConvertFormat = format;
@@ -1244,7 +1334,7 @@
     // Polls the backend for KieAI async task status (image/video generation)
     // Returns: { completed: true, data } or { completed: false, state } or throws on error
     async function pollTaskStatus(taskId, taskType, maxAttempts, intervalMs, imageMode) {
-        maxAttempts = maxAttempts || 120; // ✅ Увеличено до 120 попыток (10 минут при 5сек интервале)
+        maxAttempts = maxAttempts || 240; // ✅ 240 попыток (~20 минут при адаптивном интервале) — для V2V/A2V
         intervalMs = intervalMs || 5000;
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -4741,7 +4831,7 @@
                                 }
                             };
 
-                            const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 60, 5000, isI2I ? 'i2i' : 't2i');
+                            const result = await pollTaskStatus.call(pollCtx, taskId, 'image', 120, 5000, isI2I ? 'i2i' : 't2i');
                             console.log('[T2I] Poll result:', JSON.stringify(result).substring(0, 300));
 
                             // Display the result
@@ -4759,8 +4849,15 @@
                                 throw new Error('Poll завершился без URL изображения. Result: ' + JSON.stringify(result).substring(0, 200));
                             }
                         } catch (err) {
-                            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-                            showToast('Ошибка генерации: ' + err.message, 'error');
+                            if (err.message && err.message.includes('Таймаут')) {
+                                // Регистрируем для фонового опроса
+                                activeVideoTasks[taskId] = { taskType: 'image', resultAreaId: 'imageResultArea', startTime: Date.now(), subMode: isI2I ? 'i2i' : 't2i', imageMode: isI2I ? 'i2i' : 't2i' };
+                                resultArea.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:24px;margin-bottom:8px">&#9203;</div><div style="color:var(--text-muted);font-weight:600">Генерация ещё идёт...</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">Результат появится автоматически.</div></div>';
+                                showToast('⏳ Задача ещё выполняется. Результат появится автоматически.', 'info');
+                            } else {
+                                resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+                                showToast('Ошибка генерации: ' + err.message, 'error');
+                            }
                         } finally {
                             isProcessing = false;
                             sendBtn.disabled = false;
@@ -4961,17 +5058,42 @@
                                 }
                             };
 
-                            const result = await pollTaskStatus.call(pollCtx, taskId, 'video', 60, 5000, 'vid');
+                            const resultAreaId = resultMap[selected.videoSubMode] || 'videoT2VResult';
+
+                            // 🔄 Регистрируем задачу в глобальном реестре — фоновый опрос подхватит
+                            activeVideoTasks[taskId] = {
+                                taskType: 'video',
+                                resultAreaId: resultAreaId,
+                                startTime: Date.now(),
+                                subMode: selected.videoSubMode,
+                                imageMode: 'vid'
+                            };
+
+                            const result = await pollTaskStatus.call(pollCtx, taskId, 'video', 360, 5000, 'vid');
 
                             // Display the result
                             if (result.url) {
+                                delete activeVideoTasks[taskId]; // Убираем из реестра — обработано
                                 resultArea.innerHTML = '<video controls autoplay loop style="max-width:100%;border-radius:8px"><source src="' + result.url + '" type="video/mp4"></video>' +
                                     '<div style="margin-top:8px;text-align:center"><a href="' + result.url + '" download="video.mp4" style="color:var(--accent);font-size:13px">&#128229; Скачать видео</a></div>';
                                 showToast('Видео создано!', 'success');
                             }
                         } catch (err) {
-                            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
-                            showToast('Ошибка генерации видео: ' + err.message, 'error');
+                            // 🛑 Если таймаут — НЕ показываем ошибку, задача остаётся в activeVideoTasks
+                            // Фоновый опрос продолжит проверять и покажет тост когда результат придёт
+                            if (err.message && err.message.includes('Таймаут')) {
+                                resultArea.innerHTML = '<div style="text-align:center;padding:20px">' +
+                                    '<div style="font-size:24px;margin-bottom:8px">&#9203;</div>' +
+                                    '<div style="color:var(--text-muted);font-weight:600">Генерация ещё идёт...</div>' +
+                                    '<div style="font-size:12px;color:var(--text-muted);margin-top:4px">Результат появится здесь автоматически. Вы можете продолжить работу в других режимах.</div></div>';
+                                showToast('⏳ Задача ещё выполняется. Результат появится автоматически.', 'info');
+                                // Задача остаётся в activeVideoTasks — фоновый опрос подхватит
+                            } else {
+                                // Реальная ошибка
+                                delete activeVideoTasks[taskId];
+                                resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+                                showToast('Ошибка генерации видео: ' + err.message, 'error');
+                            }
                         } finally {
                             isProcessing = false;
                             sendBtn.disabled = false;
@@ -5169,7 +5291,7 @@
                         const pollResult = await pollTaskStatus.call({_updateProgress: function(state, attempt, maxAttempts, pct) {
                             const el = document.getElementById('audioTTSPollProgress');
                             if (el) el.textContent = state + ' (' + pct + '%)';
-                        }}, taskId, 'audio', 60, 5000, 'tts');
+                        }}, taskId, 'audio', 120, 5000, 'tts');
                         if (pollResult?.url) {
                             const audioSrc = pollResult.url;
                             resultArea.innerHTML = '<audio controls autoplay style="width:100%;max-width:400px"><source src="' + audioSrc + '"></audio><br><a href="' + audioSrc + '" download="audio.mp3" style="color:var(--accent);font-size:13px">&#128229; Скачать MP3</a>';
