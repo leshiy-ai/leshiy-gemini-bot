@@ -1044,10 +1044,28 @@ async function formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPu
 }
 
 // ============================================================
+// 🔄 УНИВЕРСАЛЬНАЯ ЗАГРУЗКА base64 → S3 → публичный URL
+// Делегирует в monolith (uploadBase64ImageToPublicUrl для картинок,
+// uploadBase64MediaToPublicUrl для видео/аудио)
+// ============================================================
+async function uploadMediaToPublicUrl(base64Data, env, chatId, mode, mediaType, fileExt, uploadImageFn, uploadMediaFn) {
+    // Для изображений — используем готовую функцию
+    if (mediaType === 'image' && uploadImageFn) {
+        return await uploadImageFn(base64Data, env, chatId, mode);
+    }
+    // Для видео и аудио — используем универсальную функцию из worker.js
+    if (uploadMediaFn) {
+        return await uploadMediaFn(base64Data, env, chatId, mode, mediaType, fileExt);
+    }
+    console.warn('[uploadMedia] No upload function available for type:', mediaType);
+    return null;
+}
+
+// ============================================================
 // 🎬 ВИДЕО — Поддержка generate, convert, recognition, rotate
 // ============================================================
 async function handleVideo(auth, payload, env, monolith) {
-    const { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse } = monolith;
+    const { AI_MODELS, AI_MODEL_MENU_CONFIG, extractAndCleanModelResponse, uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl } = monolith;
     const isAuth = !!(auth && isValidAuthId(auth.id));
     const chatId = isAuth ? String(auth.id) : 'guest';
     const videoMode = payload.video_mode || 'generate';
@@ -1315,25 +1333,92 @@ async function handleVideo(auth, payload, env, monolith) {
         const workerDomain = env.WORKER_DOMAIN || '';
         const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
-        const input = {
-            prompt: prompt,
-            aspect_ratio: payload.aspect_ratio || '16:9',
-            duration: payload.duration || '5',
-            quality: payload.quality || '480p',
-            mode: 'normal'
-        };
+        // 🛑 Формируем input в зависимости от подтипа видео
+        // KIE.AI API принимает ТОЛЬКО публичные URL, НЕ base64!
+        const videoSubMode = payload.video_submode || 't2v';
+        let input;
 
-        // Добавляем референсное изображение если есть (i2v)
-        if (payload.reference_image) {
-            input.image_base64 = payload.reference_image;
-        }
-        // Добавляем референсное видео если есть (v2v)
-        if (payload.reference_video) {
-            input.video_base64 = payload.reference_video;
-        }
-        // Добавляем аудио если есть (a2v)
-        if (payload.reference_audio) {
-            input.audio_base64 = payload.reference_audio;
+        if (videoSubMode === 't2v') {
+            // === TEXT-TO-VIDEO: только промпт и параметры, БЕЗ референсов ===
+            input = {
+                prompt: prompt,
+                aspect_ratio: payload.aspect_ratio || '16:9',
+                duration: payload.duration || '5',
+                quality: payload.quality || '480p',
+                mode: 'normal'
+            };
+        } else if (videoSubMode === 'i2v') {
+            // === IMAGE-TO-VIDEO: загружаем картинку в S3, передаём image_urls[] ===
+            if (!payload.reference_image) return formatResponse(false, 'Для I2V нужно референсное изображение');
+            const imageUrl = await uploadMediaToPublicUrl(
+                payload.reference_image, env, chatId, 'I2V', 'image', 'png', uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl
+            );
+            if (!imageUrl) return formatResponse(false, 'Не удалось загрузить изображение для I2V');
+            input = {
+                image_urls: [imageUrl],
+                prompt: prompt,
+                aspect_ratio: payload.aspect_ratio || '16:9',
+                duration: payload.duration || '5',
+                quality: payload.quality || '480p',
+                mode: 'normal'
+            };
+        } else if (videoSubMode === 'v2v') {
+            // === VIDEO-TO-VIDEO: нужно фото персонажа (image_url) + видео (video_url) ===
+            if (!payload.reference_image) return formatResponse(false, 'Для V2V нужно фото персонажа');
+            if (!payload.reference_video) return formatResponse(false, 'Для V2V нужно референсное видео');
+            const imageUrl = await uploadMediaToPublicUrl(
+                payload.reference_image, env, chatId, 'V2V', 'image', 'png', uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl
+            );
+            const videoUrl = await uploadMediaToPublicUrl(
+                payload.reference_video, env, chatId, 'V2V', 'video', payload.reference_video_format || 'mp4', uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl
+            );
+            if (!imageUrl) return formatResponse(false, 'Не удалось загрузить фото для V2V');
+            if (!videoUrl) return formatResponse(false, 'Не удалось загрузить видео для V2V');
+            // Wan и Kling модели используют разные поля
+            const modelKey = modelInfo.key || '';
+            if (modelKey.includes('Kling')) {
+                input = {
+                    input_urls: imageUrl,
+                    video_urls: videoUrl,
+                    prompt: prompt || 'Change character from photo on video',
+                    character_orientation: 'video',
+                    mode: payload.quality || '720p'
+                };
+            } else {
+                // Wan (по умолчанию)
+                input = {
+                    video_url: videoUrl,
+                    image_url: imageUrl,
+                    resolution: payload.quality || '480p'
+                };
+            }
+        } else if (videoSubMode === 'a2v') {
+            // === AUDIO-TO-VIDEO: нужно фото (image_url) + аудио (audio_url) ===
+            if (!payload.reference_image) return formatResponse(false, 'Для A2V нужно фото аватара');
+            if (!payload.reference_audio) return formatResponse(false, 'Для A2V нужно аудиофайл');
+            const imageUrl = await uploadMediaToPublicUrl(
+                payload.reference_image, env, chatId, 'A2V', 'image', 'png', uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl
+            );
+            const audioUrl = await uploadMediaToPublicUrl(
+                payload.reference_audio, env, chatId, 'A2V', 'audio', payload.reference_audio_format || 'mp3', uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl
+            );
+            if (!imageUrl) return formatResponse(false, 'Не удалось загрузить фото для A2V');
+            if (!audioUrl) return formatResponse(false, 'Не удалось загрузить аудио для A2V');
+            input = {
+                image_url: imageUrl,
+                audio_url: audioUrl,
+                prompt: prompt || 'A detailed talking avatar video.',
+                resolution: payload.quality || '480p'
+            };
+        } else {
+            // Неизвестный подтип — просто промпт
+            input = {
+                prompt: prompt,
+                aspect_ratio: payload.aspect_ratio || '16:9',
+                duration: payload.duration || '5',
+                quality: payload.quality || '480p',
+                mode: 'normal'
+            };
         }
 
         console.log(`[WebHandler] Video gen using: ${modelInfo.key}`);

@@ -280,9 +280,19 @@
             <div class="panel-subsection" id="videoV2VSection">
                 <div>
                     <h3>&#127916; Видео &#8594; Видео</h3>
-                    <p>Загрузите видео и опишите трансформацию. Стоимость от 20&#162;.</p>
+                    <p>Загрузите фото персонажа и исходное видео — нейросеть заменит персонажа на видео вашей фотографией. Стоимость от 20&#162;.</p>
                 </div>
                 <div id="videoV2VParams" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"></div>
+                <div>
+                    <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Фото персонажа (обязательно):</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <div class="upload-zone ref-required" id="videoV2VRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="if(!_dropJustHappened)document.getElementById('videoV2VRefImgInput').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Фото</div>
+                            <input type="file" id="videoV2VRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRef('image_v2v',this)">
+                        </div>
+                    </div>
+                </div>
                 <div>
                     <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Исходное видео (обязательно):</label>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -302,9 +312,19 @@
             <div class="panel-subsection" id="videoA2VSection">
                 <div>
                     <h3>&#127916; Аудио &#8594; Аватар</h3>
-                    <p>Загрузите аудиофайл, и я создам видео-аватар с речью. Стоимость от 20&#162;.</p>
+                    <p>Загрузите фото аватара и аудиофайл — нейросеть анимирует губы под речь. Стоимость от 20&#162;.</p>
                 </div>
                 <div id="videoA2VParams" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"></div>
+                <div>
+                    <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Фото аватара (обязательно):</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <div class="upload-zone ref-required" id="videoA2VRefImg" style="padding:16px;min-width:80px;min-height:80px;max-width:100px;max-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative" onclick="if(!_dropJustHappened)document.getElementById('videoA2VRefImgInput').click()">
+                            <div class="icon" style="font-size:20px;margin:0">&#128247;</div>
+                            <div class="hint" style="margin:0;font-size:11px">Фото</div>
+                            <input type="file" id="videoA2VRefImgInput" accept="image/*" style="display:none" onchange="handleVideoRef('image_a2v',this)">
+                        </div>
+                    </div>
+                </div>
                 <div>
                     <label style="font-size:13px;color:var(--danger);margin-bottom:6px;display:block">&#x1F534; Аудиофайл (обязательно):</label>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -991,11 +1011,15 @@
                         handleAudioConvert(fakeInput);
                     } else if (zoneId === 'voiceCloneZone') {
                         handleVoiceClone(fakeInput);
-                    } else if (zoneId && zoneId.startsWith('videoI2V')) {
+                    } else if (zoneId === 'videoI2VRefImg') {
                         handleVideoRef('image', fakeInput);
-                    } else if (zoneId && zoneId.startsWith('videoV2V')) {
+                    } else if (zoneId === 'videoV2VRefImg') {
+                        handleVideoRef('image_v2v', fakeInput);
+                    } else if (zoneId === 'videoV2VRefVideo') {
                         handleVideoRef('video', fakeInput);
-                    } else if (zoneId && zoneId.startsWith('videoA2V')) {
+                    } else if (zoneId === 'videoA2VRefImg') {
+                        handleVideoRef('image_a2v', fakeInput);
+                    } else if (zoneId === 'videoA2VRefAudio') {
                         handleVideoRef('audio', fakeInput);
                     } else if (zoneId === 'videoConvertZone') {
                         handleVideoConvert(fakeInput);
@@ -1484,9 +1508,11 @@
                 else if (zoneId === 'audioUploadZone') handleAudioUpload(fakeInput);
                 else if (zoneId === 'audioConvertZone') handleAudioConvert(fakeInput);
                 else if (zoneId === 'voiceCloneZone') handleVoiceClone(fakeInput);
-                else if (zoneId && zoneId.startsWith('videoI2V')) handleVideoRef('image', fakeInput);
-                else if (zoneId && zoneId.startsWith('videoV2V')) handleVideoRef('video', fakeInput);
-                else if (zoneId && zoneId.startsWith('videoA2V')) handleVideoRef('audio', fakeInput);
+                else if (zoneId === 'videoI2VRefImg') handleVideoRef('image', fakeInput);
+                else if (zoneId === 'videoV2VRefImg') handleVideoRef('image_v2v', fakeInput);
+                else if (zoneId === 'videoV2VRefVideo') handleVideoRef('video', fakeInput);
+                else if (zoneId === 'videoA2VRefImg') handleVideoRef('image_a2v', fakeInput);
+                else if (zoneId === 'videoA2VRefAudio') handleVideoRef('audio', fakeInput);
                 else if (zoneId === 'imageRef0') handleImageRef(0, fakeInput);
                 else if (zoneId === 'imageRef1') handleImageRef(1, fakeInput);
                 else if (zoneId === 'imageRef2') handleImageRef(2, fakeInput);
@@ -4829,12 +4855,12 @@
             showToast('Для режима Картинка→Видео загрузите референсное изображение', 'error');
             return;
         }
-        if (selected.videoSubMode === 'v2v' && !videoRefs.video) {
-            showToast('Для режима Видео→Видео загрузите исходное видео', 'error');
+        if (selected.videoSubMode === 'v2v' && (!videoRefs.video || !videoRefs.image_v2v)) {
+            showToast('Для режима Видео→Видео загрузите фото персонажа и исходное видео', 'error');
             return;
         }
-        if (selected.videoSubMode === 'a2v' && !videoRefs.audio) {
-            showToast('Для режима Аудио→Аватар загрузите аудиофайл', 'error');
+        if (selected.videoSubMode === 'a2v' && (!videoRefs.audio || !videoRefs.image_a2v)) {
+            showToast('Для режима Аудио→Аватар загрузите фото аватара и аудиофайл', 'error');
             return;
         }
 
@@ -4852,6 +4878,7 @@
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Генерирую видео (может занять до минуты)...</span>';
 
         try {
+            // 🛑 Формируем payload с правильными референсами для каждого режима
             const payload = {
                 prompt,
                 model: modelKey,
@@ -4859,11 +4886,23 @@
                 quality: selected.videoQuality,
                 duration: selected.videoDuration,
                 video_mode: selected.videoSubMode,
-                video_submode: selected.videoSubMode,
-                ...(videoRefs.image ? { reference_image: videoRefs.image } : {}),
-                ...(videoRefs.audio ? { reference_audio: videoRefs.audio } : {}),
-                ...(videoRefs.video ? { reference_video: videoRefs.video } : {})
+                video_submode: selected.videoSubMode
             };
+
+            // I2V: референсное изображение
+            if (selected.videoSubMode === 'i2v' && videoRefs.image) {
+                payload.reference_image = videoRefs.image;
+            }
+            // V2V: фото персонажа + видео
+            if (selected.videoSubMode === 'v2v') {
+                if (videoRefs.image_v2v) payload.reference_image = videoRefs.image_v2v;
+                if (videoRefs.video) payload.reference_video = videoRefs.video;
+            }
+            // A2V: фото аватара + аудио
+            if (selected.videoSubMode === 'a2v') {
+                if (videoRefs.image_a2v) payload.reference_image = videoRefs.image_a2v;
+                if (videoRefs.audio) payload.reference_audio = videoRefs.audio;
+            }
 
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
@@ -5529,7 +5568,7 @@
     }
 
     // ---- VIDEO REFERENCE HANDLERS ----
-    let videoRefs = { image: null, audio: null, video: null };
+    let videoRefs = { image: null, audio: null, video: null, image_v2v: null, image_a2v: null };
 
     async function handleVideoRef(type, input) {
         const file = (input.files && input.files[0]) || null;
@@ -5542,17 +5581,20 @@
             // Находим слот в соответствующей секции
             const slotMap = {
                 image: ['videoI2VRefImg'],
+                image_v2v: ['videoV2VRefImg'],
+                image_a2v: ['videoA2VRefImg'],
                 audio: ['videoA2VRefAudio'],
                 video: ['videoV2VRefVideo']
             };
             const slotIds = slotMap[type] || [];
-            const icons = { image: '&#128247;', audio: '&#127925;', video: '&#127916;' };
-            const labels = { image: 'Картинка', audio: 'Аудио', video: 'Видео' };
+            const icons = { image: '&#128247;', image_v2v: '&#128247;', image_a2v: '&#128247;', audio: '&#127925;', video: '&#127916;' };
+            const labels = { image: 'Картинка', image_v2v: 'Фото', image_a2v: 'Фото', audio: 'Аудио', video: 'Видео' };
 
             slotIds.forEach(slotId => {
                 const slot = document.getElementById(slotId);
                 if (!slot) return;
-                if (type === 'image') {
+                const isImage = type.startsWith('image');
+                if (isImage) {
                     const previewUrl = URL.createObjectURL(file);
                     slot.innerHTML = '<img src="' + previewUrl + '" draggable="false" style="width:100%;height:100%;object-fit:cover;border-radius:8px;pointer-events:none" alt="' + labels[type] + '">' +
                         '<button onclick="event.stopPropagation();removeVideoRef(\'' + type + '\',\'' + slotId + '\')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);border:none;color:white;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;line-height:1">&times;</button>';
@@ -5573,13 +5615,15 @@
         if (!slot) return;
         const inputIdMap = {
             'videoI2VRefImg': 'videoI2VRefImgInput',
+            'videoV2VRefImg': 'videoV2VRefImgInput',
             'videoV2VRefVideo': 'videoV2VRefVideoInput',
+            'videoA2VRefImg': 'videoA2VRefImgInput',
             'videoA2VRefAudio': 'videoA2VRefAudioInput'
         };
         const inputId = inputIdMap[slotId] || '';
-        const icons = { image: '&#128247;', audio: '&#127925;', video: '&#127916;' };
-        const labels = { image: 'Картинка', audio: 'Аудио', video: 'Видео' };
-        const acceptMap = { image: 'image/*', audio: 'audio/*', video: 'video/*' };
+        const icons = { image: '&#128247;', image_v2v: '&#128247;', image_a2v: '&#128247;', audio: '&#127925;', video: '&#127916;' };
+        const labels = { image: 'Картинка', image_v2v: 'Фото', image_a2v: 'Фото', audio: 'Аудио', video: 'Видео' };
+        const acceptMap = { image: 'image/*', image_v2v: 'image/*', image_a2v: 'image/*', audio: 'audio/*', video: 'video/*' };
         slot.innerHTML = '<div class="icon" style="font-size:20px;margin:0">' + icons[type] + '</div>' +
             '<div class="hint" style="margin:0;font-size:10px">' + labels[type] + '</div>' +
             (inputId ? '<input type="file" id="' + inputId + '" accept="' + acceptMap[type] + '" style="display:none" onchange="handleVideoRef(\'' + type + '\',this)">' : '');
@@ -6999,8 +7043,12 @@
                 handleAudioUpload(input);
             } else if (id === 'videoI2VRefImg') {
                 handleVideoRef('image', input);
+            } else if (id === 'videoV2VRefImg') {
+                handleVideoRef('image_v2v', input);
             } else if (id === 'videoV2VRefVideo') {
                 handleVideoRef('video', input);
+            } else if (id === 'videoA2VRefImg') {
+                handleVideoRef('image_a2v', input);
             } else if (id === 'videoA2VRefAudio') {
                 handleVideoRef('audio', input);
             } else if (id === 'videoConvertZone') {

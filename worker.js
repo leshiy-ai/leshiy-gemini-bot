@@ -1539,6 +1539,58 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId, mode) {
     return publicUrl;
 }
 
+// ✅ uploadBase64MediaToPublicUrl — Универсальная загрузка base64 → S3 → публичный URL
+// Работает с изображениями, видео и аудио (в отличие от uploadBase64ImageToPublicUrl)
+async function uploadBase64MediaToPublicUrl(base64Data, envData, chatId, mode, mediaType, fileExt) {
+    const PUBLIC_DOMAIN = envData.WORKER_DOMAIN.startsWith('http')
+        ? envData.WORKER_DOMAIN
+        : `https://${envData.WORKER_DOMAIN}`;
+
+    const base64 = base64Data.replace(/^data:[^;]+;base64,/, '');
+    const folderMode = (mode || 'IMG').toUpperCase();
+
+    // ContentType и расширение
+    const mimeMap = {
+        video: { mp4: 'video/mp4', webm: 'video/webm', avi: 'video/x-msvideo', mov: 'video/quicktime' },
+        audio: { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4' }
+    };
+    const ext = fileExt || (mediaType === 'video' ? 'mp4' : 'mp3');
+    const contentType = mimeMap[mediaType]?.[ext] || (mediaType === 'video' ? 'video/mp4' : 'audio/mpeg');
+
+    const fileKey = `${folderMode}/${chatId}/${Date.now()}.${ext}`;
+    const publicUrl = `${PUBLIC_DOMAIN}/kv-images/${fileKey}`;
+
+    // S3 (Yandex Cloud)
+    if (envData.YANDEX_S3_KEY_ID && envData.YANDEX_S3_SECRET) {
+        try {
+            const buffer = Buffer.from(base64, 'base64');
+            const s3 = new AWS.S3({
+                accessKeyId: envData.YANDEX_S3_KEY_ID,
+                secretAccessKey: envData.YANDEX_S3_SECRET,
+                endpoint: S3_CONFIG.endpoint,
+                s3ForcePathStyle: true,
+                region: S3_CONFIG.region,
+                apiVersion: 'latest',
+            });
+            await s3.putObject({
+                Bucket: S3_CONFIG.bucket,
+                Key: `kv-images/${fileKey}`,
+                Body: buffer,
+                ContentType: contentType,
+                ACL: 'public-read',
+            }).promise();
+            console.log(`[uploadMedia] Uploaded to S3: kv-images/${fileKey} (${buffer.length} bytes, ${contentType})`);
+            return publicUrl;
+        } catch (s3Err) {
+            console.error(`[uploadMedia] S3 upload failed: ${s3Err.message}`);
+            return null;
+        }
+    }
+
+    console.warn('[uploadMedia] No S3 credentials');
+    return null;
+}
+
 // ✅ *** sendAiRequest - универсальный «движок» отправки с фоллбэком
 async function sendAiRequest(body, url, config, envData, isRawBody = false) {
     const safeConfig = config || {};
@@ -17390,7 +17442,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
             }
             // Добавляем ctx в env, чтобы функции воркера могли использовать ctx.waitUntil
             env.ctx = ctx;
-            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat, loadS3ChatHistory, clearS3ChatHistory, uploadBase64ImageToPublicUrl, createTaskKieAi, getKieAiTaskResultForWeb });
+            const result = await webHandler.handleWebRequest(webBody, env, { AI_MODELS, AI_MODEL_MENU_CONFIG, loadActiveConfig, extractAndCleanModelResponse, syncS3Chat, loadS3ChatHistory, clearS3ChatHistory, uploadBase64ImageToPublicUrl, uploadBase64MediaToPublicUrl, createTaskKieAi, getKieAiTaskResultForWeb });
             return new Response(JSON.stringify(result), {
                 status: 200,
                 headers: {
