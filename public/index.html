@@ -337,6 +337,53 @@
                 </div>
             </div>
 
+            <!-- Поворот видео (бесплатно) -->
+            <div class="panel-subsection" id="videoRotateSection">
+                <div>
+                    <h3>&#128260; Поворот видео</h3>
+                    <p>Загрузите видео и выберите угол поворота. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="videoRotateZone" onclick="if(!_dropJustHappened)document.getElementById('videoRotateFileInput').click()">
+                    <div class="icon">&#127916;</div>
+                    <div class="label">Загрузить видеофайл для поворота</div>
+                    <div class="hint">MP4, AVI, MOV, WebM — до 50 МБ</div>
+                    <input type="file" id="videoRotateFileInput" accept="video/*" style="display:none" onchange="handleVideoRotateUpload(this)">
+                </div>
+                <div id="videoRotateControls" style="display:none">
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Угол поворота:</label>
+                    <div class="size-selector" id="videoRotateAngleBtns">
+                        <button class="size-option" data-angle="-90" onclick="selectVideoRotateAngle(this)">&#8592; 90° влево</button>
+                        <button class="size-option active" data-angle="90" onclick="selectVideoRotateAngle(this)">90° вправо &#8594;</button>
+                        <button class="size-option" data-angle="180" onclick="selectVideoRotateAngle(this)">180°</button>
+                    </div>
+                </div>
+                <div class="result-area" id="videoRotateResult">
+                    <span class="result-placeholder">Здесь появится повёрнутое видео</span>
+                </div>
+            </div>
+
+            <!-- Ресайз видео -->
+            <div class="panel-subsection" id="videoResizeSection">
+                <div>
+                    <h3>&#128302; Ресайз</h3>
+                    <p>Измените размер видео или изображения. Бесплатно.</p>
+                </div>
+                <div class="upload-zone" id="videoResizeZone" onclick="if(!_dropJustHappened)document.getElementById('videoResizeInput').click()">
+                    <div class="icon">&#128302;</div>
+                    <div class="label">Загрузить видео или изображение</div>
+                    <div class="hint">MP4, WebM, AVI, PNG, JPG — любой формат</div>
+                    <input type="file" id="videoResizeInput" accept="image/*,video/*" style="display:none" onchange="handleVideoResizeUpload(this)">
+                </div>
+                <div id="videoResizeControls" style="display:none">
+                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер (по высоте):</label>
+                    <div id="videoResizePresets" class="size-selector"></div>
+                    <div id="videoResizeCurrentInfo" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
+                </div>
+                <div class="result-area" id="videoResizeResult">
+                    <span class="result-placeholder">Здесь появится ресайзнутый файл</span>
+                </div>
+            </div>
+
             <!-- Конвертация медиа (бесплатно) -->
             <div class="panel-subsection" id="videoConvertMediaSection">
                 <div>
@@ -387,28 +434,6 @@
                 </div>
                 <div class="result-area" id="mediaConvertResult">
                     <span class="result-placeholder">Здесь появится сконвертированный файл</span>
-                </div>
-            </div>
-
-            <!-- Ресайз видео -->
-            <div class="panel-subsection" id="videoResizeSection">
-                <div>
-                    <h3>&#128302; Ресайз</h3>
-                    <p>Измените размер видео или изображения. Бесплатно.</p>
-                </div>
-                <div class="upload-zone" id="videoResizeZone" onclick="if(!_dropJustHappened)document.getElementById('videoResizeInput').click()">
-                    <div class="icon">&#128302;</div>
-                    <div class="label">Загрузить видео или изображение</div>
-                    <div class="hint">MP4, WebM, AVI, PNG, JPG — любой формат</div>
-                    <input type="file" id="videoResizeInput" accept="image/*,video/*" style="display:none" onchange="handleVideoResizeUpload(this)">
-                </div>
-                <div id="videoResizeControls" style="display:none">
-                    <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">Размер (по высоте):</label>
-                    <div id="videoResizePresets" class="size-selector"></div>
-                    <div id="videoResizeCurrentInfo" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
-                </div>
-                <div class="result-area" id="videoResizeResult">
-                    <span class="result-placeholder">Здесь появится ресайзнутый файл</span>
                 </div>
             </div>
 
@@ -1390,7 +1415,7 @@
         video_v2v: null,
         video_a2v: null,
         video_analysis: null,
-        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'recognition', 'convert', 'resize', 'stopframe'
+        videoSubMode: 't2v',  // 't2v', 'i2v', 'v2v', 'a2v', 'recognition', 'rotate', 'resize', 'convert', 'stopframe'
         audio_tts: null,
         audio_stt: null,
         audioSubMode: 'tts',  // 'tts', 'stt', 'convert', 'voice_clone'
@@ -2222,15 +2247,15 @@
     function renderImageSubHeader() {
         const hasRefs = imageRefs.some(r => r !== null);
 
-        // Кнопки подрежимов: Генерация / Поворот / Ресайз / Конверт / Распознавание
+        // Кнопки подрежимов: Генерация / Распознавание / Поворот / Ресайз / Конверт
         const subModesContainer = document.getElementById('imageSubModes');
         subModesContainer.innerHTML = '';
         [
             { key: 'generate', label: hasRefs ? '✨ Фото→Изображение' : '📖 Текст→Изображение', cls: '' },
+            { key: 'recognition', label: '👁 Распознавание', cls: 'free' },
             { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
-            { key: 'convert', label: '📦 Конверт', cls: 'free' },
-            { key: 'recognition', label: '👁 Распознавание', cls: 'free' }
+            { key: 'convert', label: '📦 Конверт', cls: 'free' }
         ].forEach(sm => {
             const btn = document.createElement('button');
             btn.className = 'sub-option' + (selected.imageSubMode === sm.key ? ' active' : '') + (sm.cls ? ' ' + sm.cls : '');
@@ -2428,8 +2453,9 @@
             { key: 'v2v', label: '🎥 Видео→Видео', cls: '' },
             { key: 'a2v', label: '🗣 Аудио→Аватар', cls: '' },
             { key: 'recognition', label: '👁 Распознавание', cls: 'free' },
-            { key: 'convert', label: '🔄 Конвертация', cls: 'free' },
+            { key: 'rotate', label: '🔄 Поворот', cls: 'free' },
             { key: 'resize', label: '📐 Ресайз', cls: 'free' },
+            { key: 'convert', label: '📦 Конвертация', cls: 'free' },
             { key: 'stopframe', label: '📷 Стоп-кадр', cls: 'free' }
         ].forEach(vm => {
             const btn = document.createElement('button');
@@ -2518,10 +2544,13 @@
             } else {
                 modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
             }
-        } else if (selected.videoSubMode === 'convert') {
-            // Конвертация медиа — бесплатно
+        } else if (selected.videoSubMode === 'rotate') {
+            // Поворот видео — бесплатно через конвертер
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         } else if (selected.videoSubMode === 'resize') {
+            modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
+        } else if (selected.videoSubMode === 'convert') {
+            // Конвертация медиа — бесплатно
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
         } else if (selected.videoSubMode === 'stopframe') {
             modelsContainer.innerHTML = '<span class="sub-label" style="color:var(--free)">\u2713 Бесплатно</span>';
@@ -2714,8 +2743,9 @@
         document.getElementById('videoV2VSection').classList.toggle('active', mode === 'v2v');
         document.getElementById('videoA2VSection').classList.toggle('active', mode === 'a2v');
         document.getElementById('videoAnalysisSection').classList.toggle('active', mode === 'recognition');
-        document.getElementById('videoConvertMediaSection').classList.toggle('active', mode === 'convert');
+        document.getElementById('videoRotateSection').classList.toggle('active', mode === 'rotate');
         document.getElementById('videoResizeSection').classList.toggle('active', mode === 'resize');
+        document.getElementById('videoConvertMediaSection').classList.toggle('active', mode === 'convert');
         document.getElementById('videoStopFrameSection').classList.toggle('active', mode === 'stopframe');
         updateVideoPlaceholder();
     }
@@ -2761,8 +2791,9 @@
                 v2v: 'Опишите трансформацию видео...',
                 a2v: 'Опишите аватар для генерации...',
                 recognition: 'Загрузите видеофайл выше для распознавания',
-                convert: 'Загрузите файл выше и выберите формат',
+                rotate: 'Загрузите видео выше и выберите угол поворота',
                 resize: 'Загрузите видео/фото выше и укажите размер',
+                convert: 'Загрузите файл выше и выберите формат',
                 stopframe: 'Загрузите видео выше для стоп-кадра'
             };
             const hintMap = {
@@ -2771,8 +2802,9 @@
                 v2v: 'Обязательно загрузите видео выше',
                 a2v: 'Обязательно загрузите аудио выше',
                 recognition: 'Распознавание видео — бесплатно',
-                convert: 'Конвертация медиа — бесплатно',
+                rotate: 'Поворот видео — бесплатно',
                 resize: 'Ресайз — бесплатно',
+                convert: 'Конвертация медиа — бесплатно',
                 stopframe: 'Стоп-кадр — бесплатно'
             };
             userInput.placeholder = phMap[selected.videoSubMode] || 'Опишите видео...';
@@ -4386,8 +4418,9 @@
             await generateImage(text);
         } else if (currentMode === 'video') {
             if (selected.videoSubMode === 'recognition') {
-                showToast('Для этого режима загрузите видеофайл', 'info');
-                return;
+                await executeVideoRecognition(); return;
+            } else if (selected.videoSubMode === 'rotate') {
+                await executeVideoRotate(); return;
             } else if (selected.videoSubMode === 'convert') {
                 await executeMediaConvert(); return;
             } else if (selected.videoSubMode === 'resize') {
@@ -4886,10 +4919,23 @@
         sendBtn.disabled = false;
     }
 
-    // ---- VIDEO CONVERT (бесплатно) ----
+    // ---- VIDEO RECOGNITION (V2T) — загрузка + отправка отдельно ----
+    let recognitionVideoBase64 = null;
+    let recognitionVideoMime = null;
+
     async function handleVideoConvert(input) {
         const file = (input.files && input.files[0]) || null;
         if (!file) return;
+
+        // Store video for later send
+        try {
+            recognitionVideoMime = file.type || 'video/mp4';
+            recognitionVideoBase64 = await fileToBase64(file);
+        } catch (err) {
+            showToast('Ошибка чтения видеофайла', 'error');
+            input.value = '';
+            return;
+        }
 
         // Show preview of uploaded file in the upload zone
         const zone = document.getElementById('videoConvertZone');
@@ -4908,20 +4954,25 @@
                     const thumb = canvas.toDataURL('image/jpeg', 0.6);
                     zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
                         '<input type="file" id="videoConvertInput" accept="video/*" style="display:none" onchange="handleVideoConvert(this)">' +
-                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено. Введите запрос для анализа.</div>';
+                        '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено. Нажмите отправить для распознавания.</div>';
                 } catch(e) {}
                 URL.revokeObjectURL(objUrl);
             };
             zone.onclick = function() { document.getElementById('videoConvertInput').click(); };
         }
 
+        document.getElementById('videoConvertResult').innerHTML = '<span class="result-placeholder">Здесь появится результат анализа</span>';
+        showToast('Видео загружено. Нажмите отправить для распознавания.', 'info');
+        input.value = '';
+    }
+
+    async function executeVideoRecognition() {
+        if (!recognitionVideoBase64) { showToast('Сначала загрузите видеофайл', 'info'); return; }
         const resultArea = document.getElementById('videoConvertResult');
         const prompt = userInput.value.trim() || 'Проанализируй это видео подробно: опиши что происходит, кто в кадре, какая атмосфера. Отвечай на русском языке.';
         resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Распознаю видео...</span>';
 
         try {
-            const base64 = await fileToBase64(file);
-            // Используем модель для анализа видео
             const analysisModel = selected.video_analysis || 'VIDEO_TO_ANALYSIS_GEMINI';
             const response = await fetch(API_URL + '/api', {
                 method: 'POST',
@@ -4931,8 +4982,8 @@
                     auth: getAuth(),
                     payload: {
                         prompt: prompt,
-                        video_base64: base64,
-                        video_mime_type: file.type || 'video/mp4',
+                        video_base64: recognitionVideoBase64,
+                        video_mime_type: recognitionVideoMime || 'video/mp4',
                         video_mode: 'recognition',
                         model: analysisModel
                     }
@@ -4952,7 +5003,6 @@
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка: ' + err.message, 'error');
         }
-        input.value = '';
     }
 
     // ---- AUDIO SEND (роутинг по подрежимам) ----
@@ -6371,6 +6421,97 @@
                     }
                 } catch (_) {}
             }
+            resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
+            showToast('Ошибка: ' + err.message, 'error');
+        }
+    }
+
+    // ---- VIDEO ROTATE (Поворот видео — бесплатно через конвертер) ----
+    let videoRotateBase64 = null;
+    let videoRotateAngle = '90'; // по умолчанию 90° вправо
+
+    function selectVideoRotateAngle(btn) {
+        document.querySelectorAll('#videoRotateAngleBtns .size-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        videoRotateAngle = btn.dataset.angle;
+    }
+
+    async function handleVideoRotateUpload(input) {
+        const file = (input.files && input.files[0]) || null;
+        if (!file) return;
+        try {
+            videoRotateBase64 = await fileToBase64(file);
+            document.getElementById('videoRotateControls').style.display = 'block';
+            // Show video thumbnail
+            const zone = document.getElementById('videoRotateZone');
+            if (zone) {
+                const objUrl = URL.createObjectURL(file);
+                const videoEl = document.createElement('video');
+                videoEl.src = objUrl;
+                videoEl.muted = true;
+                videoEl.onloadeddata = function() {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const vw = videoEl.videoWidth || 16, vh = videoEl.videoHeight || 9;
+                        const maxW = 200, maxH = 150, sc = Math.min(maxW / vw, maxH / vh);
+                        canvas.width = Math.round(vw * sc); canvas.height = Math.round(vh * sc);
+                        canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+                        const thumb = canvas.toDataURL('image/jpeg', 0.6);
+                        zone.innerHTML = '<div style="position:relative;display:inline-block"><img src="' + thumb + '" style="max-width:100%;max-height:120px;border-radius:8px"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,0.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:white">&#9654;</div></div>' +
+                            '<input type="file" id="videoRotateFileInput" accept="video/*" style="display:none" onchange="handleVideoRotateUpload(this)">' +
+                            '<div style="font-size:11px;color:var(--success);margin-top:4px">&#10003; Видео загружено. Выберите угол и отправьте.</div>';
+                    } catch(e) {}
+                    URL.revokeObjectURL(objUrl);
+                };
+                zone.onclick = function() { document.getElementById('videoRotateFileInput').click(); };
+            }
+            document.getElementById('videoRotateResult').innerHTML = '<span class="result-placeholder">Здесь появится повёрнутое видео</span>';
+            showToast('Видео загружено. Выберите угол поворота и нажмите отправить.', 'info');
+        } catch (err) {
+            showToast('Ошибка загрузки видео', 'error');
+        }
+        input.value = '';
+    }
+
+    async function executeVideoRotate() {
+        if (!videoRotateBase64) { showToast('Сначала загрузите видео', 'info'); return; }
+        const resultArea = document.getElementById('videoRotateResult');
+        resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--accent)">&#9883; Поворачиваю видео...</span>';
+        try {
+            const response = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'video',
+                    auth: getAuth(),
+                    payload: {
+                        video_base64: videoRotateBase64,
+                        video_mode: 'rotate',
+                        angle: videoRotateAngle
+                    }
+                })
+            });
+            if (!response.ok) throw new Error('Ошибка поворота видео');
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error || 'Ошибка');
+
+            const content = data.data?.content;
+            const resultType = data.data?.type || '';
+
+            if (content && resultType === 'video_base64') {
+                var byteStr = atob(content);
+                var ab = new ArrayBuffer(byteStr.length);
+                var ia = new Uint8Array(ab);
+                for (var i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
+                var blob = new Blob([ab], { type: 'video/mp4' });
+                var url = URL.createObjectURL(blob);
+                resultArea.innerHTML = '<video src="' + url + '" controls style="max-width:100%;border-radius:8px"></video>' +
+                    '<div style="margin-top:8px;display:flex;gap:8px"><a href="' + url + '" download="rotated_video.mp4" class="size-option" style="text-decoration:none">&#128229; Скачать</a></div>';
+                showToast('Видео повёрнуто!', 'success');
+            } else {
+                throw new Error('Неожиданный формат ответа');
+            }
+        } catch (err) {
             resultArea.innerHTML = '<span class="result-placeholder" style="color:var(--danger)">&#10060; ' + err.message + '</span>';
             showToast('Ошибка: ' + err.message, 'error');
         }

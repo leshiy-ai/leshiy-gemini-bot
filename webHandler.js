@@ -229,7 +229,7 @@ async function callWorkersAIWeb(config, ...args) {
     // === VISION (Image → Text) ===
     if (config.FUNCTION.name === 'callWorkersAIVision') {
         const [imageBuffer, env] = args;
-        // Uform-Gen2 ожидает { prompt, image: [byte_array] }, НЕ messages-формат!
+        // llava / uform ожидает { prompt, image: [byte_array] }, НЕ messages-формат!
         const base64 = Buffer.isBuffer(imageBuffer) ? imageBuffer.toString('base64') : imageBuffer;
         const imageBytes = [...new Uint8Array(Buffer.from(base64, 'base64'))];
         const prompt = 'Опиши это изображение подробно на русском языке';
@@ -674,8 +674,13 @@ async function handleImage(auth, payload, env, monolith) {
                 }
             } catch (modelErr) {
                 // 🛑 Фоллбэк: если основная модель не работает — пробуем другую
-                if (modelErr.message && (modelErr.message.includes('key is missing') || modelErr.message.includes('API key'))) {
-                    console.warn(`[WebHandler] Image recognition model ${modelInfo.key} failed (missing key), trying fallback...`);
+                const errMsg = modelErr.message || '';
+                const shouldFallback = errMsg.includes('key is missing') || errMsg.includes('API key') ||
+                    errMsg.includes('deprecated') || errMsg.includes('410') || errMsg.includes('504') ||
+                    errMsg.includes('502') || errMsg.includes('503') || errMsg.includes('429') ||
+                    errMsg.includes('overloaded') || errMsg.includes('timeout') || errMsg.includes('VISION_FAIL');
+                if (shouldFallback) {
+                    console.warn(`[WebHandler] Image recognition model ${modelInfo.key} failed (${errMsg.substring(0, 80)}), trying fallback...`);
                     const menuConfig = AI_MODEL_MENU_CONFIG['IMAGE_TO_TEXT'];
                     if (menuConfig && menuConfig.models) {
                         for (const [fallbackKey] of Object.entries(menuConfig.models)) {
@@ -1218,9 +1223,14 @@ async function handleVideo(auth, payload, env, monolith) {
                     }
                 }
             } catch (modelErr) {
-                // 🛑 Фоллбэк: если основная модель не работает (нет API ключа) — пробуем другую
-                if (modelErr.message && modelErr.message.includes('key is missing')) {
-                    console.warn(`[WebHandler] Video analysis model ${modelInfo.key} failed (missing key), trying fallback models...`);
+                // 🛑 Фоллбэк: если основная модель не работает — пробуем другую
+                const errMsg = modelErr.message || '';
+                const shouldFallback = errMsg.includes('key is missing') || errMsg.includes('API key') ||
+                    errMsg.includes('deprecated') || errMsg.includes('410') || errMsg.includes('504') ||
+                    errMsg.includes('502') || errMsg.includes('503') || errMsg.includes('429') ||
+                    errMsg.includes('overloaded') || errMsg.includes('timeout') || errMsg.includes('прокси отказал');
+                if (shouldFallback) {
+                    console.warn(`[WebHandler] Video analysis model ${modelInfo.key} failed (${errMsg.substring(0, 80)}), trying fallback models...`);
                     // Пробуем все модели VIDEO_TO_ANALYSIS по очереди
                     const menuConfig = AI_MODEL_MENU_CONFIG['VIDEO_TO_ANALYSIS'];
                     if (menuConfig && menuConfig.models) {

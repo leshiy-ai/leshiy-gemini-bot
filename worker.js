@@ -193,11 +193,11 @@ const AI_MODELS = {
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'AI_RUN' // Исправлено для консистентности
     },
-    // ✅ [Изображение в Текст (Видение)]
+    // ✅ [Изображение в Текст (Видение)] — заменён uform-gen2 (deprecated 2026-05-30) на llava
     IMAGE_TO_TEXT_WORKERS_AI: { 
         SERVICE: 'WORKERS_AI', 
         FUNCTION: callWorkersAIVision,
-        MODEL: '@cf/unum/uform-gen2-qwen-500m', 
+        MODEL: '@cf/huggingface/llava-1.5-7b', 
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'AI_RUN'
     },
@@ -5267,11 +5267,13 @@ async function callWorkersAIVision(config, imageBuffer, envData) { // <-- ИЗМ
         const aiResponse = await fetchResponse.json();
 
         // В внешнем API ответ всегда обернут в .result
-        if (!aiResponse.success || !aiResponse.result || !aiResponse.result.description) {
+        // llava возвращает result.response, uform — result.description
+        const resultText = aiResponse.result?.description || aiResponse.result?.response;
+        if (!aiResponse.success || !aiResponse.result || !resultText) {
             throw new Error(`Vision API не вернул описание. Response: ${JSON.stringify(aiResponse)}`);
         }
 
-        return aiResponse.result.description.trim();
+        return resultText.trim();
     } catch (e) {
         console.error("Workers AI Vision call failed:", e);
         throw new Error(`VISION_FAIL: Ошибка Workers AI Vision: ${e.message}`);
