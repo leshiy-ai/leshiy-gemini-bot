@@ -1076,9 +1076,9 @@ async function handleVideo(auth, payload, env, monolith) {
             } else if (targetFormat === 'gif') {
                 // Video → GIF
                 const start = payload.start || '0';
-                const end = payload.end || '3';
-                const fps = payload.fps || '10';
-                const width = payload.width || '480';
+                const end = Math.min(parseFloat(payload.end || '2'), 3).toString();
+                const fps = Math.min(parseInt(payload.fps || '8'), 15).toString();
+                const width = Math.min(parseInt(payload.width || '320'), 640).toString();
                 const format = targetFormat === 'mp4' ? 'mp4' : 'gif';
                 endpoint = `/video2gif?start=${start}&end=${end}&fps=${fps}&width=${width}&format=${format}`;
             } else if (targetFormat === 'mp3') {

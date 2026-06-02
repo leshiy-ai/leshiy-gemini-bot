@@ -1472,7 +1472,8 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId, mode) {
     const base64 = base64Data.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
     
     // 🛑 Определяем режим (T2I/I2I/upscale/vid/aud и т.д.)
-    // Приоритет: явно переданный mode > KV (для бота) > дефолт 'img'
+    // Приоритет: явно переданный mode > KV (для бота) > дефолт 'IMG'
+    // ВСЕГДА ЗАГЛАВНЫМИ — единообразно с ботом
     let folderMode = mode || null;
     if (!folderMode) {
         const IMAGE_STORAGE = envData.LAST_PHOTO_STORAGE;
@@ -1482,7 +1483,9 @@ async function uploadBase64ImageToPublicUrl(base64Data, envData, chatId, mode) {
             } catch(e) {}
         }
     }
-    if (!folderMode) folderMode = 'img';
+    if (!folderMode) folderMode = 'IMG';
+    // 🛑 Гарантируем заглавные буквы для S3-папок
+    folderMode = folderMode.toUpperCase();
     
     // Декодируем base64 → Buffer
     const buffer = Buffer.from(base64, 'base64');
@@ -3116,7 +3119,7 @@ function getCalculatedPhotoSteps(currentWidth, currentHeight, aspectType = 'port
  */
 function getRotatedPublicUrl(fileId, rotationDegree, chatId) {
     // **ВАЖНО:** Ваш публичный URL /kv-images/ может найти файл только по fileId:
-    const baseUrl = `/kv-images/i2v/${chatId}/${fileId}`; 
+    const baseUrl = `/kv-images/I2V/${chatId}/${fileId}`;
 
     let url = `${baseUrl}.png`; // Предполагаем формат PNG
 
@@ -7614,8 +7617,8 @@ async function startKieAiImageToImage(modelConfig, prompt, imageBase64, envData,
     try {
         //await sendMessageMarkdown(chatId, "⏳ **Загружаю фото** на публичный сервер для Kie.Ai...", token);
         
-        // 🛑 ИСПРАВЛЕНИЕ: Вызываем с типом 'i2i' для корректного пути.
-        imageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId); 
+        // 🛑 ИСПРАВЛЕНИЕ: Вызываем с типом 'I2I' для корректного пути в S3.
+        imageUrl = await uploadBase64ImageToPublicUrl(imageBase64, envData, chatId, 'I2I'); 
         
         if (!imageUrl) { throw new Error("uploadBase64ImageToPublicUrl вернул пустой URL."); }
 
@@ -7715,7 +7718,7 @@ async function startKieAiImageToUpscale(modelConfig, prompt, originalBase64, env
     let imageUrl;
     try {
         // UploadBase64ImageToPublicUrl для получения URL, который Kie.ai сможет прочитать.
-        imageUrl = await uploadBase64ImageToPublicUrl(originalBase64, envData, chatId); 
+        imageUrl = await uploadBase64ImageToPublicUrl(originalBase64, envData, chatId, 'I2I'); 
         
         if (!imageUrl) { throw new Error("uploadBase64ImageToPublicUrl вернул пустой URL."); }
         
