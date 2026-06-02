@@ -7,8 +7,11 @@
     <meta name="description" content="Pixel-AI — чат с ИИ, генерация изображений, видео и аудио">
     <meta name="theme-color" content="#1a1a2e">
     <link rel="icon" type="image/svg+xml" href="/images/gemini_purple.svg">
+
     <!-- VK Bridge SDK — нужен для авторизации и оплаты внутри VK Mini App -->
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+    <!-- Telegram WebApp SDK — нужен для авторизации и оплаты внутри TG Mini App -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
     <link rel="stylesheet" href="style.css">
 </head>
@@ -7296,8 +7299,9 @@
                 startBalancePolling(pkg.credits);
 
             } else if (selectedPaymentMethod === 'vk' && data.type === 'topup_vk') {
-                // VK Pay — пытаемся использовать VK Bridge если в Mini App
+                // VK — перевод другу через VK (для частных лиц, не организаций)
                 if (window.vkBridge) {
+                    // В VK Mini App — открываем перевод через VK Bridge
                     try {
                         await window.vkBridge.send('VKWebAppOpenPayForm', {
                             app_id: data.app_id,
@@ -7308,22 +7312,16 @@
                                 data: data.order_id
                             }
                         });
-                        // VK обрабатывает результат через событие
                         closePurchaseDialog();
                         startBalancePolling(pkg.credits);
                     } catch (vkErr) {
-                        console.error('VK Pay error:', vkErr);
-                        // Если VK Bridge не сработал — показываем ссылку на Boosty
-                        showToast('VK Pay пока недоступен. Пополните через Telegram Stars или Boosty.', 'info');
+                        console.error('VK Bridge pay error:', vkErr);
+                        // Фоллбэк — показываем подсказку оплатить через Telegram Stars
+                        showToast('VK Pay недоступен. Пополните через Telegram Stars.', 'info');
                     }
                 } else {
-                    // Не в VK — предлагаем альтернативу
-                    // Попробуем открыть VK Pay через URL
-                    const vkPayUrl = `https://vk.com/paytofriend?uid=79656428&amount=${data.rub}&purpose=${encodeURIComponent(data.description)}`;
-                    showToast('Открываю VK Pay...', 'info');
-                    window.open(vkPayUrl, '_blank');
-                    closePurchaseDialog();
-                    startBalancePolling(pkg.credits);
+                    // Не в VK — предлагаем альтернативу: Telegram Stars или подсказка
+                    showToast('Для оплаты из браузера используйте Telegram Stars', 'info');
                 }
             } else {
                 showToast('Неизвестный формат ответа', 'error');

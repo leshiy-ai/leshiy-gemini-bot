@@ -36,11 +36,13 @@
             width: 100%; margin-top: 15px; border: none; background: none; 
             color: #0088cc; cursor: pointer; font-size: 14px;
         }
+        .auto-login-msg {
+            font: 400 14px sans-serif; color: #4caf50; margin-bottom: 16px;
+            padding: 10px; background: #e8f5e9; border-radius: 8px;
+        }
     </style>
-    <!-- Telegram WebApp SDK — нужен для авторизации и оплаты внутри TG Mini App -->
+    <!-- Telegram WebApp SDK — нужен для initData внутри TG Mini App -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Telegram Login Widget -->
-    <script src="https://telegram.org/js/telegram-widget.js?22" async></script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const returnToFromUrl = urlParams.get('returnTo') || urlParams.get('auth_origin') || '';
@@ -74,9 +76,11 @@
             </svg>
         </div>
         <div class="title">🔐 Вход в Pixel-AI</div>
-        <div class="subtitle">Используйте Telegram для безопасного доступа</div>
+        <div class="subtitle" id="authSubtitle">Определяем платформу...</div>
         
-        <div id="tg_widget_container" style="display: flex; justify-content: center; margin-bottom: 8px;"></div>
+        <div id="authContent">
+            <!-- Заполняется динамически в зависимости от контекста -->
+        </div>
         
         <button onclick="window.location.replace(window.authCancelTo)" class="later-btn">Позже</button>
     </div>
@@ -99,31 +103,28 @@
         </svg>`;
 
         // ============================================================
-        //  КЛЮЧЕВАЯ ФУНКЦИЯ (как в Хранилке):
-        //  - Записываем юзера в localStorage
-        //  - Конструируем URL возврата с параметрами авторизации
-        //  - Показываем кнопку «Вернуться в приложение»
-        //  - НИКАКОГО авторедиректа — только кнопка!
+        //  КЛЮЧЕВАЯ ФУНКЦИЯ: сохранить юзера и показать кнопку возврата
         // ============================================================
-        function redirectWithTgId(userId, userName, userPhoto, hash) {
+        function redirectWithTgId(userId, userName, userPhoto, hash, initData) {
             localStorage.removeItem('tg_return_to');
 
-            // Сохраняем в localStorage (фоллбэк для APK)
             localStorage.setItem('tg_user_id', String(userId));
-            localStorage.setItem('vk_user_id', String(userId)); // Единый ключ как в Хранилке
+            localStorage.setItem('vk_user_id', String(userId)); // Единый ключ
             localStorage.setItem('auth_provider', 'Telegram');
-            if (userName) localStorage.setItem('vk_user_name', userName); // Единый ключ
-            if (userPhoto) localStorage.setItem('vk_user_photo', userPhoto); // Единый ключ
+            if (userName) localStorage.setItem('vk_user_name', userName);
+            if (userPhoto) localStorage.setItem('vk_user_photo', userPhoto);
             if (tgUsername) localStorage.setItem('tg_username', tgUsername);
+            if (initData) localStorage.setItem('tg_init_data', initData);
             localStorage.setItem('gemini_user', JSON.stringify({
                 id: String(userId),
                 name: userName || 'TG User',
                 provider: 'tg',
                 hash: hash || null,
-                photo: userPhoto || ''
+                photo: userPhoto || '',
+                initData: initData || null
             }));
 
-            // Конструируем URL возврата с параметрами (как в Хранилке)
+            // Конструируем URL возврата
             let targetUrl = '/';
             try {
                 const domainRoot = returnTo && returnTo !== '/' 
@@ -143,7 +144,7 @@
                 if (userPhoto) targetUrl += `&tg_user_photo=${encodeURIComponent(userPhoto)}`;
             }
 
-            // Показываем экран успеха с кнопкой — БЕЗ авторедиректа!
+            // Показываем экран успеха
             document.getElementById('auth_card').innerHTML = `
                 <div class="logo">${GEMINI_LOGO_SVG}</div>
                 <div style="font: 700 22px sans-serif; margin-bottom: 8px; color: #000;">✅ Авторизация успешна!</div>
@@ -155,12 +156,33 @@
         }
 
         // ============================================================
-        //  СЦЕНАРИЙ 1: Возврат с id+hash от TG Login Widget
+        //  СЦЕНАРИЙ 0: Мы внутри Telegram Mini App — авторизация автоматом!
+        //  Telegram.WebApp.initDataUnsafe.user содержит данные юзера
         // ============================================================
-        if (tgId && tgHash) {
+        const isTgMiniApp = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData;
+        
+        if (isTgMiniApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+            // Инициализируем TG Mini App
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+            
+            const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+            const userName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'TG User';
+            const userPhoto = tgUser.photo_url || '';
+            const initData = window.Telegram.WebApp.initData;
+            
+            document.getElementById('authSubtitle').textContent = 'Telegram определён — авторизуем автоматически...';
+            
+            // Автоматически авторизуем и редиректим
+            redirectWithTgId(String(tgUser.id), userName, userPhoto, null, initData);
+        }
+        // ============================================================
+        //  СЦЕНАРИЙ 1: Возврат с id+hash от TG Login Widget (с обычного сайта)
+        // ============================================================
+        else if (tgId && tgHash) {
             const userName = [tgFirstName, tgLastName].filter(Boolean).join(' ') || tgUsername || '';
             const userPhoto = tgPhotoUrl || '';
-            redirectWithTgId(tgId, userName, userPhoto, tgHash);
+            redirectWithTgId(tgId, userName, userPhoto, tgHash, null);
         }
         // ============================================================
         //  СЦЕНАРИЙ 2: Возврат с tg_user_id (из внешнего редиректа)
@@ -169,22 +191,72 @@
             const userName = urlParams.get('tg_user_name') || urlParams.get('tg_username') || '';
             const userPhoto = urlParams.get('tg_user_photo') || '';
             const hash = urlParams.get('tg_hash') || null;
-            redirectWithTgId(tgUserId, userName, userPhoto, hash);
+            redirectWithTgId(tgUserId, userName, userPhoto, hash, null);
         }
         // ============================================================
-        //  СЦЕНАРИЙ 3: Нет параметров — показываем TG Login Widget
-        //  (виджет Telegram — просто кнопка, без QR-кода)
+        //  СЦЕНАРИЙ 3: Мы внутри TG Mini App, но initDataUnsafe.user пустой
+        //  (редкий кейс — показываем кнопку "Войти" через MainButton)
+        // ============================================================
+        else if (isTgMiniApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+            
+            document.getElementById('authSubtitle').textContent = 'Нажмите кнопку для авторизации через Telegram';
+            document.getElementById('authContent').innerHTML = `
+                <div class="auto-login-msg">✅ Вы в Telegram Mini App — нажмите кнопку ниже</div>
+                <button class="tg-btn" onclick="loginViaTgMainButton()">Войти через Telegram</button>
+            `;
+            
+            function loginViaTgMainButton() {
+                const tg = window.Telegram.WebApp;
+                if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                    const u = tg.initDataUnsafe.user;
+                    const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.username || 'TG User';
+                    redirectWithTgId(String(u.id), name, u.photo_url || '', null, tg.initData);
+                } else {
+                    // initDataUnsafe пустой — используем initData напрямую
+                    // Отправляем initData на бэкенд для валидации
+                    document.getElementById('authSubtitle').textContent = 'Проверяем данные...';
+                    fetch(window.location.origin + '/api', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            mode: 'validate_init_data', 
+                            auth: { provider: null, id: null }, 
+                            payload: { init_data: tg.initData } 
+                        })
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        if (result.success && result.data && result.data.user) {
+                            const u = result.data.user;
+                            redirectWithTgId(u.id, u.name, u.photo_url || '', null, tg.initData);
+                        } else {
+                            document.getElementById('authSubtitle').textContent = 'Ошибка авторизации. Попробуйте позже.';
+                            document.getElementById('authContent').innerHTML = '';
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Validate error:', err);
+                        document.getElementById('authSubtitle').textContent = 'Ошибка подключения. Попробуйте позже.';
+                    });
+                }
+            }
+        }
+        // ============================================================
+        //  СЦЕНАРИЙ 4: Обычный браузер — показываем TG Login Widget
         // ============================================================
         else {
+            document.getElementById('authSubtitle').textContent = 'Используйте Telegram для безопасного доступа';
+            
             const widgetScript = document.createElement('script');
             widgetScript.src = 'https://telegram.org/js/telegram-widget.js?22';
             widgetScript.setAttribute('data-telegram-login', 'gemini_aitg_bot');
             widgetScript.setAttribute('data-size', 'large');
-            // TG Widget вернёт параметры на tg.html — сработает СЦЕНАРИЙ 1
             widgetScript.setAttribute('data-auth-url', `${window.location.origin}/tg.html`);
             widgetScript.setAttribute('data-request-access', 'write');
             widgetScript.async = true;
-            document.getElementById('tg_widget_container').appendChild(widgetScript);
+            document.getElementById('authContent').appendChild(widgetScript);
         }
     </script>
 </body>
