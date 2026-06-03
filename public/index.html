@@ -614,6 +614,8 @@
                 <div class="size-selector" id="paymentMethodSelector">
                     <button class="size-option active" data-method="telegram" onclick="selectPaymentMethod('telegram',this)">&#9733; Telegram Stars</button>
                     <button class="size-option" data-method="vk" onclick="selectPaymentMethod('vk',this)">&#9670; VK Pay</button>
+                    <button class="size-option" data-method="boosty" onclick="selectPaymentMethod('boosty',this)">&#128293; Boosty</button>
+                    <button class="size-option" data-method="vk_donate" onclick="selectPaymentMethod('vk_donate',this)">&#128150; VK Донаты</button>
                 </div>
             </div>
 
@@ -7257,12 +7259,24 @@
         { id: 'unlim',   stars: 750, credits: 400, rub: 2000,  label: 'Анлим (400\u00A2)',          desc: '400\u00A2 \u2248 2000\u20BD + бонус' },
     ];
 
-    let selectedPaymentMethod = 'telegram'; // 'telegram' | 'vk'
+    let selectedPaymentMethod = 'telegram'; // 'telegram' | 'vk' | 'boosty' | 'vk_donate'
     let pendingPaymentPayload = null; // Для polling проверки оплаты
 
     function renderTopupPackages() {
         const container = document.getElementById('topupPackages');
+        const pkgLabel = container ? container.previousElementSibling : null; // label "Выберите пакет"
         if (!container) return;
+
+        // Для Boosty и VK Донатов — скрываем пакеты, там просто ссылка
+        if (selectedPaymentMethod === 'boosty' || selectedPaymentMethod === 'vk_donate') {
+            container.innerHTML = '';
+            if (pkgLabel) pkgLabel.style.display = 'none';
+            container.style.display = 'none';
+            return;
+        }
+        if (pkgLabel) pkgLabel.style.display = '';
+        container.style.display = '';
+
         container.innerHTML = '';
         TOPUP_PACKAGES.forEach(pkg => {
             const isSelected = selectedPlan === pkg.id;
@@ -7298,9 +7312,15 @@
         if (method === 'telegram') {
             info.innerHTML = '\u2B50 Оплата через Telegram Stars \u2014 мгновенное зачисление. Нажмите \u00ABОплатить\u00BB и откроется ссылка на оплату в Telegram.';
             payBtn.innerHTML = '\u2B50 Оплатить Stars';
-        } else {
+        } else if (method === 'vk') {
             info.innerHTML = '\u25C6 Оплата через VK Pay \u2014 быстро и удобно. Если вы в VK Mini App, оплата пройдёт внутри приложения.';
             payBtn.innerHTML = '\u25C6 Оплатить VK Pay';
+        } else if (method === 'boosty') {
+            info.innerHTML = '\uD83D\uDD25 Boosty \u2014 поддержите проект любой суммой. Оплата картой, СБП, ЮMoney. После оплаты напишите ID в чат бота для зачисления кредитов.';
+            payBtn.innerHTML = '\uD83D\uDD25 Открыть Boosty';
+        } else if (method === 'vk_donate') {
+            info.innerHTML = '\uD83D\uDC96 VK Донаты \u2014 поддержите проект через ВКонтакте. После оплаты напишите ID в чат бота для зачисления кредитов.';
+            payBtn.innerHTML = '\uD83D\uDC96 Открыть VK Донаты';
         }
     }
 
@@ -7322,6 +7342,20 @@
         if (!user) {
             closePurchaseDialog();
             openAuthDialog();
+            return;
+        }
+
+        // ---- Boosty / VK Донаты — просто открываем ссылку ----
+        if (selectedPaymentMethod === 'boosty') {
+            window.open('https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link', '_blank');
+            closePurchaseDialog();
+            showToast('Открыта страница Boosty. После оплаты напишите свой ID в чат бота.', 'info');
+            return;
+        }
+        if (selectedPaymentMethod === 'vk_donate') {
+            window.open('https://vk.com/donut/leshiy_ai', '_blank');
+            closePurchaseDialog();
+            showToast('Открыта страница VK Донаты. После оплаты напишите свой ID в чат бота.', 'info');
             return;
         }
 
