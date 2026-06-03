@@ -16,8 +16,6 @@
             font-family: sans-serif; 
         }
     </style>
-    <!-- VK Bridge SDK — нужен для авторизации внутри VK Mini App -->
-    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const returnToFromUrl = urlParams.get('returnTo') || urlParams.get('auth_origin') || '';
@@ -57,9 +55,9 @@
                 <path d="M50 0C50 0 53 47 100 50C100 50 53 53 50 100C50 100 47 53 0 50C0 50 47 47 50 0Z" fill="url(#gemini-grad)"/>
             </svg>
         </div>
-        <div id="authTitle" style="font: 700 20px sans-serif; margin-bottom: 8px; color: #000;">🔐 Вход в Pixel-AI</div>
-        <div id="authSubtitle" style="font: 400 14px sans-serif; color: #818c99; margin-bottom: 24px; line-height: 1.4;">
-            Определяем платформу...
+        <div style="font: 700 20px sans-serif; margin-bottom: 8px; color: #000;">🔐 Вход в Pixel-AI</div>
+        <div style="font: 400 14px sans-serif; color: #818c99; margin-bottom: 24px; line-height: 1.4;">
+            Используйте VK ID для безопасного доступа
         </div>
         
         <div id="vkid_container"></div>
@@ -83,205 +81,137 @@
         const VK_CLIENT_ID = 54467300;
         const VK_REDIRECT_URL = `${window.location.origin}/vk.html`;
 
-        // Ключевая функция: авторизовать и вернуть на главную
-        const redirectWithId = (userId, accessToken, userName, userPhoto) => {
+        const redirectWithId = (userId, accessToken) => {
             localStorage.removeItem('vk_return_to');
             
-            localStorage.setItem('vk_user_id', String(userId));
-            localStorage.setItem('auth_provider', 'VK');
-            if (userName) localStorage.setItem('vk_user_name', userName);
-            if (userPhoto) localStorage.setItem('vk_user_photo', userPhoto);
-            localStorage.setItem('gemini_user', JSON.stringify({
-                id: String(userId),
-                name: userName || 'VK User',
-                provider: 'vk',
-                hash: null,
-                photo: userPhoto || ''
-            }));
-
-            // Конструируем URL возврата
-            let targetUrl = '/';
-            if (returnTo && returnTo !== '/') {
-                try {
-                    const domainRoot = new URL(returnTo).origin;
-                    let params = new URLSearchParams();
-                    params.set('vk_user_id', userId);
-                    if (userName) params.set('vk_user_name', userName);
-                    if (userPhoto) params.set('vk_user_photo', userPhoto);
-                    targetUrl = `${domainRoot}/?${params.toString()}`;
-                } catch(e) {
-                    targetUrl = `${returnTo}?vk_user_id=${userId}`;
+            const doRedirect = (userName, userPhoto) => {
+                let targetUrl = '/';
+                if (returnTo && returnTo !== '/') {
+                    try {
+                        const domainRoot = new URL(returnTo).origin;
+                        let params = new URLSearchParams();
+                        params.set('vk_user_id', userId);
+                        if (userName) params.set('vk_user_name', userName);
+                        if (userPhoto) params.set('vk_user_photo', userPhoto);
+                        targetUrl = `${domainRoot}/?${params.toString()}`;
+                    } catch(e) {
+                        const separator = returnTo.includes('?') ? '&' : '?';
+                        targetUrl = `${returnTo}${separator}vk_user_id=${userId}`;
+                        if (userName) targetUrl += `&vk_user_name=${encodeURIComponent(userName)}`;
+                        if (userPhoto) targetUrl += `&vk_user_photo=${encodeURIComponent(userPhoto)}`;
+                    }
+                } else {
+                    localStorage.setItem('vk_user_id', String(userId));
+                    localStorage.setItem('auth_provider', 'VK');
+                    if (userName) localStorage.setItem('vk_user_name', userName);
+                    if (userPhoto) localStorage.setItem('vk_user_photo', userPhoto);
+                    
+                    targetUrl = `${window.location.origin}/?vk_user_id=${userId}`;
                     if (userName) targetUrl += `&vk_user_name=${encodeURIComponent(userName)}`;
                     if (userPhoto) targetUrl += `&vk_user_photo=${encodeURIComponent(userPhoto)}`;
                 }
-            } else {
-                targetUrl = `${window.location.origin}/?vk_user_id=${userId}`;
-                if (userName) targetUrl += `&vk_user_name=${encodeURIComponent(userName)}`;
-                if (userPhoto) targetUrl += `&vk_user_photo=${encodeURIComponent(userPhoto)}`;
-            }
 
-            // Показываем экран успеха
-            document.getElementById('auth_card').innerHTML = `
-                <div style="width: 100px; height: 100px; margin: 0 auto 20px auto;">
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
-                        <defs><linearGradient id="gemini-grad-ok" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" style="stop-color:#7c3aed"/><stop offset="50%" style="stop-color:#a855f7"/><stop offset="100%" style="stop-color:#c084fc"/>
-                        </linearGradient></defs>
-                        <path d="M50 0C50 0 53 47 100 50C100 50 53 53 50 100C50 100 47 53 0 50C0 50 47 47 50 0Z" fill="url(#gemini-grad-ok)"/>
-                    </svg>
-                </div>
-                <div style="font: 700 22px sans-serif; margin-bottom: 8px; color: #000;">✅ Авторизация успешна!</div>
-                <div style="font: 400 14px sans-serif; color: #818c99; margin-bottom: 30px; line-height: 1.4;">
-                    Нажмите кнопку ниже, чтобы вернуться в приложение
-                </div>
-                <a href="${targetUrl}" style="
-                    display: block; width: 100%; padding: 14px 0; background: #0077ff;
-                    color: white; text-decoration: none; border-radius: 12px; font-size: 16px;
-                    font-weight: 600; box-sizing: border-box;
-                ">Вернуться в приложение</a>
-            `;
+                document.getElementById('auth_card').innerHTML = `
+                    <div style="width: 100px; height: 100px; margin: 0 auto 20px auto;">
+                        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+                            <defs><linearGradient id="gemini-grad-ok" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#7c3aed"/><stop offset="50%" style="stop-color:#a855f7"/><stop offset="100%" style="stop-color:#c084fc"/>
+                            </linearGradient></defs>
+                            <path d="M50 0C50 0 53 47 100 50C100 50 53 53 50 100C50 100 47 53 0 50C0 50 47 47 50 0Z" fill="url(#gemini-grad-ok)"/>
+                        </svg>
+                    </div>
+                    <div style="font: 700 22px sans-serif; margin-bottom: 8px; color: #000;">✅ Авторизация успешна!</div>
+                    <div style="font: 400 14px sans-serif; color: #818c99; margin-bottom: 30px; line-height: 1.4;">
+                        Нажмите кнопку ниже, чтобы вернуться в приложение
+                    </div>
+                    <a href="${targetUrl}" style="
+                        display: block; width: 100%; padding: 14px 0; background: #0077ff;
+                        color: white; text-decoration: none; border-radius: 12px; font-size: 16px;
+                        font-weight: 600; box-sizing: border-box;
+                    ">Вернуться в приложение</a>
+                `;
+            };
+
+            if (accessToken) {
+                try {
+                    const jsonpScript = document.createElement('script');
+                    jsonpScript.src = `https://api.vk.com/method/users.get?user_ids=${userId}&fields=photo_100&access_token=${accessToken}&v=5.131&callback=vkProfileCallback`;
+                    document.head.appendChild(jsonpScript);
+
+                    window.vkProfileCallback = function(response) {
+                        let userName = null;
+                        let userPhoto = null;
+                        if (response.response && response.response[0]) {
+                            const user = response.response[0];
+                            userName = `${user.first_name} ${user.last_name}`;
+                            userPhoto = user.photo_100;
+                        }
+                        delete window.vkProfileCallback;
+                        jsonpScript.remove();
+                        doRedirect(userName, userPhoto);
+                    };
+                } catch(e) {
+                    console.error("JSONP Error:", e);
+                    doRedirect(null, null);
+                }
+            } else {
+                doRedirect(null, null);
+            }
         };
 
-        // ============================================================
-        //  СЦЕНАРИЙ 0: Мы внутри VK Mini App — авторизация через vkBridge
-        // ============================================================
-        const isVkMiniApp = !!window.vkBridge;
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js';
+        script.async = true;
 
-        if (isVkMiniApp) {
-            vkBridge.send('VKWebAppInit').then(() => {
-                console.log('VK Mini App initialized in vk.html');
-                document.getElementById('authSubtitle').textContent = 'VK определён — авторизуем автоматически...';
-                
-                // Получаем данные пользователя через vkBridge
-                vkBridge.send('VKWebAppGetUserInfo').then(userInfo => {
-                    if (userInfo && userInfo.id) {
-                        const name = [userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ') || 'VK User';
-                        const photo = userInfo.photo_100 || userInfo.photo_200 || userInfo.photo || null;
-                        redirectWithId(String(userInfo.id), null, name, photo);
-                    } else {
-                        document.getElementById('authSubtitle').textContent = 'Не удалось получить данные. Попробуйте позже.';
-                    }
-                }).catch(err => {
-                    console.error('VKWebAppGetUserInfo error:', err);
-                    document.getElementById('authSubtitle').textContent = 'Ошибка получения данных VK.';
-                });
-            }).catch(err => {
-                console.log('VKWebAppInit error:', err);
-                // Не в VK контексте — загружаем VK ID SDK
-                loadVkIdSdk();
+        script.onload = () => {
+            if (!window.VKIDSDK) return;
+
+            const VKID = window.VKIDSDK;
+
+            VKID.Config.init({
+                app: VK_CLIENT_ID,
+                redirectUrl: VK_REDIRECT_URL,
+                responseMode: VKID.ConfigResponseMode.Callback,
+                source: VKID.ConfigSource.LOWCODE,
             });
-        } else {
-            // ============================================================
-            //  СЦЕНАРИЙ 1: Обычный браузер — OAuth2 через VK ID SDK
-            // ============================================================
-            loadVkIdSdk();
-        }
 
-        function loadVkIdSdk() {
-            document.getElementById('authSubtitle').textContent = 'Используйте VK ID для безопасного доступа';
+            const container = document.getElementById('vkid_container');
+            const card = document.getElementById('auth_card');
 
-            // Проверяем возврат с кодом OAuth2
             if (code) {
-                document.getElementById('authSubtitle').textContent = 'Обработка авторизации...';
-                const script = document.createElement('script');
-                script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js';
-                script.async = true;
-                script.onload = () => {
-                    if (!window.VKIDSDK) return;
-                    const VKID = window.VKIDSDK;
-                    VKID.Config.init({
-                        app: VK_CLIENT_ID,
-                        redirectUrl: VK_REDIRECT_URL,
-                        responseMode: VKID.ConfigResponseMode.Callback,
-                        source: VKID.ConfigSource.LOWCODE,
+                card.innerHTML = '<p style="text-align:center; color:#000; font-size:16px; margin:0;">Авторизация...</p>';
+                VKID.Auth.exchangeCode(code, deviceId || '')
+                    .then((data) => {
+                        const userId = data.user_id || (data.user && data.user.id);
+                        const accessToken = data.access_token;
+                        if (userId) redirectWithId(userId, accessToken);
+                        else window.location.replace(window.authCancelTo); 
+                    })
+                    .catch((err) => {
+                        console.error('Exchange error:', err);
+                        window.location.replace(window.authCancelTo);
                     });
-                    VKID.Auth.exchangeCode(code, deviceId || '')
+            } else {
+                const oneTap = new VKID.OneTap();
+                oneTap.render({
+                    container: container,
+                    showAlternativeLogin: true,
+                    oauthList: ['mail_ru', 'ok_ru'],
+                    styles: { height: 44, borderRadius: 8 }
+                })
+                .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, (payload) => {
+                    card.innerHTML = '<p style="text-align:center; color:#000; font-size:16px; margin:0;">Авторизация...</p>';
+                    VKID.Auth.exchangeCode(payload.code, payload.device_id)
                         .then((data) => {
                             const userId = data.user_id || (data.user && data.user.id);
                             const accessToken = data.access_token;
-                            if (userId) {
-                                // Пытаемся получить имя через VK API
-                                if (accessToken) {
-                                    fetchVkProfile(userId, accessToken);
-                                } else {
-                                    redirectWithId(String(userId), null, null, null);
-                                }
-                            } else {
-                                window.location.replace(window.authCancelTo);
-                            }
-                        })
-                        .catch((err) => {
-                            console.error('Exchange error:', err);
-                            window.location.replace(window.authCancelTo);
+                            if (userId) redirectWithId(userId, accessToken);
                         });
-                };
-                document.body.appendChild(script);
-            } else {
-                // Показываем VK ID OneTap виджет
-                const script = document.createElement('script');
-                script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js';
-                script.async = true;
-                script.onload = () => {
-                    if (!window.VKIDSDK) return;
-                    const VKID = window.VKIDSDK;
-                    VKID.Config.init({
-                        app: VK_CLIENT_ID,
-                        redirectUrl: VK_REDIRECT_URL,
-                        responseMode: VKID.ConfigResponseMode.Callback,
-                        source: VKID.ConfigSource.LOWCODE,
-                    });
-                    const container = document.getElementById('vkid_container');
-                    const oneTap = new VKID.OneTap();
-                    oneTap.render({
-                        container: container,
-                        showAlternativeLogin: true,
-                        oauthList: ['mail_ru', 'ok_ru'],
-                        styles: { height: 44, borderRadius: 8 }
-                    })
-                    .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, (payload) => {
-                        document.getElementById('authSubtitle').textContent = 'Обработка авторизации...';
-                        VKID.Auth.exchangeCode(payload.code, payload.device_id)
-                            .then((data) => {
-                                const userId = data.user_id || (data.user && data.user.id);
-                                const accessToken = data.access_token;
-                                if (userId) {
-                                    if (accessToken) {
-                                        fetchVkProfile(userId, accessToken);
-                                    } else {
-                                        redirectWithId(String(userId), null, null, null);
-                                    }
-                                }
-                            });
-                    });
-                };
-                document.body.appendChild(script);
+                });
             }
-        }
+        };
 
-        // Получаем профиль VK через JSONP (обходит CORS)
-        function fetchVkProfile(userId, accessToken) {
-            try {
-                const jsonpScript = document.createElement('script');
-                jsonpScript.src = `https://api.vk.com/method/users.get?user_ids=${userId}&fields=photo_100&access_token=${accessToken}&v=5.131&callback=vkProfileCallback`;
-                document.head.appendChild(jsonpScript);
-
-                window.vkProfileCallback = function(response) {
-                    let userName = null;
-                    let userPhoto = null;
-                    if (response.response && response.response[0]) {
-                        const u = response.response[0];
-                        userName = `${u.first_name} ${u.last_name}`;
-                        userPhoto = u.photo_100;
-                    }
-                    delete window.vkProfileCallback;
-                    jsonpScript.remove();
-                    redirectWithId(String(userId), accessToken, userName, userPhoto);
-                };
-            } catch(e) {
-                console.error("JSONP Error:", e);
-                redirectWithId(String(userId), accessToken, null, null);
-            }
-        }
+        document.body.appendChild(script);
     </script>
 </body>
 </html>
