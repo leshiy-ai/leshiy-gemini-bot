@@ -2223,6 +2223,30 @@ async function handleAdmin(auth, payload, env, monolith) {
         }
     }
 
+    // === ДОБАВИТЬ К БАЛАНСУ (для донатов Boosty/VK) ===
+    if (action === 'add_balance') {
+        const targetId = payload.target_id;
+        const amount = payload.amount;
+        if (!targetId || !amount || amount < 1) {
+            return formatResponse(false, 'Укажите target_id и amount (>= 1)');
+        }
+        if (!env.LAST_PHOTO_STORAGE) {
+            return formatResponse(false, 'База данных недоступна');
+        }
+        try {
+            const balanceKey = targetId + '_credit_balance';
+            const currentStr = await env.LAST_PHOTO_STORAGE.get(balanceKey);
+            const current = parseInt(currentStr, 10) || 0;
+            const newBalance = current + amount;
+            await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
+            console.log(`[Admin] Balance added: ${targetId} ${current} + ${amount} = ${newBalance}`);
+            await logCreditTransaction(targetId, newBalance, 'admin_add', env, 'Админ начислил донат: +' + amount + ' (было ' + current + ')');
+            return formatResponse(true, null, null, { type: 'admin', action: 'add_balance', target_id: targetId, previous_balance: current, added: amount, new_balance: newBalance });
+        } catch (e) {
+            return formatResponse(false, 'Ошибка добавления баланса: ' + e.message);
+        }
+    }
+
     // === УСТАНОВИТЬ VIP ===
     if (action === 'set_vip') {
         const targetId = payload.target_id;

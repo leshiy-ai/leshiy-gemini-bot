@@ -2238,6 +2238,32 @@
                 </div>
                 <div id="adminUserInfo" style="margin-top:8px;font-size:13px;color:var(--text-secondary)"></div>
             </div>
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+                <h4 style="font-size:14px;margin-bottom:8px">&#128293; Зачисление донатов</h4>
+                <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Быстрое начисление кредитов после подтверждения оплаты через Boosty или VK Донаты. 1&#162; = 5&#8381;.</p>
+                <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+                    <input type="text" id="adminDonateId" placeholder="ID пользователя" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
+                    <select id="adminDonateSource" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-size:13px">
+                        <option value="boosty">&#128293; Boosty</option>
+                        <option value="vk_donate">&#128150; VK Донаты</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+                    <button class="size-option" onclick="adminQuickDonate(4)" style="padding:6px 12px;font-size:12px">4&#162; / 20&#8381;</button>
+                    <button class="size-option" onclick="adminQuickDonate(20)" style="padding:6px 12px;font-size:12px">20&#162; / 100&#8381;</button>
+                    <button class="size-option" onclick="adminQuickDonate(30)" style="padding:6px 12px;font-size:12px">30&#162; / 150&#8381;</button>
+                    <button class="size-option" onclick="adminQuickDonate(42)" style="padding:6px 12px;font-size:12px">42&#162; / 210&#8381;</button>
+                    <button class="size-option" onclick="adminQuickDonate(58)" style="padding:6px 12px;font-size:12px">58&#162; / 290&#8381;</button>
+                    <button class="size-option" onclick="adminQuickDonate(100)" style="padding:6px 12px;font-size:12px">100&#162; / 500&#8381;</button>
+                    <button class="size-option" onclick="adminQuickDonate(250)" style="padding:6px 12px;font-size:12px">250&#162; / 1200&#8381;</button>
+                    <button class="size-option" onclick="adminQuickDonate(400)" style="padding:6px 12px;font-size:12px">400&#162; / 2000&#8381;</button>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+                    <input type="number" id="adminDonateCustomAmount" placeholder="Своё кол-во кредитов" min="1" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
+                    <button class="btn-primary" onclick="adminDonateCustom()" style="padding:8px 16px;font-size:13px">Начислить</button>
+                </div>
+                <div id="adminDonateLog" style="margin-top:8px;font-size:12px;color:var(--text-secondary);max-height:120px;overflow-y:auto"></div>
+            </div>
         </div>`;
 
         overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
@@ -2334,6 +2360,54 @@
         } catch(e) {
             if (resultEl) resultEl.innerHTML = '<span style="color:var(--danger)">Сетевая ошибка</span>';
         }
+    }
+
+    // ---- ЗАЧИСЛЕНИЕ ДОНАТОВ (админ) ----
+    async function adminAddDonateCredits(targetId, credits, source) {
+        if (!targetId) {
+            showToast('Укажите ID пользователя', 'error');
+            return;
+        }
+        if (!credits || credits < 1) {
+            showToast('Укажите количество кредитов', 'error');
+            return;
+        }
+        const sourceLabel = source === 'vk_donate' ? 'VK Донаты' : 'Boosty';
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'admin', auth: getAuth(), payload: { action: 'add_balance', target_id: targetId, amount: credits } })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast(sourceLabel + ': начислено ' + credits + '\u00A2 пользователю ' + targetId, 'success');
+                // Логируем в админ-панели
+                const logEl = document.getElementById('adminDonateLog');
+                if (logEl) {
+                    const now = new Date().toLocaleTimeString('ru-RU');
+                    logEl.innerHTML = '<div style="padding:4px 0;border-bottom:1px solid var(--border)">[' + now + '] ' + sourceLabel + ': +' + credits + '\u00A2 \u2192 <b>' + targetId + '</b></div>' + logEl.innerHTML;
+                }
+                loadServerData();
+            } else {
+                showToast('Ошибка: ' + (data.error || 'не удалось начислить'), 'error');
+            }
+        } catch(e) {
+            showToast('Сетевая ошибка', 'error');
+        }
+    }
+
+    function adminQuickDonate(credits) {
+        const targetId = document.getElementById('adminDonateId')?.value?.trim();
+        const source = document.getElementById('adminDonateSource')?.value || 'boosty';
+        adminAddDonateCredits(targetId, credits, source);
+    }
+
+    function adminDonateCustom() {
+        const targetId = document.getElementById('adminDonateId')?.value?.trim();
+        const credits = parseInt(document.getElementById('adminDonateCustomAmount')?.value, 10);
+        const source = document.getElementById('adminDonateSource')?.value || 'boosty';
+        adminAddDonateCredits(targetId, credits, source);
     }
 
     // ---- ПРОВЕРКА АВТОРИЗАЦИИ ----
@@ -7316,10 +7390,10 @@
             info.innerHTML = '\u25C6 Оплата через VK Pay \u2014 быстро и удобно. Если вы в VK Mini App, оплата пройдёт внутри приложения.';
             payBtn.innerHTML = '\u25C6 Оплатить VK Pay';
         } else if (method === 'boosty') {
-            info.innerHTML = '\uD83D\uDD25 Boosty \u2014 поддержите проект любой суммой. Оплата картой, СБП, ЮMoney. После оплаты напишите ID в чат бота для зачисления кредитов.';
+            info.innerHTML = '\uD83D\uDD25 Boosty \u2014 поддержите проект любой суммой. Оплата картой, СБП, ЮMoney. Кредиты зачисляются администратором вручную после подтверждения оплаты.';
             payBtn.innerHTML = '\uD83D\uDD25 Открыть Boosty';
         } else if (method === 'vk_donate') {
-            info.innerHTML = '\uD83D\uDC96 VK Донаты \u2014 поддержите проект через ВКонтакте. После оплаты напишите ID в чат бота для зачисления кредитов.';
+            info.innerHTML = '\uD83D\uDC96 VK Донаты \u2014 поддержите проект через сообщество ВКонтакте. Кредиты зачисляются администратором вручную после подтверждения оплаты.';
             payBtn.innerHTML = '\uD83D\uDC96 Открыть VK Донаты';
         }
     }
@@ -7349,13 +7423,13 @@
         if (selectedPaymentMethod === 'boosty') {
             window.open('https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link', '_blank');
             closePurchaseDialog();
-            showToast('Открыта страница Boosty. После оплаты напишите свой ID в чат бота.', 'info');
+            showToast('Открыта страница Boosty. После оплаты сообщите администратору (@Leshiyalex) ваш ID для зачисления кредитов.', 'info');
             return;
         }
         if (selectedPaymentMethod === 'vk_donate') {
             window.open('https://vk.com/donut/leshiy_ai', '_blank');
             closePurchaseDialog();
-            showToast('Открыта страница VK Донаты. После оплаты напишите свой ID в чат бота.', 'info');
+            showToast('Открыта страница VK Донаты. После оплаты сообщите администратору (@Leshiyalex) ваш ID для зачисления кредитов.', 'info');
             return;
         }
 
