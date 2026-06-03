@@ -618,7 +618,7 @@
                 </div>
             </div>
 
-            <!-- Скроллируемая область контента -->
+            <!-- Контент -->
             <div id="purchaseDialogContent" style="flex:1;overflow-y:auto;min-height:0">
                 <!-- Пакеты пополнения (для Stars / VK Pay) -->
                 <div id="topupPackagesSection" style="margin-bottom:14px">
@@ -655,17 +655,16 @@
                     </a>
 
                     <!-- ЮMoney -->
-                    <div style="margin-bottom:8px">
-                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                            <span style="font-size:20px">&#128179;</span>
-                            <div>
-                                <div style="font-weight:600;font-size:14px">ЮMoney</div>
-                                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Перевод через ЮMoney</div>
-                            </div>
+                    <a href="https://yoomoney.ru/to/4100118141523834" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
+                        <span style="font-size:22px">&#128179;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">ЮMoney</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Перевод через ЮMoney</div>
                         </div>
-                        <div id="yoomoneyWidgetContainer" style="width:100%;max-width:100%;overflow:hidden;border-radius:var(--radius-md);border:1px solid var(--border)">
-                            <iframe src="https://yoomoney.ru/quickpay/fundraise/widget?billNumber=1I5S2IPA6RM.260603&" width="100%" height="460" frameborder="0" allowtransparency="true" scrolling="no" style="display:block;max-width:100%"></iframe>
-                        </div>
+                        <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
+                    </a>
+                    <div style="display:flex;justify-content:center;margin-bottom:8px;border-radius:var(--radius-md);overflow:hidden;background:#fff">
+                        <iframe src="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1I5S2IPA6RM.260603&" width="330" height="50" frameborder="0" allowtransparency="true" scrolling="no" style="display:block"></iframe>
                     </div>
                 </div>
 
@@ -2260,6 +2259,18 @@
         overlay.innerHTML = `<div class="dialog" style="max-width:600px;max-height:85vh;overflow-y:auto">
             <h3>&#128081; Админ-панель</h3>
 
+            <!-- ИНФОРМАЦИОННЫЙ БЛОК -->
+            <div id="adminInfoBlock" style="padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:14px;font-size:13px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <span style="font-weight:600;color:var(--accent)">&#9881; АДМИН-ПАНЕЛЬ</span>
+                    <button onclick="loadAdminInfo()" style="font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text-secondary);cursor:pointer">&#128260; Обновить</button>
+                </div>
+                <div id="adminInfoId" style="margin-bottom:4px;color:var(--text-secondary)">&#127381; Админ ID: <span style="color:var(--text-muted)">загрузка...</span></div>
+                <div style="margin-bottom:4px;color:var(--text-secondary)">&#128176; Платные сервисы:</div>
+                <div id="adminInfoServices" style="padding-left:16px;color:var(--text-muted);font-size:12px">загрузка...</div>
+                <div id="adminInfoVersion" style="margin-top:6px;color:var(--text-muted);font-size:11px">&#128640; Версия: загрузка...</div>
+            </div>
+
             <!-- ГЛАВНОЕ МЕНЮ -->
             <div id="adminMainMenu">
                 <div style="display:flex;flex-direction:column;gap:8px">
@@ -2353,6 +2364,44 @@
 
         overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
         document.body.appendChild(overlay);
+        // Загружаем инфо о сервисах
+        loadAdminInfo();
+    }
+
+    async function loadAdminInfo() {
+        const idEl = document.getElementById('adminInfoId');
+        const servicesEl = document.getElementById('adminInfoServices');
+        const versionEl = document.getElementById('adminInfoVersion');
+
+        if (servicesEl) servicesEl.innerHTML = '<span style="color:var(--accent)">Загрузка...</span>';
+
+        try {
+            const resp = await fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'admin', auth: getAuth(), payload: { action: 'get_admin_info' } })
+            });
+            const data = await resp.json();
+            if (data.success && data.data) {
+                const info = data.data;
+                if (idEl) idEl.innerHTML = '\uD83C\uDD94 Админ ID: <b style="color:var(--text-primary)">' + info.admin_id + '</b>';
+
+                let servicesHtml = '';
+                const services = info.services || {};
+                for (const [key, svc] of Object.entries(services)) {
+                    const balanceStr = svc.balance !== null && svc.balance !== undefined
+                        ? '<span style="color:var(--text-primary)">' + svc.balance + '</span> ' + svc.unit
+                        : '<span style="color:var(--danger)">недоступно</span>';
+                    servicesHtml += '<div>' + svc.emoji + ' ' + svc.label + ' : ' + balanceStr + '</div>';
+                }
+                if (servicesEl) servicesEl.innerHTML = servicesHtml || '<span style="color:var(--text-muted)">Нет данных</span>';
+                if (versionEl) versionEl.innerHTML = '\uD83D\uDE80 Версия: ' + info.version;
+            } else {
+                if (servicesEl) servicesEl.innerHTML = '<span style="color:var(--danger)">' + (data.error || 'Ошибка загрузки') + '</span>';
+            }
+        } catch (e) {
+            if (servicesEl) servicesEl.innerHTML = '<span style="color:var(--danger)">Сетевая ошибка</span>';
+        }
     }
 
     function adminShowSection(section) {

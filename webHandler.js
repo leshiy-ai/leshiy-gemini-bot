@@ -2366,6 +2366,92 @@ async function handleAdmin(auth, payload, env, monolith) {
         }
     }
 
+    // === ИНФОРМАЦИЯ АДМИН-ПАНЕЛИ (балансы сервисов, версия) ===
+    if (action === 'get_admin_info') {
+        const adminId = String(auth.id);
+        const version = 'v5.1.0 от 21.05.2026';
+        const services = {};
+
+        // Telegram Stars
+        try {
+            const botToken = env.TELEGRAM_BOT_TOKEN;
+            if (botToken) {
+                const starResp = await fetch('https://api.telegram.org/bot' + botToken + '/getMyStarBalance');
+                const starData = await starResp.json();
+                if (starData.ok && starData.result) {
+                    services.telegram = { label: 'TELEGRAM', unit: 'звёзды', emoji: '⭐', balance: starData.result.amount };
+                } else {
+                    services.telegram = { label: 'TELEGRAM', unit: 'звёзды', emoji: '⭐', balance: null, error: starData.description || 'Ошибка' };
+                }
+            }
+        } catch (e) {
+            services.telegram = { label: 'TELEGRAM', unit: 'звёзды', emoji: '⭐', balance: null, error: e.message };
+        }
+
+        // KIE.AI
+        try {
+            const kieKey = env.KIEAI_API_KEY;
+            if (kieKey) {
+                const kieResp = await fetch('https://api.kie.ai/api/v1/chat/credit', {
+                    method: 'GET',
+                    headers: { 'Authorization': 'Bearer ' + kieKey, 'Content-Type': 'application/json' }
+                });
+                const kieData = JSON.parse(await kieResp.text());
+                if (kieData.code === 200 && typeof kieData.data === 'number') {
+                    services.kieai = { label: 'KIE.AI', unit: 'кредиты', emoji: '🤖', balance: kieData.data };
+                } else {
+                    services.kieai = { label: 'KIE.AI', unit: 'кредиты', emoji: '🤖', balance: null, error: kieData.msg || 'Ошибка' };
+                }
+            }
+        } catch (e) {
+            services.kieai = { label: 'KIE.AI', unit: 'кредиты', emoji: '🤖', balance: null, error: e.message };
+        }
+
+        // Pollinations.ai
+        try {
+            const pollKey = env.POLLINATIONS_API_KEY;
+            if (pollKey) {
+                const pollResp = await fetch('https://gen.pollinations.ai/account/balance', {
+                    method: 'GET',
+                    headers: { 'Authorization': 'Bearer ' + pollKey, 'Accept': 'application/json' }
+                });
+                const pollData = await pollResp.json();
+                const rawBalance = pollData.balance !== undefined ? pollData.balance : pollData;
+                const balance = (Math.trunc(Number(rawBalance) * 10000) / 10000).toFixed(4);
+                services.pollinations = { label: 'Pollinations.ai', unit: 'pollen', emoji: '🌸', balance: balance };
+            }
+        } catch (e) {
+            services.pollinations = { label: 'Pollinations.ai', unit: 'pollen', emoji: '🌸', balance: null, error: e.message };
+        }
+
+        // BotHub.ru
+        try {
+            const bhKey = env.BOTHUB_API_KEY;
+            if (bhKey) {
+                const bhResp = await fetch('https://bothub.chat/api/v2/auth/me', {
+                    method: 'GET',
+                    headers: { 'Authorization': 'Bearer ' + bhKey, 'Content-Type': 'application/json' }
+                });
+                const bhData = await bhResp.json();
+                if (bhData.subscription && bhData.subscription.availableBalance !== undefined) {
+                    services.bothub = { label: 'BotHub.ru', unit: 'капсов', emoji: '🎯', balance: bhData.subscription.availableBalance };
+                } else {
+                    services.bothub = { label: 'BotHub.ru', unit: 'капсов', emoji: '🎯', balance: null, error: 'Нет данных' };
+                }
+            }
+        } catch (e) {
+            services.bothub = { label: 'BotHub.ru', unit: 'капсов', emoji: '🎯', balance: null, error: e.message };
+        }
+
+        return formatResponse(true, null, null, {
+            type: 'admin',
+            action: 'get_admin_info',
+            admin_id: adminId,
+            version: version,
+            services: services
+        });
+    }
+
     return formatResponse(false, 'Неизвестное действие админа: ' + action);
 }
 
