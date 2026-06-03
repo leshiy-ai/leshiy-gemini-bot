@@ -642,9 +642,6 @@
         <div class="dialog">
             <h3>&#128274; Войти в аккаунт</h3>
             <p>Войдите, чтобы сохранять историю чата и покупать кредиты. При регистрации даётся 80&#162; бесплатно.</p>
-            <div id="miniAppContextHint" style="display:none;font-size:12px;color:var(--accent);padding:8px;background:rgba(168,85,247,0.1);border-radius:var(--radius-sm);margin-bottom:10px;text-align:center">
-                &#10024; Определена платформа — вход будет мгновенным
-            </div>
             <div class="auth-providers">
                 <div id="vkAuthContainer" style="width:100%;min-height:44px;display:flex;align-items:center;justify-content:center">
                     <button class="auth-provider-btn vk" onclick="authVK()" style="width:100%">
@@ -7470,43 +7467,6 @@
     }
 
     function openAuthDialog() {
-        const vkContainer = document.getElementById('vkAuthContainer');
-        const tgContainer = document.getElementById('tgAuthContainer');
-        const hint = document.getElementById('miniAppContextHint');
-        const isInVK = !!(window.vkBridge);
-        const isInTG = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
-
-        // Показываем подсказку если мы в мини-аппе
-        if (hint) {
-            hint.style.display = (isInVK || isInTG) ? 'block' : 'none';
-        }
-
-        // Обновляем кнопки в зависимости от контекста
-        if (vkContainer) {
-            const btn = vkContainer.querySelector('.auth-provider-btn');
-            if (btn) {
-                if (isInVK) {
-                    btn.textContent = '◆ Войти через VK (автоматически)';
-                    btn.style.background = '#0077ff';
-                } else {
-                    btn.innerHTML = '&#9670; Войти через VK';
-                    btn.style.background = '';
-                }
-            }
-        }
-        if (tgContainer) {
-            const btn = tgContainer.querySelector('.auth-provider-btn');
-            if (btn) {
-                if (isInTG) {
-                    btn.textContent = '✉ Войти через Telegram (автоматически)';
-                    btn.style.background = '#0088cc';
-                } else {
-                    btn.innerHTML = '&#9993; Войти через Telegram';
-                    btn.style.background = '';
-                }
-            }
-        }
-
         document.getElementById('authDialog').classList.add('open');
     }
 
@@ -7622,93 +7582,19 @@
         document.getElementById('authDialog').classList.remove('open');
     }
 
-    // ---- VK / TG AUTH — смарт-авторизация с определением контекста ----
+    // ---- VK / TG AUTH — редирект на vk.html / tg.html ----
     const BASE_URL = window.location.origin;
 
     function authVK() {
         closeAuthDialog();
-        // Если мы уже внутри VK Mini App — авторизуемся через vkBridge
-        if (window.vkBridge) {
-            vkBridge.send('VKWebAppGetUserInfo').then(userInfo => {
-                if (userInfo && userInfo.id) {
-                    const name = [userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ') || 'VK User';
-                    applyAuthGlobal({
-                        id: String(userInfo.id),
-                        name: name,
-                        provider: 'vk',
-                        hash: null,
-                        photo: userInfo.photo_100 || userInfo.photo_200 || userInfo.photo || null
-                    }, false);
-                } else {
-                    showToast('Не удалось получить данные VK', 'warning');
-                }
-            }).catch(err => {
-                console.log('VKWebAppGetUserInfo error, fallback to redirect:', err);
-                // Фоллбэк: редирект на vk.html
-                const returnTo = encodeURIComponent(BASE_URL + '/');
-                window.location.href = BASE_URL + '/vk.html?returnTo=' + returnTo;
-            });
-        } else {
-            // Обычный браузер — редирект на vk.html с OAuth2
-            const returnTo = encodeURIComponent(BASE_URL + '/');
-            window.location.href = BASE_URL + '/vk.html?returnTo=' + returnTo;
-        }
+        const returnTo = encodeURIComponent(BASE_URL + '/');
+        window.location.href = BASE_URL + '/vk.html?returnTo=' + returnTo;
     }
 
     function authTG() {
         closeAuthDialog();
-        // СЦЕНАРИЙ 1: TG Mini App — initDataUnsafe.user есть → мгновенная авторизация
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
-            const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
-            const tgName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'TG User';
-            applyAuthGlobal({
-                id: String(tgUser.id),
-                name: tgName,
-                provider: 'tg',
-                hash: window.Telegram.WebApp.initData,
-                photo: tgUser.photo_url || null,
-                initData: window.Telegram.WebApp.initData || null
-            }, false);
-        }
-        // СЦЕНАРИЙ 2: TG Mini App — initData есть но user пустой → валидация на бэкенде
-        else if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
-            const initData = window.Telegram.WebApp.initData;
-            showToast('Проверяем данные Telegram...', 'info');
-            fetch(API_URL + '/api', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    mode: 'validate_init_data',
-                    auth: { provider: null, id: null },
-                    payload: { init_data: initData }
-                })
-            })
-            .then(r => r.json())
-            .then(result => {
-                if (result.success && result.data && result.data.user) {
-                    const u = result.data.user;
-                    applyAuthGlobal({
-                        id: String(u.id),
-                        name: u.name || u.username || 'TG User',
-                        provider: 'tg',
-                        hash: initData,
-                        photo: u.photo_url || null,
-                        initData: initData
-                    }, false);
-                } else {
-                    showToast('Ошибка авторизации Telegram', 'error');
-                }
-            })
-            .catch(err => {
-                console.error('TG validate error:', err);
-                showToast('Ошибка подключения', 'error');
-            });
-        }
-        // СЦЕНАРИЙ 3: Не в TG — редирект на tg.html с Login Widget
-        else {
-            const returnTo = encodeURIComponent(BASE_URL + '/');
-            window.location.href = BASE_URL + '/tg.html?returnTo=' + returnTo;
-        }
+        const returnTo = encodeURIComponent(BASE_URL + '/');
+        window.location.href = BASE_URL + '/tg.html?returnTo=' + returnTo;
     }
 
     // ---- TOAST ----
