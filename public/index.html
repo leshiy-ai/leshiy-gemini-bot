@@ -668,8 +668,8 @@
                 <img id="profilePhoto" src="" alt="" style="width:48px;height:48px;border-radius:50%;display:none;object-fit:cover">
                 <div style="flex:1">
                     <div id="profileName" style="font-weight:600;font-size:15px;color:var(--text-primary)"></div>
+                    <div id="profileUserId" style="font-size:12px;color:var(--text-muted);margin-top:2px;cursor:pointer;display:flex;align-items:center;gap:4px" onclick="copyUserId()" title="Нажмите, чтобы скопировать ID"></div>
                     <div id="profileProvider" style="font-size:12px;color:var(--text-secondary);margin-top:2px"></div>
-                    <div id="profileUserId" style="font-size:11px;color:var(--text-muted);margin-top:2px;cursor:pointer;display:flex;align-items:center;gap:4px" onclick="copyUserId()" title="Нажмите, чтобы скопировать ID"></div>
                     <div id="profileBadges" style="margin-top:4px;display:flex;gap:4px"></div>
                 </div>
             </div>
@@ -7490,7 +7490,7 @@
             profileProvider.textContent = providerNames[user.provider] || user.provider;
         }
         if (document.getElementById('profileUserId') && user && user.id) {
-            document.getElementById('profileUserId').innerHTML = '&#129470; Ваш ID: ' + user.id + ' <span style="font-size:10px;opacity:0.5">&#128203;</span>';
+            document.getElementById('profileUserId').innerHTML = '🆔 Ваш ID: ' + user.id + ' <span style="font-size:10px;opacity:0.5">&#128203;</span>';
         }
         if (profilePhoto) {
             if (user.photo) {
