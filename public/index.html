@@ -618,61 +618,64 @@
                 </div>
             </div>
 
-            <!-- Пакеты пополнения (для Stars / VK Pay) -->
-            <div id="topupPackagesSection" style="margin-bottom:14px">
-                <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Выберите пакет:</label>
-                <div id="topupPackages" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto">
-                    <!-- Заполняется динамически из JS -->
-                </div>
-            </div>
-
-            <!-- Другие платежи (Boosty, VK Донаты, ЮMoney) -->
-            <div id="otherPaymentsPanel" style="display:none;margin-bottom:14px">
-                <div style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px">
-                    Кредиты зачисляются администратором вручную после подтверждения оплаты. После оплаты сообщите ваш ID администратору (@Leshiyalex).
+            <!-- Скроллируемая область контента -->
+            <div id="purchaseDialogContent" style="flex:1;overflow-y:auto;min-height:0">
+                <!-- Пакеты пополнения (для Stars / VK Pay) -->
+                <div id="topupPackagesSection" style="margin-bottom:14px">
+                    <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Выберите пакет:</label>
+                    <div id="topupPackages" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto">
+                        <!-- Заполняется динамически из JS -->
+                    </div>
                 </div>
 
-                <!-- VK Донаты -->
-                <a href="https://vk.com/donut/leshiy_ai" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                    <span style="font-size:22px">&#128150;</span>
-                    <div style="flex:1">
-                        <div style="font-weight:600;font-size:14px">VK Донаты</div>
-                        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Поддержите проект через сообщество ВКонтакте</div>
+                <!-- Другие платежи (Boosty, VK Донаты, ЮMoney) -->
+                <div id="otherPaymentsPanel" style="display:none;margin-bottom:14px">
+                    <div style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px">
+                        Кредиты зачисляются администратором вручную после подтверждения оплаты. После оплаты сообщите ваш ID администратору (@Leshiyalex).
                     </div>
-                    <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
-                </a>
 
-                <!-- Boosty -->
-                <a href="https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                    <span style="font-size:22px">&#128293;</span>
-                    <div style="flex:1">
-                        <div style="font-weight:600;font-size:14px">Boosty</div>
-                        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Оплата картой, СБП, ЮMoney. Любая сумма.</div>
-                    </div>
-                    <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
-                </a>
+                    <!-- VK Донаты -->
+                    <a href="https://vk.com/donut/leshiy_ai" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
+                        <span style="font-size:22px">&#128150;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">VK Донаты</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Поддержите проект через сообщество ВКонтакте</div>
+                        </div>
+                        <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
+                    </a>
 
-                <!-- ЮMoney -->
-                <div style="margin-bottom:8px">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                        <span style="font-size:20px">&#128179;</span>
-                        <div>
-                            <div style="font-weight:600;font-size:14px">ЮMoney</div>
-                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Перевод через ЮMoney</div>
+                    <!-- Boosty -->
+                    <a href="https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
+                        <span style="font-size:22px">&#128293;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">Boosty</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Оплата картой, СБП, ЮMoney. Любая сумма.</div>
+                        </div>
+                        <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
+                    </a>
+
+                    <!-- ЮMoney -->
+                    <div style="margin-bottom:8px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <span style="font-size:20px">&#128179;</span>
+                            <div>
+                                <div style="font-weight:600;font-size:14px">ЮMoney</div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Перевод через ЮMoney</div>
+                            </div>
+                        </div>
+                        <div id="yoomoneyWidgetContainer" style="width:100%;max-width:100%;overflow:hidden;border-radius:var(--radius-md);border:1px solid var(--border)">
+                            <iframe src="https://yoomoney.ru/quickpay/fundraise/widget?billNumber=1I5S2IPA6RM.260603&" width="100%" height="460" frameborder="0" allowtransparency="true" scrolling="no" style="display:block;max-width:100%"></iframe>
                         </div>
                     </div>
-                    <div id="yoomoneyWidgetContainer" style="width:100%;max-width:100%;overflow:hidden;border-radius:var(--radius-md);border:1px solid var(--border)">
-                        <iframe src="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1I5S2IPA6RM.260603&" width="330" height="50" frameborder="0" allowtransparency="true" scrolling="no"></iframe>
-                    </div>
+                </div>
+
+                <!-- Инфо о выбранном методе -->
+                <div id="paymentMethodInfo" style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:12px">
+                    &#9733; Оплата через Telegram Stars — мгновенное зачисление. Нажмите «Оплатить» и откроется ссылка на оплату в Telegram.
                 </div>
             </div>
 
-            <!-- Инфо о выбранном методе -->
-            <div id="paymentMethodInfo" style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:12px">
-                &#9733; Оплата через Telegram Stars — мгновенное зачисление. Нажмите «Оплатить» и откроется ссылка на оплату в Telegram.
-            </div>
-
-            <div class="dialog-actions">
+            <div class="dialog-actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
                 <button class="btn-secondary" onclick="closePurchaseDialog()">Отмена</button>
                 <button class="btn-primary" id="topupPayBtn" onclick="purchaseCredits()">&#9733; Оплатить</button>
             </div>
@@ -2229,8 +2232,8 @@
         overlay.className = 'dialog-overlay open';
         overlay.id = 'adminDialog';
 
-        // Build model sections from availableModels
-        let sectionsHtml = '';
+        // Build model sections HTML (для подменю «Настройка моделей»)
+        let modelsSectionsHtml = '';
         const serviceGroups = {
             'chat': { label: '&#128172; Чат', models: availableModels.chat || [] },
             'image': { label: '&#10024; Генерация картинок', models: availableModels.image || [] },
@@ -2251,16 +2254,48 @@
             let btnsHtml = group.models.map(m =>
                 `<button class="admin-model-btn ${m.key === currentKey ? 'active' : ''}" data-type="${typeKey}" data-key="${m.key}" onclick="adminSelectModel(this)">${m.name || m.key}${m.isFree ? ' &#127381;' : ''}${m.cost ? ' ' + m.cost + '\u00A2' : ''}</button>`
             ).join('');
-            sectionsHtml += `<div class="admin-section"><div class="admin-section-title">${group.label}</div><div class="admin-model-btns">${btnsHtml}</div></div>`;
+            modelsSectionsHtml += `<div class="admin-section"><div class="admin-section-title">${group.label}</div><div class="admin-model-btns">${btnsHtml}</div></div>`;
         }
 
         overlay.innerHTML = `<div class="dialog" style="max-width:600px;max-height:85vh;overflow-y:auto">
             <h3>&#128081; Админ-панель</h3>
-            <div id="adminSections">${sectionsHtml}</div>
-            <div class="dialog-actions" style="margin-top:16px">
-                <button class="btn-secondary" onclick="document.getElementById('adminDialog').remove()">Закрыть</button>
+
+            <!-- ГЛАВНОЕ МЕНЮ -->
+            <div id="adminMainMenu">
+                <div style="display:flex;flex-direction:column;gap:8px">
+                    <button onclick="adminShowSection('users')" style="display:flex;align-items:center;gap:10px;width:100%;padding:14px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);cursor:pointer;text-align:left;transition:border-color .15s">
+                        <span style="font-size:22px">&#128101;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">Управление пользователями</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Баланс, VIP, поиск пользователя</div>
+                        </div>
+                        <span style="color:var(--text-muted)">&#8250;</span>
+                    </button>
+                    <button onclick="adminShowSection('models')" style="display:flex;align-items:center;gap:10px;width:100%;padding:14px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);cursor:pointer;text-align:left;transition:border-color .15s">
+                        <span style="font-size:22px">&#129504;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">Настройка моделей</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Выбор AI-моделей для каждого режима</div>
+                        </div>
+                        <span style="color:var(--text-muted)">&#8250;</span>
+                    </button>
+                    <button onclick="adminShowSection('donations')" style="display:flex;align-items:center;gap:10px;width:100%;padding:14px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);cursor:pointer;text-align:left;transition:border-color .15s">
+                        <span style="font-size:22px">&#128293;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">Зачисление донатов</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Boosty, VK Донаты, ЮMoney</div>
+                        </div>
+                        <span style="color:var(--text-muted)">&#8250;</span>
+                    </button>
+                </div>
+                <div class="dialog-actions" style="margin-top:16px">
+                    <button class="btn-secondary" onclick="document.getElementById('adminDialog').remove()">Закрыть</button>
+                </div>
             </div>
-            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+
+            <!-- СЕКЦИЯ: Управление пользователями -->
+            <div id="adminSectionUsers" style="display:none">
+                <button class="btn-secondary" onclick="adminShowSection('main')" style="margin-bottom:12px;font-size:13px">&#8592; Назад</button>
                 <h4 style="font-size:14px;margin-bottom:8px">&#128176; Управление балансом</h4>
                 <div style="display:flex;gap:8px;margin-bottom:8px">
                     <input type="text" id="adminTargetId" placeholder="ID пользователя" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
@@ -2278,14 +2313,24 @@
                 </div>
                 <div id="adminUserInfo" style="margin-top:8px;font-size:13px;color:var(--text-secondary)"></div>
             </div>
-            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+
+            <!-- СЕКЦИЯ: Настройка моделей -->
+            <div id="adminSectionModels" style="display:none">
+                <button class="btn-secondary" onclick="adminShowSection('main')" style="margin-bottom:12px;font-size:13px">&#8592; Назад</button>
+                <div id="adminSections">${modelsSectionsHtml}</div>
+            </div>
+
+            <!-- СЕКЦИЯ: Зачисление донатов -->
+            <div id="adminSectionDonations" style="display:none">
+                <button class="btn-secondary" onclick="adminShowSection('main')" style="margin-bottom:12px;font-size:13px">&#8592; Назад</button>
                 <h4 style="font-size:14px;margin-bottom:8px">&#128293; Зачисление донатов</h4>
-                <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Быстрое начисление кредитов после подтверждения оплаты через Boosty или VK Донаты. 1&#162; = 5&#8381;.</p>
+                <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Быстрое начисление кредитов после подтверждения оплаты через Boosty, VK Донаты или ЮMoney. 1&#162; = 5&#8381;.</p>
                 <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
                     <input type="text" id="adminDonateId" placeholder="ID пользователя" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
                     <select id="adminDonateSource" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-size:13px">
                         <option value="boosty">&#128293; Boosty</option>
                         <option value="vk_donate">&#128150; VK Донаты</option>
+                        <option value="yoomoney">&#128179; ЮMoney</option>
                     </select>
                 </div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
@@ -2308,6 +2353,30 @@
 
         overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
         document.body.appendChild(overlay);
+    }
+
+    function adminShowSection(section) {
+        const mainMenu = document.getElementById('adminMainMenu');
+        const sectionUsers = document.getElementById('adminSectionUsers');
+        const sectionModels = document.getElementById('adminSectionModels');
+        const sectionDonations = document.getElementById('adminSectionDonations');
+
+        // Скрываем всё
+        if (mainMenu) mainMenu.style.display = 'none';
+        if (sectionUsers) sectionUsers.style.display = 'none';
+        if (sectionModels) sectionModels.style.display = 'none';
+        if (sectionDonations) sectionDonations.style.display = 'none';
+
+        // Показываем нужное
+        if (section === 'main') {
+            if (mainMenu) mainMenu.style.display = '';
+        } else if (section === 'users') {
+            if (sectionUsers) sectionUsers.style.display = '';
+        } else if (section === 'models') {
+            if (sectionModels) sectionModels.style.display = '';
+        } else if (section === 'donations') {
+            if (sectionDonations) sectionDonations.style.display = '';
+        }
     }
 
     function adminSelectModel(btn) {
@@ -2412,7 +2481,7 @@
             showToast('Укажите количество кредитов', 'error');
             return;
         }
-        const sourceLabel = source === 'vk_donate' ? 'VK Донаты' : 'Boosty';
+        const sourceLabel = source === 'vk_donate' ? 'VK Донаты' : source === 'yoomoney' ? 'ЮMoney' : 'Boosty';
         try {
             const resp = await fetch(API_URL + '/api', {
                 method: 'POST',
