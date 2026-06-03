@@ -7484,6 +7484,9 @@
         const profileAdminSection = document.getElementById('profileAdminSection');
 
         if (profileName) profileName.textContent = user.name || 'Пользователь';
+        if (document.getElementById('profileUserId') && user && user.id) {
+            document.getElementById('profileUserId').innerHTML = '&#129470; Ваш ID: ' + user.id + ' <span style="font-size:10px;opacity:0.5">&#128203;</span>';
+        }
         if (profileProvider) {
             const providerNames = { vk: 'ВКонтакте', tg: 'Telegram' };
             profileProvider.textContent = providerNames[user.provider] || user.provider;
