@@ -979,14 +979,16 @@ body {
     border-radius: var(--radius);
     padding: 28px;
     max-width: 440px;
-    max-height: 90vh;
     width: 100%;
     animation: fadeIn 0.2s ease;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
 }
+.dialog::-webkit-scrollbar { width: 6px; }
+.dialog::-webkit-scrollbar-track { background: transparent; }
+.dialog::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.3); border-radius: 3px; }
+.dialog::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.5); }
 
 .dialog h3 {
     font-size: 18px;
@@ -1002,10 +1004,9 @@ body {
 }
 
 .plan-card {
-    padding: 14px;
+    padding: 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    margin-bottom: 10px;
     cursor: pointer;
     transition: all var(--transition);
 }
