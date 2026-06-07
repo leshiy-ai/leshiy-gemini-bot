@@ -210,6 +210,14 @@ const AI_MODELS = {
         BASE_URL: 'CLOUDFLARE_API_URL',
         pricing: 0 // бесплатно
     },
+    // ✅ [Текст в Изображение - /create]
+    FREE_TO_IMAGE_WORKERS_AI: { 
+        SERVICE: 'WORKERS_AI', 
+        FUNCTION: callWorkersAITextToImage,
+        MODEL: '@cf/stabilityai/stable-diffusion-xl-base-1.0', 
+        API_KEY: 'CLOUDFLARE_API_TOKEN', 
+        BASE_URL: 'CLOUDFLARE_API_URL',
+    },
     // ✅ [Изображение в Изображение - /photo]
     IMAGE_TO_IMAGE_WORKERS_AI: { 
         SERVICE: 'WORKERS_AI', 
@@ -595,23 +603,6 @@ const AI_MODELS = {
         BASE_URL: 'https://gen.pollinations.ai',
         pricing: 1
     },
-    // [Pollinations.ai: Gemini-fast для распознавания фото]
-    IMAGE_TO_TEXT_POLLINATIONS: { 
-        SERVICE: 'POLLINATIONS', 
-        FUNCTION: callPollinationsVision, 
-        MODEL: 'gemini-fast', 
-        API_KEY: 'POLLINATIONS_API_KEY', 
-        BASE_URL: 'https://gen.pollinations.ai'
-    },
-    // [Pollinations.ai: Flux - /create] (0.010 pollen)
-    TEXT_TO_IMAGE_POLLINATIONS: { 
-        SERVICE: 'POLLINATIONS', 
-        FUNCTION: callPollinationsText2Img,
-        MODEL: 'flux', 
-        API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
-        BASE_URL: 'https://gen.pollinations.ai',
-        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
-    },
     // [Pollinations.ai: Whisper для голосовых]
     AUDIO_TO_TEXT_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
@@ -620,6 +611,40 @@ const AI_MODELS = {
         MODEL: 'whisper', 
         API_KEY: 'POLLINATIONS_API_KEY', 
         BASE_URL: 'https://gen.pollinations.ai'
+    },
+    // [Pollinations.ai: Gemini-fast для распознавания фото]
+    IMAGE_TO_TEXT_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsVision, 
+        MODEL: 'gemini-fast', 
+        API_KEY: 'POLLINATIONS_API_KEY', 
+        BASE_URL: 'https://gen.pollinations.ai'
+    },
+    // [Pollinations.ai: Flux - /create] (0.0018 pollen)
+    FREE_TO_IMAGE_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsFree2Img,
+        MODEL: 'flux', 
+        API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
+        BASE_URL: 'https://gen.pollinations.ai'
+    },
+    // [Pollinations.ai: Pruna p-image - /text] (0.005 pollen)
+    TEXT_TO_IMAGE_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsText2Img,
+        MODEL: 'p-image', 
+        API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
+        BASE_URL: 'https://gen.pollinations.ai',
+        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
+    },
+    // [Pollinations.ai: Pruna p-image-edit - /text] (0.01 pollen)
+    IMAGE_TO_IMAGE_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsText2Img,
+        MODEL: 'p-image-edit', 
+        API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
+        BASE_URL: 'https://gen.pollinations.ai',
+        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
     },
 
     // ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ ---
@@ -759,6 +784,7 @@ const SERVICE_TYPE_MAP = {
     'VIDEO_TO_TEXT': { name: '🎧 Video → Text', kvKey: 'ACTIVE_MODEL_VIDEO_TO_TEXT' },
     'TEXT_TO_AUDIO': { name: '🔊 Text → Audio', kvKey: 'ACTIVE_MODEL_TEXT_TO_AUDIO' },
     'IMAGE_TO_TEXT': { name: '👁️ Image → Text', kvKey: 'ACTIVE_MODEL_IMAGE_TO_TEXT' },
+    'FREE_TO_IMAGE': { name: '🎨 Free → Image', kvKey: 'ACTIVE_MODEL_FREE_TO_IMAGE' },
     'TEXT_TO_IMAGE': { name: '📖 Text → Image', kvKey: 'ACTIVE_MODEL_TEXT_TO_IMAGE' },
     'IMAGE_TO_IMAGE': { name: '✨ Image → Image', kvKey: 'ACTIVE_MODEL_IMAGE_TO_IMAGE' },
     'TEXT_TO_VIDEO': { name: '📹 Text → Video', kvKey: 'ACTIVE_MODEL_TEXT_TO_VIDEO' },
@@ -7311,7 +7337,7 @@ async function callPollinationsGrok(config, history, messageText, envData) {
     throw new Error("Pollinations API: Empty choices in response");
 }
 
-// ✅ *** 2.31. callPollinationsText2Img (Pollinations.ai: Flux) ***
+// ✅ *** 2.31. callPollinationsFree2Img (Pollinations.ai: Flux) ***
 /**
  * Генерирует изображение по промпту через Pollinations.ai: Flux (T2I).
  * @param {Object} config - Объект активной конфигурации (BASE_URL: https://gen.pollinations.ai).
@@ -7320,7 +7346,7 @@ async function callPollinationsGrok(config, history, messageText, envData) {
  * @param {Object} [settings={}] - Дополнительные настройки.
  * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
  */
-async function callPollinationsText2Img(config, prompt, envData, settings = {}) { 
+async function callPollinationsFree2Img(config, prompt, envData, settings = {}) { 
     
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
@@ -7340,6 +7366,116 @@ async function callPollinationsText2Img(config, prompt, envData, settings = {}) 
     
     // Собираем: BASE_URL + /image/ + PROMPT
     const url = new URL(`${BASE_URL}/image/${encodedPrompt}`);
+    
+    // Добавляем обязательные параметры
+    url.searchParams.set('model', model);
+    url.searchParams.set('seed', String(seed));
+    url.searchParams.set('aspect_ratio', aspectRatio);
+    url.searchParams.set('nologo', 'true');
+    url.searchParams.set('key', API_KEY); 
+
+    // 3. ВЫЗОВ Pollinations API
+    const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: { 
+            'Authorization': `Bearer ${API_KEY}`,
+            'Accept': 'image/jpeg, image/png, image/*'
+        }
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations T2I API Error: ${response.status} - ${errorText.substring(0, 150)}`);
+    }
+
+    // 4. Возвращаем бинарные данные (ArrayBuffer)
+    return response.arrayBuffer();
+}
+
+// ✅ *** 2.31a. callPollinationsText2Img (Pollinations.ai: Pruna p-image) ***
+/**
+ * Генерирует изображение по промпту через Pollinations.ai: Pruna p-image (T2I).
+ * @param {Object} config - Объект активной конфигурации (BASE_URL: https://gen.pollinations.ai).
+ * @param {string} prompt - Текстовый промпт.
+ * @param {Object} envData - Объект окружения.
+ * @param {Object} [settings={}] - Дополнительные настройки.
+ * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
+ */
+async function callPollinationsText2Img(config, prompt, envData, settings = {}) { 
+    
+    const API_KEY_ENV_NAME = config.API_KEY; 
+    const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const BASE_URL = config.BASE_URL; // Должен быть https://gen.pollinations.ai
+    
+    if (!API_KEY) { 
+        throw new Error(`Pollinations.AI API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
+    }
+    
+    // 1. Подготовка параметров
+    const aspectRatio = settings.aspectRatio || '1:1';
+    const seed = settings.seed || Math.floor(Math.random() * 999999999);
+    const model = settings.model || 'p-image'; // По умолчанию Flux
+    
+    // 2. ФОРМИРОВАНИЕ URL (Эндпоинт /image/{prompt})
+    const encodedPrompt = encodeURIComponent(prompt);
+    
+    // Собираем: BASE_URL + /image/ + PROMPT
+    const url = new URL(`${BASE_URL}/image/${encodedPrompt}`);
+    
+    // Добавляем обязательные параметры
+    url.searchParams.set('model', model);
+    url.searchParams.set('seed', String(seed));
+    url.searchParams.set('aspect_ratio', aspectRatio);
+    url.searchParams.set('nologo', 'true');
+    url.searchParams.set('key', API_KEY); 
+
+    // 3. ВЫЗОВ Pollinations API
+    const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: { 
+            'Authorization': `Bearer ${API_KEY}`,
+            'Accept': 'image/jpeg, image/png, image/*'
+        }
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pollinations T2I API Error: ${response.status} - ${errorText.substring(0, 150)}`);
+    }
+
+    // 4. Возвращаем бинарные данные (ArrayBuffer)
+    return response.arrayBuffer();
+}
+
+// ✅ *** 2.31b. callPollinationsImg2Img (Pollinations.ai: Pruna p-image-edit) ***
+/**
+ * Генерирует изображение по промпту через Pollinations.ai: Pruna p-image-edit (I2I).
+ * @param {Object} config - Объект активной конфигурации (BASE_URL: https://gen.pollinations.ai).
+ * @param {string} prompt - Текстовый промпт.
+ * @param {Object} envData - Объект окружения.
+ * @param {Object} [settings={}] - Дополнительные настройки.
+ * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
+ */
+async function callPollinationsImg2Img(config, prompt, envData, settings = {}) { 
+    
+    const API_KEY_ENV_NAME = config.API_KEY; 
+    const API_KEY = envData[API_KEY_ENV_NAME]; 
+    const BASE_URL = config.BASE_URL; // Должен быть https://gen.pollinations.ai
+    
+    if (!API_KEY) { 
+        throw new Error(`Pollinations.AI API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
+    }
+    
+    // 1. Подготовка параметров
+    const aspectRatio = settings.aspectRatio || '1:1';
+    const seed = settings.seed || Math.floor(Math.random() * 999999999);
+    const model = settings.model || 'p-image-edit'; // По умолчанию p-image-edit
+    
+    // 2. ФОРМИРОВАНИЕ URL (Эндпоинт /image/{prompt})
+    const encodedPrompt = encodeURIComponent(prompt);
+    
+    // Собираем: BASE_URL + /v1/images/edits
+    const url = new URL(`${BASE_URL}/v1/images/edits`);
     
     // Добавляем обязательные параметры
     url.searchParams.set('model', model);
