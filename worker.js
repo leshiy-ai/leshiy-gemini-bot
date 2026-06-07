@@ -507,10 +507,10 @@ const AI_MODELS = {
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
     },
     // [DALL-E-3 - /create] (ПЛАТНЫЙ - 33000 CAPS / 5,19 ₽ за шт.)
-    FREE_TO_IMAGE_DALLE: { 
+    FREE_TO_IMAGE: { 
         SERVICE: 'BOTHUB', 
-        FUNCTION: callBotHubText2ImgDalle, // <-- ОТДЕЛЬНЫЙ ОБРАБОТЧИК Dalle-E-3
-        MODEL: 'dall-e-3', 
+        FUNCTION: callBotHubFree2Img,
+        MODEL: 'mai-image-2.5', 
         API_KEY: 'BOTHUB_API_KEY', 
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/images/generations'
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1',
@@ -6412,16 +6412,16 @@ async function callBothubVideoVision(config, videoData, videoMimeType, envData) 
     }
 }
 
-// ✅ *** 2.23a. callBotHubText2ImgDalle (Text-to-Dalle - BotHub/DALL-E) - ФИНАЛЬНО ИСПРАВЛЕНО ***
+// ✅ *** 2.23a. callBotHubFree2Img (Text-to-Image - BotHub free) - ФИНАЛЬНО ИСПРАВЛЕНО ***
 /**
- * Генерирует изображение по промпту через BotHub (DALL-E-3).
+ * Генерирует изображение по промпту через BotHub (free model).
  * Соответствует унифицированному контракту T2I.
- * @param {Object} config - Объект активной конфигурации (AI_MODELS.TEXT_TO_IMAGE_DALLE).
+ * @param {Object} config - Объект активной конфигурации (AI_MODELS.FREE_TO_IMAGE).
  * @param {string} prompt - Текстовый промпт.
  * @param {Object} envData - Объект окружения.
  * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
  */
-async function callBotHubText2ImgDalle(config, prompt, envData) { 
+async function callBotHubFree2Img(config, prompt, envData) { 
     
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
@@ -6429,7 +6429,7 @@ async function callBotHubText2ImgDalle(config, prompt, envData) {
     const MODEL = config.MODEL; 
 
     if (!API_KEY) { 
-        throw new Error(`DALL-E-3 API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
+        throw new Error(`BotHub Free API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
     }
     
     // Используем T2I endpoint BotHub
@@ -6448,7 +6448,7 @@ async function callBotHubText2ImgDalle(config, prompt, envData) {
         response = await sendAiRequest(bodyObj, url, config, envData);
     } catch (proxyErr) {
         // Если все прокси отказали — пробуем напрямую
-        console.warn(`[DALL-E] Proxy failed: ${proxyErr.message}, trying direct...`);
+        console.warn(`[BOTHUB] Proxy failed: ${proxyErr.message}, trying direct...`);
         response = await fetch(url, {
             method: 'POST',
             headers: { 
@@ -6461,21 +6461,21 @@ async function callBotHubText2ImgDalle(config, prompt, envData) {
     
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`BotHub DALL-E API Error: ${response.status} - ${errorText}`);
+        throw new Error(`BotHub Free API Error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
     // Проверяем наличие b64_json (некоторые API возвращают base64 напрямую)
     const b64Json = data?.data?.[0]?.b64_json;
     if (b64Json) {
-        console.log(`[DALL-E] Got b64_json, length: ${b64Json.length}`);
+        console.log(`[BOTHUB] Got b64_json, length: ${b64Json.length}`);
         const uint8Array = base64ToUint8Array(b64Json);
         return uint8Array.buffer;
     }
     const imageUrl = data?.data?.[0]?.url; // Получаем URL изображения
     
     if (!imageUrl) {
-        throw new Error("DALL-E-3 вернул успешный ответ, но отсутствует URL изображения.");
+        throw new Error("BotHub вернул успешный ответ, но отсутствует URL изображения.");
     }
     
     // 2. ЗАГРУЗКА ИЗОБРАЖЕНИЯ ПО URL — с прокси-фоллбэком
@@ -6484,16 +6484,16 @@ async function callBotHubText2ImgDalle(config, prompt, envData) {
         imageResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(30000) });
     } catch (e) {
         // Прямой fetch не удался — пробуем через прокси
-        console.warn(`[DALL-E] Direct image download failed: ${e.message}, trying proxy...`);
+        console.warn(`[BOTHUB] Direct image download failed: ${e.message}, trying proxy...`);
         try {
             imageResponse = await sendAiRequest({ _download: imageUrl }, imageUrl, config, envData);
         } catch (proxyErr) {
-            throw new Error(`Не удалось скачать изображение DALL-E (прямой: ${e.message}, прокси: ${proxyErr.message})`);
+            throw new Error(`Не удалось скачать изображение BotHub Free (прямой: ${e.message}, прокси: ${proxyErr.message})`);
         }
     }
 
     if (!imageResponse.ok) {
-        throw new Error(`Ошибка загрузки изображения DALL-E по URL (${imageResponse.status}).`);
+        throw new Error(`Ошибка загрузки изображения BotHub Free по URL (${imageResponse.status}).`);
     }
 
     // Возвращаем бинарные данные (ArrayBuffer)
