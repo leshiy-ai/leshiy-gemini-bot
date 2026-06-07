@@ -1030,13 +1030,13 @@ async function handleImage(auth, payload, env, monolith) {
         return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 'I2I');
     }
 
-    // === FREE_CREATE (Free → Image, бесплатная генерация /create) ===
+    // === FREE_CREATE (Free → T2I, бесплатная генерация /create) ===
     if (imageMode === 'free_create') {
         const prompt = (payload.prompt || '').trim();
         if (!prompt) return formatResponse(false, 'Пустой промпт');
 
-        const modelInfo = getWebModel('FREE_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
-        if (!modelInfo) return formatResponse(false, 'Нет доступной модели для бесплатной генерации. Выберите модель в 🎨 Free → Image');
+        const modelInfo = getWebModel('FREE_TO_T2I', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+        if (!modelInfo) return formatResponse(false, 'Нет доступной модели для бесплатной генерации. Выберите модель в 🎨 Free → T2I');
 
         console.log(`[WebHandler] Free T2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
         let imageResult;
@@ -1059,6 +1059,45 @@ async function handleImage(auth, payload, env, monolith) {
         } catch (e) {
             console.error("[WebHandler] Free T2I error:", e.message);
             return formatResponse(false, "Ошибка генерации: " + e.message);
+        }
+    }
+
+    // === FREE_I2I (Free → I2I, бесплатное улучшение /photo) ===
+    if (imageMode === 'free_i2i') {
+        const prompt = (payload.prompt || '').trim();
+        if (!prompt) return formatResponse(false, 'Пустой промпт');
+        if (!payload.reference_images || payload.reference_images.length === 0) {
+            return formatResponse(false, 'Нет референсных изображений для I2I');
+        }
+
+        const modelInfo = getWebModel('FREE_TO_I2I', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+        if (!modelInfo) return formatResponse(false, 'Нет доступной модели для бесплатного I2I. Выберите модель в 🌄 Free → I2I');
+
+        console.log(`[WebHandler] Free I2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
+        let imageResult;
+        try {
+            const config = modelInfo.config;
+            const refImage = payload.reference_images[0]; // base64 image data
+            // Извлекаем чистый base64 без data:image/...;base64, префикса
+            let imageBase64 = refImage;
+            if (typeof imageBase64 === 'string' && imageBase64.includes(',')) {
+                imageBase64 = imageBase64.split(',')[1];
+            }
+
+            if (config.SERVICE === 'WORKERS_AI') {
+                imageResult = await callWorkersAIWeb(config, prompt, env, refImage);
+            } else {
+                // Pollinations, BotHub — единый интерфейс (config, prompt, imageBase64, envData, width, height)
+                imageResult = await config.FUNCTION(config, prompt, imageBase64, env, 1024, 1024);
+            }
+
+            if (!imageResult || (imageResult instanceof ArrayBuffer && imageResult.byteLength < 1024)) {
+                return formatResponse(false, 'Модель вернула пустой результат');
+            }
+            return formatImageResult(imageResult, null, uploadBase64ImageToPublicUrl, env, chatId, 'Free I2I');
+        } catch (e) {
+            console.error("[WebHandler] Free I2I error:", e.message);
+            return formatResponse(false, "Ошибка I2I: " + e.message);
         }
     }
 
@@ -2043,7 +2082,7 @@ async function handleModels(auth, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
 
     const models = {
-        chat: [], free_create: [], image: [], image_i2i: [], image_vision: [],
+        chat: [], free_create: [], free_i2i: [], image: [], image_i2i: [], image_vision: [],
         video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [],
         audio_tts: [], audio_stt: [], audio_isolation: []
     };
@@ -2051,7 +2090,8 @@ async function handleModels(auth, env, monolith) {
     const serviceMapping = {
         'TEXT_TO_TEXT':     { target: 'chat',          freeByDefault: true  },
         'IMAGE_TO_TEXT':    { target: 'image_vision',  freeByDefault: true  },
-        'FREE_TO_IMAGE':    { target: 'free_create',   freeByDefault: true  },
+        'FREE_TO_T2I':      { target: 'free_create',   freeByDefault: true  },
+        'FREE_TO_I2I':      { target: 'free_i2i',       freeByDefault: true  },
         'TEXT_TO_IMAGE':    { target: 'image',         freeByDefault: false },
         'IMAGE_TO_IMAGE':   { target: 'image_i2i',     freeByDefault: false },
         // IMAGE_TO_UPSCALE removed — replaced by recognition (IMAGE_TO_TEXT)

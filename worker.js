@@ -6435,7 +6435,7 @@ async function callBothubVideoVision(config, videoData, videoMimeType, envData) 
 /**
  * Генерирует изображение по промпту через BotHub (free model).
  * Соответствует унифицированному контракту T2I.
- * @param {Object} config - Объект активной конфигурации (AI_MODELS.FREE_TO_IMAGE).
+ * @param {Object} config - Объект активной конфигурации (AI_MODELS.FREE_TO_T2I_BOTHUB).
  * @param {string} prompt - Текстовый промпт.
  * @param {Object} envData - Объект окружения.
  * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
@@ -13755,38 +13755,30 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
         let userDefinedPrompt = await storage.get(PROMPT_KEY);
         let rawImageKVData = null; // Для I2I
         
-        // 🔄 Читаем активную модель из KV (ключ FREE_TO_IMAGE)
-        // Формат KV: "ACTIVE_MODEL_FREE_TO_IMAGE" → "FREE_TO_IMAGE_POLLINATIONS"
-        const freeModelKVKey = 'ACTIVE_MODEL_FREE_TO_IMAGE';
-        let activeConfigKey = await storage.get(freeModelKVKey);
-        
-        // Дефолт: если ничего не выбрано — Pollinations Flux
-        if (!activeConfigKey) {
-            activeConfigKey = 'FREE_TO_IMAGE_POLLINATIONS';
-        }
-        
+        // 🔄 Читаем активную модель из KV — РАЗДЕЛЬНО для T2I и I2I
         let actionText;
+        let activeConfigKey;
         let activeModelConfig;
 
         if (mode === 'T2I') {
-            // Для T2I используем модель из FREE_TO_IMAGE категории
+            // Для T2I: читаем KV-ключ ACTIVE_MODEL_FREE_TO_T2I
+            const freeT2IKVKey = 'ACTIVE_MODEL_FREE_TO_T2I';
+            activeConfigKey = await storage.get(freeT2IKVKey);
+            // Дефолт: если ничего не выбрано — _WORKERS_AI
+            if (!activeConfigKey || !envData.AI_MODELS[activeConfigKey]) {
+                activeConfigKey = 'FREE_TO_T2I_WORKERS_AI';
+            }
             activeModelConfig = envData.AI_MODELS[activeConfigKey];
             actionText = 'T2I генерацию';
         } else if (mode === 'I2I') {
-            // Для I2I: если выбранная модель — T2I (Flux/DALL-E), 
-            // берём I2I-аналог из того же сервиса
-            const service = activeConfigKey.replace('FREE_TO_IMAGE_', '');
-            let i2iConfigKey;
-            if (service === 'POLLINATIONS') {
-                i2iConfigKey = 'IMAGE_TO_IMAGE_POLLINATIONS';
-            } else if (service === 'DALLE' || service === 'BOTHUB') {
-                i2iConfigKey = 'IMAGE_TO_IMAGE_BOTHUB';
-            } else {
-                // WORKERS_AI или другой — дефолтный I2I
-                i2iConfigKey = 'IMAGE_TO_IMAGE_POLLINATIONS';
+            // Для I2I: читаем KV-ключ ACTIVE_MODEL_FREE_TO_I2I
+            const freeI2IKVKey = 'ACTIVE_MODEL_FREE_TO_I2I';
+            activeConfigKey = await storage.get(freeI2IKVKey);
+            // Дефолт: если ничего не выбрано — _WORKERS_AI
+            if (!activeConfigKey || !envData.AI_MODELS[activeConfigKey]) {
+                activeConfigKey = 'FREE_TO_I2I_WORKERS_AI';
             }
-            activeModelConfig = envData.AI_MODELS[i2iConfigKey];
-            activeConfigKey = i2iConfigKey;
+            activeModelConfig = envData.AI_MODELS[activeConfigKey];
             
             // Читаем JSON-строку фото из KV
             rawImageKVData = await storage.get(IMAGE_DATA_KEY, { type: 'text' });
@@ -13871,14 +13863,14 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
             finalCaption = `🖼️ Ваша сгенерированная картинка готова.\n🧠 AI-Модель: ${activeModelConfig.MODEL}`;
 
         } else if (mode === 'I2I') {
-            // I2I: вызов с 7 аргументами (config, prompt, base64, envData, height, width, chatId)
+            // I2I: вызов (config, prompt, base64, envData, width, height, chatId)
             generatedResult = await callFunction(
                 activeModelConfig, 
                 finalPrompt,
                 imageBase64String, 
                 envData, 
-                finalHeight,
-                finalWidth, 
+                finalWidth,
+                finalHeight, 
                 chatId
             );
             finalCaption = `🌄 Ваше бесплатное улучшение фотографии.\n🧠 AI-Модель: ${activeModelConfig.MODEL}`;
