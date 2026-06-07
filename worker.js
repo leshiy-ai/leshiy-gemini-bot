@@ -637,10 +637,10 @@ const AI_MODELS = {
         BASE_URL: 'https://gen.pollinations.ai',
         pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
     },
-    // [Pollinations.ai: Pruna p-image-edit - /text] (0.01 pollen)
+    // [Pollinations.ai: Pruna p-image-edit - I2I] (0.01 pollen)
     IMAGE_TO_IMAGE_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
-        FUNCTION: callPollinationsText2Img,
+        FUNCTION: callPollinationsImg2Img,
         MODEL: 'p-image-edit', 
         API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
         BASE_URL: 'https://gen.pollinations.ai',
@@ -7449,57 +7449,75 @@ async function callPollinationsText2Img(config, prompt, envData, settings = {}) 
 
 // ✅ *** 2.31b. callPollinationsImg2Img (Pollinations.ai: Pruna p-image-edit) ***
 /**
- * Генерирует изображение по промпту через Pollinations.ai: Pruna p-image-edit (I2I).
+ * Генерирует изображение по промпту + исходному фото через Pollinations.ai: p-image-edit (I2I).
+ * Использует POST /v1/images/edits с FormData (Strict OpenAI Compatibility).
  * @param {Object} config - Объект активной конфигурации (BASE_URL: https://gen.pollinations.ai).
  * @param {string} prompt - Текстовый промпт.
+ * @param {string} imageBase64 - Исходное изображение в Base64.
  * @param {Object} envData - Объект окружения.
- * @param {Object} [settings={}] - Дополнительные настройки.
+ * @param {number} [width=1024] - Ширина.
+ * @param {number} [height=1024] - Высота.
+ * @param {string} [chatId] - ID чата.
  * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
  */
-async function callPollinationsImg2Img(config, prompt, envData, settings = {}) { 
+async function callPollinationsImg2Img(config, prompt, imageBase64, envData, width = 1024, height = 1024, chatId = null) { 
     
     const API_KEY_ENV_NAME = config.API_KEY; 
     const API_KEY = envData[API_KEY_ENV_NAME]; 
-    const BASE_URL = config.BASE_URL; // Должен быть https://gen.pollinations.ai
+    const BASE_URL = config.BASE_URL; // https://gen.pollinations.ai
     
     if (!API_KEY) { 
         throw new Error(`Pollinations.AI API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
     }
-    
-    // 1. Подготовка параметров
-    const aspectRatio = settings.aspectRatio || '1:1';
-    const seed = settings.seed || Math.floor(Math.random() * 999999999);
-    const model = settings.model || 'p-image-edit'; // По умолчанию p-image-edit
-    
-    // 2. ФОРМИРОВАНИЕ URL (Эндпоинт /image/{prompt})
-    const encodedPrompt = encodeURIComponent(prompt);
-    
-    // Собираем: BASE_URL + /v1/images/edits
-    const url = new URL(`${BASE_URL}/v1/images/edits`);
-    
-    // Добавляем обязательные параметры
-    url.searchParams.set('model', model);
-    url.searchParams.set('seed', String(seed));
-    url.searchParams.set('aspect_ratio', aspectRatio);
-    url.searchParams.set('nologo', 'true');
-    url.searchParams.set('key', API_KEY); 
 
-    // 3. ВЫЗОВ Pollinations API
-    const response = await fetch(url.toString(), {
-        method: 'GET',
+    // 1. Очистка Base64
+    let cleanBase64 = imageBase64;
+    if (cleanBase64.includes(',')) {
+        cleanBase64 = cleanBase64.split(',')[1];
+    }
+    cleanBase64 = cleanBase64.replace(/[\r\n\s]/g, '');
+
+    // 2. Декодируем Base64 в Buffer
+    const imageBuffer = Buffer.from(cleanBase64, 'base64');
+
+    // 3. Формируем FormData
+    const formData = new FormData();
+    // Создаём Blob из буфера для FormData
+    const imageBlob = new Blob([imageBuffer], { type: 'image/png' });
+    formData.append('image', imageBlob, 'image.png');
+    formData.append('prompt', prompt);
+    formData.append('model', config.MODEL || 'p-image-edit');
+    formData.append('n', '1');
+    formData.append('size', `${width}x${height}`);
+    formData.append('response_format', 'b64_json');
+
+    // 4. ВЫЗОВ Pollinations API — POST /v1/images/edits
+    const editUrl = `${BASE_URL}/v1/images/edits`;
+    console.log(`[I2I-Pollinations] POST ${editUrl} model=${config.MODEL}`);
+
+    const response = await fetch(editUrl, {
+        method: 'POST',
         headers: { 
             'Authorization': `Bearer ${API_KEY}`,
-            'Accept': 'image/jpeg, image/png, image/*'
-        }
+            // Content-Type НЕ СТАВИМ — браузер/среда сама влепит multipart/form-data + boundary
+        },
+        body: formData
     });
     
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Pollinations T2I API Error: ${response.status} - ${errorText.substring(0, 150)}`);
+        throw new Error(`Pollinations I2I API Error: ${response.status} - ${errorText.substring(0, 200)}`);
     }
 
-    // 4. Возвращаем бинарные данные (ArrayBuffer)
-    return response.arrayBuffer();
+    // 5. Парсим JSON-ответ (формат OpenAI: { data: [{ b64_json: "..." }] })
+    const json = await response.json();
+    if (!json.data || !json.data[0] || !json.data[0].b64_json) {
+        throw new Error(`Pollinations I2I не вернул данные изображения. Response: ${JSON.stringify(json).substring(0, 200)}`);
+    }
+
+    // 6. Декодируем b64_json → ArrayBuffer
+    const resultBuffer = Buffer.from(json.data[0].b64_json, 'base64');
+    return resultBuffer.buffer.slice(resultBuffer.byteOffset, resultBuffer.byteOffset + resultBuffer.byteLength);
 }
 
 // ✅ *** 2.32. callPollinationsVision (Pollinations.ai: Gemini-Vision) ***
@@ -13728,7 +13746,7 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
         await sendMessage(chatId, "⏳ **Уже выполняется генерация.** Пожалуйста, подождите.", token);
         return;
     }
-    await storage.put(GENERATION_LOCK_KEY, 'true', { expirationTtl: 60 });
+    await storage.put(GENERATION_LOCK_KEY, 'true', { expirationTtl: 120 });
 
     let workingMessageId = null;
     let imageArrayBuffer = null;
@@ -13740,49 +13758,70 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
     let finalHeight = 1024;
 
     try {
-        // --- 2. ОПРЕДЕЛЕНИЕ МОДЕЛИ И ДАННЫХ ---
+        // --- 2. ОПРЕДЕЛЕНИЕ МОДЕЛИ ИЗ KV (админка) ---
         let userDefinedPrompt = await storage.get(PROMPT_KEY);
         let rawImageKVData = null; // Для I2I
         
-        let activeConfigKey;
+        // 🔄 Читаем активную модель из KV (ключ FREE_TO_IMAGE)
+        // Формат KV: "ACTIVE_MODEL_FREE_TO_IMAGE" → "FREE_TO_IMAGE_POLLINATIONS"
+        const freeModelKVKey = 'ACTIVE_MODEL_FREE_TO_IMAGE';
+        let activeConfigKey = await storage.get(freeModelKVKey);
+        
+        // Дефолт: если ничего не выбрано — Pollinations Flux
+        if (!activeConfigKey) {
+            activeConfigKey = 'FREE_TO_IMAGE_POLLINATIONS';
+        }
+        
         let actionText;
+        let activeModelConfig;
 
         if (mode === 'T2I') {
-            activeConfigKey = 'TEXT_TO_IMAGE_WORKERS_AI';
+            // Для T2I используем модель из FREE_TO_IMAGE категории
+            activeModelConfig = envData.AI_MODELS[activeConfigKey];
             actionText = 'T2I генерацию';
         } else if (mode === 'I2I') {
-            activeConfigKey = 'IMAGE_TO_IMAGE_WORKERS_AI';
-            // 🚨 ЧИТАЕМ JSON-СТРОКУ ИЗ KV
+            // Для I2I: если выбранная модель — T2I (Flux/DALL-E), 
+            // берём I2I-аналог из того же сервиса
+            const service = activeConfigKey.replace('FREE_TO_IMAGE_', '');
+            let i2iConfigKey;
+            if (service === 'POLLINATIONS') {
+                i2iConfigKey = 'IMAGE_TO_IMAGE_POLLINATIONS';
+            } else if (service === 'DALLE' || service === 'BOTHUB') {
+                i2iConfigKey = 'IMAGE_TO_IMAGE_BOTHUB';
+            } else {
+                // WORKERS_AI или другой — дефолтный I2I
+                i2iConfigKey = 'IMAGE_TO_IMAGE_POLLINATIONS';
+            }
+            activeModelConfig = envData.AI_MODELS[i2iConfigKey];
+            activeConfigKey = i2iConfigKey;
+            
+            // Читаем JSON-строку фото из KV
             rawImageKVData = await storage.get(IMAGE_DATA_KEY, { type: 'text' });
             actionText = 'I2I улучшение';
         } else {
             throw new Error('Неизвестный режим генерации.');
         }
 
-        const activeModelConfig = envData.AI_MODELS[activeConfigKey];
-
         // --- 3. ПРОВЕРКИ И ВАЛИДАЦИЯ ---
         if (!activeModelConfig || !activeModelConfig.FUNCTION) {
-            throw new Error(`Конфигурация Workers AI для ${mode} не найдена.`);
+            throw new Error(`Конфигурация модели ${activeConfigKey} не найдена. Выберите модель в админке: 🎨 Free → Image`);
         }
         if (!userDefinedPrompt || userDefinedPrompt.trim().length < 5) {
             throw new Error(`Сначала задайте промпт (/prompt).`);
         }
         
-        // --- 4. ПАРСИНГ ДАННЫХ ДЛЯ I2I (копируем логику из processPhotoCommand) ---
+        // --- 4. ПАРСИНГ ДАННЫХ ДЛЯ I2I ---
         if (mode === 'I2I') {
              if (!rawImageKVData) {
                 throw new Error(`Для режима I2I необходимо загрузить фото.`);
             }
             
             try {
-                // ПАРСИМ JSON, как в processPhotoCommand
                 const imageData = JSON.parse(rawImageKVData);
                 
                 if (imageData && imageData.base64) {
-                    imageBase64String = String(imageData.base64); // Чистая строка Base64
+                    imageBase64String = String(imageData.base64);
                     
-                    // Извлекаем и округляем размеры, как в processPhotoCommand
                     const storedWidth = parseInt(imageData.width);
                     const storedHeight = parseInt(imageData.height);
                     const roundedWidth = Math.round(storedWidth / 8) * 8;
@@ -13791,16 +13830,12 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
                     finalHeight = roundedHeight > 0 ? roundedHeight : 1280;
                     
                 } else {
-                    // Если JSON невалиден, но есть Base64
                     imageBase64String = String(rawImageKVData); 
                 }
             } catch (e) {
-                // Если парсинг не удался (например, сохранена чистая Base64)
                 imageBase64String = String(rawImageKVData);
-                // Размеры остаются по умолчанию
             }
             
-            // ФИНАЛЬНАЯ ОЧИСТКА Base64 (как в processPhotoCommand)
             if (imageBase64String) {
                 imageBase64String = imageBase64String.replace(/[\r\n\s]/g, '');
                 if (imageBase64String.includes(',')) {
@@ -13827,45 +13862,33 @@ async function processFreeCreativeCommand(chatId, mode, storage, envData) {
         }
 
         // --- 6. ЗАПУСК ГЕНЕРАЦИИ ---
-        if (workingMessageId) await editMessage(chatId, workingMessageId, `⏳ **Отправляю на ${actionText}...** (Бесплатно)`, token);
+        const modelLabel = `${activeModelConfig.SERVICE}: ${activeModelConfig.MODEL}`;
+        if (workingMessageId) await editMessage(chatId, workingMessageId, `⏳ **Отправляю на ${actionText}...** (${modelLabel})`, token);
 
         const callFunction = activeModelConfig.FUNCTION;
         let generatedResult;
 
-        /*/ --- 5. СООБЩЕНИЯ О СТАТУСЕ ---
-        const keyboard = {
-            inline_keyboard: [[
-                { text: "🔄 Получить результат генерации", callback_data: 'cmd:/vision_generate_free_t2i' }
-            ]]
-        };
-
-        await editMessageWithKeyboard(chatId, workingMessageId,
-            `⏳ **Генерация запущена!**\n\n**Нажмите кнопку ниже**, чтобы "получить" сгенериррованную картинку.`, 
-            token, 
-            keyboard
-        );*/
-        
         if (mode === 'T2I') {
-            // 🚨 ИСПРАВЛЕНИЕ: ВЫЗОВ СТРОГО С 3 АРГУМЕНТАМИ, КАК ОЖИДАЕТ callWorkersAITextToImage
+            // T2I: вызов с 3 аргументами (config, prompt, envData)
             generatedResult = await callFunction(
-                activeModelConfig, // 1: uniConfig
-                finalPrompt, // 2: uniPrompt
-                envData // 3: uniEnvData 
+                activeModelConfig, 
+                finalPrompt, 
+                envData 
             );
-            finalCaption = `🖼️ Ваша сгенерированная картинка готова.\n🧠 AI-Модель: stable-diffusion-xl-base-1.0`;
+            finalCaption = `🖼️ Ваша сгенерированная картинка готова.\n🧠 AI-Модель: ${activeModelConfig.MODEL}`;
 
         } else if (mode === 'I2I') {
-            // I2I: Вызов с 7 аргументами (как вы показали в processPhotoCommand)
+            // I2I: вызов с 7 аргументами (config, prompt, base64, envData, height, width, chatId)
             generatedResult = await callFunction(
                 activeModelConfig, 
                 finalPrompt,
-                imageBase64String, // 3. Base64 строка
-                envData, // 4. envData (На этой позиции в I2I)
+                imageBase64String, 
+                envData, 
                 finalHeight,
                 finalWidth, 
                 chatId
             );
-            finalCaption = `🌄 Ваше бесплатное улучшение фотографии.\n🧠 AI-Модель: stable-diffusion-v1-5-img2img`;
+            finalCaption = `🌄 Ваше бесплатное улучшение фотографии.\n🧠 AI-Модель: ${activeModelConfig.MODEL}`;
         }
 
         imageArrayBuffer = generatedResult; // Получаем ArrayBuffer

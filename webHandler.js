@@ -1030,6 +1030,38 @@ async function handleImage(auth, payload, env, monolith) {
         return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 'I2I');
     }
 
+    // === FREE_CREATE (Free → Image, бесплатная генерация /create) ===
+    if (imageMode === 'free_create') {
+        const prompt = (payload.prompt || '').trim();
+        if (!prompt) return formatResponse(false, 'Пустой промпт');
+
+        const modelInfo = getWebModel('FREE_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+        if (!modelInfo) return formatResponse(false, 'Нет доступной модели для бесплатной генерации. Выберите модель в 🎨 Free → Image');
+
+        console.log(`[WebHandler] Free T2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
+        let imageResult;
+        try {
+            const config = modelInfo.config;
+            if (config.SERVICE === 'POLLINATIONS') {
+                imageResult = await config.FUNCTION(config, prompt, env);
+            } else if (config.SERVICE === 'BOTHUB') {
+                imageResult = await config.FUNCTION(config, prompt, env);
+            } else if (config.SERVICE === 'WORKERS_AI') {
+                imageResult = await config.FUNCTION(config, prompt, env);
+            } else {
+                imageResult = await config.FUNCTION(config, prompt, env);
+            }
+
+            if (!imageResult || (imageResult instanceof ArrayBuffer && imageResult.byteLength < 1024)) {
+                return formatResponse(false, 'Модель вернула пустой результат');
+            }
+            return formatImageResult(imageResult, null, uploadBase64ImageToPublicUrl, env, chatId, 'Free T2I');
+        } catch (e) {
+            console.error("[WebHandler] Free T2I error:", e.message);
+            return formatResponse(false, "Ошибка генерации: " + e.message);
+        }
+    }
+
     // === T2I (Text-to-Image, default) ===
     const prompt = (payload.prompt || '').trim();
     if (!prompt) return formatResponse(false, 'Пустой промпт');
@@ -2011,7 +2043,7 @@ async function handleModels(auth, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
 
     const models = {
-        chat: [], image: [], image_i2i: [], image_vision: [],
+        chat: [], free_create: [], image: [], image_i2i: [], image_vision: [],
         video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [],
         audio_tts: [], audio_stt: [], audio_isolation: []
     };
@@ -2019,6 +2051,7 @@ async function handleModels(auth, env, monolith) {
     const serviceMapping = {
         'TEXT_TO_TEXT':     { target: 'chat',          freeByDefault: true  },
         'IMAGE_TO_TEXT':    { target: 'image_vision',  freeByDefault: true  },
+        'FREE_TO_IMAGE':    { target: 'free_create',   freeByDefault: true  },
         'TEXT_TO_IMAGE':    { target: 'image',         freeByDefault: false },
         'IMAGE_TO_IMAGE':   { target: 'image_i2i',     freeByDefault: false },
         // IMAGE_TO_UPSCALE removed — replaced by recognition (IMAGE_TO_TEXT)
