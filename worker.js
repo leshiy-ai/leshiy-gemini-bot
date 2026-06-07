@@ -507,14 +507,14 @@ const AI_MODELS = {
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
     },
     // [DALL-E-3 - /create] (ПЛАТНЫЙ - 33000 CAPS / 5,19 ₽ за шт.)
-    TEXT_TO_IMAGE_DALLE: { 
+    FREE_TO_IMAGE_DALLE: { 
         SERVICE: 'BOTHUB', 
         FUNCTION: callBotHubText2ImgDalle, // <-- ОТДЕЛЬНЫЙ ОБРАБОТЧИК Dalle-E-3
         MODEL: 'dall-e-3', 
         API_KEY: 'BOTHUB_API_KEY', 
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/images/generations'
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1',
-        pricing: COST_PHOTO_CREDIT // СТАТИЧЕСКАЯ ЦЕНА ЗА ФОТО
+        pricing: 0
     },
     // [T2I gemini-2.5-flash-image для /text] (Через BotHub API, ПЛАТНЫЙ)
     TEXT_TO_IMAGE_BOTHUB: { 
