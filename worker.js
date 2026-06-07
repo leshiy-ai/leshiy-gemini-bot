@@ -6422,81 +6422,55 @@ async function callBothubVideoVision(config, videoData, videoMimeType, envData) 
  * @returns {Promise<ArrayBuffer>} Сгенерированное изображение в ArrayBuffer.
  */
 async function callBotHubFree2Img(config, prompt, envData) { 
-    
-    const API_KEY_ENV_NAME = config.API_KEY; 
-    const API_KEY = envData[API_KEY_ENV_NAME]; 
-    const BASE_URL = config.BASE_URL; 
-    const MODEL = config.MODEL; 
+    const API_KEY = envData[config.API_KEY]; 
+    if (!API_KEY) { throw new Error(`BotHub Free API key is missing. Expected env var: ${config.API_KEY}`); }
 
-    if (!API_KEY) { 
-        throw new Error(`BotHub Free API key is missing. Expected env var: ${API_KEY_ENV_NAME}`); 
-    }
-    
-    // Используем T2I endpoint BotHub
-    const url = `${BASE_URL}/images/generations`; 
-    
-    const bodyObj = {
-        model: MODEL,
-        prompt: prompt,
-        n: 1,
-        size: config.SIZE || "1024x1024"
-    };
+    // 1. URL
+    const URL = `${config.BASE_URL}/chat/completions`; 
 
-    // 1. ВЫЗОВ BOT-HUB API — через sendAiRequest (с прокси-фоллбэком)
-    let response;
-    try {
-        response = await sendAiRequest(bodyObj, url, config, envData);
-    } catch (proxyErr) {
-        // Если все прокси отказали — пробуем напрямую
-        console.warn(`[BOTHUB] Proxy failed: ${proxyErr.message}, trying direct...`);
-        response = await fetch(url, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`
-            },
-            body: JSON.stringify(bodyObj),
-        });
-    }
+    // 2. Формирование тела запроса
+    const jsonBody = JSON.stringify({
+        model: config.MODEL,
+        messages: [
+            {
+                "role": "user",
+                "content": `Создай картинку по описанию: ${prompt}`
+            }
+        ]
+    });
     
+    // 2. Вызов API
+    const response = await fetch(URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${API_KEY}`, 
+        },
+        body: jsonBody,
+    });
+
+    // 4. Обработка ошибок
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`BotHub Free API Error: ${response.status} - ${errorText}`);
+        throw new Error(`BotHub Free T2I Error (${response.status}): ${errorText.substring(0, 150)}`);
     }
 
-    const data = await response.json();
-    // Проверяем наличие b64_json (некоторые API возвращают base64 напрямую)
-    const b64Json = data?.data?.[0]?.b64_json;
-    if (b64Json) {
-        console.log(`[BOTHUB] Got b64_json, length: ${b64Json.length}`);
-        const uint8Array = base64ToUint8Array(b64Json);
-        return uint8Array.buffer;
-    }
-    const imageUrl = data?.data?.[0]?.url; // Получаем URL изображения
-    
+    const jsonResponse = await response.json();
+
+    // 3. Извлечение URL (BotHub часто возвращает его в поле images или прямо в контенте)
+    let imageUrl = jsonResponse?.choices?.[0]?.message?.images?.[0]?.image_url?.url 
+                || jsonResponse?.choices?.[0]?.message?.content?.match(/(https?:\/\/[^\s]+)/)?.[0];
+
+    if (!imageUrl) { imageUrl = jsonResponse?.data?.[0]?.url; }
+
     if (!imageUrl) {
-        throw new Error("BotHub вернул успешный ответ, но отсутствует URL изображения.");
-    }
-    
-    // 2. ЗАГРУЗКА ИЗОБРАЖЕНИЯ ПО URL — с прокси-фоллбэком
-    let imageResponse;
-    try {
-        imageResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(30000) });
-    } catch (e) {
-        // Прямой fetch не удался — пробуем через прокси
-        console.warn(`[BOTHUB] Direct image download failed: ${e.message}, trying proxy...`);
-        try {
-            imageResponse = await sendAiRequest({ _download: imageUrl }, imageUrl, config, envData);
-        } catch (proxyErr) {
-            throw new Error(`Не удалось скачать изображение BotHub Free (прямой: ${e.message}, прокси: ${proxyErr.message})`);
-        }
+        throw new Error(`BotHub Free T2I: URL не найден. Ответ: ${JSON.stringify(jsonResponse).substring(0, 200)}`);
     }
 
-    if (!imageResponse.ok) {
-        throw new Error(`Ошибка загрузки изображения BotHub Free по URL (${imageResponse.status}).`);
-    }
+    // 4. Загрузка байтов
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) throw new Error(`Ошибка загрузки PNG: ${imageResponse.status}`);
 
-    // Возвращаем бинарные данные (ArrayBuffer)
     return imageResponse.arrayBuffer();
 }
 
