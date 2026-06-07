@@ -211,10 +211,18 @@ const AI_MODELS = {
         pricing: 0 // бесплатно
     },
     // ✅ [Текст в Изображение - /create]
-    FREE_TO_IMAGE_WORKERS_AI: { 
+    FREE_TO_T2I_WORKERS_AI: { 
         SERVICE: 'WORKERS_AI', 
         FUNCTION: callWorkersAITextToImage,
         MODEL: '@cf/stabilityai/stable-diffusion-xl-base-1.0', 
+        API_KEY: 'CLOUDFLARE_API_TOKEN', 
+        BASE_URL: 'CLOUDFLARE_API_URL',
+    },
+    // ✅ [Изображение в Изображение - /photo]
+    FREE_TO_I2I_WORKERS_AI: { 
+        SERVICE: 'WORKERS_AI', 
+        FUNCTION: callWorkersAIImg2Img, // <-- ССЫЛКА НА ФУНКЦИЮ
+        MODEL: '@cf/runwayml/stable-diffusion-v1-5-img2img', 
         API_KEY: 'CLOUDFLARE_API_TOKEN', 
         BASE_URL: 'CLOUDFLARE_API_URL',
     },
@@ -506,8 +514,8 @@ const AI_MODELS = {
         //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1'
     },
-    // [DALL-E-3 - /create] (ПЛАТНЫЙ - 33000 CAPS / 5,19 ₽ за шт.)
-    FREE_TO_IMAGE: { 
+    // [Mai-image - /create] (ПЛАТНЫЙ - 32 560,65 CAPS / 5,19 ₽ за шт.)
+    FREE_TO_T2I_BOTHUB: { 
         SERVICE: 'BOTHUB', 
         FUNCTION: callBotHubFree2Img,
         MODEL: 'mai-image-2.5', 
@@ -516,6 +524,16 @@ const AI_MODELS = {
         BASE_URL: 'https://bothub.chat/api/v2/openai/v1',
         pricing: 0
     },
+    // [Mai-image I2I для /photo] (ПЛАТНЫЙ - 32 560,65 CAPS / 5,19 ₽ за шт.)
+    FREE_TO_I2I_BOTHUB: { 
+        SERVICE: 'BOTHUB', 
+        FUNCTION: callBotHubImage2Image, // <-- ОБРАБОТЧИК ДЛЯ BOTHUB
+        MODEL: 'mai-image-2.5', 
+        API_KEY: 'BOTHUB_API_KEY', // Имя переменной окружения
+        //BASE_URL: 'https://bothub.chat/api/v2/openai/v1/chat/completions'
+        BASE_URL: 'https://bothub.chat/api/v2/openai/v1',
+        pricing: 0
+    }, 
     // [T2I gemini-2.5-flash-image для /text] (Через BotHub API, ПЛАТНЫЙ)
     TEXT_TO_IMAGE_BOTHUB: { 
         SERVICE: 'BOTHUB', 
@@ -621,12 +639,22 @@ const AI_MODELS = {
         BASE_URL: 'https://gen.pollinations.ai'
     },
     // [Pollinations.ai: Flux - /create] (0.0018 pollen)
-    FREE_TO_IMAGE_POLLINATIONS: { 
+    FREE_TO_T2I_POLLINATIONS: { 
         SERVICE: 'POLLINATIONS', 
         FUNCTION: callPollinationsFree2Img,
         MODEL: 'flux', 
+        //MODEL: 'p-image', 
         API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
         BASE_URL: 'https://gen.pollinations.ai'
+    },
+    // [Pollinations.ai: Klein - I2I] (0.01 pollen)
+    FREE_TO_I2I_POLLINATIONS: { 
+        SERVICE: 'POLLINATIONS', 
+        FUNCTION: callPollinationsImg2Img,
+        MODEL: 'klein', 
+        API_KEY: 'POLLINATIONS_API_KEY', // Имя переменной окружения
+        BASE_URL: 'https://gen.pollinations.ai',
+        pricing: 0
     },
     // [Pollinations.ai: Pruna p-image - /text] (0.005 pollen)
     TEXT_TO_IMAGE_POLLINATIONS: { 
@@ -648,16 +676,6 @@ const AI_MODELS = {
     },
 
     // ПРОЧИЕ ПЛАТНЫЕ СЕРВИСЫ ---
-
-    /*/ [FUSIONBRAIN Kandinsky - /create] (Тестовый, ПЛАТНЫЙ попытки 88/100 до 01.01.2026)
-    TEXT_TO_IMAGE_KANDINSKY: { 
-        SERVICE: 'FUSIONBRAIN', 
-        FUNCTION: callKandinskyText2Img, // <-- ОБРАБОТЧИК ДЛЯ FUSIONBRAIN
-        MODEL: 'kandinsky', 
-        API_KEY: 'FUSIONBRAIN_API_KEY', // Имя переменной окружения
-        BASE_URL: 'https://api-key.fusionbrain.ai',
-        pricing: 4 // СТАТИЧЕСКАЯ ЦЕНА
-    },*/
 
     // Текст в голос - говорилка для /say
     TEXT_TO_AUDIO_VOICERSS: { 
@@ -784,7 +802,8 @@ const SERVICE_TYPE_MAP = {
     'VIDEO_TO_TEXT': { name: '🎧 Video → Text', kvKey: 'ACTIVE_MODEL_VIDEO_TO_TEXT' },
     'TEXT_TO_AUDIO': { name: '🔊 Text → Audio', kvKey: 'ACTIVE_MODEL_TEXT_TO_AUDIO' },
     'IMAGE_TO_TEXT': { name: '👁️ Image → Text', kvKey: 'ACTIVE_MODEL_IMAGE_TO_TEXT' },
-    'FREE_TO_IMAGE': { name: '🎨 Free → Image', kvKey: 'ACTIVE_MODEL_FREE_TO_IMAGE' },
+    'FREE_TO_T2I': { name: '🎨 Free → T2I', kvKey: 'ACTIVE_MODEL_FREE_TO_T2I' },
+    'FREE_TO_I2I': { name: '🌄 Free → I2I', kvKey: 'ACTIVE_MODEL_FREE_TO_I2I' },
     'TEXT_TO_IMAGE': { name: '📖 Text → Image', kvKey: 'ACTIVE_MODEL_TEXT_TO_IMAGE' },
     'IMAGE_TO_IMAGE': { name: '✨ Image → Image', kvKey: 'ACTIVE_MODEL_IMAGE_TO_IMAGE' },
     'TEXT_TO_VIDEO': { name: '📹 Text → Video', kvKey: 'ACTIVE_MODEL_TEXT_TO_VIDEO' },
