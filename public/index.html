@@ -1629,6 +1629,8 @@
     const MODEL_CATEGORIES = {
         'TEXT_TO_TEXT': 'chat',
         'IMAGE_TO_TEXT': 'image_vision',
+        'FREE_TO_T2I': 'image',
+        'FREE_TO_I2I': 'image_i2i',
         'TEXT_TO_IMAGE': 'image',
         'IMAGE_TO_IMAGE': 'image_i2i',
         // IMAGE_TO_UPSCALE removed — replaced by recognition (IMAGE_TO_TEXT)
@@ -2243,12 +2245,29 @@
             'audio_stt': { label: '&#127908; Распознавание (STT)', models: availableModels.audio_stt || [] }
         };
 
+        // Маппинг frontend-категорий → serviceType для KV (обратный MODEL_CATEGORIES)
+        const categoryToServiceType = {};
+        for (const [st, cat] of Object.entries(MODEL_CATEGORIES)) {
+            // Для дедупликации: берём последний serviceType (платный приоритет для KV-ключа)
+            // Но нам нужны ВСЕ serviceTypes, чтобы админ мог переключать каждую отдельно
+            if (!categoryToServiceType[cat]) categoryToServiceType[cat] = [];
+            categoryToServiceType[cat].push(st);
+        }
+
         for (const [typeKey, group] of Object.entries(serviceGroups)) {
             if (!group.models || group.models.length === 0) continue;
             const currentKey = selected[typeKey] || group.models[0]?.key;
-            let btnsHtml = group.models.map(m =>
-                `<button class="admin-model-btn ${m.key === currentKey ? 'active' : ''}" data-type="${typeKey}" data-key="${m.key}" onclick="adminSelectModel(this)">${m.name || m.key}${m.isFree ? ' 🆓' : ''}${m.cost ? ' ' + m.cost + '\u00A2' : ''}</button>`
-            ).join('');
+            let btnsHtml = group.models.map(m => {
+                // Определяем serviceType по ключу модели (префикс)
+                let modelServiceType = '';
+                for (const [st, cat] of Object.entries(MODEL_CATEGORIES)) {
+                    if (cat === typeKey && m.key.startsWith(st + '_')) {
+                        modelServiceType = st;
+                        break;
+                    }
+                }
+                return `<button class="admin-model-btn ${m.key === currentKey ? 'active' : ''}" data-type="${typeKey}" data-key="${m.key}" data-service-type="${modelServiceType}" onclick="adminSelectModel(this)">${m.name || m.key}${m.isFree ? ' 🆓' : ''}${m.cost ? ' ' + m.cost + '\u00A2' : ''}</button>`;
+            }).join('');
             modelsSectionsHtml += `<div class="admin-section"><div class="admin-section-title">${group.label}</div><div class="admin-model-btns">${btnsHtml}</div></div>`;
         }
 
@@ -2427,13 +2446,31 @@
     function adminSelectModel(btn) {
         const type = btn.dataset.type;
         const key = btn.dataset.key;
+        const serviceType = btn.dataset.serviceType; // e.g. 'FREE_TO_T2I', 'TEXT_TO_IMAGE'
         // Deactivate all siblings
         btn.parentNode.querySelectorAll('.admin-model-btn').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
-        // Save selection
+        // Save selection locally
         selected[type] = key;
         saveSelected();
-        showToast('Модель ' + key + ' выбрана для ' + type, 'success');
+        // 🔄 Записываем в KV — чтобы дефолтная модель изменилась для ВСЕХ юзеров
+        if (serviceType) {
+            fetch(API_URL + '/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'admin', auth: getAuth(), payload: { action: 'set_model', service_type: serviceType, model_key: key } })
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    showToast('🧠 Модель ' + (data.data?.model_key || key) + ' установлена как дефолтная', 'success');
+                } else {
+                    showToast('⚠️ Локально сохранено, но KV-ошибка: ' + (data.error || ''), 'error');
+                }
+            }).catch(e => {
+                showToast('⚠️ Локально сохранено, но сервер недоступен', 'error');
+            });
+        } else {
+            showToast('Модель ' + key + ' выбрана для ' + type, 'success');
+        }
     }
 
     async function adminSetBalance() {
@@ -2849,6 +2886,33 @@
             // WORKERS_AI models now work through Cloudflare REST API on the backend — no filtering needed
             availableModels = categorized;
 
+            // 🔄 Загружаем активные модели из KV (дефолты для всех юзеров)
+            try {
+                const activeResp = await fetch(API_URL + '/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'active_models', auth: getAuth(), payload: {} })
+                });
+                if (activeResp.ok) {
+                    const activeData = await activeResp.json();
+                    if (activeData.success && activeData.data) {
+                        // Маппим serviceType → frontend category и устанавливаем selected
+                        for (const [serviceType, modelKey] of Object.entries(activeData.data)) {
+                            if (!modelKey) continue;
+                            const cat = MODEL_CATEGORIES[serviceType];
+                            if (cat && availableModels[cat]?.find(m => m.key === modelKey)) {
+                                // Не перезаписываем если юзер уже выбрал в этой сессии
+                                if (!localStorage.getItem('gemini_selected') || !selected[cat]) {
+                                    selected[cat] = modelKey;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch(e) {
+                console.log('Не удалось загрузить активные модели из KV:', e.message);
+            }
+
             setModelDefaults();
             saveSelected();
             renderSubHeaders();
@@ -2932,7 +2996,7 @@
                 opt.value = m.key;
                 opt.selected = selected.chat === m.key;
                 opt.textContent = m.modelShort || m.displayName || m.key;
-                if (m.isFree) opt.textContent += ' \u2713';
+                if (m.isFree) opt.textContent += ' 🆓';
                 else if (m.cost) opt.textContent += ' ' + m.cost + '\u00A2';
                 optgroup.appendChild(opt);
             });
@@ -3045,7 +3109,7 @@
                     opt.value = m.key;
                     opt.selected = currentModelKey === m.key;
                     opt.textContent = m.modelShort || m.displayName || m.key;
-                    if (m.isFree) opt.textContent += ' \u2713';
+                    if (m.isFree) opt.textContent += ' 🆓';
                     else if (m.cost) opt.textContent += ' ' + m.cost + '\u00A2';
                     optgroup.appendChild(opt);
                 });
@@ -3073,7 +3137,7 @@
                         const opt = document.createElement('option');
                         opt.value = m.key;
                         opt.selected = (selected.image_vision || visionModels[0]?.key) === m.key;
-                        opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
+                        opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' 🆓' : ' ' + m.cost + '\u00A2');
                         optgroup.appendChild(opt);
                     });
                     sel.appendChild(optgroup);
@@ -3245,7 +3309,7 @@
                         const opt = document.createElement('option');
                         opt.value = m.key;
                         opt.selected = (selected.video_analysis || modelList[0]?.key) === m.key;
-                        opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : ' ' + m.cost + '\u00A2');
+                        opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' 🆓' : ' ' + m.cost + '\u00A2');
                         optgroup.appendChild(opt);
                     });
                     sel.appendChild(optgroup);
@@ -3436,7 +3500,7 @@
                 modelList.forEach(m => { const lbl = m.serviceLabel || m.service || 'Другие'; if (!groups[lbl]) groups[lbl] = []; groups[lbl].push(m); });
                 for (const [grp, models] of Object.entries(groups)) {
                     const optgroup = document.createElement('optgroup'); optgroup.label = grp;
-                    models.forEach(m => { const opt = document.createElement('option'); opt.value = m.key; opt.selected = selected.audio_tts === m.key; opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : m.cost ? ' ' + m.cost + '\u00A2' : ''); optgroup.appendChild(opt); });
+                    models.forEach(m => { const opt = document.createElement('option'); opt.value = m.key; opt.selected = selected.audio_tts === m.key; opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' 🆓' : m.cost ? ' ' + m.cost + '\u00A2' : ''); optgroup.appendChild(opt); });
                     sel.appendChild(optgroup);
                 }
                 modelsContainer.appendChild(sel);
@@ -3452,7 +3516,7 @@
                 modelList.forEach(m => { const lbl = m.serviceLabel || m.service || 'Другие'; if (!groups[lbl]) groups[lbl] = []; groups[lbl].push(m); });
                 for (const [grp, models] of Object.entries(groups)) {
                     const optgroup = document.createElement('optgroup'); optgroup.label = grp;
-                    models.forEach(m => { const opt = document.createElement('option'); opt.value = m.key; opt.selected = selected.audio_stt === m.key; opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' \u2713' : m.cost ? ' ' + m.cost + '\u00A2' : ''); optgroup.appendChild(opt); });
+                    models.forEach(m => { const opt = document.createElement('option'); opt.value = m.key; opt.selected = selected.audio_stt === m.key; opt.textContent = (m.modelShort || m.displayName || m.key) + (m.isFree ? ' 🆓' : m.cost ? ' ' + m.cost + '\u00A2' : ''); optgroup.appendChild(opt); });
                     sel.appendChild(optgroup);
                 }
                 modelsContainer.appendChild(sel);
