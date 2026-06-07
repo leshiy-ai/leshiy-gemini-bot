@@ -161,6 +161,25 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
     // и результат сохранялся в KV (saveKieAiCallbackForWeb), а не уходил в Telegram
     env.platform = 'web';
 
+    // 🔄 Загружаем активные модели из KV (один раз на запрос)
+    let activeModelsOverrides = null;
+    if (env.LAST_PHOTO_STORAGE && monolith.AI_MODEL_MENU_CONFIG) {
+        try {
+            activeModelsOverrides = {};
+            for (const [serviceType, menuConfig] of Object.entries(monolith.AI_MODEL_MENU_CONFIG)) {
+                const kvKey = menuConfig.kvKey;
+                if (!kvKey) continue;
+                const savedKey = await env.LAST_PHOTO_STORAGE.get(kvKey);
+                if (savedKey) activeModelsOverrides[serviceType] = savedKey;
+            }
+        } catch (e) {
+            console.error('[WebHandler] Failed to load active models from KV:', e.message);
+            activeModelsOverrides = null;
+        }
+    }
+    // Передаём во все handlers через monolith
+    monolith.activeModelsOverrides = activeModelsOverrides;
+
     try {
         switch (mode) {
             case 'chat':
@@ -173,6 +192,8 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
                 return await handleAudio(auth, payload, env, monolith);
             case 'models':
                 return await handleModels(auth, env, monolith);
+            case 'active_models':
+                return await handleActiveModels(auth, env, monolith);
             case 'balance':
                 return await handleBalance(auth, env, monolith);
             case 'keys':
@@ -220,20 +241,28 @@ module.exports.handleWebRequest = async function(body, env, ctx) {
  * 1. Если юзер явно указал payload.model → используем её, БЕЗ подмен
  * 2. По умолчанию — первая модель из AI_MODEL_MENU_CONFIG[serviceType]
  */
-function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel, env) {
+function getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payloadModel, env, activeModelsOverrides) {
     // 1. Явный выбор юзера — ИСПОЛЬЗУЕМ КАК ЕСТЬ, без подмен
     if (payloadModel && AI_MODELS[payloadModel]) {
         return { config: AI_MODELS[payloadModel], key: payloadModel };
     }
 
-    // 2. По умолчанию — для TEXT_TO_AUDIO приоритет VoiceRSS (бесплатно, без авторизации)
+    // 2. Активная модель из KV (как в телеграм-боте loadActiveConfig)
+    if (activeModelsOverrides && activeModelsOverrides[serviceType]) {
+        const activeKey = activeModelsOverrides[serviceType];
+        if (AI_MODELS[activeKey]) {
+            return { config: AI_MODELS[activeKey], key: activeKey };
+        }
+    }
+
+    // 3. По умолчанию — для TEXT_TO_AUDIO приоритет VoiceRSS (бесплатно, без авторизации)
     if (serviceType === 'TEXT_TO_AUDIO') {
         if (AI_MODELS['TEXT_TO_AUDIO_VOICERSS']) {
             return { config: AI_MODELS['TEXT_TO_AUDIO_VOICERSS'], key: 'TEXT_TO_AUDIO_VOICERSS' };
         }
     }
 
-    // 3. По умолчанию — первая модель из меню (как loadActiveConfig в телеграм-боте)
+    // 4. По умолчанию — первая модель из меню (как loadActiveConfig в телеграм-боте)
     const menuConfig = AI_MODEL_MENU_CONFIG[serviceType];
     if (menuConfig && menuConfig.models) {
         const firstKey = Object.keys(menuConfig.models)[0];
@@ -549,7 +578,7 @@ async function handleChat(auth, payload, env, monolith) {
     }
 
     // Шаг 1: Определяем чат-модель и её СЕРВИС
-    const chatModelInfo = getWebModel('TEXT_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+    const chatModelInfo = getWebModel('TEXT_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
     if (!chatModelInfo) {
         return formatResponse(false, 'Нет доступной модели для чата');
     }
@@ -760,7 +789,7 @@ async function handleImage(auth, payload, env, monolith) {
 
         let result;
         try {
-            let modelInfo = getWebModel('IMAGE_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+            let modelInfo = getWebModel('IMAGE_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
             if (!modelInfo) return formatResponse(false, 'Нет модели для распознавания');
             console.log(`[WebHandler] Image recognition using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
@@ -980,7 +1009,7 @@ async function handleImage(auth, payload, env, monolith) {
 
         let imageResult;
         try {
-            const modelInfo = getWebModel('IMAGE_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+            const modelInfo = getWebModel('IMAGE_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
             if (!modelInfo) return formatResponse(false, 'Нет модели для I2I');
             console.log(`[WebHandler] I2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
@@ -1030,86 +1059,17 @@ async function handleImage(auth, payload, env, monolith) {
         return formatImageResult(imageResult, creditsLeft, uploadBase64ImageToPublicUrl, env, chatId, 'I2I');
     }
 
-    // === FREE_CREATE (Free → T2I, бесплатная генерация /create) ===
-    if (imageMode === 'free_create') {
-        const prompt = (payload.prompt || '').trim();
-        if (!prompt) return formatResponse(false, 'Пустой промпт');
-
-        const modelInfo = getWebModel('FREE_TO_T2I', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
-        if (!modelInfo) return formatResponse(false, 'Нет доступной модели для бесплатной генерации. Выберите модель в 🎨 Free → T2I');
-
-        console.log(`[WebHandler] Free T2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
-        let imageResult;
-        try {
-            const config = modelInfo.config;
-            if (config.SERVICE === 'POLLINATIONS') {
-                imageResult = await config.FUNCTION(config, prompt, env);
-            } else if (config.SERVICE === 'BOTHUB') {
-                imageResult = await config.FUNCTION(config, prompt, env);
-            } else if (config.SERVICE === 'WORKERS_AI') {
-                imageResult = await config.FUNCTION(config, prompt, env);
-            } else {
-                imageResult = await config.FUNCTION(config, prompt, env);
-            }
-
-            if (!imageResult || (imageResult instanceof ArrayBuffer && imageResult.byteLength < 1024)) {
-                return formatResponse(false, 'Модель вернула пустой результат');
-            }
-            return formatImageResult(imageResult, null, uploadBase64ImageToPublicUrl, env, chatId, 'Free T2I');
-        } catch (e) {
-            console.error("[WebHandler] Free T2I error:", e.message);
-            return formatResponse(false, "Ошибка генерации: " + e.message);
-        }
-    }
-
-    // === FREE_I2I (Free → I2I, бесплатное улучшение /photo) ===
-    if (imageMode === 'free_i2i') {
-        const prompt = (payload.prompt || '').trim();
-        if (!prompt) return formatResponse(false, 'Пустой промпт');
-        if (!payload.reference_images || payload.reference_images.length === 0) {
-            return formatResponse(false, 'Нет референсных изображений для I2I');
-        }
-
-        const modelInfo = getWebModel('FREE_TO_I2I', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
-        if (!modelInfo) return formatResponse(false, 'Нет доступной модели для бесплатного I2I. Выберите модель в 🌄 Free → I2I');
-
-        console.log(`[WebHandler] Free I2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
-        let imageResult;
-        try {
-            const config = modelInfo.config;
-            const refImage = payload.reference_images[0]; // base64 image data
-            // Извлекаем чистый base64 без data:image/...;base64, префикса
-            let imageBase64 = refImage;
-            if (typeof imageBase64 === 'string' && imageBase64.includes(',')) {
-                imageBase64 = imageBase64.split(',')[1];
-            }
-
-            if (config.SERVICE === 'WORKERS_AI') {
-                imageResult = await callWorkersAIWeb(config, prompt, env, refImage);
-            } else {
-                // Pollinations, BotHub — единый интерфейс (config, prompt, imageBase64, envData, width, height)
-                imageResult = await config.FUNCTION(config, prompt, imageBase64, env, 1024, 1024);
-            }
-
-            if (!imageResult || (imageResult instanceof ArrayBuffer && imageResult.byteLength < 1024)) {
-                return formatResponse(false, 'Модель вернула пустой результат');
-            }
-            return formatImageResult(imageResult, null, uploadBase64ImageToPublicUrl, env, chatId, 'Free I2I');
-        } catch (e) {
-            console.error("[WebHandler] Free I2I error:", e.message);
-            return formatResponse(false, "Ошибка I2I: " + e.message);
-        }
-    }
-
-    // === T2I (Text-to-Image, default) ===
+    // === T2I / I2I (единый блок — free и paid модели в одном dropdown) ===
     const prompt = (payload.prompt || '').trim();
     if (!prompt) return formatResponse(false, 'Пустой промпт');
 
-    // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ
-    const modelInfo = getWebModel('TEXT_TO_IMAGE', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+    // 🧠 УМНЫЙ ВЫБОР МОДЕЛИ — учитываем KV-активные модели
+    const isI2I = payload.reference_images && payload.reference_images.length > 0;
+    const serviceType = isI2I ? 'IMAGE_TO_IMAGE' : 'TEXT_TO_IMAGE';
+    const modelInfo = getWebModel(serviceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
     if (!modelInfo) return formatResponse(false, 'Нет доступной модели для генерации изображений');
 
-    const isFreeModel = modelInfo.config.SERVICE === 'WORKERS_AI' || !modelInfo.config.pricing;
+    const isFreeModel = !modelInfo.config.pricing || modelInfo.config.pricing === 0;
     const isKieAi = modelInfo.config.SERVICE === 'KIEAI';
 
     if (!isFreeModel) {
@@ -1120,37 +1080,56 @@ async function handleImage(auth, payload, env, monolith) {
 
     let imageResult;
     try {
-        console.log(`[WebHandler] T2I using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
+        console.log(`[WebHandler] ${isI2I ? 'I2I' : 'T2I'} using: ${modelInfo.key} (${modelInfo.config.SERVICE}, free=${isFreeModel})`);
 
         if (isKieAi) {
             // 🛑 KIEAI: вызываем createTaskKieAi напрямую с chatId в callbackUrl
-            // НЕ вызываем startKieAiTextToImage — она Telegram-специфичная
             const { createTaskKieAi } = monolith;
             if (!createTaskKieAi) return formatResponse(false, 'Функция создания задач недоступна');
 
             const workerDomain = env.WORKER_DOMAIN || '';
             const callbackUrl = workerDomain ? `${workerDomain.startsWith('http') ? workerDomain : 'https://' + workerDomain}/api/kieai-callback?chatId=${chatId}&platform=web` : null;
 
-            // KieAI: aspect_ratio — основной параметр (image_size deprecated)
             const kieRatio = payload.aspect_ratio || '1:1';
-            const input = {
+            const input = isI2I ? {
+                prompt: prompt,
+                image_urls: [await uploadBase64ImageToPublicUrl(payload.reference_images[0], env, chatId, 'I2I')],
+                output_format: 'png',
+                aspect_ratio: kieRatio
+            } : {
                 prompt: prompt,
                 output_format: 'png',
                 aspect_ratio: kieRatio
             };
 
             const taskId = await createTaskKieAi(chatId, modelInfo.config, input, env, callbackUrl);
-            if (!taskId) return formatResponse(false, 'Не удалось создать задачу генерации изображения');
+            if (!taskId) return formatResponse(false, 'Не удалось создать задачу генерации');
 
             let creditsLeft = null;
             if (!isFreeModel && isAuth) {
                 creditsLeft = await deductCredits(chatId, 4, env, monolith);
             }
             return formatResponse(true, null, creditsLeft, { type: 'image_task', content: taskId });
-        } else if (modelInfo.config.SERVICE === 'WORKERS_AI') {
-            imageResult = await callWorkersAIWeb(modelInfo.config, prompt, env);
+        } else if (isI2I) {
+            // I2I: WORKERS_AI, Pollinations, BotHub
+            const refImage = payload.reference_images[0];
+            if (modelInfo.config.SERVICE === 'WORKERS_AI') {
+                imageResult = await callWorkersAIWeb(modelInfo.config, prompt, env, refImage);
+            } else {
+                // Pollinations, BotHub — (config, prompt, imageBase64, envData, width, height)
+                let imageBase64 = refImage;
+                if (typeof imageBase64 === 'string' && imageBase64.includes(',')) {
+                    imageBase64 = imageBase64.split(',')[1];
+                }
+                imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, imageBase64, env, 1024, 1024);
+            }
         } else {
-            imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env);
+            // T2I: WORKERS_AI, Pollinations, BotHub
+            if (modelInfo.config.SERVICE === 'WORKERS_AI') {
+                imageResult = await callWorkersAIWeb(modelInfo.config, prompt, env);
+            } else {
+                imageResult = await modelInfo.config.FUNCTION(modelInfo.config, prompt, env);
+            }
         }
     } catch (e) {
         console.error("[WebHandler] Image gen error:", e.message);
@@ -1389,7 +1368,7 @@ async function handleVideo(auth, payload, env, monolith) {
 
         let result;
         try {
-            let modelInfo = getWebModel('VIDEO_TO_ANALYSIS', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+            let modelInfo = getWebModel('VIDEO_TO_ANALYSIS', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
             if (!modelInfo) return formatResponse(false, 'Нет модели для анализа видео');
             console.log(`[WebHandler] Video analysis using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
@@ -1542,7 +1521,7 @@ async function handleVideo(auth, payload, env, monolith) {
         else if (payload.video_submode === 'v2v') videoServiceType = 'VIDEO_TO_VIDEO';
         else if (payload.video_submode === 'a2v') videoServiceType = 'AUDIO_TO_VIDEO';
 
-        const modelInfo = getWebModel(videoServiceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+        const modelInfo = getWebModel(videoServiceType, AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
         if (!modelInfo) return formatResponse(false, 'Нет модели для генерации видео');
 
         const workerDomain = env.WORKER_DOMAIN || '';
@@ -1673,7 +1652,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
         let result;
         try {
-            let modelInfo = getWebModel('AUDIO_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+            let modelInfo = getWebModel('AUDIO_TO_TEXT', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
             if (!modelInfo) return formatResponse(false, 'Нет модели для распознавания');
             console.log(`[WebHandler] STT using: ${modelInfo.key} (${modelInfo.config.SERVICE})`);
 
@@ -1851,7 +1830,7 @@ async function handleAudio(auth, payload, env, monolith) {
 
         let audioResult;
         try {
-            const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+            const modelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
             if (!modelInfo) return formatResponse(false, 'Нет модели для клонирования');
             const config = modelInfo.config;
 
@@ -1877,7 +1856,7 @@ async function handleAudio(auth, payload, env, monolith) {
     if (!text) return formatResponse(false, 'Пустой текст');
 
     // Determine model first to check if it's free (VoiceRSS)
-    const ttsModelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env);
+    const ttsModelInfo = getWebModel('TEXT_TO_AUDIO', AI_MODELS, AI_MODEL_MENU_CONFIG, payload.model, env, monolith.activeModelsOverrides);
     if (!ttsModelInfo) return formatResponse(false, 'Нет модели для TTS');
 
     // VoiceRSS is free — no auth needed. Other TTS models require auth.
@@ -2082,7 +2061,7 @@ async function handleModels(auth, env, monolith) {
     const { AI_MODELS, AI_MODEL_MENU_CONFIG } = monolith;
 
     const models = {
-        chat: [], free_create: [], free_i2i: [], image: [], image_i2i: [], image_vision: [],
+        chat: [], image: [], image_i2i: [], image_vision: [],
         video_t2v: [], video_i2v: [], video_v2v: [], video_a2v: [], video_analysis: [],
         audio_tts: [], audio_stt: [], audio_isolation: []
     };
@@ -2090,8 +2069,8 @@ async function handleModels(auth, env, monolith) {
     const serviceMapping = {
         'TEXT_TO_TEXT':     { target: 'chat',          freeByDefault: true  },
         'IMAGE_TO_TEXT':    { target: 'image_vision',  freeByDefault: true  },
-        'FREE_TO_T2I':      { target: 'free_create',   freeByDefault: true  },
-        'FREE_TO_I2I':      { target: 'free_i2i',       freeByDefault: true  },
+        'FREE_TO_T2I':      { target: 'image',         freeByDefault: true  },
+        'FREE_TO_I2I':      { target: 'image_i2i',     freeByDefault: true  },
         'TEXT_TO_IMAGE':    { target: 'image',         freeByDefault: false },
         'IMAGE_TO_IMAGE':   { target: 'image_i2i',     freeByDefault: false },
         // IMAGE_TO_UPSCALE removed — replaced by recognition (IMAGE_TO_TEXT)
@@ -2185,6 +2164,29 @@ async function handleModels(auth, env, monolith) {
     return formatResponse(true, null, null, models);
 }
 
+// ============================================================
+// 🔄 АКТИВНЫЕ МОДЕЛИ — ЧТЕНИЕ ИЗ KV (дефолты для всех юзеров)
+// ============================================================
+async function handleActiveModels(auth, env, monolith) {
+    const { AI_MODEL_MENU_CONFIG } = monolith;
+    if (!env.LAST_PHOTO_STORAGE) {
+        return formatResponse(false, 'KV хранилище недоступно');
+    }
+
+    const activeModels = {};
+    for (const [serviceType, menuConfig] of Object.entries(AI_MODEL_MENU_CONFIG)) {
+        const kvKey = menuConfig.kvKey;
+        if (!kvKey) continue;
+        try {
+            const savedKey = await env.LAST_PHOTO_STORAGE.get(kvKey);
+            activeModels[serviceType] = savedKey || null;
+        } catch (e) {
+            activeModels[serviceType] = null;
+        }
+    }
+    return formatResponse(true, null, null, activeModels);
+}
+
 function getShortServiceName(service) {
     const names = {
         'WORKERS_AI': 'Cloudflare',
@@ -2273,6 +2275,30 @@ async function handleAdmin(auth, payload, env, monolith) {
     }
 
     const action = payload.action;
+
+    // === УСТАНОВИТЬ АКТИВНУЮ МОДЕЛЬ (KV — для всех юзеров) ===
+    if (action === 'set_model') {
+        const serviceType = payload.service_type; // e.g. 'FREE_TO_T2I', 'TEXT_TO_IMAGE', etc.
+        const modelKey = payload.model_key;       // e.g. 'FREE_TO_T2I_BOTHUB'
+        if (!serviceType || !modelKey) {
+            return formatResponse(false, 'Укажите service_type и model_key');
+        }
+        const { AI_MODEL_MENU_CONFIG } = monolith;
+        const menuConfig = AI_MODEL_MENU_CONFIG[serviceType];
+        if (!menuConfig || !menuConfig.kvKey) {
+            return formatResponse(false, 'Неизвестный тип сервиса: ' + serviceType);
+        }
+        if (!env.LAST_PHOTO_STORAGE) {
+            return formatResponse(false, 'KV хранилище недоступно');
+        }
+        try {
+            await env.LAST_PHOTO_STORAGE.put(menuConfig.kvKey, modelKey);
+            console.log(`[Admin] Model set: ${serviceType} → ${modelKey} (KV key: ${menuConfig.kvKey})`);
+            return formatResponse(true, null, null, { type: 'admin', action: 'set_model', service_type: serviceType, model_key: modelKey, kv_key: menuConfig.kvKey });
+        } catch (e) {
+            return formatResponse(false, 'Ошибка записи модели: ' + e.message);
+        }
+    }
     
     // === УСТАНОВИТЬ БАЛАНС ===
     if (action === 'set_balance') {
