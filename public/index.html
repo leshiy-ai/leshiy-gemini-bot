@@ -2247,7 +2247,7 @@
             if (!group.models || group.models.length === 0) continue;
             const currentKey = selected[typeKey] || group.models[0]?.key;
             let btnsHtml = group.models.map(m =>
-                `<button class="admin-model-btn ${m.key === currentKey ? 'active' : ''}" data-type="${typeKey}" data-key="${m.key}" onclick="adminSelectModel(this)">${m.name || m.key}${m.isFree ? ' &#127381;' : ''}${m.cost ? ' ' + m.cost + '\u00A2' : ''}</button>`
+                `<button class="admin-model-btn ${m.key === currentKey ? 'active' : ''}" data-type="${typeKey}" data-key="${m.key}" onclick="adminSelectModel(this)">${m.name || m.key}${m.isFree ? ' 🆓' : ''}${m.cost ? ' ' + m.cost + '\u00A2' : ''}</button>`
             ).join('');
             modelsSectionsHtml += `<div class="admin-section"><div class="admin-section-title">${group.label}</div><div class="admin-model-btns">${btnsHtml}</div></div>`;
         }
