@@ -150,6 +150,44 @@ body {
 .auth-btn:hover { background: var(--accent-light); border-color: var(--accent-hover); color: var(--accent-hover); }
 .auth-btn.logged-in { border-color: var(--success); color: var(--success); }
 
+/* ===== VK MINI APP ACTION BUTTONS (⟳ / ✕) ===== */
+.vk-action-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    background: transparent;
+    color: rgba(129, 140, 153, 0.5);
+    font-size: 16px;
+    border-radius: 50%;
+    transition: background 0.15s, color 0.15s;
+}
+.vk-action-btn:active {
+    background: rgba(0,0,0,0.08);
+    color: rgba(129, 140, 153, 0.8);
+}
+.vk-close-btn {
+    color: rgba(129, 140, 153, 0.4);
+}
+.vk-reloading {
+    animation: vk-spin 0.6s linear infinite;
+}
+@keyframes vk-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+@media screen and (max-width: 600px) {
+    .vk-action-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 18px;
+    }
+}
+
 /* ===== MODE TABS ===== */
 .mode-tabs {
     display: flex;

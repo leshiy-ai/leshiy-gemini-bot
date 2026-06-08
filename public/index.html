@@ -12,8 +12,18 @@
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
     <!-- 🔑 Определяем платформу ВКонтакте ДО загрузки страницы -->
     <script>
-        window.IS_VK = !!(window.vkBridge || new URLSearchParams(window.location.search).get('vk_user_id') || new URLSearchParams(window.location.search).get('vk_platform'));
-        window.IS_VK_MOBILE = window.IS_VK && /Android|iPhone|iPad/i.test(navigator.userAgent);
+        (function() {
+            var _p = new URLSearchParams(window.location.search);
+            var _vkUid = _p.get('vk_user_id');
+            var _vkPlatform = _p.get('vk_platform') || '';
+            window.IS_VK = !!(window.vkBridge || _vkUid || _vkPlatform);
+            // 🔑 VK Mobile: определяем по vk_platform (надёжнее чем User-Agent)
+            // mobile_android, mobile_iphone, mobile_ipad, mobile_android_messenger, mobile_iphone_messenger
+            var _mobilePlatforms = ['mobile_android','mobile_iphone','mobile_ipad','mobile_android_messenger','mobile_iphone_messenger'];
+            window.IS_VK_MOBILE = window.IS_VK && (_mobilePlatforms.indexOf(_vkPlatform) !== -1);
+            // Для отладки
+            console.log('[Platform] IS_VK=' + window.IS_VK + ' IS_VK_MOBILE=' + window.IS_VK_MOBILE + ' vk_platform=' + _vkPlatform);
+        })();
     </script>
     <!-- Telegram WebApp SDK — локальная копия, загружаем только если НЕ в VK -->
     <script>
@@ -47,6 +57,11 @@
                     <span class="amount" id="creditsAmount">--</span>&#162;
                 </div>
                 <button class="auth-btn" id="authBtn" onclick="handleAuthBtnClick()">Войти</button>
+                <!-- 🔑 VK Mini App: кнопки обновить/закрыть в хедере (как в Хранилке) -->
+                <div id="vkHeaderActions" style="display:none;gap:6px;align-items:center;margin-left:4px">
+                    <div class="vk-action-btn" id="vkReloadBtn" onclick="vkUiReload()" title="Обновить"><b>&#10227;</b></div>
+                    <div class="vk-action-btn vk-close-btn" onclick="vkCloseApp()" title="Закрыть"><b>&#10005;</b></div>
+                </div>
             </div>
         </div>
 
@@ -618,9 +633,17 @@
         <div class="dialog" style="max-width:440px">
             <h3>&#9733; Купить кредиты</h3>
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Кредиты — цифровая ценность для оплаты генерации ИИ-контента (изображений, видео, аудио). 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
-            <!-- 🔑 п. 5.4.2: Информация о цифровых ценностях -->
+            <!-- 🔑 п. 5.4.2: Информация о цифровых ценностях (обязательно для VK) -->
             <div id="vkDigitalGoodsInfo" style="display:none;font-size:11px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px;line-height:1.4">
-                <b>О цифровых ценностях:</b> Кредиты являются невозвратной цифровой ценностью. Срок действия — бессрочно. Приобретённые кредиты привязаны к вашему аккаунту и не подлежат передаче. Для покупок доступен только одобренный способ оплаты (VK Pay).
+                <b>О цифровых ценностях:</b> Кредиты являются невозвратной цифровой ценностью. Срок действия — бессрочно. Приобретённые кредиты привязаны к вашему аккаунту и не подлежат передаче.<br>
+                <b>Способ оплаты:</b> VK Pay — одобренный способ оплаты на платформе ВКонтакте.<br>
+                <b>Продавец:</b> ИП Огреньцев А.С., ИНН 667803579419.<br>
+                <b>Поддержка:</b> <a href="https://vk.com/leshiy_ai" target="_blank" style="color:var(--accent)">vk.com/leshiy_ai</a><br>
+                <b>Возврат:</b> Цифровые ценности возврату не подлежат после их зачисления на баланс.
+            </div>
+            <!-- 🔑 VK Mobile: уведомление об ограничении оплаты -->
+            <div id="vkMobilePayNotice" style="display:none;font-size:12px;color:var(--warning);padding:8px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:var(--radius-sm);margin-bottom:10px;line-height:1.4">
+                Пополнение баланса доступно только в веб-версии ВКонтакте (vk.ru или m.vk.ru). Оплата цифровых товаров в мобильных приложениях VK не предусмотрена.
             </div>
 
             <!-- Способ оплаты -->
@@ -646,6 +669,14 @@
                     }
                     var _dgi = document.getElementById('vkDigitalGoodsInfo');
                     if (_dgi) _dgi.style.display = 'block';
+                    // 🔑 VK Mobile: показываем уведомление об ограничении оплаты
+                    if (window.IS_VK_MOBILE) {
+                        var _mpn = document.getElementById('vkMobilePayNotice');
+                        if (_mpn) _mpn.style.display = 'block';
+                    }
+                    // 🔑 В VK-версии: заменяем @Leshiyalex на ссылку на VK-сообщество
+                    var _aci = document.getElementById('adminContactInfo');
+                    if (_aci) _aci.innerHTML = '<a href="https://vk.com/leshiy_ai" target="_blank" style="color:var(--accent)">vk.com/leshiy_ai</a>';
                 }
             </script>
 
@@ -690,8 +721,8 @@
                         </div>
                         <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
                     </a>
-                    <div style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px">
-                        Кредиты зачисляются администратором вручную после подтверждения оплаты. После оплаты сообщите ваш ID администратору (@Leshiyalex).
+                    <div id="otherPaymentsAdminNote" style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px">
+                        Кредиты зачисляются администратором вручную после подтверждения оплаты. После оплаты сообщите ваш ID администратору (<span id="adminContactInfo">@Leshiyalex</span>).
                     </div>
                 </div>
 
@@ -726,7 +757,7 @@
                 </div>
             </div>
             <script>
-                // 🔑 В VK-версии скрываем кнопку Telegram-авторизации
+                // 🔑 В VK-версии скрываем кнопку Telegram-авторизации и стороннюю авторизацию
                 if (window.IS_VK) {
                     var _tgAuth = document.getElementById('tgAuthContainer');
                     if (_tgAuth) _tgAuth.style.display = 'none';
@@ -7675,11 +7706,32 @@
     }
 
     function openPurchaseDialog() {
-        // 🔑 По правилам VK (п. 5.4.1) — на мобильных клиентах iOS/Android оплаты быть не должно
+        // 🔑 По правилам VK (п. 5.4.1) — на мобильных клиентах iOS/Android оплата недоступна
+        // Показываем диалог с информацией вместо покупки
         if (IS_VK_MOBILE) {
-            showToast('Пополнение баланса доступно в веб-версии ВКонтакте (vk.ru)', 'info');
+            // Открываем диалог, но скрываем пакеты оплаты и кнопку "Оплатить"
+            renderTopupPackages();
+            document.getElementById('purchaseDialog').classList.add('open');
+            // Скрываем секции оплаты
+            var _topupSection = document.getElementById('topupPackagesSection');
+            var _payBtn = document.getElementById('topupPayBtn');
+            var _payMethodInfo = document.getElementById('paymentMethodInfo');
+            var _payMethodSelector = document.getElementById('paymentMethodSelector');
+            if (_topupSection) _topupSection.style.display = 'none';
+            if (_payBtn) _payBtn.style.display = 'none';
+            if (_payMethodInfo) _payMethodInfo.style.display = 'none';
+            if (_payMethodSelector) _payMethodSelector.style.display = 'none';
             return;
         }
+        // Для VK desktop — показываем полную версию с VK Pay
+        var _topupSection = document.getElementById('topupPackagesSection');
+        var _payBtn = document.getElementById('topupPayBtn');
+        var _payMethodInfo = document.getElementById('paymentMethodInfo');
+        var _payMethodSelector = document.getElementById('paymentMethodSelector');
+        if (_topupSection) _topupSection.style.display = '';
+        if (_payBtn) _payBtn.style.display = '';
+        if (_payMethodInfo) _payMethodInfo.style.display = '';
+        if (_payMethodSelector) _payMethodSelector.style.display = '';
         renderTopupPackages();
         document.getElementById('purchaseDialog').classList.add('open');
     }
@@ -7776,7 +7828,7 @@
                 } else {
                     // Не в VK — предлагаем альтернативу
                     if (IS_VK) {
-                        showToast('Оплата доступна только через VK Pay', 'info');
+                        showToast('Оплата доступна только в веб-версии ВКонтакте (vk.ru)', 'info');
                     } else {
                         showToast('Для оплаты из браузера используйте Telegram Stars', 'info');
                     }
@@ -7852,10 +7904,35 @@
     }
 
     function openAuthDialog() {
-        // 🔑 В VK-версии скрываем кнопку Telegram-авторизации (ещё раз, на всякий случай)
+        // 🔑 В VK-версии: скрываем кнопку Telegram, инициируем VK-авторизацию напрямую
         if (IS_VK) {
             var tgAuthC = document.getElementById('tgAuthContainer');
             if (tgAuthC) tgAuthC.style.display = 'none';
+            // Пробуем автоавторизацию через VK Bridge
+            if (window.vkBridge) {
+                vkBridge.send('VKWebAppGetUserInfo').then(function(userInfo) {
+                    if (userInfo && userInfo.id) {
+                        var realName = [userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ') || 'VK User';
+                        var realPhoto = userInfo.photo_100 || userInfo.photo_200 || userInfo.photo || null;
+                        applyAuthGlobal({
+                            id: String(userInfo.id),
+                            name: realName,
+                            provider: 'vk',
+                            hash: null,
+                            photo: realPhoto
+                        }, false);
+                        showToast('Добро пожаловать, ' + realName + '!', 'success');
+                    } else {
+                        // Не удалось получить данные — показываем диалог с VK-кнопкой
+                        document.getElementById('authDialog').classList.add('open');
+                    }
+                }).catch(function(err) {
+                    console.log('VKWebAppGetUserInfo error in openAuthDialog:', err);
+                    // Показываем диалог с VK-кнопкой как фоллбэк
+                    document.getElementById('authDialog').classList.add('open');
+                });
+                return; // Не показываем диалог — ждём результат VK Bridge
+            }
         }
         document.getElementById('authDialog').classList.add('open');
     }
@@ -7868,6 +7945,12 @@
         const profileBuyBtn = document.getElementById('profileBuyBtn');
         if (profileBuyBtn) {
             profileBuyBtn.style.display = IS_VK_MOBILE ? 'none' : '';
+        }
+        // 🔑 VK Mobile: скрываем кликабельность баланса в хедере
+        const creditsDisplay = document.getElementById('creditsDisplay');
+        if (creditsDisplay) {
+            creditsDisplay.style.cursor = IS_VK_MOBILE ? 'default' : 'pointer';
+            creditsDisplay.onclick = IS_VK_MOBILE ? null : function() { openPurchaseDialog(); };
         }
 
         // Показываем диалог профиля с кнопкой выхода
@@ -9648,18 +9731,37 @@
     })();
     </script>
 
-    <!-- 🔑 VK MINI APP: Нижняя панель с кнопками Обновить / Закрыть -->
-    <div id="vkBottomBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;padding:6px 12px;padding-bottom:max(6px, env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--border);gap:8px;justify-content:center;align-items:center;">
-        <button onclick="location.reload()" style="flex:1;max-width:160px;padding:8px 0;border-radius:10px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-size:13px;font-weight:500;cursor:pointer;">🔄 Обновить</button>
-        <button onclick="window.vkBridge&&vkBridge.send('VKWebAppClose')" style="flex:1;max-width:160px;padding:8px 0;border-radius:10px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-size:13px;font-weight:500;cursor:pointer;">✕ Закрыть</button>
-    </div>
+    <!-- 🔑 VK MINI APP: показываем кнопки ⟳/✕ в хедере, убираем нижнюю панель -->
     <script>
         if (window.IS_VK) {
-            var _vkBar = document.getElementById('vkBottomBar');
-            if (_vkBar) {
-                _vkBar.style.display = 'flex';
-                // Добавляем отступ внизу чтобы контент не перекрывался
-                document.querySelector('.app').style.paddingBottom = '56px';
+            var _vkHA = document.getElementById('vkHeaderActions');
+            if (_vkHA) _vkHA.style.display = 'flex';
+        }
+        // 🔑 VK Mobile: отключаем клик на баланс (оплата недоступна на мобильных клиентах)
+        if (window.IS_VK_MOBILE) {
+            var _cd = document.getElementById('creditsDisplay');
+            if (_cd) {
+                _cd.style.cursor = 'default';
+                _cd.onclick = null;
+                _cd.title = 'Баланс';
+            }
+        }
+
+        // 🔑 VK: кнопка обновить
+        function vkUiReload() {
+            var icon = document.getElementById('vkReloadBtn');
+            if (icon) icon.classList.add('vk-reloading');
+            location.reload();
+        }
+
+        // 🔑 VK: кнопка закрыть
+        function vkCloseApp() {
+            if (typeof Android !== 'undefined' && typeof Android.closeApp === 'function') {
+                Android.closeApp();
+            } else if (typeof vkBridge !== 'undefined') {
+                vkBridge.send('VKWebAppClose', { status: 'success' });
+            } else {
+                window.close();
             }
         }
     </script>
