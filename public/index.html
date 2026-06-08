@@ -10,8 +10,19 @@
 
     <!-- VK Bridge SDK — нужен для авторизации и оплаты внутри VK Mini App -->
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
-    <!-- Telegram WebApp SDK — локальная копия, работает даже в РФ (telegram.org заблокирован) -->
-    <script src="/telegram-web-app.js"></script>
+    <!-- 🔑 Определяем платформу ВКонтакте ДО загрузки страницы -->
+    <script>
+        window.IS_VK = !!(window.vkBridge || new URLSearchParams(window.location.search).get('vk_user_id') || new URLSearchParams(window.location.search).get('vk_platform'));
+        window.IS_VK_MOBILE = window.IS_VK && /Android|iPhone|iPad/i.test(navigator.userAgent);
+    </script>
+    <!-- Telegram WebApp SDK — локальная копия, загружаем только если НЕ в VK -->
+    <script>
+        if (!window.IS_VK) {
+            var _tgScript = document.createElement('script');
+            _tgScript.src = '/telegram-web-app.js';
+            document.head.appendChild(_tgScript);
+        }
+    </script>
 
     <link rel="stylesheet" href="style.css">
 </head>
@@ -606,7 +617,11 @@
     <div class="dialog-overlay" id="purchaseDialog">
         <div class="dialog" style="max-width:440px">
             <h3>&#9733; Купить кредиты</h3>
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Кредиты нужны для генерации медиа. 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Кредиты — цифровая ценность для оплаты генерации ИИ-контента (изображений, видео, аудио). 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
+            <!-- 🔑 п. 5.4.2: Информация о цифровых ценностях -->
+            <div id="vkDigitalGoodsInfo" style="display:none;font-size:11px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px;line-height:1.4">
+                <b>О цифровых ценностях:</b> Кредиты являются невозвратной цифровой ценностью. Срок действия — бессрочно. Приобретённые кредиты привязаны к вашему аккаунту и не подлежат передаче. Для покупок доступен только одобренный способ оплаты (VK Pay).
+            </div>
 
             <!-- Способ оплаты -->
             <div style="margin-bottom:14px">
@@ -617,6 +632,22 @@
                     <button class="size-option" data-method="other" onclick="selectPaymentMethod('other',this)">&#128176; Другие платежи</button>
                 </div>
             </div>
+            <script>
+                // 🔑 В VK-версии: показываем только VK Pay + инфо о цифровых ценностях
+                if (window.IS_VK) {
+                    var _pms = document.getElementById('paymentMethodSelector');
+                    if (_pms) {
+                        var _tgBtn = _pms.querySelector('[data-method="telegram"]');
+                        var _otherBtn = _pms.querySelector('[data-method="other"]');
+                        var _vkBtn = _pms.querySelector('[data-method="vk"]');
+                        if (_tgBtn) _tgBtn.style.display = 'none';
+                        if (_otherBtn) _otherBtn.style.display = 'none';
+                        if (_vkBtn) { _vkBtn.classList.add('active'); _vkBtn.click(); }
+                    }
+                    var _dgi = document.getElementById('vkDigitalGoodsInfo');
+                    if (_dgi) _dgi.style.display = 'block';
+                }
+            </script>
 
             <!-- Контент -->
             <div id="purchaseDialogContent" style="flex:1;overflow-y:auto;min-height:0">
@@ -666,7 +697,7 @@
 
                 <!-- Инфо о выбранном методе -->
                 <div id="paymentMethodInfo" style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:12px">
-                    &#9733; Оплата через Telegram Stars — мгновенное зачисление. Нажмите «Оплатить» и откроется ссылка на оплату в Telegram.
+                    &#9733; Выберите способ оплаты выше
                 </div>
             </div>
 
@@ -694,6 +725,15 @@
                     </button>
                 </div>
             </div>
+            <script>
+                // 🔑 В VK-версии скрываем кнопку Telegram-авторизации
+                if (window.IS_VK) {
+                    var _tgAuth = document.getElementById('tgAuthContainer');
+                    if (_tgAuth) _tgAuth.style.display = 'none';
+                    var _vkBtn = document.querySelector('#vkAuthContainer .auth-provider-btn');
+                    if (_vkBtn) _vkBtn.textContent = 'Войти через VK ID';
+                }
+            </script>
             <div class="dialog-actions" style="margin-top:16px">
                 <button class="btn-secondary" onclick="closeAuthDialog()">Отмена</button>
             </div>
@@ -722,7 +762,7 @@
                 <button class="btn-secondary" onclick="closeProfileDialog();openAdminDialog()" style="width:100%;border-color:var(--warning);color:var(--warning)">&#128081; Админ-панель</button>
             </div>
             <div class="dialog-actions" style="flex-direction:column;gap:8px">
-                <button class="btn-primary" onclick="openPurchaseDialog();closeProfileDialog()" style="width:100%">&#9733; Купить кредиты</button>
+                <button class="btn-primary" id="profileBuyBtn" onclick="openPurchaseDialog();closeProfileDialog()" style="width:100%">&#9733; Купить кредиты</button>
                 <button class="btn-secondary" onclick="doLogout()" style="width:100%;color:var(--danger);border-color:rgba(239,68,68,0.3)">&#128682; Выйти</button>
                 <button class="btn-secondary" onclick="closeProfileDialog()" style="width:100%">Закрыть</button>
             </div>
@@ -809,6 +849,10 @@
     let isProcessing = false;
     let selectedPlan = 'base'; // default package id
     let user = null; // { id, name, provider, hash, photo }
+
+    // Платформа ВКонтакте (определена в <head>)
+    const IS_VK = window.IS_VK;
+    const IS_VK_MOBILE = window.IS_VK_MOBILE;
     // Геттер для доступа из инлайн-скриптов (TG SDK onload)
     Object.defineProperty(window, 'user', { get: () => user, configurable: true });
     let chatHistory = [];
@@ -1955,7 +1999,7 @@
         user = u;
         localStorage.setItem('gemini_user', JSON.stringify(user));
         localStorage.setItem('vk_user_id', String(user.id));
-        localStorage.setItem('auth_provider', user.provider === 'vk' ? 'VK' : 'Telegram');
+        localStorage.setItem('auth_provider', user.provider === 'vk' ? 'VK' : (IS_VK ? 'VK' : 'Telegram'));
         if (user.name && user.name !== 'VK User' && user.name !== 'TG User') {
             localStorage.setItem('vk_user_name', user.name);
         }
@@ -1965,7 +2009,7 @@
             localStorage.setItem('tg_init_data', user.initData);
         }
 
-        authBtn.textContent = user.name || (user.provider === 'vk' ? 'VK' : 'TG');
+        authBtn.textContent = user.name || (user.provider === 'vk' ? 'VK' : (IS_VK ? 'VK' : 'TG'));
         authBtn.classList.add('logged-in');
         if (cleanURL) {
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -2069,6 +2113,7 @@
         // СЦЕНАРИЙ 0-B: VK Mini App — vk_user_id из URL (VK добавляет в iframe URL)
         // Если мы в VK-контексте (vkBridge), НЕ авторизуем сразу с "VK User" —
         // ждём VKWebAppGetUserInfo для получения реального имени (асинхронно, в VK MINI APP INIT ниже)
+        // 🔑 Но если VK Bridge недоступен — авторизуем сразу
         if (vkUserId && !window.vkBridge) {
             const name = params.get('vk_user_name') || 'VK User';
             const photo = params.get('vk_user_photo') || null;
@@ -2080,6 +2125,12 @@
             const name = params.get('vk_user_name');
             const photo = params.get('vk_user_photo') || null;
             applyAuthGlobal({ id: vkUserId, name: name, provider: 'vk', hash: null, photo: photo }, true);
+            return;
+        }
+        // 🔑 VK Bridge есть, но vk_user_name ещё не пришёл — автовход с placeholder
+        // VKWebAppGetUserInfo обновит имя асинхронно (в VK MINI APP INIT)
+        if (vkUserId && window.vkBridge) {
+            applyAuthGlobal({ id: vkUserId, name: 'VK User', provider: 'vk', hash: null, photo: null }, true);
             return;
         }
 
@@ -7551,7 +7602,7 @@
         { id: 'unlim',   stars: 750, credits: 400, rub: 2000,  label: 'Анлим (400\u00A2)',          desc: '400\u00A2 \u2248 2000\u20BD + бонус' },
     ];
 
-    let selectedPaymentMethod = 'telegram'; // 'telegram' | 'vk' | 'other'
+    let selectedPaymentMethod = IS_VK ? 'vk' : 'telegram'; // 'telegram' | 'vk' | 'other'
     let pendingPaymentPayload = null; // Для polling проверки оплаты
 
     function renderTopupPackages() {
@@ -7624,6 +7675,11 @@
     }
 
     function openPurchaseDialog() {
+        // 🔑 По правилам VK (п. 5.4.1) — на мобильных клиентах iOS/Android оплаты быть не должно
+        if (IS_VK_MOBILE) {
+            showToast('Пополнение баланса доступно в веб-версии ВКонтакте (vk.ru)', 'info');
+            return;
+        }
         renderTopupPackages();
         document.getElementById('purchaseDialog').classList.add('open');
     }
@@ -7683,7 +7739,7 @@
             if (selectedPaymentMethod === 'telegram' && data.type === 'topup_link') {
                 // Открываем ссылку на оплату в Telegram
                 pendingPaymentPayload = data.payload;
-                showToast('Открываю Telegram для оплаты...', 'info');
+                showToast('Открываю страницу оплаты...', 'info');
 
                 // Открываем ссылку в новом окне
                 window.open(data.url, '_blank');
@@ -7710,12 +7766,20 @@
                         startBalancePolling(pkg.credits);
                     } catch (vkErr) {
                         console.error('VK Bridge pay error:', vkErr);
-                        // Фоллбэк — показываем подсказку оплатить через Telegram Stars
-                        showToast('VK Pay недоступен. Пополните через Telegram Stars.', 'info');
+                        // Фоллбэк — не упоминаем Telegram в VK-версии
+                        if (IS_VK) {
+                            showToast('VK Pay временно недоступен. Попробуйте позже.', 'info');
+                        } else {
+                            showToast('VK Pay недоступен. Попробуйте другой способ оплаты.', 'info');
+                        }
                     }
                 } else {
-                    // Не в VK — предлагаем альтернативу: Telegram Stars или подсказка
-                    showToast('Для оплаты из браузера используйте Telegram Stars', 'info');
+                    // Не в VK — предлагаем альтернативу
+                    if (IS_VK) {
+                        showToast('Оплата доступна только через VK Pay', 'info');
+                    } else {
+                        showToast('Для оплаты из браузера используйте Telegram Stars', 'info');
+                    }
                 }
             } else {
                 showToast('Неизвестный формат ответа', 'error');
@@ -7788,12 +7852,23 @@
     }
 
     function openAuthDialog() {
+        // 🔑 В VK-версии скрываем кнопку Telegram-авторизации (ещё раз, на всякий случай)
+        if (IS_VK) {
+            var tgAuthC = document.getElementById('tgAuthContainer');
+            if (tgAuthC) tgAuthC.style.display = 'none';
+        }
         document.getElementById('authDialog').classList.add('open');
     }
 
     function showProfileDialog() {
         // Refresh credit history from server before showing
         loadServerData();
+
+        // 🔑 VK Mobile: скрываем кнопку покупки кредитов (п. 5.4.1 правил VK)
+        const profileBuyBtn = document.getElementById('profileBuyBtn');
+        if (profileBuyBtn) {
+            profileBuyBtn.style.display = IS_VK_MOBILE ? 'none' : '';
+        }
 
         // Показываем диалог профиля с кнопкой выхода
         const profileDialog = document.getElementById('profileDialog');
@@ -7806,8 +7881,11 @@
 
         if (profileName) profileName.textContent = user.name || 'Пользователь';
         if (profileProvider) {
-            const providerNames = { vk: 'ВКонтакте', tg: 'Telegram' };
-            profileProvider.textContent = providerNames[user.provider] || user.provider;
+            // 🔑 В VK-версии не показываем "Telegram" как провайдера
+            const providerNames = IS_VK
+                ? { vk: 'ВКонтакте' }
+                : { vk: 'ВКонтакте', tg: 'Telegram' };
+            profileProvider.textContent = providerNames[user.provider] || (IS_VK ? 'ВКонтакте' : user.provider);
         }
         if (document.getElementById('profileUserId') && user && user.id) {
             document.getElementById('profileUserId').innerHTML = '🆔 Ваш ID: ' + user.id + ' <span style="font-size:10px;opacity:0.5">&#128203;</span>';
@@ -7987,10 +8065,8 @@
     }
 
     // ---- Telegram WebApp Init ----
-    // telegram-web-app.js загружен синхронно (локальная копия).
-    // В TG Mini App — window.Telegram.WebApp.initData будет заполнен.
-    // В обычном браузере — initData пустой, авторизация через виджет.
-    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+    // 🔑 Пропускаем в VK-версии — нет TG SDK
+    if (!IS_VK && window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
         console.log('[Auth] TG WebApp detected. initData:', !!window.Telegram.WebApp.initData, 'user:', !!window.Telegram.WebApp.initDataUnsafe?.user);
 
         // Вызываем ready() только если метод существует (SDK загружен)
@@ -9570,6 +9646,22 @@
             }
         }, { passive: true });
     })();
+    </script>
+
+    <!-- 🔑 VK MINI APP: Нижняя панель с кнопками Обновить / Закрыть -->
+    <div id="vkBottomBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;padding:6px 12px;padding-bottom:max(6px, env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--border);gap:8px;justify-content:center;align-items:center;">
+        <button onclick="location.reload()" style="flex:1;max-width:160px;padding:8px 0;border-radius:10px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-size:13px;font-weight:500;cursor:pointer;">🔄 Обновить</button>
+        <button onclick="window.vkBridge&&vkBridge.send('VKWebAppClose')" style="flex:1;max-width:160px;padding:8px 0;border-radius:10px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-size:13px;font-weight:500;cursor:pointer;">✕ Закрыть</button>
+    </div>
+    <script>
+        if (window.IS_VK) {
+            var _vkBar = document.getElementById('vkBottomBar');
+            if (_vkBar) {
+                _vkBar.style.display = 'flex';
+                // Добавляем отступ внизу чтобы контент не перекрывался
+                document.querySelector('.app').style.paddingBottom = '56px';
+            }
+        }
     </script>
 </body>
 </html>
