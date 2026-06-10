@@ -1008,6 +1008,7 @@ body {
     max-width: 440px;
     width: 100%;
     max-height: 90vh;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     animation: fadeIn 0.2s ease;
@@ -1225,7 +1226,7 @@ body {
     .vc-rec-label { font-size: 13px; }
     .input-hint { font-size: 13px; }
 
-    .dialog { padding: 20px 16px; max-width: 420px; max-height: 88vh; }
+    .dialog { padding: 20px 16px; max-width: 420px; }
     .dialog p { font-size: 15px; }
     .dialog h3 { font-size: 18px; }
     
@@ -1918,16 +1919,14 @@ body {
     .dialog.purchase-dialog {
         max-height: 90vh;
         padding: 16px 14px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
     .dialog.purchase-dialog h3 { font-size: 16px; margin-bottom: 10px; }
     .dialog.purchase-dialog p { font-size: 13px; margin-bottom: 8px; }
     .dialog.purchase-dialog .plan-card { padding: 10px; }
     .dialog.purchase-dialog .size-selector { gap: 4px; flex-wrap: wrap; }
     .dialog.purchase-dialog .size-option { padding: 5px 10px; font-size: 12px; }
-    .dialog.purchase-dialog #purchaseDialogContent {
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-    }
     .other-pay-btn { padding: 10px !important; }
     .other-pay-btn > span:first-child { font-size: 18px !important; }
     /* VK Digital Goods Info на мобиле компактнее */
