@@ -61,6 +61,7 @@ body {
     gap: 10px;
     z-index: 10;
     flex-shrink: 0;
+    position: relative; /* 🔑 для VK кнопок ⟳/✕ */
 }
 
 .header-left {
@@ -150,42 +151,29 @@ body {
 .auth-btn:hover { background: var(--accent-light); border-color: var(--accent-hover); color: var(--accent-hover); }
 .auth-btn.logged-in { border-color: var(--success); color: var(--success); }
 
-/* ===== VK MINI APP ACTION BUTTONS (⟳ / ✕) ===== */
+/* ===== VK MINI APP ACTION BUTTONS (⟳ / ✕) — как в Хранилке ===== */
 .vk-action-btn {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
     background: transparent;
-    color: rgba(129, 140, 153, 0.5);
-    font-size: 16px;
-    border-radius: 50%;
-    transition: background 0.15s, color 0.15s;
-}
-.vk-action-btn:active {
-    background: rgba(0,0,0,0.08);
-    color: rgba(129, 140, 153, 0.8);
-}
-.vk-close-btn {
     color: rgba(129, 140, 153, 0.4);
+    font-size: 20px;
 }
-.vk-reloading {
-    animation: vk-spin 0.6s linear infinite;
-}
+.vk-action-btn:active { background: rgba(0,0,0,0.05); }
+.vk-reloading { animation: vk-spin 0.6s linear infinite; }
 @keyframes vk-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
+/* 🔑 Мобильные стили — как в Хранилке: width:33px; height:12px для размещения под нативными кнопками VK */
 @media screen and (max-width: 600px) {
-    .vk-action-btn {
-        width: 28px;
-        height: 28px;
-        font-size: 18px;
-    }
+    .vk-action-btn { width: 33px; height: 12px; }
 }
 
 /* ===== MODE TABS ===== */
@@ -202,7 +190,7 @@ body {
 .mode-tabs::-webkit-scrollbar { display: none; } /* Chrome/Safari */
 
 .mode-tab {
-    padding: 8px 14px;
+    padding: 8px 12px;
     border-radius: 24px;
     border: 1px solid var(--border);
     background: transparent;
@@ -213,8 +201,9 @@ body {
     white-space: nowrap;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     font-weight: 500;
+    line-height: 1.2;
 }
 
 .mode-tab:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-light); }
@@ -1018,6 +1007,9 @@ body {
     padding: 28px;
     max-width: 440px;
     width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
     animation: fadeIn 0.2s ease;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     scrollbar-width: thin;
@@ -1185,13 +1177,13 @@ body {
 @media (max-width: 768px) {
     .header { padding: 10px 14px; }
     .header-logo { font-size: 22px; }
-    .header-badge { font-size: 12px; padding: 3px 8px; }
+    .header-badge { display: none; } /* Скрыт на мобиле чтобы всё влезло */
     .credits-display { font-size: 14px; padding: 7px 14px; }
     .auth-btn { font-size: 13px; padding: 7px 14px; }
-    
-    .mode-tabs { padding: 7px 10px; gap: 5px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 9px 16px; font-size: 14px; min-height: 44px; }
-    .mode-tab .mode-emoji { font-size: 16px; }
+
+    .mode-tabs { padding: 6px 8px; gap: 3px; -webkit-overflow-scrolling: touch; }
+    .mode-tab { padding: 6px 10px; font-size: 13px; min-height: 40px; border-width: 1px; }
+    .mode-tab .mode-emoji { font-size: 14px; }
     
     .sub-header { 
         padding: 8px 10px; 
@@ -1233,7 +1225,7 @@ body {
     .vc-rec-label { font-size: 13px; }
     .input-hint { font-size: 13px; }
 
-    .dialog { padding: 24px; max-width: 420px; }
+    .dialog { padding: 20px 16px; max-width: 420px; max-height: 88vh; }
     .dialog p { font-size: 15px; }
     .dialog h3 { font-size: 18px; }
     
@@ -1255,13 +1247,13 @@ body {
 @media (max-width: 400px) {
     .header { padding: 8px 10px; gap: 6px; }
     .header-logo { font-size: 20px; }
-    .header-badge { font-size: 11px; padding: 3px 7px; }
+    .header-badge { display: none; }
     .credits-display { font-size: 13px; padding: 6px 12px; }
     .auth-btn { font-size: 12px; padding: 6px 12px; }
-    
-    .mode-tabs { padding: 6px 8px; gap: 4px; -webkit-overflow-scrolling: touch; }
-    .mode-tab { padding: 8px 12px; font-size: 13px; min-height: 42px; border-radius: 18px; }
-    .mode-tab .mode-emoji { font-size: 15px; }
+
+    .mode-tabs { padding: 5px 6px; gap: 2px; -webkit-overflow-scrolling: touch; }
+    .mode-tab { padding: 5px 8px; font-size: 12px; min-height: 36px; border-radius: 16px; border-width: 1px; }
+    .mode-tab .mode-emoji { font-size: 13px; }
     
     .sub-header { 
         padding: 6px 8px; 
@@ -1328,8 +1320,10 @@ body {
 
 /* ===== RESPONSIVE — Very small screens (iPhone SE, etc.) ===== */
 @media (max-width: 360px) {
-    .mode-tab { padding: 7px 10px; font-size: 14px; min-height: 40px; }
-    .mode-tab .mode-emoji { font-size: 14px; }
+    .header-badge { display: none; }
+
+    .mode-tab { padding: 5px 8px; font-size: 13px; min-height: 36px; border-width: 1px; }
+    .mode-tab .mode-emoji { font-size: 13px; }
     .sub-header { gap: 3px; padding: 5px 6px; max-height: none; overflow-y: visible; }
     .sub-option { font-size: 11px; padding: 5px 8px; min-height: 34px; }
     .sub-divider { height: 18px; }
@@ -1918,3 +1912,25 @@ body {
 .credit-history-amount { font-size: 13px; font-weight: 600; flex-shrink: 0; }
 .credit-history-amount.positive { color: var(--success); }
 .credit-history-amount.negative { color: var(--danger); }
+
+/* ===== PURCHASE DIALOG MOBILE FIX ===== */
+@media (max-width: 768px) {
+    .dialog.purchase-dialog {
+        max-height: 90vh;
+        padding: 16px 14px;
+    }
+    .dialog.purchase-dialog h3 { font-size: 16px; margin-bottom: 10px; }
+    .dialog.purchase-dialog p { font-size: 13px; margin-bottom: 8px; }
+    .dialog.purchase-dialog .plan-card { padding: 10px; }
+    .dialog.purchase-dialog .size-selector { gap: 4px; flex-wrap: wrap; }
+    .dialog.purchase-dialog .size-option { padding: 5px 10px; font-size: 12px; }
+    .dialog.purchase-dialog #purchaseDialogContent {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .other-pay-btn { padding: 10px !important; }
+    .other-pay-btn > span:first-child { font-size: 18px !important; }
+    /* VK Digital Goods Info на мобиле компактнее */
+    #vkDigitalGoodsInfo { font-size: 10px !important; padding: 6px !important; }
+    #vkMobilePayNotice { font-size: 11px !important; padding: 6px !important; }
+}

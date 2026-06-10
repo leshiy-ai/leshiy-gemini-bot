@@ -16,7 +16,9 @@
             var _p = new URLSearchParams(window.location.search);
             var _vkUid = _p.get('vk_user_id');
             var _vkPlatform = _p.get('vk_platform') || '';
-            window.IS_VK = !!(window.vkBridge || _vkUid || _vkPlatform);
+            // 🔑 Мы в VK только если в URL есть vk_user_id или vk_platform
+            // Наличие window.vkBridge НЕ означает что мы внутри VK — SDK загружается всегда
+            window.IS_VK = !!(_vkUid || _vkPlatform);
             // 🔑 VK Mobile: определяем по vk_platform (надёжнее чем User-Agent)
             // mobile_android, mobile_iphone, mobile_ipad, mobile_android_messenger, mobile_iphone_messenger
             var _mobilePlatforms = ['mobile_android','mobile_iphone','mobile_ipad','mobile_android_messenger','mobile_iphone_messenger'];
@@ -49,19 +51,20 @@
         <div class="header">
             <div class="header-left">
                 <div class="header-logo">Pixel</div>
+                <div class="header-badge" id="headerBadge">Premium</div>
             </div>
             <div class="header-right">
-                <div class="credits-display" id="creditsDisplay" onclick="openPurchaseDialog()" title="Купить кредиты">
+                <div class="credits-display" id="creditsDisplay" title="Купить кредиты">
                     <span>&#9733;</span>
                     <span class="amount" id="creditsAmount">--</span>&#162;
                 </div>
                 <button class="auth-btn" id="authBtn" onclick="handleAuthBtnClick()">Войти</button>
-                <!-- 🔑 VK Mini App: кнопки обновить/закрыть в хедере (как в Хранилке) -->
-                <div id="vkHeaderActions" style="display:none;gap:6px;align-items:center;margin-left:4px">
-                    <div class="vk-action-btn" id="vkReloadBtn" onclick="vkUiReload()" title="Обновить"><b>&#10227;</b></div>
-                    <div class="vk-action-btn vk-close-btn" onclick="vkCloseApp()" title="Закрыть"><b>&#10005;</b></div>
-                </div>
             </div>
+        </div>
+        <!-- 🔑 VK Mini App: кнопки обновить/закрыть (как в Хранилке — absolute под нативными кнопками VK, вне .header чтоб не перекрывать credits/auth) -->
+        <div id="vkHeaderActions" style="display:none;position:absolute;top:9px;right:2px;z-index:999;gap:12px">
+            <div class="vk-action-btn" id="vkReloadBtn" onclick="vkUiReload()" title="Обновить"><b>⟳</b></div>
+            <div class="vk-action-btn vk-close-btn" onclick="vkCloseApp()" title="Закрыть"><b>✕</b></div>
         </div>
 
         <!-- MODE TABS -->
@@ -629,7 +632,7 @@
 
     <!-- PURCHASE DIALOG -->
     <div class="dialog-overlay" id="purchaseDialog">
-        <div class="dialog" style="max-width:440px">
+        <div class="dialog purchase-dialog" style="max-width:440px">
             <h3>&#9733; Купить кредиты</h3>
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Кредиты — цифровая ценность для оплаты генерации ИИ-контента (изображений, видео, аудио). 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
             <!-- 🔑 п. 5.4.2: Информация о цифровых ценностях (обязательно для VK) -->
@@ -883,6 +886,13 @@
     // Платформа ВКонтакте (определена в <head>)
     const IS_VK = window.IS_VK;
     const IS_VK_MOBILE = window.IS_VK_MOBILE;
+
+    // 🔑 Клик на баланс — открывает кабинет оплаты
+    document.getElementById('creditsDisplay').addEventListener('click', function(e) {
+        e.stopPropagation();
+        openPurchaseDialog();
+    });
+
     // Геттер для доступа из инлайн-скриптов (TG SDK onload)
     Object.defineProperty(window, 'user', { get: () => user, configurable: true });
     let chatHistory = [];
@@ -2044,7 +2054,12 @@
         if (cleanURL) {
             window.history.replaceState({}, document.title, window.location.pathname);
         }
-        showToast('Добро пожаловать, ' + (user.name || 'пользователь') + '!', 'success');
+        // 🔑 Не показываем тост если имя — дефолтное (VK User/TG User),
+        // в VK-версии тост покажется после VKWebAppGetUserInfo с реальным именем
+        var _defNames = ['VK User','TG User','VK','TG'];
+        if (_defNames.indexOf(user.name) === -1) {
+            showToast('Добро пожаловать, ' + user.name + '!', 'success');
+        }
         loadServerData();
         loadChatList().then(() => loadS3History());
     }
@@ -7706,12 +7721,10 @@
 
     function openPurchaseDialog() {
         // 🔑 По правилам VK (п. 5.4.1) — на мобильных клиентах iOS/Android оплата недоступна
-        // Показываем диалог с информацией вместо покупки
+        // Показываем кабинет с информацией, но без кнопок оплаты
         if (IS_VK_MOBILE) {
-            // Открываем диалог, но скрываем пакеты оплаты и кнопку "Оплатить"
             renderTopupPackages();
-            document.getElementById('purchaseDialog').classList.add('open');
-            // Скрываем секции оплаты
+            // Скрываем пакеты оплаты и кнопку "Оплатить" для VK Mobile
             var _topupSection = document.getElementById('topupPackagesSection');
             var _payBtn = document.getElementById('topupPayBtn');
             var _payMethodInfo = document.getElementById('paymentMethodInfo');
@@ -7720,9 +7733,10 @@
             if (_payBtn) _payBtn.style.display = 'none';
             if (_payMethodInfo) _payMethodInfo.style.display = 'none';
             if (_payMethodSelector) _payMethodSelector.style.display = 'none';
+            document.getElementById('purchaseDialog').classList.add('open');
             return;
         }
-        // Для VK desktop — показываем полную версию с VK Pay
+        // Для всех остальных (браузер, VK desktop) — показываем полную версию
         var _topupSection = document.getElementById('topupPackagesSection');
         var _payBtn = document.getElementById('topupPayBtn');
         var _payMethodInfo = document.getElementById('paymentMethodInfo');
@@ -7920,7 +7934,7 @@
                             hash: null,
                             photo: realPhoto
                         }, false);
-                        showToast('Добро пожаловать, ' + realName + '!', 'success');
+                        // 🔑 applyAuthGlobal сама показывает тост, не дублируем
                     } else {
                         // Не удалось получить данные — показываем диалог с VK-кнопкой
                         document.getElementById('authDialog').classList.add('open');
@@ -7944,12 +7958,6 @@
         const profileBuyBtn = document.getElementById('profileBuyBtn');
         if (profileBuyBtn) {
             profileBuyBtn.style.display = IS_VK_MOBILE ? 'none' : '';
-        }
-        // 🔑 VK Mobile: скрываем кликабельность баланса в хедере
-        const creditsDisplay = document.getElementById('creditsDisplay');
-        if (creditsDisplay) {
-            creditsDisplay.style.cursor = IS_VK_MOBILE ? 'default' : 'pointer';
-            creditsDisplay.onclick = IS_VK_MOBILE ? null : function() { openPurchaseDialog(); };
         }
 
         // Показываем диалог профиля с кнопкой выхода
@@ -8119,7 +8127,7 @@
                     const realName = [userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ') || 'VK User';
                     const realPhoto = userInfo.photo_100 || userInfo.photo_200 || userInfo.photo || null;
                     if (!user) {
-                        // Ещё не авторизован — полная авторизация
+                        // Ещё не авторизован — полная авторизация (тост покажет applyAuthGlobal только если имя не дефолтное)
                         applyAuthGlobal({
                             id: String(userInfo.id),
                             name: realName,
@@ -8127,15 +8135,23 @@
                             hash: null,
                             photo: realPhoto
                         }, false);
-                    } else if (user.provider === 'vk' && String(user.id) === String(userInfo.id) && (user.name === 'VK User' || !user.name)) {
-                        // Уже авторизован как VK User, но без имени — обновляем имя и фото
+                        // 🔑 applyAuthGlobal сама показывает тост если имя не дефолтное
+                    } else if (user.provider === 'vk' && String(user.id) === String(userInfo.id)) {
+                        // Уже авторизован — обновляем имя/фото если нужно
+                        var nameChanged = (user.name === 'VK User' || !user.name) && realName !== 'VK User';
                         user.name = realName;
                         user.photo = realPhoto;
                         localStorage.setItem('gemini_user', JSON.stringify(user));
                         localStorage.setItem('vk_user_name', realName);
                         if (realPhoto) localStorage.setItem('vk_user_photo', realPhoto);
                         authBtn.textContent = realName;
-                        showToast('Добро пожаловать, ' + realName + '!', 'success');
+                        if (nameChanged) {
+                            // 🔑 Только один тост при обновлении имени с дефолтного на реальное
+                            var _defNames = ['VK User','TG User','VK','TG'];
+                            if (_defNames.indexOf(realName) === -1) {
+                                showToast('Добро пожаловать, ' + realName + '!', 'success');
+                            }
+                        }
                     }
                 }
             }).catch(err => {
@@ -9735,15 +9751,9 @@
         if (window.IS_VK) {
             var _vkHA = document.getElementById('vkHeaderActions');
             if (_vkHA) _vkHA.style.display = 'flex';
-        }
-        // 🔑 VK Mobile: отключаем клик на баланс (оплата недоступна на мобильных клиентах)
-        if (window.IS_VK_MOBILE) {
-            var _cd = document.getElementById('creditsDisplay');
-            if (_cd) {
-                _cd.style.cursor = 'default';
-                _cd.onclick = null;
-                _cd.title = 'Баланс';
-            }
+            // 🔑 Скрываем бейдж Premium на мобиле чтобы всё влезло
+            var _hBadge = document.getElementById('headerBadge');
+            if (_hBadge && (window.IS_VK_MOBILE || window.innerWidth <= 768)) _hBadge.style.display = 'none';
         }
 
         // 🔑 VK: кнопка обновить
