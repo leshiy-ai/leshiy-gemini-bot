@@ -842,6 +842,28 @@ body {
 .size-option:hover { border-color: var(--accent); color: var(--text-primary); }
 .size-option.active { background: var(--accent); border-color: var(--accent); color: white; }
 
+/* Payment method selector (purchase dialog) — компактные кнопки */
+.pay-method-selector {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+.pay-method-btn {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+    text-align: center;
+}
+.pay-method-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.pay-method-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+
 .generate-btn {
     padding: 12px 24px;
     border-radius: var(--radius-sm);
@@ -1016,6 +1038,18 @@ body {
     scrollbar-width: thin;
     scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
 }
+/* purchase-dialog: scroll only inside content area, actions fixed at bottom */
+.dialog.purchase-dialog {
+    overflow-y: hidden;
+}
+.dialog.purchase-dialog #purchaseDialogContent {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
+}
+.dialog.purchase-dialog #purchaseDialogContent::-webkit-scrollbar { width: 4px; }
+.dialog.purchase-dialog #purchaseDialogContent::-webkit-scrollbar-track { background: transparent; }
+.dialog.purchase-dialog #purchaseDialogContent::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.3); border-radius: 2px; }
 .dialog::-webkit-scrollbar { width: 6px; }
 .dialog::-webkit-scrollbar-track { background: transparent; }
 .dialog::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.3); border-radius: 3px; }
@@ -1035,7 +1069,7 @@ body {
 }
 
 .plan-card {
-    padding: 12px;
+    padding: 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1045,9 +1079,9 @@ body {
 .plan-card:hover { border-color: var(--accent); background: var(--accent-light); }
 .plan-card.selected { border-color: var(--accent); background: var(--accent-light); }
 
-.plan-card .plan-name { font-weight: 600; font-size: 15px; }
-.plan-card .plan-price { color: var(--accent); font-size: 14px; margin-top: 4px; }
-.plan-card .plan-desc { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.plan-card .plan-name { font-weight: 600; font-size: 14px; }
+.plan-card .plan-price { color: var(--accent); font-size: 13px; margin-top: 2px; }
+.plan-card .plan-desc { color: var(--text-muted); font-size: 11px; margin-top: 1px; }
 
 .dialog-actions {
     display: flex;
@@ -1925,11 +1959,15 @@ body {
     .dialog.purchase-dialog h3 { font-size: 16px; margin-bottom: 10px; }
     .dialog.purchase-dialog p { font-size: 13px; margin-bottom: 8px; }
     .dialog.purchase-dialog .plan-card { padding: 10px; }
-    .dialog.purchase-dialog .size-selector { gap: 4px; flex-wrap: wrap; }
-    .dialog.purchase-dialog .size-option { padding: 5px 10px; font-size: 12px; }
+    .dialog.purchase-dialog .pay-method-selector { gap: 4px; flex-wrap: wrap; }
+    .dialog.purchase-dialog .pay-method-btn { padding: 5px 10px; font-size: 12px; }
+    .dialog.purchase-dialog .plan-card { padding: 8px 10px; }
+    .dialog.purchase-dialog .plan-card .plan-name { font-size: 13px; }
+    .dialog.purchase-dialog .plan-card .plan-price { font-size: 13px; }
+    .dialog.purchase-dialog .plan-card .plan-desc { font-size: 10px; }
+    .dialog.purchase-dialog .dialog-actions { margin-top: 0; padding-top: 8px; }
+    .dialog.purchase-dialog .btn-primary,
+    .dialog.purchase-dialog .btn-secondary { padding: 9px; font-size: 13px; }
     .other-pay-btn { padding: 10px !important; }
     .other-pay-btn > span:first-child { font-size: 18px !important; }
-    /* VK Digital Goods Info на мобиле компактнее */
-    #vkDigitalGoodsInfo { font-size: 10px !important; padding: 6px !important; }
-    #vkMobilePayNotice { font-size: 11px !important; padding: 6px !important; }
 }
