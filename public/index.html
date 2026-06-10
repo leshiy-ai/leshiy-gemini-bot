@@ -626,7 +626,7 @@
                     <button class="vc-btn vc-send" onclick="vcSend()" title="Отправить">✓</button>
                 </div>
             </div>
-            <div class="input-hint" id="inputHint">Enter — отправить · 🎤 короткое — диктовка · 🎤 долгое — запись</div>
+            <div class="input-hint" id="inputHint">Enter — отправить 🎙 короткое — диктовка 🎙 долгое — запись</div>
         </div>
     </div>
 
@@ -642,10 +642,15 @@
                 <b>Поддержка:</b> <a href="https://vk.com/leshiy_ai" target="_blank" style="color:var(--accent)">vk.com/leshiy_ai</a><br>
                 <b>Возврат:</b> Цифровые ценности возврату не подлежат после их зачисления на баланс.
             </div>
-            <!-- 🔑 VK Mobile: уведомление об ограничении оплаты -->
-            <div id="vkMobilePayNotice" style="display:none;font-size:12px;color:var(--warning);padding:8px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:var(--radius-sm);margin-bottom:10px;line-height:1.4">
-                Пополнение баланса доступно только в веб-версии ВКонтакте (vk.ru или m.vk.ru). Оплата цифровых товаров в мобильных приложениях VK не предусмотрена.
-            </div>
+            <!-- VK Донаты -->
+            <a href="https://vk.com/donut/leshiy_ai" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
+                <span style="font-size:22px">&#128150;</span>
+                <div style="flex:1">
+                    <div style="font-weight:600;font-size:14px">VK Донаты</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Поддержите проект через сообщество ВКонтакте</div>
+                </div>
+                <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
+            </a>
 
             <!-- Способ оплаты -->
             <div style="margin-bottom:14px">
