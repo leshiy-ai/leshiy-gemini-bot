@@ -622,7 +622,7 @@
                     <button class="vc-btn vc-send" onclick="vcSend()" title="Отправить">✓</button>
                 </div>
             </div>
-            <div class="input-hint" id="inputHint">Enter — отправить · 🎤 короткое — диктовка · 🎤 долгое — запись</div>
+            <div class="input-hint" id="inputHint">Enter — отправить 🎤 тап — диктовка 🎤 долгое — запись</div>
         </div>
     </div>
 
@@ -645,11 +645,10 @@
 
             <!-- Способ оплаты -->
             <div style="margin-bottom:14px" id="paymentMethodSelectorWrapper">
-                <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Способ оплаты:</label>
                 <div class="size-selector" id="paymentMethodSelector">
                     <button class="size-option active" data-method="telegram" onclick="selectPaymentMethod('telegram',this)">&#9733; TG Stars</button>
                     <button class="size-option" data-method="vk" onclick="selectPaymentMethod('vk',this)">&#9670; Голоса VK</button>
-                    <button class="size-option" data-method="other" onclick="selectPaymentMethod('other',this)">&#128176; Другие платежи</button>
+                    <button class="size-option" data-method="other" onclick="selectPaymentMethod('other',this)">&#128176; Другие</button>
                 </div>
             </div>
             <script>
