@@ -230,6 +230,74 @@ module.exports.handler = async (event, context) => {
     }
 
     // ==========================================
+    // 3b. VK PAYMENT CALLBACK — обработка уведомлений от VK
+    // ==========================================
+    // VK отправляет POST на callback URL с параметрами: notification_type, item, order_id, status, sig и т.д.
+    // https://dev.vk.com/ru/api/payments/virtual-goods/vk
+    if (event.httpMethod === 'POST' && (requestPath === '/vk-payment-callback' || requestPath.endsWith('/vk-payment-callback'))) {
+        try {
+            const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : (event.body || '');
+            console.log('[VK-Payment] Callback received:', rawBody.substring(0, 500));
+
+            // Парсим application/x-www-form-urlencoded
+            const params = {};
+            rawBody.split('&').forEach(pair => {
+                const [key, ...vals] = pair.split('=');
+                params[decodeURIComponent(key)] = decodeURIComponent(vals.join('='));
+            });
+
+            const notificationType = params.notification_type;
+            console.log('[VK-Payment] notification_type:', notificationType, 'item:', params.item, 'order_id:', params.order_id);
+
+            const env = {
+                ...process.env,
+                LAST_PHOTO_STORAGE: USER_DB_ADAPTER,
+                BOT_LOGS_STORAGE: USER_DB_ADAPTER,
+                FILES_DB: FILES_DB_ADAPTER,
+                TypedValues,
+                runQuery,
+                filesDriver,
+                nodeCrypto,
+            };
+
+            // ===== get_item / get_item_test =====
+            if (notificationType === 'get_item' || notificationType === 'get_item_test') {
+                const result = await webHandler.handleVKGetItem(params, env);
+                return {
+                    statusCode: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(result)
+                };
+            }
+
+            // ===== order_status_change / order_status_change_test =====
+            if (notificationType === 'order_status_change' || notificationType === 'order_status_change_test') {
+                const result = await webHandler.handleVKOrderStatusChange(params, env);
+                return {
+                    statusCode: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(result)
+                };
+            }
+
+            // Неизвестный тип уведомления
+            console.error('[VK-Payment] Unknown notification_type:', notificationType);
+            return {
+                statusCode: 200,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: { error_code: 100, error_msg: 'Unknown notification type', critical: true } })
+            };
+        } catch (err) {
+            console.error('[VK-Payment] Callback error:', err.message, err.stack);
+            return {
+                statusCode: 200,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: { error_code: 100, error_msg: 'Internal server error', critical: true } })
+            };
+        }
+    }
+
+    // ==========================================
     // 3. WEB API — Маршрут /api для фронтенда
     // ==========================================
     // Фронтенд отправляет POST на /api с JSON { mode, auth, payload }

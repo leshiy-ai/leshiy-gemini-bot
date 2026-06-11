@@ -54,19 +54,13 @@
                 <div class="header-badge" id="headerBadge">Premium</div>
             </div>
             <div class="header-right">
+                <!-- 🔑 VK Mini App: убраны кастомные ✕/⟳ — VK предоставляет нативные кнопки закрытия и меню в хедере -->
                 <div class="credits-display" id="creditsDisplay" title="Купить кредиты">
                     <span>&#9733;</span>
                     <span class="amount" id="creditsAmount">--</span>&#162;
                 </div>
                 <button class="auth-btn" id="authBtn" onclick="handleAuthBtnClick()">Войти</button>
             </div>
-        </div>
-        <!-- 🔑 VK Mini App: прозрачные кликабельные зоны под нативными кнопками VK (✕ и ⋯) -->
-        <!-- VK нативно рисует свои кнопки закрытия/меню поверх мини-аппа. Мы ставим невидимые 
-             кликабельные зоны точно под ними, чтобы нажатие на нативную кнопку VK вызывало наш JS -->
-        <div id="vkHeaderActions" style="position:absolute;top:0;right:0;z-index:999;display:none">
-            <div id="vkReloadZone" onclick="vkUiReload()" style="position:absolute;top:0;right:36px;width:36px;height:48px;cursor:pointer;z-index:1000"></div>
-            <div id="vkCloseZone" onclick="vkCloseApp()" style="position:absolute;top:0;right:0;width:36px;height:48px;cursor:pointer;z-index:1000"></div>
         </div>
 
         <!-- MODE TABS -->
@@ -636,111 +630,111 @@
     <div class="dialog-overlay" id="purchaseDialog">
         <div class="dialog purchase-dialog" style="max-width:440px">
             <h3>&#9733; Купить кредиты</h3>
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Кредиты для генерации ИИ-контента. 1&#162; = 5&#8381;. При регистрации 80&#162; бесплатно.</p>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Кредиты — цифровая ценность для оплаты генерации ИИ-контента (изображений, видео, аудио). 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
+            <!-- 🔑 п. 5.4.2: Информация о цифровых ценностях (обязательно для VK) -->
+            <div id="vkDigitalGoodsInfo" style="display:none;font-size:11px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px;line-height:1.4">
+                <b>О цифровых ценностях:</b> Кредиты являются невозвратной цифровой ценностью. Срок действия — бессрочно. Приобретённые кредиты привязаны к вашему аккаунту и не подлежат передаче.<br>
+                <b>Способ оплаты:</b> Голоса ВКонтакте — одобренный способ оплаты на платформе.<br>
+                <b>Поддержка:</b> <a href="https://vk.com/leshiy_ai" target="_blank" style="color:var(--accent)">vk.com/leshiy_ai</a><br>
+                <b>Возврат:</b> Цифровые ценности возврату не подлежат после их зачисления на баланс.
+            </div>
+            <!-- 🔑 VK Mobile: уведомление об оплате голосами (VKWebAppShowOrderBox работает и на мобильных) -->
+            <div id="vkMobilePayNotice" style="display:none;font-size:12px;color:var(--text-secondary);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px;line-height:1.4">
+                Оплата голосами ВКонтакте — нажмите «Оплатить голосами» и откроется окно покупки. Если голосов недостаточно, ВК предложит их докупить.
+            </div>
 
-            <!-- Контент (скроллируемая область) -->
-            <div id="purchaseDialogContent" style="flex:1;min-height:0;overflow-y:auto">
-                <!-- ===== VK: только VK Донаты ===== -->
-                <div id="vkPaymentsPanel" style="display:none;margin-bottom:12px">
-                    <a href="https://vk.com/donut/leshiy_ai" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:14px;background:linear-gradient(135deg,rgba(0,119,255,0.15),rgba(0,119,255,0.05));border:1px solid rgba(0,119,255,0.3);border-radius:var(--radius-sm);margin-bottom:12px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                        <span style="font-size:28px">&#128150;</span>
-                        <div style="flex:1">
-                            <div style="font-weight:700;font-size:16px">VK Донаты</div>
-                            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Поддержите проект через ВКонтакте — подписка или разовый донат</div>
-                        </div>
-                        <span style="font-size:20px;color:rgba(0,119,255,0.7)">&#8599;</span>
-                    </a>
-                    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;font-weight:600">Тарифы подписки:</div>
-                    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
-                        <a href="https://vk.com/donut/leshiy_ai?amount=50" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                            <div>
-                                <span style="font-weight:600;font-size:14px">Свободный платёж</span>
-                                <span style="font-size:12px;color:var(--text-muted);margin-left:8px">от 50 &#8381;</span>
-                            </div>
-                            <span style="font-size:14px;color:var(--text-muted)">&#8599;</span>
-                        </a>
-                        <a href="https://vk.com/donut/leshiy_ai?tier=100" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                            <div>
-                                <span style="font-weight:600;font-size:14px">Базовый</span>
-                                <span style="font-size:12px;color:var(--accent);margin-left:8px">100 &#8381;/мес</span>
-                            </div>
-                            <span style="font-size:14px;color:var(--text-muted)">&#8599;</span>
-                        </a>
-                        <a href="https://vk.com/donut/leshiy_ai?tier=500" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                            <div>
-                                <span style="font-weight:600;font-size:14px">Продвинутый</span>
-                                <span style="font-size:12px;color:var(--accent);margin-left:8px">500 &#8381;/мес</span>
-                            </div>
-                            <span style="font-size:14px;color:var(--text-muted)">&#8599;</span>
-                        </a>
-                        <a href="https://vk.com/donut/leshiy_ai?tier=1000" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                            <div>
-                                <span style="font-weight:600;font-size:14px">Максимальный</span>
-                                <span style="font-size:12px;color:var(--accent);margin-left:8px">1000 &#8381;/мес</span>
-                            </div>
-                            <span style="font-size:14px;color:var(--text-muted)">&#8599;</span>
-                        </a>
-                    </div>
-                    <div style="font-size:11px;color:var(--text-muted);padding:8px 10px;background:var(--bg-tertiary);border-radius:var(--radius-sm)">
-                        Кредиты зачисляются вручную. После оплаты сообщите ваш ID в <a href="https://vk.com/leshiy_ai" target="_blank" style="color:var(--accent)">сообщество VK</a>.
+            <!-- Способ оплаты -->
+            <div style="margin-bottom:14px" id="paymentMethodSelectorWrapper">
+                <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Способ оплаты:</label>
+                <div class="size-selector" id="paymentMethodSelector">
+                    <button class="size-option active" data-method="telegram" onclick="selectPaymentMethod('telegram',this)">&#9733; TG Stars</button>
+                    <button class="size-option" data-method="vk" onclick="selectPaymentMethod('vk',this)">&#9670; Голоса VK</button>
+                    <button class="size-option" data-method="other" onclick="selectPaymentMethod('other',this)">&#128176; Другие платежи</button>
+                </div>
+            </div>
+            <script>
+                // 🔑 В VK-версии: показываем только Голоса VK + инфо о цифровых ценностях
+                // Скрываем выбор способа оплаты (в VK только голоса), Boosty, ЮMoney и VK Донаты
+                if (window.IS_VK) {
+                    var _pms = document.getElementById('paymentMethodSelector');
+                    var _pmsWrapper = document.getElementById('paymentMethodSelectorWrapper');
+                    if (_pmsWrapper) _pmsWrapper.style.display = 'none'; // В VK нет выбора — только голоса
+                    var _dgi = document.getElementById('vkDigitalGoodsInfo');
+                    if (_dgi) _dgi.style.display = 'block';
+                    // 🔑 VK Mobile: подсказка об оплате голосами
+                    if (window.IS_VK_MOBILE) {
+                        var _mpn = document.getElementById('vkMobilePayNotice');
+                        if (_mpn) _mpn.style.display = 'block';
+                    }
+                    // 🔑 В VK-версии: заменяем @Leshiyalex на ссылку на VK-сообщество
+                    var _aci = document.getElementById('adminContactInfo');
+                    if (_aci) _aci.innerHTML = '<a href="https://vk.com/leshiy_ai" target="_blank" style="color:var(--accent)">vk.com/leshiy_ai</a>';
+                    // 🔑 Скрываем Boosty, ЮMoney и VK Донаты для VK — VK запрещает внешние платёжные системы,
+                    // а VK Донаты не подходит для продажи виртуальных ценностей (используем VK Payments API)
+                    var _boostyLink = document.getElementById('otherPayBoosty');
+                    if (_boostyLink) _boostyLink.style.display = 'none';
+                    var _yoomoneyLink = document.getElementById('otherPayYoomoney');
+                    if (_yoomoneyLink) _yoomoneyLink.style.display = 'none';
+                    var _vkDonateLink = document.getElementById('otherPayVKDonate');
+                    if (_vkDonateLink) _vkDonateLink.style.display = 'none';
+                }
+            </script>
+
+            <!-- Контент -->
+            <div id="purchaseDialogContent" style="flex:1;min-height:0">
+                <!-- Пакеты пополнения (для Stars / Голоса VK) -->
+                <div id="topupPackagesSection" style="margin-bottom:14px">
+                    <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Выберите пакет:</label>
+                    <div id="topupPackages" style="display:flex;flex-direction:column;gap:6px">
+                        <!-- Заполняется динамически из JS -->
                     </div>
                 </div>
 
-                <!-- ===== Не-VK: Stars + Boosty + ЮMoney ===== -->
-                <div id="nonVkPaymentsPanel">
-                    <!-- Способ оплаты -->
-                    <div style="margin-bottom:12px">
-                        <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Способ оплаты:</label>
-                        <div class="pay-method-selector" id="paymentMethodSelector">
-                            <button class="pay-method-btn active" data-method="telegram" onclick="selectPaymentMethod('telegram',this)">&#9733; Stars</button>
-                            <button class="pay-method-btn" data-method="other" onclick="selectPaymentMethod('other',this)">&#128176; Другие</button>
+                <!-- Другие платежи (Boosty + ЮMoney + VK Донаты — только вне VK) -->
+                <div id="otherPaymentsPanel" style="display:none;margin-bottom:14px">
+                    <!-- VK Донаты (скрыта для VK через id + скрипт выше) -->
+                    <a id="otherPayVKDonate" href="https://vk.com/donut/leshiy_ai" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
+                        <span style="font-size:22px">&#128150;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">VK Донаты</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Поддержите проект через сообщество ВКонтакте</div>
                         </div>
-                    </div>
+                        <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
+                    </a>
 
-                    <!-- Пакеты пополнения (для Stars) -->
-                    <div id="topupPackagesSection" style="margin-bottom:12px">
-                        <label style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;display:block">Выберите пакет:</label>
-                        <div id="topupPackages" style="display:flex;flex-direction:column;gap:5px">
-                            <!-- Заполняется динамически из JS -->
+                    <!-- Boosty (скрыта для VK через id + скрипт выше) -->
+                    <a id="otherPayBoosty" href="https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
+                        <span style="font-size:22px">&#128293;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">Boosty</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Оплата картой, СБП, ЮMoney. Любая сумма.</div>
                         </div>
-                    </div>
+                        <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
+                    </a>
 
-                    <!-- Другие платежи (Boosty, ЮMoney) — ТОЛЬКО для не-VK -->
-                    <div id="otherPaymentsPanel" style="display:none;margin-bottom:12px">
-                        <!-- Boosty -->
-                        <a href="https://boosty.to/leshiyalex/single-payment/donation/754164/target?share=target_link" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                            <span style="font-size:22px">&#128293;</span>
-                            <div style="flex:1">
-                                <div style="font-weight:600;font-size:14px">Boosty</div>
-                                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Оплата картой, СБП, ЮMoney. Любая сумма.</div>
-                            </div>
-                            <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
-                        </a>
-
-                        <!-- ЮMoney -->
-                        <a href="https://yoomoney.ru/to/4100118141523834" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
-                            <span style="font-size:22px">&#128179;</span>
-                            <div style="flex:1">
-                                <div style="font-weight:600;font-size:14px">ЮMoney</div>
-                                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Перевод через ЮMoney</div>
-                            </div>
-                            <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
-                        </a>
-                        <div id="otherPaymentsAdminNote" style="font-size:11px;color:var(--text-muted);padding:6px 8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:6px">
-                            Кредиты зачисляются вручную. После оплаты сообщите ID администратору (<span id="adminContactInfo">@Leshiyalex</span>).
+                    <!-- ЮMoney (скрыта для VK через id + скрипт выше) -->
+                    <a id="otherPayYoomoney" href="https://yoomoney.ru/to/4100118141523834" target="_blank" rel="noopener" class="other-pay-btn" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;text-decoration:none;color:var(--text-primary);cursor:pointer;transition:border-color .15s">
+                        <span style="font-size:22px">&#128179;</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:14px">ЮMoney</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Перевод через ЮMoney</div>
                         </div>
+                        <span style="font-size:18px;color:var(--text-muted)">&#8599;</span>
+                    </a>
+                    <div id="otherPaymentsAdminNote" style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px">
+                        Кредиты зачисляются администратором вручную после подтверждения оплаты. После оплаты сообщите ваш ID администратору (<span id="adminContactInfo">@Leshiyalex</span>).
                     </div>
+                </div>
 
-                    <!-- Инфо о выбранном методе -->
-                    <div id="paymentMethodInfo" style="font-size:11px;color:var(--text-muted);padding:6px 8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:8px">
-                        &#9733; Выберите способ оплаты выше
-                    </div>
+                <!-- Инфо о выбранном методе -->
+                <div id="paymentMethodInfo" style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:12px">
+                    &#9733; Выберите способ оплаты выше
                 </div>
             </div>
 
-            <div class="dialog-actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:10px;margin-top:0">
-                <button class="btn-secondary" onclick="closePurchaseDialog()" style="flex:1">Закрыть</button>
-                <button class="btn-primary" id="topupPayBtn" onclick="purchaseCredits()" style="flex:1">&#9733; Оплатить</button>
+            <div class="dialog-actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+                <button class="btn-secondary" onclick="closePurchaseDialog()">Отмена</button>
+                <button class="btn-primary" id="topupPayBtn" onclick="purchaseCredits()">&#9733; Оплатить</button>
             </div>
         </div>
     </div>
@@ -2455,6 +2449,7 @@
                     <input type="text" id="adminDonateId" placeholder="ID пользователя" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary)">
                     <select id="adminDonateSource" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-size:13px">
                         <option value="boosty">&#128293; Boosty</option>
+                        <option value="vk_votes">&#128150; VK Голоса</option>
                         <option value="vk_donate">&#128150; VK Донаты</option>
                         <option value="yoomoney">&#128179; ЮMoney</option>
                     </select>
@@ -2663,7 +2658,7 @@
             showToast('Укажите количество кредитов', 'error');
             return;
         }
-        const sourceLabel = source === 'vk_donate' ? 'VK Донаты' : source === 'yoomoney' ? 'ЮMoney' : 'Boosty';
+        const sourceLabel = source === 'vk_votes' ? 'VK Голоса' : source === 'vk_donate' ? 'VK Донаты' : source === 'yoomoney' ? 'ЮMoney' : 'Boosty';
         try {
             const resp = await fetch(API_URL + '/api', {
                 method: 'POST',
@@ -3063,11 +3058,6 @@
     // ============================================================
     //  РЕНДЕР SUB-HEADERS
     // ============================================================
-    // Закрыть все открытые кастомные dropdown'ы
-    function closeAllDropdowns() {
-        document.querySelectorAll('.model-dropdown-list.open').forEach(d => d.classList.remove('open'));
-    }
-
     function renderSubHeaders() {
         renderChatSubHeader();
         renderImageSubHeader();
@@ -3083,99 +3073,38 @@
             container.innerHTML = '<span class="sub-label">Загрузка моделей...</span>';
             return;
         }
-
-        // 🔑 Кастомный dropdown вместо нативного <select> — красивее на мобиле
-        const curModel = availableModels.chat.find(m => m.key === selected.chat);
-        const curLabel = curModel ? (curModel.modelShort || curModel.displayName || curModel.key) : 'Модель';
-        const curIsFree = curModel?.isFree;
-        const curCost = curModel?.cost;
-
-        // Группируем модели
+        const sel = document.createElement('select');
+        sel.className = 'model-select' + (availableModels.chat.find(m => m.key === selected.chat)?.isFree ? ' model-free' : '');
+        sel.value = selected.chat;
+        sel.onchange = () => { selected.chat = sel.value; saveSelected(); renderChatSubHeader(); };
         const groups = {};
         availableModels.chat.forEach(m => {
             const lbl = m.serviceLabel || m.service || 'Другие';
             if (!groups[lbl]) groups[lbl] = [];
             groups[lbl].push(m);
         });
-
-        // Обёртка
-        const wrapper = document.createElement('div');
-        wrapper.className = 'model-dropdown-wrapper';
-
-        // Кнопка-триггер (button для надёжного клика на мобиле)
-        const trigger = document.createElement('button');
-        trigger.type = 'button';
-        trigger.className = 'model-dropdown' + (curIsFree ? ' model-free' : '');
-        trigger.innerHTML = `
-            <span class="model-dropdown-name">${curLabel}</span>
-            ${curIsFree ? '<span class="model-badge model-badge-free">FREE</span>' : (curCost ? '<span class="model-badge model-badge-cost">' + curCost + '\u00A2</span>' : '')}
-            <svg class="model-dropdown-arrow" width="12" height="12" viewBox="0 0 12 12"><path fill="currentColor" d="M2 4l4 4 4-4"/></svg>
-        `;
-
-        // Выпадающий список
-        const dropdown = document.createElement('div');
-        dropdown.className = 'model-dropdown-list';
         for (const [grp, models] of Object.entries(groups)) {
-            const groupLabel = document.createElement('div');
-            groupLabel.className = 'model-dropdown-group';
-            groupLabel.textContent = grp;
-            dropdown.appendChild(groupLabel);
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = grp;
             models.forEach(m => {
-                const item = document.createElement('button');
-                item.type = 'button';
-                item.className = 'model-dropdown-item' + (m.key === selected.chat ? ' active' : '');
-                const mLabel = m.modelShort || m.displayName || m.key;
-                item.innerHTML = `
-                    <span class="model-dropdown-item-name">${mLabel}</span>
-                    ${m.isFree ? '<span class="model-badge model-badge-free">FREE</span>' : (m.cost ? '<span class="model-badge model-badge-cost">' + m.cost + '\u00A2</span>' : '')}
-                `;
-                item.addEventListener('click', function(ev) {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    selected.chat = m.key;
-                    saveSelected();
-                    dropdown.classList.remove('open');
-                    renderChatSubHeader();
-                });
-                dropdown.appendChild(item);
+                const opt = document.createElement('option');
+                opt.value = m.key;
+                opt.selected = selected.chat === m.key;
+                opt.textContent = m.modelShort || m.displayName || m.key;
+                if (m.isFree) opt.textContent += ' 🆓';
+                else if (m.cost) opt.textContent += ' ' + m.cost + '\u00A2';
+                optgroup.appendChild(opt);
             });
+            sel.appendChild(optgroup);
         }
-
-        wrapper.appendChild(trigger);
-        wrapper.appendChild(dropdown);
-
-        // Открытие/закрытие по клику на триггер
-        trigger.addEventListener('click', function(ev) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            const isOpen = dropdown.classList.contains('open');
-            // Закрываем все другие dropdown'ы
-            document.querySelectorAll('.model-dropdown-list.open').forEach(d => {
-                if (d !== dropdown) d.classList.remove('open');
-            });
-            if (isOpen) {
-                dropdown.classList.remove('open');
-            } else {
-                dropdown.classList.add('open');
-            }
-        });
-
-        // Закрытие при клике вне dropdown'а
-        function onOutsideClick(ev) {
-            if (!wrapper.contains(ev.target)) {
-                dropdown.classList.remove('open');
-            }
-        }
-        document.addEventListener('click', onOutsideClick);
-        document.addEventListener('touchstart', onOutsideClick, { passive: true });
-
-        container.appendChild(wrapper);
+        container.appendChild(sel);
 
         // Обновляем ценовую метку рядом с селектом
         const priceLabel = document.getElementById('chatPriceLabel');
         if (priceLabel) {
-            if (curModel && !curModel.isFree && curModel.cost) {
-                priceLabel.textContent = curModel.cost + '\u00A2';
+            const cur = availableModels.chat.find(m => m.key === selected.chat);
+            if (cur && !cur.isFree && cur.cost) {
+                priceLabel.textContent = cur.cost + '\u00A2';
                 priceLabel.style.color = 'var(--accent)';
             } else {
                 priceLabel.textContent = '\u2713 Бесплатно';
@@ -7707,17 +7636,17 @@
     // ---- PURCHASE DIALOG ----
     // Пакеты пополнения (синхронизированы с webHandler.js WEB_TOPUP_PACKAGES)
     const TOPUP_PACKAGES = [
-        { id: 'photo',   stars: 10,  credits: 4,   rub: 20,    label: 'Одно фото (4\u00A2)',       desc: '4\u00A2 \u2248 20\u20BD \u2014 1 генерация фото' },
-        { id: 'video',   stars: 50,  credits: 20,  rub: 100,   label: 'Одно видео (20\u00A2)',     desc: '20\u00A2 \u2248 100\u20BD \u2014 1 генерация видео' },
-        { id: 'start',   stars: 75,  credits: 30,  rub: 150,   label: 'Начало (30\u00A2)',          desc: '30\u00A2 \u2248 150\u20BD' },
-        { id: 'base',    stars: 100, credits: 42,  rub: 210,   label: 'Базовый (42\u00A2)',         desc: '42\u00A2 \u2248 210\u20BD + бонус' },
-        { id: 'norm',    stars: 150, credits: 58,  rub: 290,   label: 'Норма (58\u00A2)',           desc: '58\u00A2 \u2248 290\u20BD + бонус' },
-        { id: 'pro',     stars: 250, credits: 100, rub: 500,   label: 'Профи (100\u00A2)',          desc: '100\u00A2 \u2248 500\u20BD + бонус' },
-        { id: 'max',     stars: 500, credits: 250, rub: 1200,  label: 'Макс (250\u00A2)',           desc: '250\u00A2 \u2248 1200\u20BD + бонус' },
-        { id: 'unlim',   stars: 750, credits: 400, rub: 2000,  label: 'Анлим (400\u00A2)',          desc: '400\u00A2 \u2248 2000\u20BD + бонус' },
+        { id: 'photo',   stars: 10,  votes: 3,   credits: 4,   rub: 20,    label: 'Одно фото (4¢)',       desc: '4¢ ≈ 20₽ — 1 генерация фото' },
+        { id: 'video',   stars: 50,  votes: 15,  credits: 20,  rub: 100,   label: 'Одно видео (20¢)',     desc: '20¢ ≈ 100₽ — 1 генерация видео' },
+        { id: 'start',   stars: 75,  votes: 22,  credits: 30,  rub: 150,   label: 'Начало (30¢)',          desc: '30¢ ≈ 150₽' },
+        { id: 'base',    stars: 100, votes: 30,  credits: 42,  rub: 210,   label: 'Базовый (42¢)',         desc: '42¢ ≈ 210₽ + бонус' },
+        { id: 'norm',    stars: 150, votes: 42,  credits: 58,  rub: 290,   label: 'Норма (58¢)',           desc: '58¢ ≈ 290₽ + бонус' },
+        { id: 'pro',     stars: 250, votes: 72,  credits: 100, rub: 500,   label: 'Профи (100¢)',          desc: '100¢ ≈ 500₽ + бонус' },
+        { id: 'max',     stars: 500, votes: 172, credits: 250, rub: 1200,  label: 'Макс (250¢)',           desc: '250¢ ≈ 1200₽ + бонус' },
+        { id: 'unlim',   stars: 750, votes: 286, credits: 400, rub: 2000,  label: 'Анлим (400¢)',           desc: '400¢ ≈ 2000₽ + бонус' },
     ];
 
-    let selectedPaymentMethod = IS_VK ? 'vk_donut' : 'telegram'; // 'telegram' | 'other' | 'vk_donut'
+    let selectedPaymentMethod = IS_VK ? 'vk' : 'telegram'; // 'telegram' | 'vk' | 'other'
     let pendingPaymentPayload = null; // Для polling проверки оплаты
 
     function renderTopupPackages() {
@@ -7739,9 +7668,14 @@
         container.innerHTML = '';
         TOPUP_PACKAGES.forEach(pkg => {
             const isSelected = selectedPlan === pkg.id;
-            const starsLabel = selectedPaymentMethod === 'telegram'
-                ? `\u2B50 ${pkg.stars} XTR`
-                : `${pkg.rub} \u20BD`;
+            let priceLabel;
+            if (selectedPaymentMethod === 'telegram') {
+                priceLabel = `\u2B50 ${pkg.stars} XTR`;
+            } else if (selectedPaymentMethod === 'vk') {
+                priceLabel = `${pkg.votes} \u0433\u043E\u043B\u043E\u0441\u043E\u0432`;
+            } else {
+                priceLabel = `${pkg.rub} \u20BD`;
+            }
             const card = document.createElement('div');
             card.className = 'plan-card' + (isSelected ? ' selected' : '');
             card.onclick = () => selectTopupPackage(pkg.id);
@@ -7752,7 +7686,7 @@
                         <div class="plan-desc" style="font-size:11px;margin-top:2px">${pkg.desc}</div>
                     </div>
                     <div style="text-align:right">
-                        <div class="plan-price" style="font-size:14px;font-weight:600">${starsLabel}</div>
+                        <div class="plan-price" style="font-size:14px;font-weight:600">${priceLabel}</div>
                     </div>
                 </div>`;
             container.appendChild(card);
@@ -7761,7 +7695,7 @@
 
     function selectPaymentMethod(method, btn) {
         selectedPaymentMethod = method;
-        document.querySelectorAll('#paymentMethodSelector .pay-method-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('#paymentMethodSelector .size-option').forEach(b => b.classList.remove('active'));
         if (btn) btn.classList.add('active');
         // Обновляем отображение пакетов / панели донатов
         renderTopupPackages();
@@ -7773,6 +7707,11 @@
             info.style.display = '';
             payBtn.style.display = '';
             payBtn.innerHTML = '\u2B50 Оплатить Stars';
+        } else if (method === 'vk') {
+            info.innerHTML = '\u25C6 Оплата голосами ВКонтакте \u2014 мгновенное зачисление. Нажмите \u00ABОплатить\u00BB и откроется окно покупки VK.';
+            info.style.display = '';
+            payBtn.style.display = '';
+            payBtn.innerHTML = '\u25C6 Оплатить голосами';
         } else if (method === 'other') {
             info.style.display = 'none';
             payBtn.style.display = 'none';
@@ -7785,21 +7724,18 @@
     }
 
     function openPurchaseDialog() {
-        // 🔑 В VK-версии: показываем только VK Донаты (без Stars, Boosty, ЮMoney)
-        var _vkPanel = document.getElementById('vkPaymentsPanel');
-        var _nonVkPanel = document.getElementById('nonVkPaymentsPanel');
+        // Показываем полную версию диалога оплаты для всех платформ
+        // VKWebAppShowOrderBox работает и на мобильных, и на десктопе
+        var _topupSection = document.getElementById('topupPackagesSection');
         var _payBtn = document.getElementById('topupPayBtn');
-        if (IS_VK) {
-            if (_vkPanel) _vkPanel.style.display = 'block';
-            if (_nonVkPanel) _nonVkPanel.style.display = 'none';
-            if (_payBtn) _payBtn.style.display = 'none';
-            selectedPaymentMethod = 'vk_donut';
-        } else {
-            if (_vkPanel) _vkPanel.style.display = 'none';
-            if (_nonVkPanel) _nonVkPanel.style.display = 'block';
-            if (_payBtn) _payBtn.style.display = '';
-            renderTopupPackages();
-        }
+        var _payMethodInfo = document.getElementById('paymentMethodInfo');
+        var _payMethodSelector = document.getElementById('paymentMethodSelectorWrapper');
+        if (_topupSection) _topupSection.style.display = '';
+        if (_payBtn) _payBtn.style.display = '';
+        if (_payMethodInfo) _payMethodInfo.style.display = '';
+        // 🔑 В VK — скрываем выбор способа оплаты (только голоса VK)
+        if (_payMethodSelector) _payMethodSelector.style.display = IS_VK ? 'none' : '';
+        renderTopupPackages();
         document.getElementById('purchaseDialog').classList.add('open');
     }
 
@@ -7831,6 +7767,34 @@
         payBtn.textContent = 'Создаю счёт...';
 
         try {
+            // ===== VK PAYMENTS: VKWebAppShowOrderBox (оплата голосами) =====
+            // https://dev.vk.com/ru/api/payments/virtual-goods/vk
+            if (selectedPaymentMethod === 'vk' && window.vkBridge) {
+                try {
+                    // item = идентификатор товара (package_id), наш сервер обработает get_item notification
+                    const result = await window.vkBridge.send('VKWebAppShowOrderBox', {
+                        type: 'item',
+                        item: pkg.id  // package_id — сервер вернёт инфо о товаре по get_item
+                    });
+                    console.log('[VK] VKWebAppShowOrderBox result:', result);
+                    // Покупка успешна — VK отправил order_status_change на наш сервер
+                    closePurchaseDialog();
+                    showToast('\u2705 Оплата прошла! Проверяю баланс...', 'success');
+                    // Небольшая задержка чтобы сервер обработал callback
+                    setTimeout(() => startBalancePolling(pkg.credits), 2000);
+                } catch (vkErr) {
+                    console.error('[VK] VKWebAppShowOrderBox error:', vkErr);
+                    // Пользователь отменил или ошибка
+                    if (vkErr.error_data && vkErr.error_data.error_reason === 'user_cancel') {
+                        showToast('Оплата отменена', 'info');
+                    } else {
+                        showToast('Ошибка оплаты: ' + (vkErr.error_data?.error_reason || vkErr.message || 'неизвестная'), 'error');
+                    }
+                }
+                return;
+            }
+
+            // ===== TELEGRAM STARS PAYMENT =====
             const resp = await fetch(API_URL + '/api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -7838,7 +7802,7 @@
                     mode: 'topup',
                     auth: getAuth(),
                     payload: {
-                        method: selectedPaymentMethod,
+                        method: 'telegram',
                         package_id: selectedPlan
                     }
                 })
@@ -7855,18 +7819,13 @@
 
             const data = result.data;
 
-            if (selectedPaymentMethod === 'telegram' && data.type === 'topup_link') {
+            if (data.type === 'topup_link') {
                 // Открываем ссылку на оплату в Telegram
                 pendingPaymentPayload = data.payload;
                 showToast('Открываю страницу оплаты...', 'info');
-
-                // Открываем ссылку в новом окне
                 window.open(data.url, '_blank');
-
-                // Начинаем polling баланса
                 closePurchaseDialog();
                 startBalancePolling(pkg.credits);
-
             } else {
                 showToast('Неизвестный формат ответа', 'error');
             }
@@ -7876,7 +7835,7 @@
             showToast('Ошибка: ' + e.message, 'error');
         } finally {
             payBtn.disabled = false;
-            payBtn.textContent = '\u2B50 Оплатить Stars';
+            payBtn.textContent = selectedPaymentMethod === 'telegram' ? '\u2B50 Оплатить Stars' : '\u25C6 Оплатить голосами';
         }
     }
 
@@ -7975,10 +7934,10 @@
         // Refresh credit history from server before showing
         loadServerData();
 
-        // 🔑 VK Mobile: скрываем кнопку покупки кредитов (п. 5.4.1 правил VK)
+        // 🔑 VK Mobile: VKWebAppShowOrderBox работает на всех платформах, не скрываем кнопку покупки
         const profileBuyBtn = document.getElementById('profileBuyBtn');
         if (profileBuyBtn) {
-            profileBuyBtn.style.display = IS_VK_MOBILE ? 'none' : '';
+            profileBuyBtn.style.display = '';
         }
 
         // Показываем диалог профиля с кнопкой выхода
@@ -9767,30 +9726,12 @@
     })();
     </script>
 
-    <!-- 🔑 VK MINI APP: показываем кнопки ⟳/✕ в хедере, убираем нижнюю панель -->
+    <!-- 🔑 VK MINI APP: скрываем бейдж Premium на мобиле, убираем кастомные кнопки хедера -->
     <script>
         if (window.IS_VK) {
-            var _vkHA = document.getElementById('vkHeaderActions');
-            if (_vkHA) _vkHA.style.display = 'block';
             // 🔑 Скрываем бейдж Premium на мобиле чтобы всё влезло
             var _hBadge = document.getElementById('headerBadge');
             if (_hBadge && (window.IS_VK_MOBILE || window.innerWidth <= 768)) _hBadge.style.display = 'none';
-        }
-
-        // 🔑 VK: кнопка обновить (клик по зоне под нативной кнопкой)
-        function vkUiReload() {
-            location.reload();
-        }
-
-        // 🔑 VK: кнопка закрыть
-        function vkCloseApp() {
-            if (typeof Android !== 'undefined' && typeof Android.closeApp === 'function') {
-                Android.closeApp();
-            } else if (typeof vkBridge !== 'undefined') {
-                vkBridge.send('VKWebAppClose', { status: 'success' });
-            } else {
-                window.close();
-            }
         }
     </script>
 </body>

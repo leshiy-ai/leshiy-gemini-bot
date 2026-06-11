@@ -61,7 +61,6 @@ body {
     gap: 10px;
     z-index: 10;
     flex-shrink: 0;
-    position: relative; /* 🔑 для VK кнопок ⟳/✕ */
 }
 
 .header-left {
@@ -151,9 +150,7 @@ body {
 .auth-btn:hover { background: var(--accent-light); border-color: var(--accent-hover); color: var(--accent-hover); }
 .auth-btn.logged-in { border-color: var(--success); color: var(--success); }
 
-/* ===== VK MINI APP: прозрачные кликабельные зоны под нативными кнопками VK ===== */
-/* VK нативно рисует свои кнопки ✕ и ⋯ поверх мини-аппа.
-   Мы ставим невидимые кликабельные зоны точно под ними */
+/* ===== VK MINI APP — стили убраны (кастомные ✕/⟳ не нужны, VK предоставляет нативные) ===== */
 
 /* ===== MODE TABS ===== */
 .mode-tabs {
@@ -282,132 +279,6 @@ body {
 
 .model-select.model-free { border-color: rgba(34,197,94,0.4); }
 .model-select.model-free:focus { border-color: var(--free); }
-
-/* ===== CUSTOM MODEL DROPDOWN (вместо нативного <select> для чата) ===== */
-.model-dropdown-wrapper {
-    position: relative;
-    flex: 1;
-    min-width: 0;
-    z-index: 20;
-}
-.model-dropdown {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 6px 10px;
-    font-size: 13px;
-    font-family: inherit;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    transition: border-color var(--transition), background var(--transition);
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    min-height: 34px;
-}
-.model-dropdown:hover { border-color: var(--accent); background: var(--accent-light); }
-.model-dropdown.model-free { border-color: rgba(34,197,94,0.4); }
-.model-dropdown-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    min-width: 0;
-}
-.model-dropdown-arrow {
-    flex-shrink: 0;
-    transition: transform 0.2s;
-}
-.model-dropdown-list.open + .model-dropdown-arrow,
-.model-dropdown-wrapper .model-dropdown-list.open ~ .model-dropdown-arrow {
-    transform: rotate(180deg);
-}
-
-/* Badge для FREE / стоимости */
-.model-badge {
-    flex-shrink: 0;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 8px;
-    letter-spacing: 0.3px;
-    line-height: 1.4;
-}
-.model-badge-free {
-    background: rgba(34,197,94,0.15);
-    color: var(--free);
-    border: 1px solid rgba(34,197,94,0.25);
-}
-.model-badge-cost {
-    background: rgba(168,85,247,0.12);
-    color: var(--accent);
-    border: 1px solid rgba(168,85,247,0.2);
-}
-
-/* Выпадающий список */
-.model-dropdown-list {
-    display: none;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    min-width: 240px;
-    max-height: 280px;
-    overflow-y: auto;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    z-index: 100;
-    margin-top: 4px;
-    padding: 4px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
-}
-.model-dropdown-list::-webkit-scrollbar { width: 4px; }
-.model-dropdown-list::-webkit-scrollbar-track { background: transparent; }
-.model-dropdown-list::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.3); border-radius: 2px; }
-.model-dropdown-list.open { display: block; }
-
-.model-dropdown-group {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--accent);
-    padding: 8px 10px 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.model-dropdown-group:first-child { padding-top: 4px; }
-
-.model-dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.12s;
-    font-size: 13px;
-    color: var(--text-primary);
-    -webkit-tap-highlight-color: transparent;
-}
-.model-dropdown-item:hover { background: var(--accent-light); }
-.model-dropdown-item:active { background: rgba(168,85,247,0.25); }
-.model-dropdown-item.active {
-    background: var(--accent-light);
-    color: var(--accent);
-    font-weight: 600;
-}
-.model-dropdown-item-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
 
 /* Video sub-header: keep models on same line as buttons */
 #subVideo .sub-option { flex-shrink: 0; }
@@ -1338,12 +1209,6 @@ body {
     .model-select { font-size: 13px; padding: 7px 28px 7px 12px; max-width: 220px; }
     /* На мобилке не обрезаем поле моделей */
     #chatModels .model-select { max-width: none; flex: 1; min-width: 0; }
-    /* Кастомный dropdown на мобиле */
-    .model-dropdown { padding: 7px 10px; font-size: 14px; min-height: 38px; }
-    .model-dropdown-list { min-width: 100%; max-height: 50vh; }
-    .model-dropdown-item { padding: 10px 12px; font-size: 14px; }
-    .model-dropdown-group { font-size: 11px; padding: 8px 12px 4px; }
-    .model-badge { font-size: 10px; }
     
     .media-panel { padding: 16px 12px; gap: 14px; }
     
@@ -1414,9 +1279,6 @@ body {
     .sub-label { font-size: 12px; }
     .model-select { font-size: 12px; max-width: 220px; padding: 6px 26px 6px 10px; }
     #chatModels .model-select { max-width: none; flex: 1; min-width: 0; }
-    .model-dropdown { padding: 6px 8px; font-size: 13px; min-height: 36px; }
-    .model-dropdown-item { padding: 9px 10px; font-size: 13px; }
-    .model-badge { font-size: 9px; padding: 1px 5px; }
     .mode-tag { font-size: 11px; padding: 3px 7px; }
     .size-option { font-size: 13px; padding: 5px 9px; min-height: 34px; border-radius: 14px; }
     .size-selector { gap: 5px; }
@@ -1478,9 +1340,6 @@ body {
     .sub-divider { height: 18px; }
     .model-select { max-width: 220px; font-size: 11px; }
     #chatModels .model-select { max-width: none; flex: 1; min-width: 0; }
-    .model-dropdown { font-size: 12px; min-height: 34px; padding: 5px 8px; }
-    .model-dropdown-item { padding: 8px 10px; font-size: 12px; }
-    .model-badge { font-size: 9px; }
     .input-pill { border-radius: 26px; }
     .input-pill textarea { font-size: 14px; padding: 8px 10px; }
     .pill-btn { width: 40px; height: 40px; }

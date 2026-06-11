@@ -3551,14 +3551,14 @@ function bufferToBase64(buffer) {
 
 // Пакеты пополнения (как в Telegram боте — STARS_PACKAGES)
 const WEB_TOPUP_PACKAGES = [
-    { id: 'photo',   stars: 10,  credits: 4,   rub: 20,    label: 'Одно фото (4¢)',       desc: '4¢ ≈ 20₽ — 1 генерация фото' },
-    { id: 'video',   stars: 50,  credits: 20,  rub: 100,   label: 'Одно видео (20¢)',     desc: '20¢ ≈ 100₽ — 1 генерация видео' },
-    { id: 'start',   stars: 75,  credits: 30,  rub: 150,   label: 'Начало (30¢)',          desc: '30¢ ≈ 150₽' },
-    { id: 'base',    stars: 100, credits: 42,  rub: 210,   label: 'Базовый (42¢)',         desc: '42¢ ≈ 210₽ + бонус' },
-    { id: 'norm',    stars: 150, credits: 58,  rub: 290,   label: 'Норма (58¢)',           desc: '58¢ ≈ 290₽ + бонус' },
-    { id: 'pro',     stars: 250, credits: 100, rub: 500,   label: 'Профи (100¢)',          desc: '100¢ ≈ 500₽ + бонус' },
-    { id: 'max',     stars: 500, credits: 250, rub: 1200,  label: 'Макс (250¢)',           desc: '250¢ ≈ 1200₽ + бонус' },
-    { id: 'unlim',   stars: 750, credits: 400, rub: 2000,  label: 'Анлим (400¢)',          desc: '400¢ ≈ 2000₽ + бонус' },
+    { id: 'photo',   stars: 10,  votes: 3,   credits: 4,   rub: 20,    label: 'Одно фото (4¢)',       desc: '4¢ ≈ 20₽ — 1 генерация фото' },
+    { id: 'video',   stars: 50,  votes: 15,  credits: 20,  rub: 100,   label: 'Одно видео (20¢)',     desc: '20¢ ≈ 100₽ — 1 генерация видео' },
+    { id: 'start',   stars: 75,  votes: 22,  credits: 30,  rub: 150,   label: 'Начало (30¢)',          desc: '30¢ ≈ 150₽' },
+    { id: 'base',    stars: 100, votes: 30,  credits: 42,  rub: 210,   label: 'Базовый (42¢)',         desc: '42¢ ≈ 210₽ + бонус' },
+    { id: 'norm',    stars: 150, votes: 42,  credits: 58,  rub: 290,   label: 'Норма (58¢)',           desc: '58¢ ≈ 290₽ + бонус' },
+    { id: 'pro',     stars: 250, votes: 72,  credits: 100, rub: 500,   label: 'Профи (100¢)',          desc: '100¢ ≈ 500₽ + бонус' },
+    { id: 'max',     stars: 500, votes: 172, credits: 250, rub: 1200,  label: 'Макс (250¢)',           desc: '250¢ ≈ 1200₽ + бонус' },
+    { id: 'unlim',   stars: 750, votes: 286, credits: 400, rub: 2000,  label: 'Анлим (400¢)',          desc: '400¢ ≈ 2000₽ + бонус' },
 ];
 
 /**
@@ -3834,6 +3834,208 @@ function getTopupPackages() {
 }
 
 // ============================================================
+// 🔶 VK PAYMENTS: Обработка уведомлений от VK
+// https://dev.vk.com/ru/api/payments/virtual-goods/vk
+// ============================================================
+
+/**
+ * Проверяет подпись (sig) уведомления от VK.
+ * sig = md5( concat( sort_params( param_name=value ) ) + secret ) )
+ * Где secret = md5( access_token + app_secret ) для серверного метода
+ * или просто app_secret для клиентских уведомлений.
+ * Для простоты: secret = VK_APP_SECRET (указывается в настройках приложения).
+ */
+function verifyVKSignature(params, appSecret) {
+    if (!appSecret) {
+        console.warn('[VK-Payment] VK_APP_SECRET not set — skipping signature verification');
+        return true; // В тестовом режиме пропускаем проверку
+    }
+    const sig = params.sig;
+    if (!sig) return false;
+
+    // Сортируем все параметры КРОМЕ sig
+    const sortedKeys = Object.keys(params).filter(k => k !== 'sig').sort();
+    const concat = sortedKeys.map(k => `${k}=${params[k]}`).join('');
+    const expectedSig = require('crypto').createHash('md5').update(concat + appSecret).digest('hex');
+    return expectedSig === sig;
+}
+
+/**
+ * VK get_item notification — возвращает информацию о товаре.
+ * VK отправляет это перед показом окна покупки.
+ *
+ * Ответ: { response: { title, price, photo_url, item_id, expiration } }
+ */
+async function handleVKGetItem(params, env) {
+    const item = params.item; // package_id из фронтенда (pkg.id)
+    const userId = params.user_id;
+    const appId = params.app_id;
+
+    console.log(`[VK-Payment] get_item: item=${item} user_id=${userId} app_id=${appId}`);
+
+    // Проверяем подпись (если VK_APP_SECRET задан)
+    const appSecret = env.VK_APP_SECRET || env.VK_CLIENT_SECRET || '';
+    if (!verifyVKSignature(params, appSecret)) {
+        console.error('[VK-Payment] Invalid signature for get_item');
+        return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
+    }
+
+    // Находим пакет по item id
+    const pkg = WEB_TOPUP_PACKAGES.find(p => p.id === item);
+    if (!pkg) {
+        console.error('[VK-Payment] Unknown item:', item);
+        return { error: { error_code: 20, error_msg: 'Item not found', critical: true } };
+    }
+
+    // Формируем ответ с информацией о товаре
+    const cdn = 'https://storage.yandexcloud.net/leshiy-storage-images';
+    return {
+        response: {
+            title: `${pkg.credits} Кредитов Pixel-AI`,
+            price: pkg.votes, // Цена в голосах VK
+            photo_url: `${cdn}/qr-code_geminiai_tg_bot.jpg`,
+            item_id: pkg.id,
+            expiration: 3600 // Кешируем на 1 час
+        }
+    };
+}
+
+/**
+ * VK order_status_change notification — зачисление товара или возврат.
+ * VK отправляет это после подтверждения оплаты пользователем.
+ *
+ * При status=chargeable: зачисляем кредиты, отвечаем { response: { order_id, app_order_id } }
+ * При status=refunded: отнимаем кредиты
+ */
+async function handleVKOrderStatusChange(params, env) {
+    const orderId = parseInt(params.order_id);
+    const status = params.status; // 'chargeable' или 'refunded'
+    const item = params.item; // package_id
+    const userId = params.user_id;
+    const receiverId = params.receiver_id;
+
+    console.log(`[VK-Payment] order_status_change: order_id=${orderId} status=${status} item=${item} user_id=${userId}`);
+
+    // Проверяем подпись
+    const appSecret = env.VK_APP_SECRET || env.VK_CLIENT_SECRET || '';
+    if (!verifyVKSignature(params, appSecret)) {
+        console.error('[VK-Payment] Invalid signature for order_status_change');
+        return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
+    }
+
+    // Находим пакет
+    const pkg = WEB_TOPUP_PACKAGES.find(p => p.id === item);
+    if (!pkg) {
+        console.error('[VK-Payment] Unknown item in order_status_change:', item);
+        return { error: { error_code: 20, error_msg: 'Item not found', critical: true } };
+    }
+
+    const chatId = String(userId); // VK user_id = наш chatId для VK-пользователей
+    const txKey = `vk_order_${orderId}`;
+
+    if (status === 'chargeable') {
+        // Проверяем, не зачисляли ли уже этот заказ
+        try {
+            if (env.LAST_PHOTO_STORAGE) {
+                const existingTx = await env.LAST_PHOTO_STORAGE.get(txKey);
+                if (existingTx) {
+                    const tx = JSON.parse(existingTx);
+                    if (tx.status === 'confirmed') {
+                        console.log(`[VK-Payment] Order ${orderId} already confirmed, returning existing app_order_id=${tx.app_order_id}`);
+                        return {
+                            response: {
+                                order_id: orderId,
+                                app_order_id: tx.app_order_id
+                            }
+                        };
+                    }
+                }
+
+                // Зачисляем кредиты
+                const balanceKey = chatId + '_credit_balance';
+                let currentBalance = 0;
+                const balanceStr = await env.LAST_PHOTO_STORAGE.get(balanceKey);
+                if (balanceStr) currentBalance = parseInt(balanceStr) || 0;
+                const newBalance = currentBalance + pkg.credits;
+                await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
+
+                // Логируем транзакцию
+                await logCreditTransaction(chatId, pkg.credits, 'purchase', env,
+                    `Покупка через VK голоса: ${pkg.credits}¢ (${pkg.votes} голосов)`);
+
+                // Сохраняем подтверждённую транзакцию
+                const appOrderId = Date.now(); // Уникальный ID заказа в нашем приложении
+                await env.LAST_PHOTO_STORAGE.put(txKey, JSON.stringify({
+                    order_id: orderId,
+                    app_order_id: appOrderId,
+                    chatId: chatId,
+                    item: item,
+                    credits: pkg.credits,
+                    votes: pkg.votes,
+                    method: 'vk_votes',
+                    status: 'confirmed',
+                    createdAt: Date.now()
+                }), { expirationTtl: 86400 * 30 }); // Храним 30 дней
+
+                console.log(`[VK-Payment] Credits added: +${pkg.credits}¢ for VK user ${chatId}, new balance: ${newBalance}`);
+
+                return {
+                    response: {
+                        order_id: orderId,
+                        app_order_id: appOrderId
+                    }
+                };
+            }
+        } catch (e) {
+            console.error('[VK-Payment] Error processing chargeable order:', e.message, e.stack);
+            return { error: { error_code: 100, error_msg: 'Internal error', critical: true } };
+        }
+    }
+
+    if (status === 'refunded') {
+        // Возврат — списываем кредиты
+        try {
+            if (env.LAST_PHOTO_STORAGE) {
+                const existingTx = await env.LAST_PHOTO_STORAGE.get(txKey);
+                if (existingTx) {
+                    const tx = JSON.parse(existingTx);
+                    if (tx.status === 'refunded') {
+                        // Уже возвращено
+                        return {
+                            response: {
+                                order_id: orderId,
+                                app_order_id: tx.app_order_id
+                            }
+                        };
+                    }
+                    // Списываем кредиты
+                    const balanceKey = chatId + '_credit_balance';
+                    let currentBalance = 0;
+                    const balanceStr = await env.LAST_PHOTO_STORAGE.get(balanceKey);
+                    if (balanceStr) currentBalance = parseInt(balanceStr) || 0;
+                    const newBalance = Math.max(0, currentBalance - pkg.credits);
+                    await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
+
+                    await logCreditTransaction(chatId, -pkg.credits, 'refund', env,
+                        `Возврат VK голосов: -${pkg.credits}¢ (order ${orderId})`);
+
+                    tx.status = 'refunded';
+                    await env.LAST_PHOTO_STORAGE.put(txKey, JSON.stringify(tx), { expirationTtl: 86400 * 30 });
+
+                    console.log(`[VK-Payment] Refund: -${pkg.credits}¢ for VK user ${chatId}, new balance: ${newBalance}`);
+                }
+            }
+        } catch (e) {
+            console.error('[VK-Payment] Error processing refund:', e.message, e.stack);
+            return { error: { error_code: 100, error_msg: 'Internal error', critical: true } };
+        }
+    }
+
+    // Неизвестный статус
+    return { error: { error_code: 100, error_msg: `Unknown status: ${status}`, critical: true } };
+}
+
+// ============================================================
 // 🔐 ВАЛИДАЦИЯ TELEGRAM INIT DATA
 // Проверяет подпись HMAC-SHA256 initData от Telegram Mini App
 // ============================================================
@@ -3918,3 +4120,7 @@ function formatResponse(success, error = null, creditsLeft = null, data = null) 
     if (data) response.data = data;
     return response;
 }
+
+// Экспорт VK payment handlers для index.js
+module.exports.handleVKGetItem = handleVKGetItem;
+module.exports.handleVKOrderStatusChange = handleVKOrderStatusChange;
