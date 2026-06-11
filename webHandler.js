@@ -3874,7 +3874,7 @@ async function handleVKGetItem(params, env) {
     console.log(`[VK-Payment] get_item: item=${item} user_id=${userId} app_id=${appId}`);
 
     // Проверяем подпись (если VK_APP_SECRET задан)
-    const appSecret = env.VK_APP_SECRET || env.VK_CLIENT_SECRET || '';
+    const appSecret = env.VK_APP_SECRET || '';
     if (!verifyVKSignature(params, appSecret)) {
         console.error('[VK-Payment] Invalid signature for get_item');
         return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
@@ -3917,7 +3917,7 @@ async function handleVKOrderStatusChange(params, env) {
     console.log(`[VK-Payment] order_status_change: order_id=${orderId} status=${status} item=${item} user_id=${userId}`);
 
     // Проверяем подпись
-    const appSecret = env.VK_APP_SECRET || env.VK_CLIENT_SECRET || '';
+    const appSecret = env.VK_APP_SECRET || '';
     if (!verifyVKSignature(params, appSecret)) {
         console.error('[VK-Payment] Invalid signature for order_status_change');
         return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
