@@ -180,8 +180,7 @@ module.exports.handler = async (event, context) => {
                         statusCode: 200,
                         headers: {
                             'Content-Type': matchedStatic.mime,
-                            'Cache-Control': 'no-cache',
-                            'Access-Control-Allow-Origin': '*'
+                            'Cache-Control': 'no-cache'
                         },
                         body: isBinary ? content.toString('base64') : content.toString('utf8'),
                         isBase64Encoded: isBinary
@@ -206,8 +205,7 @@ module.exports.handler = async (event, context) => {
                             statusCode: 200,
                             headers: {
                                 'Content-Type': staticExtensions[ext],
-                                'Cache-Control': 'public, max-age=3600',
-                                'Access-Control-Allow-Origin': '*'
+                                'Cache-Control': 'public, max-age=3600'
                             },
                             body: isBinary ? content.toString('base64') : content.toString('utf8'),
                             isBase64Encoded: isBinary
@@ -228,7 +226,7 @@ module.exports.handler = async (event, context) => {
         return {
             statusCode: 204,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                // Access-Control-Allow-Origin добавляет Yandex API Gateway
                 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization',
             },
@@ -324,8 +322,8 @@ module.exports.handler = async (event, context) => {
                 return {
                     statusCode: 400,
                     headers: { 
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*' 
+                        'Content-Type': 'application/json'
+                        // Access-Control-Allow-Origin добавляет Yandex API Gateway
                     },
                     body: JSON.stringify({ success: false, error: 'Невалидный JSON в запросе' })
                 };
@@ -374,8 +372,8 @@ module.exports.handler = async (event, context) => {
             return {
                 statusCode: 200,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Content-Type': 'application/json'
+                    // Access-Control-Allow-Origin добавляет Yandex API Gateway
                 },
                 body: JSON.stringify(result)
             };
@@ -384,8 +382,8 @@ module.exports.handler = async (event, context) => {
             return {
                 statusCode: 500,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Content-Type': 'application/json'
+                    // Access-Control-Allow-Origin добавляет Yandex API Gateway
                 },
                 body: JSON.stringify({ success: false, error: 'Внутренняя ошибка: ' + err.message })
             };
@@ -475,7 +473,8 @@ module.exports.handler = async (event, context) => {
         
         const responseHeaders = {};
         response.headers.forEach((v, k) => { responseHeaders[k] = v; });
-        responseHeaders['Access-Control-Allow-Origin'] = '*';
+        // НЕ добавляем Access-Control-Allow-Origin — Yandex API Gateway добавляет свой,
+        // а дубль '*,*' ломает CORS в браузере
     
         if (pendingPromises.length > 1) {
             await Promise.all(pendingPromises);

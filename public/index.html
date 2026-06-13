@@ -864,12 +864,35 @@
     //  Pixel-AI Frontend — Pure JS, no frameworks
     // ============================================
 
+    // 🔑🔑🔑 VK MINI APP INIT — САМОЕ ПЕРВОЕ ДЕЙСТВИЕ!
+    // VK требует чтобы VKWebAppInit был вызван как можно скорее после загрузки.
+    // Если этот вызов не произойдёт за ~5 секунд → VK покажет
+    // «Приложение не инициализировано (возможны проблемы с соединением)»
+    // Выносим СЮДА, до любого другого кода, чтобы гарантировать вызов.
+    if (window.vkBridge && window.IS_VK) {
+        try {
+            vkBridge.send('VKWebAppInit').then(function() {
+                console.log('[VK] VKWebAppInit success');
+                // Автоавторизация через VKWebAppGetUserInfo — после успешной инициализации
+                vkBridge.send('VKWebAppGetUserInfo').then(function(userInfo) {
+                    if (userInfo && userInfo.id) {
+                        // Сохраняем для использования в applyAuthGlobal ниже
+                        window._vkUserInfo = userInfo;
+                    }
+                }).catch(function(err) { console.log('[VK] VKWebAppGetUserInfo error:', err); });
+            }).catch(function(err) { console.log('[VK] VKWebAppInit error:', err); });
+        } catch(e) { console.error('[VK] VKWebAppInit exception:', e); }
+    }
+
     // API URL — определяется автоматически:
     // 1. Если фронтенд на том же домене что бэкенд — относительный путь
     // 2. Если отдельно — берём из localStorage (api_url) или Yandex Cloud Gateway
+    // 🔑 Ключевое правило: если сервер обрабатывает /api (CF Worker или Яндекс Cloud) —
+    //    используем относительный путь, чтобы избежать CORS-ошибок
+    const _host = window.location.hostname;
     const API_URL = localStorage.getItem('api_url') ||
-        (window.location.hostname.includes('yandexcloud') || window.location.hostname.includes('apigw')
-            ? ''  // Тот же домен — относительный путь
+        (_host.includes('yandexcloud') || _host.includes('apigw') || _host.includes('workers.dev')
+            ? ''  // Тот же домен — относительный путь (CF Worker проксирует /api)
             : 'https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net');
 
     // ---- AI CONFIG (loaded from backend, like leshiy-ai config.js) ----
@@ -888,13 +911,16 @@
     const IS_VK_MOBILE = window.IS_VK_MOBILE;
 
     // 🔑 Клик на баланс — открывает кабинет оплаты
-    document.getElementById('creditsDisplay').addEventListener('click', function(e) {
-        e.stopPropagation();
-        openPurchaseDialog();
-    });
+    (function() {
+        var _cd = document.getElementById('creditsDisplay');
+        if (_cd) _cd.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openPurchaseDialog();
+        });
+    })();
 
     // Геттер для доступа из инлайн-скриптов (TG SDK onload)
-    Object.defineProperty(window, 'user', { get: () => user, configurable: true });
+    try { Object.defineProperty(window, 'user', { get: () => user, configurable: true }); } catch(e) {}
     let chatHistory = [];
     let chatAttachments = []; // [{name, type, base64, previewUrl}] — файлы для чата
     let selectedAudioConvertFormat = 'mp3';
@@ -8099,49 +8125,37 @@
         setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
     }
 
-    // ---- VK MINI APP INIT ----
-    if (window.vkBridge) {
-        vkBridge.send('VKWebAppInit').then(() => {
-            console.log('VK Mini App initialized');
-            // Автоавторизация через VKWebAppGetUserInfo
-            vkBridge.send('VKWebAppGetUserInfo').then(userInfo => {
-                if (userInfo && userInfo.id) {
-                    const realName = [userInfo.first_name, userInfo.last_name].filter(Boolean).join(' ') || 'VK User';
-                    const realPhoto = userInfo.photo_100 || userInfo.photo_200 || userInfo.photo || null;
-                    if (!user) {
-                        // Ещё не авторизован — полная авторизация (тост покажет applyAuthGlobal только если имя не дефолтное)
-                        applyAuthGlobal({
-                            id: String(userInfo.id),
-                            name: realName,
-                            provider: 'vk',
-                            hash: null,
-                            photo: realPhoto
-                        }, false);
-                        // 🔑 applyAuthGlobal сама показывает тост если имя не дефолтное
-                    } else if (user.provider === 'vk' && String(user.id) === String(userInfo.id)) {
-                        // Уже авторизован — обновляем имя/фото если нужно
-                        var nameChanged = (user.name === 'VK User' || !user.name) && realName !== 'VK User';
-                        user.name = realName;
-                        user.photo = realPhoto;
-                        localStorage.setItem('gemini_user', JSON.stringify(user));
-                        localStorage.setItem('vk_user_name', realName);
-                        if (realPhoto) localStorage.setItem('vk_user_photo', realPhoto);
-                        authBtn.textContent = realName;
-                        if (nameChanged) {
-                            // 🔑 Только один тост при обновлении имени с дефолтного на реальное
-                            var _defNames = ['VK User','TG User','VK','TG'];
-                            if (_defNames.indexOf(realName) === -1) {
-                                showToast('Добро пожаловать, ' + realName + '!', 'success');
-                            }
-                        }
-                    }
+    // ---- VK MINI APP — обработка _vkUserInfo (инициализация уже выполнена в начале скрипта) ----
+    // VKWebAppInit уже вызван в начале <script> блока — здесь только обрабатываем
+    // результат VKWebAppGetUserInfo для авторизации (applyAuthGlobal определена к этому моменту)
+    if (window.IS_VK && window._vkUserInfo) {
+        var _vkU = window._vkUserInfo;
+        var _realName = [_vkU.first_name, _vkU.last_name].filter(Boolean).join(' ') || 'VK User';
+        var _realPhoto = _vkU.photo_100 || _vkU.photo_200 || _vkU.photo || null;
+        if (!user) {
+            applyAuthGlobal({
+                id: String(_vkU.id),
+                name: _realName,
+                provider: 'vk',
+                hash: null,
+                photo: _realPhoto
+            }, false);
+        } else if (user.provider === 'vk' && String(user.id) === String(_vkU.id)) {
+            var _nameChanged = (user.name === 'VK User' || !user.name) && _realName !== 'VK User';
+            user.name = _realName;
+            user.photo = _realPhoto;
+            localStorage.setItem('gemini_user', JSON.stringify(user));
+            localStorage.setItem('vk_user_name', _realName);
+            if (_realPhoto) localStorage.setItem('vk_user_photo', _realPhoto);
+            authBtn.textContent = _realName;
+            if (_nameChanged) {
+                var _defNames = ['VK User','TG User','VK','TG'];
+                if (_defNames.indexOf(_realName) === -1) {
+                    showToast('Добро пожаловать, ' + _realName + '!', 'success');
                 }
-            }).catch(err => {
-                console.log('VKWebAppGetUserInfo error:', err);
-            });
-        }).catch(err => {
-            console.log('Not in VK context:', err);
-        });
+            }
+        }
+        delete window._vkUserInfo; // чистим
     }
 
     // ---- Telegram WebApp Init ----

@@ -17561,10 +17561,77 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     const workerDomain = url.origin || env.WORKER_DOMAIN;
 
     // ============================================
+    // 🌟 CORS PREFLIGHT (OPTIONS) — для API запросов с фронтенда
+    // ============================================
+    if (request.method === 'OPTIONS') {
+        return new Response(null, {
+            status: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Provider, X-Auth-Id, X-Auth-Hash',
+                'Access-Control-Max-Age': '86400'
+            }
+        });
+    }
+
+    // ============================================
     // 🌟 ПЕРЕХВАТ /api/kieai-callback через POST
     // ============================================
     if (url.pathname === '/api/kieai-callback' && request.method === 'POST') {
         return handleKieAiCallback(request, env, ctx);
+    }
+
+    // ============================================
+    // 🌟 ПЕРЕХВАТ /vk-payment-callback (VK Payments API)
+    // ============================================
+    if ((path === '/vk-payment-callback' || path.endsWith('/vk-payment-callback')) && request.method === 'POST') {
+        try {
+            const webHandler = require('./webHandler');
+            const rawBody = await request.text();
+            console.log('[VK-Payment-Worker] Callback received:', rawBody.substring(0, 500));
+
+            // Парсим application/x-www-form-urlencoded
+            // ⚠️ VK отправляет пробелы как '+' (RFC 1866), но decodeURIComponent НЕ конвертирует '+' в пробел
+            const params = {};
+            rawBody.split('&').forEach(pair => {
+                const eqIdx = pair.indexOf('=');
+                const key = eqIdx >= 0 ? pair.substring(0, eqIdx) : pair;
+                const val = eqIdx >= 0 ? pair.substring(eqIdx + 1) : '';
+                params[decodeURIComponent(key)] = decodeURIComponent(val.replace(/\+/g, ' '));
+            });
+
+            const notificationType = params.notification_type;
+            console.log('[VK-Payment-Worker] notification_type:', notificationType, 'item:', params.item, 'order_id:', params.order_id);
+
+            if (notificationType === 'get_item' || notificationType === 'get_item_test') {
+                const result = await webHandler.handleVKGetItem(params, env);
+                return new Response(JSON.stringify(result), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            }
+
+            if (notificationType === 'order_status_change' || notificationType === 'order_status_change_test') {
+                const result = await webHandler.handleVKOrderStatusChange(params, env);
+                return new Response(JSON.stringify(result), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            }
+
+            console.error('[VK-Payment-Worker] Unknown notification_type:', notificationType);
+            return new Response(JSON.stringify({ error: { error_code: 100, error_msg: 'Unknown notification type', critical: true } }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (err) {
+            console.error('[VK-Payment-Worker] Callback error:', err.message, err.stack);
+            return new Response(JSON.stringify({ error: { error_code: 100, error_msg: 'Internal server error', critical: true } }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
     }
 
     // ============================================
@@ -17677,6 +17744,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // ✅ РАЗДАЧА vk.html / tg.html
     // -----------------------------
     if (request.method === 'GET' && (path === '/vk.html' || path === '/tg.html')) {
+        let servedFromFile = false;
         try {
             const fsModule = typeof __non_webpack_require__ !== 'undefined' ? __non_webpack_require__ : (typeof require !== 'undefined' ? require : null);
             if (fsModule) {
@@ -17684,15 +17752,34 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                 const pathModule = fsModule('path');
                 const fileName = path === '/vk.html' ? 'vk.html' : 'tg.html';
                 const filePath = pathModule.join(__dirname || '.', 'public', fileName);
-                const content = fs.readFileSync(filePath, 'utf8');
-                return new Response(content, {
-                    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }
-                });
+                if (fs.existsSync(filePath)) {
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    servedFromFile = true;
+                    return new Response(content, {
+                        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }
+                    });
+                }
             }
         } catch(e) {
-            console.error('Static file serve error:', e);
+            console.error('Static file serve error (vk/tg.html):', e.message);
         }
-        // Фоллбэк — редирект на главную с параметром авторизации
+        // 🔄 Прокси на Yandex Cloud если fs недоступен (CF Worker runtime)
+        if (!servedFromFile) {
+            try {
+                const yandexGateway = env.YANDEX_GATEWAY_URL || 'https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net';
+                const proxyResp = await fetch(yandexGateway + path);
+                if (proxyResp.ok) {
+                    const body = await proxyResp.text();
+                    return new Response(body, {
+                        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
+                        status: 200
+                    });
+                }
+            } catch(proxyErr) {
+                console.error('Proxy to Yandex Cloud error (vk/tg.html):', proxyErr.message);
+            }
+        }
+        // Финальный фоллбэк — редирект на главную с параметром авторизации
         const authParam = path === '/vk.html' ? 'vk' : 'tg';
         return Response.redirect(url.origin + '/?auth=' + authParam, 302);
     }
@@ -17701,6 +17788,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
     // ✅ ВНЕШНЯЯ СТРАНИЦА И СТАТИКА (CSS, JS, INDEX.HTML)
     // -----------------------------
     if (request.method !== 'POST') {
+        let servedFromFile = false;
         try {
             const fsModule = typeof __non_webpack_require__ !== 'undefined' ? __non_webpack_require__ : (typeof require !== 'undefined' ? require : null);
             if (fsModule) {
@@ -17708,18 +17796,25 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                 const pathModule = fsModule('path');
 
                 // 1. Если запрашивают конкретный статический файл (например, style.css)
-                if (path.endsWith('.css') || path.endsWith('.js')) {
-                    // Убираем лишние слэши и строим путь к файлу внутри папки public
+                if (path.endsWith('.css') || path.endsWith('.js') || path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.svg') || path.endsWith('.ico') || path.endsWith('.webp')) {
                     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
                     const filePath = pathModule.join(__dirname || '.', 'public', cleanPath);
 
                     if (fs.existsSync(filePath)) {
                         const content = fs.readFileSync(filePath);
-                        // Определяем правильный MIME-тип, иначе браузер заблокирует файл
-                        const contentType = path.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8';
+                        // Определяем правильный MIME-тип
+                        let contentType = 'application/octet-stream';
+                        if (path.endsWith('.css')) contentType = 'text/css; charset=utf-8';
+                        else if (path.endsWith('.js')) contentType = 'application/javascript; charset=utf-8';
+                        else if (path.endsWith('.png')) contentType = 'image/png';
+                        else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) contentType = 'image/jpeg';
+                        else if (path.endsWith('.svg')) contentType = 'image/svg+xml';
+                        else if (path.endsWith('.ico')) contentType = 'image/x-icon';
+                        else if (path.endsWith('.webp')) contentType = 'image/webp';
                         
+                        servedFromFile = true;
                         return new Response(content, {
-                            headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache' },
+                            headers: { 'Content-Type': contentType, 'Cache-Control': path.endsWith('.css') || path.endsWith('.js') ? 'no-cache' : 'public, max-age=3600' },
                             status: 200
                         });
                     }
@@ -17730,6 +17825,7 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                     const filePath = pathModule.join(__dirname || '.', 'public', 'index.html');
                     if (fs.existsSync(filePath)) {
                         const content = fs.readFileSync(filePath, 'utf8');
+                        servedFromFile = true;
                         return new Response(content, {
                             headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
                             status: 200
@@ -17738,10 +17834,33 @@ async function updateMediaKVAfterProcessing(chatId, newMediaObject, processedBuf
                 }
             }
         } catch(e) {
-            console.error('Ошибка раздачи статики с диска:', e);
+            console.error('Ошибка раздачи статики с диска:', e.message);
         }
 
-        // --- ФОЛЛБЭК: Если файла index.html нет на диске, отдаем старую заглушку с QR ---
+        // 🔄 ПРОКСИ НА YANDEX CLOUD: если fs недоступен (CF Worker runtime) или файл не найден
+        if (!servedFromFile) {
+            try {
+                const yandexGateway = env.YANDEX_GATEWAY_URL || 'https://d5d2v5jjmbggp9k8qe8q.pdkwbi1w.apigw.yandexcloud.net';
+                const proxyUrl = yandexGateway + path;
+                console.log('[Static-Proxy] Proxying to Yandex Cloud:', proxyUrl);
+                const proxyResp = await fetch(proxyUrl, {
+                    headers: { 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }
+                });
+                if (proxyResp.ok) {
+                    const contentType = proxyResp.headers.get('Content-Type') || 'text/html; charset=utf-8';
+                    const body = await proxyResp.arrayBuffer();
+                    return new Response(body, {
+                        headers: { 'Content-Type': contentType, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' },
+                        status: 200
+                    });
+                }
+                console.log('[Static-Proxy] Yandex Cloud returned status:', proxyResp.status);
+            } catch(proxyErr) {
+                console.error('[Static-Proxy] Proxy to Yandex Cloud error:', proxyErr.message);
+            }
+        }
+
+        // --- ФОЛЛБЭК: Если прокси тоже не сработал, отдаем старую заглушку с QR ---
         const cdn = "https://storage.yandexcloud.net/leshiy-storage-images";
         const htmlContent = `
             <!DOCTYPE html>
