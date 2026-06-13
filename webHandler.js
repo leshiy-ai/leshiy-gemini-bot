@@ -3328,13 +3328,24 @@ async function getUserBalance(chatId, env, monolith) {
             if (stored !== null && stored !== undefined) {
                 const val = parseInt(stored, 10);
                 if (!isNaN(val)) return val;
+                // stored есть, но не число — не перезаписываем!
+                console.warn('[WebHandler] Balance is not a number for', chatId, ':', stored);
+                return 0;
             }
-            // Если баланса нет в базе — создаём начальный (80 бесплатных кредитов)
-            await env.LAST_PHOTO_STORAGE.put(balanceKey, '80', { expirationTtl: 86400 * 365 });
-            await logCreditTransaction(chatId, 80, 'registration', env, 'Начальные бесплатные кредиты');
+            // Баланс не найден — создаём начальный (80 бесплатных кредитов)
+            // Только для новых пользователей, у которых ключа ещё нет в БД
+            try {
+                await env.LAST_PHOTO_STORAGE.put(balanceKey, '80');
+                await logCreditTransaction(chatId, 80, 'registration', env, 'Начальные бесплатные кредиты');
+                console.log('[WebHandler] Created initial balance 80¢ for new user', chatId);
+            } catch (writeErr) {
+                console.error('[WebHandler] Failed to create initial balance:', writeErr.message);
+            }
             return 80;
         } catch (e) {
-            console.error("[WebHandler] Balance read error:", e.message);
+            // Ошибка чтения БД — НЕ создаём баланс, чтобы не перезаписать существующий!
+            console.error("[WebHandler] Balance read error for", chatId, "— NOT overwriting:", e.message);
+            return 0;
         }
     }
     return 0; // Нет доступа к базе = нет кредитов
@@ -3851,12 +3862,19 @@ function verifyVKSignature(params, appSecret) {
         return true; // В тестовом режиме пропускаем проверку
     }
     const sig = params.sig;
-    if (!sig) return false;
+    if (!sig) {
+        console.warn('[VK-Payment] No sig parameter in callback');
+        return false;
+    }
 
     // Сортируем все параметры КРОМЕ sig
     const sortedKeys = Object.keys(params).filter(k => k !== 'sig').sort();
     const concat = sortedKeys.map(k => `${k}=${params[k]}`).join('');
     const expectedSig = require('crypto').createHash('md5').update(concat + appSecret).digest('hex');
+    if (expectedSig !== sig) {
+        console.warn('[VK-Payment] Signature mismatch. Expected:', expectedSig, 'Got:', sig);
+        console.warn('[VK-Payment] Concat:', concat.substring(0, 200));
+    }
     return expectedSig === sig;
 }
 

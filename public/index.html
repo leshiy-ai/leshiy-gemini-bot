@@ -23,6 +23,9 @@
             // mobile_android, mobile_iphone, mobile_ipad, mobile_android_messenger, mobile_iphone_messenger
             var _mobilePlatforms = ['mobile_android','mobile_iphone','mobile_ipad','mobile_android_messenger','mobile_iphone_messenger'];
             window.IS_VK_MOBILE = window.IS_VK && (_mobilePlatforms.indexOf(_vkPlatform) !== -1);
+            // CSS-классы для VK-специфичных стилей
+            if (window.IS_VK) document.documentElement.classList.add('vk-app');
+            if (window.IS_VK_MOBILE) document.documentElement.classList.add('vk-app-mobile');
             // Для отладки
             console.log('[Platform] IS_VK=' + window.IS_VK + ' IS_VK_MOBILE=' + window.IS_VK_MOBILE + ' vk_platform=' + _vkPlatform);
         })();

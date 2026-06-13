@@ -137,11 +137,15 @@ module.exports.handler = async (event, context) => {
         }
     }
 
-    // Раздача статических файлов: vk.html, tg.html, /images/*, /css/*, /js/*
+    // Раздача статических файлов: vk.html, tg.html, style.css, /images/*, /css/*, /js/*
     if (event.httpMethod === 'GET') {
         const staticFiles = {
             '/vk.html': { mime: 'text/html; charset=utf-8', file: 'vk.html' },
             '/tg.html': { mime: 'text/html; charset=utf-8', file: 'tg.html' },
+            '/style.css': { mime: 'text/css; charset=utf-8', file: 'style.css' },
+            '/telegram-web-app.js': { mime: 'application/javascript; charset=utf-8', file: 'telegram-web-app.js' },
+            '/Gemini.png': { mime: 'image/png', file: 'Gemini.png' },
+            '/gemini_purple.png': { mime: 'image/png', file: 'gemini_purple.png' },
         };
         const staticExtensions = {
             '.svg': 'image/svg+xml',
@@ -170,14 +174,17 @@ module.exports.handler = async (event, context) => {
             try {
                 const filePath = path.join(__dirname, 'public', matchedStatic.file);
                 if (fs.existsSync(filePath)) {
-                    const content = fs.readFileSync(filePath, 'utf8');
+                    const isBinary = matchedStatic.mime.startsWith('image/');
+                    const content = fs.readFileSync(filePath);
                     return {
                         statusCode: 200,
                         headers: {
                             'Content-Type': matchedStatic.mime,
-                            'Cache-Control': 'no-cache'
+                            'Cache-Control': 'no-cache',
+                            'Access-Control-Allow-Origin': '*'
                         },
-                        body: content
+                        body: isBinary ? content.toString('base64') : content.toString('utf8'),
+                        isBase64Encoded: isBinary
                     };
                 }
             } catch (err) {
@@ -240,10 +247,13 @@ module.exports.handler = async (event, context) => {
             console.log('[VK-Payment] Callback received:', rawBody.substring(0, 500));
 
             // Парсим application/x-www-form-urlencoded
+            // ⚠️ VK отправляет пробелы как '+' (RFC 1866), но decodeURIComponent НЕ конвертирует '+' в пробел
             const params = {};
             rawBody.split('&').forEach(pair => {
-                const [key, ...vals] = pair.split('=');
-                params[decodeURIComponent(key)] = decodeURIComponent(vals.join('='));
+                const eqIdx = pair.indexOf('=');
+                const key = eqIdx >= 0 ? pair.substring(0, eqIdx) : pair;
+                const val = eqIdx >= 0 ? pair.substring(eqIdx + 1) : '';
+                params[decodeURIComponent(key)] = decodeURIComponent(val.replace(/\+/g, ' '));
             });
 
             const notificationType = params.notification_type;
@@ -259,6 +269,7 @@ module.exports.handler = async (event, context) => {
                 filesDriver,
                 nodeCrypto,
             };
+            console.log('[VK-Payment] VK_APP_SECRET available:', !!env.VK_APP_SECRET);
 
             // ===== get_item / get_item_test =====
             if (notificationType === 'get_item' || notificationType === 'get_item_test') {

@@ -150,7 +150,22 @@ body {
 .auth-btn:hover { background: var(--accent-light); border-color: var(--accent-hover); color: var(--accent-hover); }
 .auth-btn.logged-in { border-color: var(--success); color: var(--success); }
 
-/* ===== VK MINI APP — стили убраны (кастомные ✕/⟳ не нужны, VK предоставляет нативные) ===== */
+/* ===== VK MINI APP — стили для прохождения модерации ===== */
+html.vk-app .app { padding-top: 44px; }
+html.vk-app-mobile .app { padding-top: 48px; }
+html.vk-app .header { padding: 8px 12px; }
+html.vk-app .header .badge { display: none; }
+html.vk-app .header .logo-text { font-size: 18px; }
+html.vk-app .header .credits-display { font-size: 12px; padding: 4px 8px; }
+html.vk-app .header .auth-btn { font-size: 11px; padding: 4px 10px; }
+html.vk-app .model-select { min-height: 36px; padding: 6px 30px 6px 12px; }
+html.vk-app .dialog.purchase-dialog { max-height: 85vh; }
+html.vk-app .dialog.purchase-dialog .plan-card { display: flex; align-items: center; }
+html.vk-app #otherPaymentsPanel { display: none !important; }
+html.vk-app #paymentMethodSelectorWrapper { display: none !important; }
+html.vk-app #otherPayBoosty { display: none !important; }
+html.vk-app #otherPayYoomoney { display: none !important; }
+html.vk-app #otherPayVKDonate { display: none !important; }
 
 /* ===== MODE TABS ===== */
 .mode-tabs {
