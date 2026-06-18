@@ -3845,7 +3845,7 @@ function getTopupPackages() {
  * или просто app_secret для клиентских уведомлений.
  * Для простоты: secret = VK_APP_SECRET (указывается в настройках приложения).
  */
-function verifyVKSignature(params, appSecret) {
+function verifyVKSignature(params, appSecret, rawBody) {
     if (!appSecret) {
         console.warn('[VK-Payment] VK_APP_SECRET not set — skipping signature verification');
         return true; // В тестовом режиме пропускаем проверку
@@ -3853,10 +3853,35 @@ function verifyVKSignature(params, appSecret) {
     const sig = params.sig;
     if (!sig) return false;
 
+    // 🔑 VK считает подпись по СЫРЫМ (URL-encoded) значениям, как они пришли в запросе.
+    // Если парсить body через decodeURIComponent — подпись не совпадёт
+    // (item_title=4+%D0%9A... должен остаться закодированным).
+    // Поэтому парсим rawBody БЕЗ декодирования.
+    let paramsToUse = params;
+    if (rawBody) {
+        paramsToUse = {};
+        rawBody.split('&').forEach(pair => {
+            const eqIdx = pair.indexOf('=');
+            if (eqIdx === -1) {
+                paramsToUse[pair] = '';
+            } else {
+                const key = pair.substring(0, eqIdx);
+                const val = pair.substring(eqIdx + 1);
+                paramsToUse[key] = val; // БЕЗ decodeURIComponent
+            }
+        });
+    }
+
     // Сортируем все параметры КРОМЕ sig
-    const sortedKeys = Object.keys(params).filter(k => k !== 'sig').sort();
-    const concat = sortedKeys.map(k => `${k}=${params[k]}`).join('');
+    const sortedKeys = Object.keys(paramsToUse).filter(k => k !== 'sig').sort();
+    const concat = sortedKeys.map(k => `${k}=${paramsToUse[k]}`).join('');
     const expectedSig = require('crypto').createHash('md5').update(concat + appSecret).digest('hex');
+    if (expectedSig !== sig) {
+        console.log('[VK-Payment] Signature mismatch:');
+        console.log('[VK-Payment]   expected:', expectedSig);
+        console.log('[VK-Payment]   got     :', sig);
+        console.log('[VK-Payment]   concat  :', concat.substring(0, 500));
+    }
     return expectedSig === sig;
 }
 
@@ -3866,7 +3891,7 @@ function verifyVKSignature(params, appSecret) {
  *
  * Ответ: { response: { title, price, photo_url, item_id, expiration } }
  */
-async function handleVKGetItem(params, env) {
+async function handleVKGetItem(params, env, rawBody) {
     const item = params.item; // package_id из фронтенда (pkg.id)
     const userId = params.user_id;
     const appId = params.app_id;
@@ -3875,7 +3900,7 @@ async function handleVKGetItem(params, env) {
 
     // Проверяем подпись (если VK_APP_SECRET задан)
     const appSecret = env.VK_APP_SECRET || '';
-    if (!verifyVKSignature(params, appSecret)) {
+    if (!verifyVKSignature(params, appSecret, rawBody)) {
         console.error('[VK-Payment] Invalid signature for get_item');
         return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
     }
@@ -3907,7 +3932,7 @@ async function handleVKGetItem(params, env) {
  * При status=chargeable: зачисляем кредиты, отвечаем { response: { order_id, app_order_id } }
  * При status=refunded: отнимаем кредиты
  */
-async function handleVKOrderStatusChange(params, env) {
+async function handleVKOrderStatusChange(params, env, rawBody) {
     const orderId = parseInt(params.order_id);
     const status = params.status; // 'chargeable' или 'refunded'
     const item = params.item; // package_id
@@ -3918,7 +3943,7 @@ async function handleVKOrderStatusChange(params, env) {
 
     // Проверяем подпись
     const appSecret = env.VK_APP_SECRET || '';
-    if (!verifyVKSignature(params, appSecret)) {
+    if (!verifyVKSignature(params, appSecret, rawBody)) {
         console.error('[VK-Payment] Invalid signature for order_status_change');
         return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
     }

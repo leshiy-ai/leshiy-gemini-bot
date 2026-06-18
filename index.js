@@ -269,7 +269,7 @@ module.exports.handler = async (event, context) => {
 
             // ===== get_item / get_item_test =====
             if (notificationType === 'get_item' || notificationType === 'get_item_test') {
-                const result = await webHandler.handleVKGetItem(params, env);
+                const result = await webHandler.handleVKGetItem(params, env, rawBody);
                 return {
                     statusCode: 200,
                     headers: { 'Content-Type': 'application/json' },
@@ -279,7 +279,7 @@ module.exports.handler = async (event, context) => {
 
             // ===== order_status_change / order_status_change_test =====
             if (notificationType === 'order_status_change' || notificationType === 'order_status_change_test') {
-                const result = await webHandler.handleVKOrderStatusChange(params, env);
+                const result = await webHandler.handleVKOrderStatusChange(params, env, rawBody);
                 return {
                     statusCode: 200,
                     headers: { 'Content-Type': 'application/json' },
