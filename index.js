@@ -234,10 +234,17 @@ module.exports.handler = async (event, context) => {
     // ==========================================
     // VK отправляет POST на callback URL с параметрами: notification_type, item, order_id, status, sig и т.д.
     // https://dev.vk.com/ru/api/payments/virtual-goods/vk
-    if (event.httpMethod === 'POST' && (requestPath === '/vk-payment-callback' || requestPath.endsWith('/vk-payment-callback'))) {
+    //
+    // 🔑 ВАЖНО: event.path содержит ПАТТЕРН маршрута шлюза (например '/{proxy+}'),
+    // а НЕ реальный URL. Реальный URL — в заголовке x-envoy-original-path.
+    // Без этой проверки VK payment callback никогда не обрабатывается → 'Order error'.
+    if (event.httpMethod === 'POST') {
+        // Получаем реальный путь из заголовка шлюза
+        const _actualPath = (event.headers && (event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'])) || requestPath || '';
+        if (_actualPath === '/vk-payment-callback' || _actualPath.endsWith('/vk-payment-callback')) {
         try {
             const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : (event.body || '');
-            console.log('[VK-Payment] Callback received:', rawBody.substring(0, 500));
+            console.log('[VK-Payment] Callback received, actualPath=' + _actualPath + ', body:', rawBody.substring(0, 500));
 
             // Парсим application/x-www-form-urlencoded
             const params = {};
@@ -295,6 +302,7 @@ module.exports.handler = async (event, context) => {
                 body: JSON.stringify({ error: { error_code: 100, error_msg: 'Internal server error', critical: true } })
             };
         }
+        } // end if _actualPath === '/vk-payment-callback'
     }
 
     // ==========================================
