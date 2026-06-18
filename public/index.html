@@ -10,35 +10,23 @@
 
     <!-- VK Bridge SDK — нужен для авторизации и оплаты внутри VK Mini App -->
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
-    <!-- 🔑 Определяем платформу ВКонтакте ДО загрузки страницы -->
+    <!-- Telegram WebApp SDK — локальная копия, загружаем только если НЕ в VK -->
+    <script src="/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
     <script>
+        // IS_VK detection — первым делом в <body>, до любого UI
         (function() {
             var _p = new URLSearchParams(window.location.search);
             var _vkUid = _p.get('vk_user_id');
             var _vkPlatform = _p.get('vk_platform') || '';
-            // 🔑 Мы в VK только если в URL есть vk_user_id или vk_platform
-            // Наличие window.vkBridge НЕ означает что мы внутри VK — SDK загружается всегда
             window.IS_VK = !!(_vkUid || _vkPlatform);
-            // 🔑 VK Mobile: определяем по vk_platform (надёжнее чем User-Agent)
-            // mobile_android, mobile_iphone, mobile_ipad, mobile_android_messenger, mobile_iphone_messenger
             var _mobilePlatforms = ['mobile_android','mobile_iphone','mobile_ipad','mobile_android_messenger','mobile_iphone_messenger'];
             window.IS_VK_MOBILE = window.IS_VK && (_mobilePlatforms.indexOf(_vkPlatform) !== -1);
-            // Для отладки
             console.log('[Platform] IS_VK=' + window.IS_VK + ' IS_VK_MOBILE=' + window.IS_VK_MOBILE + ' vk_platform=' + _vkPlatform);
         })();
     </script>
-    <!-- Telegram WebApp SDK — локальная копия, загружаем только если НЕ в VK -->
-    <script>
-        if (!window.IS_VK) {
-            var _tgScript = document.createElement('script');
-            _tgScript.src = '/telegram-web-app.js';
-            document.head.appendChild(_tgScript);
-        }
-    </script>
-
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
     <div class="app">
         <!-- DRAG-DROP OVERLAY — на уровне .app, работает во всех режимах -->
         <div class="chat-drop-overlay" id="chatDropOverlay">
