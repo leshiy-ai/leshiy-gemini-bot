@@ -104,43 +104,6 @@ const monolithContext = {
 
 module.exports.handler = async (event, context) => {
     // ==========================================
-    // 0. ДИАГНОСТИЧЕСКОЕ ЛОГИРОВАНИЕ (для отладки VK Desktop)
-    // ==========================================
-    // ВАЖНО: этот блок только логирует, ничего не меняет в логике.
-    // Уберём после того, как найдём причину.
-    try {
-        const _method = event.httpMethod || '?';
-        const _path = event.path || '?';
-        const _url = event.url || '?';
-        const _headers = event.headers || {};
-        const _queryString = event.queryString || event.queryParams || {};
-        const _vkPlatform = _queryString.vk_platform || '(нет)';
-        const _vkAppId = _queryString.vk_app_id || '(нет)';
-        const _vkUserId = _queryString.vk_user_id || '(нет)';
-        const _origPath = _headers['x-envoy-original-path'] || _headers['X-Envoy-Original-Path'] || '(нет)';
-        const _referer = _headers['referer'] || _headers['Referer'] || '(нет)';
-        const _userAgent = _headers['user-agent'] || _headers['User-Agent'] || '(нет)';
-        const _origin = _headers['origin'] || _headers['Origin'] || '(нет)';
-
-        console.log('[REQUEST] ========================================');
-        console.log('[REQUEST] method=' + _method + ' path=' + _path);
-        console.log('[REQUEST] url=' + _url);
-        console.log('[REQUEST] x-envoy-original-path=' + _origPath);
-        console.log('[REQUEST] vk_platform=' + _vkPlatform + ' vk_app_id=' + _vkAppId + ' vk_user_id=' + _vkUserId);
-        console.log('[REQUEST] origin=' + _origin);
-        console.log('[REQUEST] referer=' + _referer);
-        console.log('[REQUEST] user-agent=' + _userAgent.substring(0, 200));
-        // Все query params (могут быть важны)
-        const _allParams = Object.keys(_queryString);
-        if (_allParams.length > 0) {
-            console.log('[REQUEST] all query keys: ' + _allParams.join(', '));
-        }
-        console.log('[REQUEST] ========================================');
-    } catch (logErr) {
-        console.error('[REQUEST] logging error:', logErr);
-    }
-
-    // ==========================================
     // 1. РАЗДАЧА ФРОНТЕНДА (HTML/CSS/JS)
     // ==========================================
     let requestPath = event.path || '/';
