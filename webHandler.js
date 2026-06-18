@@ -4087,6 +4087,214 @@ async function handleVKOrderStatusChange(params, env, rawBody) {
     return { error: { error_code: 100, error_msg: `Unknown status: ${status}`, critical: true } };
 }
 
+
+// ============================================================
+// 💎 OK PAYMENTS (Одноклассники)
+// ============================================================
+// OK шлёт на callback URL JSON с методом:
+//   method=checkout.create → вернуть URL для оплаты
+//   method=transaction.confirm → зачислить
+//   method=transaction.refund → вернуть
+//
+// Подпись: sig = md5(params + secret_key)
+// params сортируются по алфавиту, конкатятся как key=value
+// Без URL-decode (как в VK).
+function verifyOKSignature(params, rawBody) {
+    const secretKey = process.env.OK_PAYMENT_SECRET_KEY || process.env.OK_SECRET_KEY || '';
+    if (!secretKey) {
+        console.warn('[OK-Payment] OK_PAYMENT_SECRET_KEY not set — skipping signature verification');
+        return true;
+    }
+
+    const sig = params.sig || params.signature;
+    if (!sig) return false;
+
+    // Парсим rawBody БЕЗ декодирования (как в VK)
+    let paramsToUse = params;
+    if (rawBody) {
+        paramsToUse = {};
+        rawBody.split('&').forEach(pair => {
+            const eqIdx = pair.indexOf('=');
+            if (eqIdx === -1) {
+                paramsToUse[pair] = '';
+            } else {
+                const key = pair.substring(0, eqIdx);
+                const val = pair.substring(eqIdx + 1);
+                paramsToUse[key] = val;
+            }
+        });
+    }
+
+    const sortedKeys = Object.keys(paramsToUse).filter(k => k !== 'sig' && k !== 'signature').sort();
+    const concat = sortedKeys.map(k => `${k}=${paramsToUse[k]}`).join('');
+    const crypto = require('crypto');
+    const expectedSig = crypto.createHash('md5').update(concat + secretKey).digest('hex');
+
+    if (expectedSig !== sig) {
+        console.log('[OK-Payment] Signature mismatch:');
+        console.log('[OK-Payment]   expected:', expectedSig);
+        console.log('[OK-Payment]   got     :', sig);
+        console.log('[OK-Payment]   concat  :', concat.substring(0, 300));
+        return false;
+    }
+    console.log('[OK-Payment] Signature OK');
+    return true;
+}
+
+async function handleOKPayment(params, env, rawBody) {
+    const method = params.method;
+
+    // Для тестовых запросов (sandbox) пропускаем подпись
+    const isTest = params.sandbox === 'true' || params.sandbox === '1';
+    if (!isTest && !verifyOKSignature(params, rawBody)) {
+        console.error('[OK-Payment] Invalid signature');
+        return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
+    }
+    if (isTest) {
+        console.warn('[OK-Payment] TEST mode: skipping signature verification');
+    }
+
+    // ===== checkout.create — OK хочет URL/данные для оплаты =====
+    if (method === 'checkout.create') {
+        const productCode = params.product_code;
+        const userId = params.uid;
+        const productPrice = parseInt(params.product_price || '0');
+
+        // Находим пакет по product_code (используем те же ID что и для VK)
+        const pkg = WEB_TOPUP_PACKAGES.find(p => p.id === productCode);
+        if (!pkg) {
+            console.error('[OK-Payment] Unknown product_code:', productCode);
+            return {
+                success: false,
+                error: 'product_not_found',
+                error_description: 'Unknown product: ' + productCode
+            };
+        }
+
+        // Проверяем цену (OK присылает её, должна совпасть с нашей)
+        const expectedPrice = pkg.rub * 100; // OK цена в копейках
+        if (productPrice !== expectedPrice) {
+            console.error('[OK-Payment] Price mismatch: expected=' + expectedPrice + ' got=' + productPrice);
+            return {
+                success: false,
+                error: 'price_mismatch',
+                error_description: 'Expected ' + expectedPrice + ', got ' + productPrice
+            };
+        }
+
+        // OK хочет URL на оплату. Но в Mini App OK (iframe) мы уже внутри,
+        // и оплата идёт через OK API напрямую. Возвращаем success=true.
+        return {
+            success: true,
+            product_id: pkg.id,
+            product_code: pkg.id,
+            product_name: pkg.label,
+            amount: productPrice,
+            currency: 'OK'
+        };
+    }
+
+    // ===== transaction.confirm — оплата подтверждена, зачисляем =====
+    if (method === 'transaction.confirm') {
+        const transactionId = params.transaction_id;
+        const userId = params.uid;
+        const productCode = params.product_code;
+
+        console.log(`[OK-Payment] transaction.confirm: tx=${transactionId} user=${userId} product=${productCode}`);
+
+        const pkg = WEB_TOPUP_PACKAGES.find(p => p.id === productCode);
+        if (!pkg) {
+            console.error('[OK-Payment] Unknown product_code in confirm:', productCode);
+            return { success: false, error: 'product_not_found' };
+        }
+
+        const chatId = 'ok_' + String(userId);
+        const txKey = `ok_order_${transactionId}`;
+
+        try {
+            if (env.LAST_PHOTO_STORAGE) {
+                // Проверяем, не зачисляли ли уже
+                const existingTx = await env.LAST_PHOTO_STORAGE.get(txKey);
+                if (existingTx) {
+                    console.log('[OK-Payment] Transaction already confirmed:', transactionId);
+                    return { success: true, transaction_id: transactionId };
+                }
+
+                // Зачисляем кредиты
+                const balanceKey = chatId + '_credit_balance';
+                let currentBalance = 0;
+                const balanceStr = await env.LAST_PHOTO_STORAGE.get(balanceKey);
+                if (balanceStr) currentBalance = parseInt(balanceStr) || 0;
+                const newBalance = currentBalance + pkg.credits;
+                await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
+
+                await logCreditTransaction(chatId, pkg.credits, 'purchase', env,
+                    `Покупка через OK: ${pkg.credits}¢ (${pkg.rub}₽)`);
+
+                await env.LAST_PHOTO_STORAGE.put(txKey, JSON.stringify({
+                    transaction_id: transactionId,
+                    chatId: chatId,
+                    item: productCode,
+                    credits: pkg.credits,
+                    method: 'ok_payment',
+                    status: 'confirmed',
+                    createdAt: Date.now()
+                }), { expirationTtl: 86400 * 30 });
+
+                console.log(`[OK-Payment] Credits added: +${pkg.credits}¢ for OK user ${chatId}, new balance: ${newBalance}`);
+                return { success: true, transaction_id: transactionId };
+            }
+        } catch (e) {
+            console.error('[OK-Payment] Error processing transaction.confirm:', e.message, e.stack);
+            return { success: false, error: 'internal_error' };
+        }
+    }
+
+    // ===== transaction.refund — возврат =====
+    if (method === 'transaction.refund') {
+        const transactionId = params.transaction_id;
+        const productCode = params.product_code;
+
+        const pkg = WEB_TOPUP_PACKAGES.find(p => p.id === productCode);
+        if (!pkg) return { success: false, error: 'product_not_found' };
+
+        const chatId = 'ok_' + String(params.uid);
+        const txKey = `ok_order_${transactionId}`;
+
+        try {
+            if (env.LAST_PHOTO_STORAGE) {
+                const existingTx = await env.LAST_PHOTO_STORAGE.get(txKey);
+                if (existingTx) {
+                    const tx = JSON.parse(existingTx);
+                    if (tx.status !== 'refunded') {
+                        const balanceKey = chatId + '_credit_balance';
+                        let currentBalance = 0;
+                        const balanceStr = await env.LAST_PHOTO_STORAGE.get(balanceKey);
+                        if (balanceStr) currentBalance = parseInt(balanceStr) || 0;
+                        const newBalance = Math.max(0, currentBalance - pkg.credits);
+                        await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
+
+                        await logCreditTransaction(chatId, -pkg.credits, 'refund', env,
+                            `Возврат OK: -${pkg.credits}¢ (tx ${transactionId})`);
+
+                        tx.status = 'refunded';
+                        await env.LAST_PHOTO_STORAGE.put(txKey, JSON.stringify(tx), { expirationTtl: 86400 * 30 });
+                        console.log(`[OK-Payment] Refund: -${pkg.credits}¢ for OK user ${chatId}`);
+                    }
+                }
+                return { success: true, transaction_id: transactionId };
+            }
+        } catch (e) {
+            console.error('[OK-Payment] Error processing refund:', e.message, e.stack);
+            return { success: false, error: 'internal_error' };
+        }
+    }
+
+    // Неизвестный метод
+    console.error('[OK-Payment] Unknown method:', method);
+    return { success: false, error: 'unknown_method', error_description: 'Method: ' + method };
+}
+
 // ============================================================
 // 🔐 ВАЛИДАЦИЯ TELEGRAM INIT DATA
 // Проверяет подпись HMAC-SHA256 initData от Telegram Mini App
@@ -4175,4 +4383,5 @@ function formatResponse(success, error = null, creditsLeft = null, data = null) 
 
 // Экспорт VK payment handlers для index.js
 module.exports.handleVKGetItem = handleVKGetItem;
+module.exports.handleOKPayment = handleOKPayment;
 module.exports.handleVKOrderStatusChange = handleVKOrderStatusChange;

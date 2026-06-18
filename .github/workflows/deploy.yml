@@ -32,6 +32,8 @@ jobs:
             PHOTO_ENABLED=${{ vars.PHOTO_ENABLED }}
             TTS_ENABLED=${{ vars.TTS_ENABLED }}
             VIDEO_ENABLED=${{ vars.VIDEO_ENABLED }}
+            VK_APP_ID=${{ vars.VK_APP_ID }}
+            OK_APP_ID=${{ vars.OK_APP_ID }}
             WORKER_DOMAIN=${{ vars.WORKER_DOMAIN }}
             BOTHUB_API_KEY=${{ secrets.BOTHUB_API_KEY }}
             CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -58,6 +60,7 @@ jobs:
             VOICERSS_API_KEY=${{ secrets.VOICERSS_API_KEY }}
             VK_APP_SECRET=${{ secrets.VK_APP_SECRET }}
             VK_SECURE_KEY=${{ secrets.VK_SECURE_KEY }}
+            OK_PAYMENT_SECRET_KEY=${{ secrets.OK_PAYMENT_SECRET_KEY }}
             YANDEX_API_KEY=${{ secrets.YANDEX_API_KEY }}
             YANDEX_S3_KEY_ID=${{ secrets.YANDEX_S3_KEY_ID }}
             YANDEX_S3_SECRET=${{ secrets.YANDEX_S3_SECRET }}

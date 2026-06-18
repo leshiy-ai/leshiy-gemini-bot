@@ -237,72 +237,112 @@ module.exports.handler = async (event, context) => {
     //
     // 🔑 ВАЖНО: event.path содержит ПАТТЕРН маршрута шлюза (например '/{proxy+}'),
     // а НЕ реальный URL. Реальный URL — в заголовке x-envoy-original-path.
-    // Без этой проверки VK payment callback никогда не обрабатывается → 'Order error'.
     if (event.httpMethod === 'POST') {
-        // Получаем реальный путь из заголовка шлюза
         const _actualPath = (event.headers && (event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'])) || requestPath || '';
+
+        // ===== VK PAYMENT CALLBACK =====
         if (_actualPath === '/vk-payment-callback' || _actualPath.endsWith('/vk-payment-callback')) {
-        try {
-            const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : (event.body || '');
-            console.log('[VK-Payment] Callback received, actualPath=' + _actualPath + ', body:', rawBody.substring(0, 500));
+            try {
+                const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : (event.body || '');
+                console.log('[VK-Payment] Callback received, actualPath=' + _actualPath + ', body:', rawBody.substring(0, 500));
 
-            // Парсим application/x-www-form-urlencoded
-            const params = {};
-            rawBody.split('&').forEach(pair => {
-                const [key, ...vals] = pair.split('=');
-                params[decodeURIComponent(key)] = decodeURIComponent(vals.join('='));
-            });
+                const params = {};
+                rawBody.split('&').forEach(pair => {
+                    const [key, ...vals] = pair.split('=');
+                    params[decodeURIComponent(key)] = decodeURIComponent(vals.join('='));
+                });
 
-            const notificationType = params.notification_type;
-            console.log('[VK-Payment] notification_type:', notificationType, 'item:', params.item, 'order_id:', params.order_id);
+                const notificationType = params.notification_type;
+                console.log('[VK-Payment] notification_type:', notificationType, 'item:', params.item, 'order_id:', params.order_id);
 
-            const env = {
-                ...process.env,
-                LAST_PHOTO_STORAGE: USER_DB_ADAPTER,
-                BOT_LOGS_STORAGE: USER_DB_ADAPTER,
-                FILES_DB: FILES_DB_ADAPTER,
-                TypedValues,
-                runQuery,
-                filesDriver,
-                nodeCrypto,
-            };
+                const env = {
+                    ...process.env,
+                    LAST_PHOTO_STORAGE: USER_DB_ADAPTER,
+                    BOT_LOGS_STORAGE: USER_DB_ADAPTER,
+                    FILES_DB: FILES_DB_ADAPTER,
+                    TypedValues,
+                    runQuery,
+                    filesDriver,
+                    nodeCrypto,
+                };
 
-            // ===== get_item / get_item_test =====
-            if (notificationType === 'get_item' || notificationType === 'get_item_test') {
-                const result = await webHandler.handleVKGetItem(params, env, rawBody);
+                if (notificationType === 'get_item' || notificationType === 'get_item_test') {
+                    const result = await webHandler.handleVKGetItem(params, env, rawBody);
+                    return {
+                        statusCode: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(result)
+                    };
+                }
+
+                if (notificationType === 'order_status_change' || notificationType === 'order_status_change_test') {
+                    const result = await webHandler.handleVKOrderStatusChange(params, env, rawBody);
+                    return {
+                        statusCode: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(result)
+                    };
+                }
+
+                console.error('[VK-Payment] Unknown notification_type:', notificationType);
                 return {
                     statusCode: 200,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(result)
+                    body: JSON.stringify({ error: { error_code: 100, error_msg: 'Unknown notification type', critical: true } })
                 };
-            }
-
-            // ===== order_status_change / order_status_change_test =====
-            if (notificationType === 'order_status_change' || notificationType === 'order_status_change_test') {
-                const result = await webHandler.handleVKOrderStatusChange(params, env, rawBody);
+            } catch (err) {
+                console.error('[VK-Payment] Callback error:', err.message, err.stack);
                 return {
                     statusCode: 200,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(result)
+                    body: JSON.stringify({ error: { error_code: 100, error_msg: 'Internal server error', critical: true } })
                 };
             }
-
-            // Неизвестный тип уведомления
-            console.error('[VK-Payment] Unknown notification_type:', notificationType);
-            return {
-                statusCode: 200,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ error: { error_code: 100, error_msg: 'Unknown notification type', critical: true } })
-            };
-        } catch (err) {
-            console.error('[VK-Payment] Callback error:', err.message, err.stack);
-            return {
-                statusCode: 200,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ error: { error_code: 100, error_msg: 'Internal server error', critical: true } })
-            };
         }
-        } // end if _actualPath === '/vk-payment-callback'
+
+        // ===== OK PAYMENT CALLBACK (Одноклассники) =====
+        // https://dev.vk.com/ru/api/payments/virtual-goods/ok
+        if (_actualPath === '/ok-payment-callback' || _actualPath.endsWith('/ok-payment-callback')) {
+            try {
+                const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : (event.body || '');
+                console.log('[OK-Payment] Callback received, actualPath=' + _actualPath + ', body:', rawBody.substring(0, 500));
+
+                // OK шлёт параметры как application/x-www-form-urlencoded
+                const params = {};
+                rawBody.split('&').forEach(pair => {
+                    const [key, ...vals] = pair.split('=');
+                    params[decodeURIComponent(key)] = decodeURIComponent(vals.join('='));
+                });
+
+                const method = params.method;
+                console.log('[OK-Payment] method:', method, 'type:', params.type, 'product_code:', params.product_code);
+
+                const env = {
+                    ...process.env,
+                    LAST_PHOTO_STORAGE: USER_DB_ADAPTER,
+                    BOT_LOGS_STORAGE: USER_DB_ADAPTER,
+                    FILES_DB: FILES_DB_ADAPTER,
+                    TypedValues,
+                    runQuery,
+                    filesDriver,
+                    nodeCrypto,
+                };
+
+                const result = await webHandler.handleOKPayment(params, env, rawBody);
+                return {
+                    statusCode: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(result)
+                };
+            } catch (err) {
+                console.error('[OK-Payment] Callback error:', err.message, err.stack);
+                return {
+                    statusCode: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ error: { error_code: 100, error_msg: 'Internal server error', critical: true } })
+                };
+            }
+        }
     }
 
     // ==========================================
