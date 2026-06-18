@@ -3846,17 +3846,25 @@ function getTopupPackages() {
  * Для простоты: secret = VK_APP_SECRET (указывается в настройках приложения).
  */
 function verifyVKSignature(params, appSecret, rawBody) {
-    if (!appSecret) {
-        console.warn('[VK-Payment] VK_APP_SECRET not set — skipping signature verification');
-        return true; // В тестовом режиме пропускаем проверку
+    // 🔑 VK для платёжных уведомлений использует ЗАЩИЩЁННЫЙ КЛЮЧ (secure_key),
+    // а НЕ секрет приложения (app_secret). Это РАЗНЫЕ ключи:
+    //   - app_secret  → в dev.vk.com → «Информация» → «Секрет» (для VKID OAuth)
+    //   - secure_key  → в dev.vk.com → «Платежи» → «Защищённый ключ» (для подписи)
+    //
+    // В env может быть VK_SECURE_KEY (правильный) или VK_APP_SECRET (неправильный).
+    // Проверяем оба — если хотя бы один совпадёт, подпись валидна.
+    const secureKey = process.env.VK_SECURE_KEY || '';
+    const fallbackSecret = appSecret || process.env.VK_APP_SECRET || '';
+
+    if (!secureKey && !fallbackSecret) {
+        console.warn('[VK-Payment] Neither VK_SECURE_KEY nor VK_APP_SECRET set — skipping signature verification');
+        return true;
     }
+
     const sig = params.sig;
     if (!sig) return false;
 
     // 🔑 VK считает подпись по СЫРЫМ (URL-encoded) значениям, как они пришли в запросе.
-    // Если парсить body через decodeURIComponent — подпись не совпадёт
-    // (item_title=4+%D0%9A... должен остаться закодированным).
-    // Поэтому парсим rawBody БЕЗ декодирования.
     let paramsToUse = params;
     if (rawBody) {
         paramsToUse = {};
@@ -3872,17 +3880,36 @@ function verifyVKSignature(params, appSecret, rawBody) {
         });
     }
 
-    // Сортируем все параметры КРОМЕ sig
     const sortedKeys = Object.keys(paramsToUse).filter(k => k !== 'sig').sort();
     const concat = sortedKeys.map(k => `${k}=${paramsToUse[k]}`).join('');
-    const expectedSig = require('crypto').createHash('md5').update(concat + appSecret).digest('hex');
-    if (expectedSig !== sig) {
-        console.log('[VK-Payment] Signature mismatch:');
-        console.log('[VK-Payment]   expected:', expectedSig);
-        console.log('[VK-Payment]   got     :', sig);
-        console.log('[VK-Payment]   concat  :', concat.substring(0, 500));
+    const crypto = require('crypto');
+
+    // Пробуем secure_key (правильный для платежей)
+    if (secureKey) {
+        const sigWithSecure = crypto.createHash('md5').update(concat + secureKey).digest('hex');
+        if (sigWithSecure === sig) {
+            console.log('[VK-Payment] Signature OK (VK_SECURE_KEY)');
+            return true;
+        }
+        console.log('[VK-Payment] VK_SECURE_KEY mismatch: expected=' + sigWithSecure.substring(0, 16) + '...');
     }
-    return expectedSig === sig;
+
+    // Fallback: пробуем app_secret (неправильный, но вдруг пользователь положил туда secure_key)
+    if (fallbackSecret) {
+        const sigWithFallback = crypto.createHash('md5').update(concat + fallbackSecret).digest('hex');
+        if (sigWithFallback === sig) {
+            console.log('[VK-Payment] Signature OK (VK_APP_SECRET — contains secure_key)');
+            return true;
+        }
+        console.log('[VK-Payment] VK_APP_SECRET mismatch: expected=' + sigWithFallback.substring(0, 16) + '...');
+    }
+
+    console.error('[VK-Payment] Invalid signature. Neither VK_SECURE_KEY nor VK_APP_SECRET matches.');
+    console.log('[VK-Payment]   got sig   :', sig);
+    console.log('[VK-Payment]   concat    :', concat.substring(0, 300));
+    console.log('[VK-Payment]   secure_key len:', secureKey.length, '| app_secret len:', fallbackSecret.length);
+    console.log('[VK-Payment] Проверьте: dev.vk.com → Платежи → Защищённый ключ → добавить в GitHub Secrets как VK_SECURE_KEY');
+    return false;
 }
 
 /**

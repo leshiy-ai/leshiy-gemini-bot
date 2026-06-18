@@ -57,6 +57,7 @@ jobs:
             TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
             VOICERSS_API_KEY=${{ secrets.VOICERSS_API_KEY }}
             VK_APP_SECRET=${{ secrets.VK_APP_SECRET }}
+            VK_SECURE_KEY=${{ secrets.VK_SECURE_KEY }}
             YANDEX_API_KEY=${{ secrets.YANDEX_API_KEY }}
             YANDEX_S3_KEY_ID=${{ secrets.YANDEX_S3_KEY_ID }}
             YANDEX_S3_SECRET=${{ secrets.YANDEX_S3_SECRET }}
