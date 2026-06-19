@@ -16,15 +16,40 @@
 </head>
 <body>
     <script>
-        // IS_VK detection — первым делом в <body>, до любого UI
+        // IS_VK / IS_OK detection — первым делом в <body>, до любого UI
         (function() {
             var _p = new URLSearchParams(window.location.search);
             var _vkUid = _p.get('vk_user_id');
             var _vkPlatform = _p.get('vk_platform') || '';
-            window.IS_VK = !!(_vkUid || _vkPlatform);
+
+            // 🔑 ОДНОКЛАССНИКИ: OK Mini Apps используют тот же vk-bridge, но:
+            //   - referer = ok.ru / odnoklassniki.ru
+            //   - ancestorOrigins содержит ok.ru
+            //   - в URL могут быть OK-параметры (session_key, auth_sig, signed_request, api_server)
+            var _referer = document.referrer || '';
+            var _isOkReferer = _referer.indexOf('ok.ru') !== -1
+                            || _referer.indexOf('odnoklassniki.ru') !== -1
+                            || _referer.indexOf('ok-portal') !== -1;
+            var _isOkParam = !!(_p.get('session_key') || _p.get('auth_sig') || _p.get('signed_request') || _p.get('api_server'));
+            var _isOkAncestor = false;
+            try {
+                if (window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0) {
+                    var _ancestor = String(window.location.ancestorOrigins[0]);
+                    _isOkAncestor = _ancestor.indexOf('ok.ru') !== -1 || _ancestor.indexOf('odnoklassniki.ru') !== -1;
+                }
+            } catch(e) {}
+            window.IS_OK = _isOkReferer || _isOkParam || _isOkAncestor;
+
+            // 🔑 VK: только если есть vk_user_id или vk_platform, И мы НЕ в OK
+            window.IS_VK = !!(_vkUid || _vkPlatform) && !window.IS_OK;
+
             var _mobilePlatforms = ['mobile_android','mobile_iphone','mobile_ipad','mobile_android_messenger','mobile_iphone_messenger'];
             window.IS_VK_MOBILE = window.IS_VK && (_mobilePlatforms.indexOf(_vkPlatform) !== -1);
-            console.log('[Platform] IS_VK=' + window.IS_VK + ' IS_VK_MOBILE=' + window.IS_VK_MOBILE + ' vk_platform=' + _vkPlatform);
+
+            // Унифицированный флаг "мы в VK или OK" (vk-bridge доступен)
+            window.IS_VK_OR_OK = window.IS_VK || window.IS_OK;
+
+            console.log('[Platform] IS_VK=' + window.IS_VK + ' IS_VK_MOBILE=' + window.IS_VK_MOBILE + ' IS_OK=' + window.IS_OK + ' vk_platform=' + _vkPlatform + ' ref=' + _referer.substring(0, 80));
         })();
     </script>
     <div class="app">
@@ -621,7 +646,7 @@
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Кредиты — цифровая ценность для оплаты генерации ИИ-контента (изображений, видео, аудио). 1&#162; = 5&#8381;. При регистрации даётся 80&#162; бесплатно.</p>
             <!-- 🔑 VK Mobile: уведомление об оплате голосами (VKWebAppShowOrderBox работает и на мобильных) -->
             <div id="vkMobilePayNotice" style="display:none;font-size:12px;color:var(--text-secondary);padding:8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:10px;line-height:1.4">
-                Оплата голосами ВКонтакте — нажмите «Оплатить голосами» и откроется окно покупки. Если голосов недостаточно, ВК предложит их докупить.
+                Оплата голосами ВКонтакте или ОКами — нажмите «Оплатить» и откроется окно покупки. Если средств недостаточно, будет предложено их докупить.
             </div>
 
             <!-- Способ оплаты -->
@@ -633,12 +658,12 @@
                 </div>
             </div>
             <script>
-                // 🔑 В VK-версии: показываем только Голоса VK + инфо о цифровых ценностях
-                // Скрываем выбор способа оплаты (в VK только голоса), Boosty, ЮMoney и VK Донаты
-                if (window.IS_VK) {
+                // 🔑 В VK/OK-версии: показываем только Голоса/ОКи + инфо о цифровых ценностях
+                // Скрываем выбор способа оплаты (в VK/OK только голоса/ОКи), Boosty, ЮMoney и VK Донаты
+                if (window.IS_VK_OR_OK) {
                     var _pms = document.getElementById('paymentMethodSelector');
                     var _pmsWrapper = document.getElementById('paymentMethodSelectorWrapper');
-                    if (_pmsWrapper) _pmsWrapper.style.display = 'none'; // В VK нет выбора — только голоса
+                    if (_pmsWrapper) _pmsWrapper.style.display = 'none'; // В VK/OK нет выбора — только голоса/ОКи
                     var _dgi = document.getElementById('vkDigitalGoodsInfo');
                     if (_dgi) _dgi.style.display = 'block';
                     // 🔑 VK Mobile: подсказка об оплате голосами
@@ -737,12 +762,12 @@
                 </div>
             </div>
             <script>
-                // 🔑 В VK-версии скрываем кнопку Telegram-авторизации и стороннюю авторизацию
-                if (window.IS_VK) {
+                // 🔑 В VK/OK-версии скрываем кнопку Telegram-авторизации и стороннюю авторизацию
+                if (window.IS_VK_OR_OK) {
                     var _tgAuth = document.getElementById('tgAuthContainer');
                     if (_tgAuth) _tgAuth.style.display = 'none';
                     var _vkBtn = document.querySelector('#vkAuthContainer .auth-provider-btn');
-                    if (_vkBtn) _vkBtn.textContent = 'Войти через VK ID';
+                    if (_vkBtn) _vkBtn.textContent = window.IS_OK ? 'Войти через OK' : 'Войти через VK ID';
                 }
             </script>
             <div class="dialog-actions" style="margin-top:16px">
@@ -864,6 +889,8 @@
     // Платформа ВКонтакте (определена в <head>)
     const IS_VK = window.IS_VK;
     const IS_VK_MOBILE = window.IS_VK_MOBILE;
+    const IS_OK = window.IS_OK;
+    const IS_VK_OR_OK = window.IS_VK_OR_OK;
 
     // 🔑 Клик на баланс — открывает кабинет оплаты
     document.getElementById('creditsDisplay').addEventListener('click', function(e) {
@@ -7626,7 +7653,7 @@
         { id: 'unlim',   stars: 750, votes: 286, credits: 400, rub: 2000,  label: 'Анлим (400¢)',           desc: '400¢ ≈ 2000₽ + бонус' },
     ];
 
-    let selectedPaymentMethod = IS_VK ? 'vk' : 'telegram'; // 'telegram' | 'vk' | 'other'
+    let selectedPaymentMethod = IS_VK_OR_OK ? 'vk' : 'telegram'; // 'telegram' | 'vk' | 'other'
     let pendingPaymentPayload = null; // Для polling проверки оплаты
 
     function renderTopupPackages() {
@@ -7652,7 +7679,9 @@
             if (selectedPaymentMethod === 'telegram') {
                 priceLabel = `\u2B50 ${pkg.stars} XTR`;
             } else if (selectedPaymentMethod === 'vk') {
-                priceLabel = `${pkg.votes} \u0433\u043E\u043B\u043E\u0441\u043E\u0432`;
+                // 🔑 OK: показываем «ОКов», VK: «голосов»
+                var _curLabel = IS_OK ? 'ОКов' : 'голосов';
+                priceLabel = `${pkg.votes} ${_curLabel}`;
             } else {
                 priceLabel = `${pkg.rub} \u20BD`;
             }
@@ -7688,10 +7717,10 @@
             payBtn.style.display = '';
             payBtn.innerHTML = '\u2B50 Оплатить Stars';
         } else if (method === 'vk') {
-            info.innerHTML = '\u25C6 Оплата голосами ВКонтакте \u2014 мгновенное зачисление. Нажмите \u00ABОплатить\u00BB и откроется окно покупки VK.';
+            info.innerHTML = '\u25C6 Оплата ' + (IS_OK ? 'ОКами' : 'голосами ВКонтакте') + ' \u2014 мгновенное зачисление. Нажмите \u00ABОплатить\u00BB и откроется окно покупки.';
             info.style.display = '';
             payBtn.style.display = '';
-            payBtn.innerHTML = '\u25C6 Оплатить голосами';
+            payBtn.innerHTML = '\u25C6 ' + (IS_OK ? 'Оплатить ОКами' : 'Оплатить голосами');
         } else if (method === 'other') {
             info.style.display = 'none';
             payBtn.style.display = 'none';
@@ -7714,7 +7743,7 @@
         if (_payBtn) _payBtn.style.display = '';
         if (_payMethodInfo) _payMethodInfo.style.display = '';
         // 🔑 В VK — скрываем выбор способа оплаты (только голоса VK)
-        if (_payMethodSelector) _payMethodSelector.style.display = IS_VK ? 'none' : '';
+        if (_payMethodSelector) _payMethodSelector.style.display = IS_VK_OR_OK ? 'none' : '';
         renderTopupPackages();
         document.getElementById('purchaseDialog').classList.add('open');
     }
@@ -7815,7 +7844,7 @@
             showToast('Ошибка: ' + e.message, 'error');
         } finally {
             payBtn.disabled = false;
-            payBtn.textContent = selectedPaymentMethod === 'telegram' ? '\u2B50 Оплатить Stars' : '\u25C6 Оплатить голосами';
+            payBtn.textContent = selectedPaymentMethod === 'telegram' ? '\u2B50 Оплатить Stars' : (IS_OK ? '\u25C6 Оплатить ОКами' : '\u25C6 Оплатить голосами');
         }
     }
 
@@ -7878,7 +7907,7 @@
 
     function openAuthDialog() {
         // 🔑 В VK-версии: скрываем кнопку Telegram, инициируем VK-авторизацию напрямую
-        if (IS_VK) {
+        if (IS_VK_OR_OK) {
             var tgAuthC = document.getElementById('tgAuthContainer');
             if (tgAuthC) tgAuthC.style.display = 'none';
             // Пробуем автоавторизацию через VK Bridge
@@ -8077,8 +8106,9 @@
         setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
     }
 
-    // ---- VK MINI APP INIT ----
-    if (window.vkBridge) {
+    // ---- VK/OK MINI APP INIT ----
+    // Работает и для VK, и для OK (оба используют vk-bridge)
+    if (window.vkBridge && IS_VK_OR_OK) {
         vkBridge.send('VKWebAppInit').then(() => {
             console.log('VK Mini App initialized');
             // Автоавторизация через VKWebAppGetUserInfo
@@ -8124,7 +8154,7 @@
 
     // ---- Telegram WebApp Init ----
     // 🔑 Пропускаем в VK-версии — нет TG SDK
-    if (!IS_VK && window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+    if (!IS_VK_OR_OK && window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
         console.log('[Auth] TG WebApp detected. initData:', !!window.Telegram.WebApp.initData, 'user:', !!window.Telegram.WebApp.initDataUnsafe?.user);
 
         // Вызываем ready() только если метод существует (SDK загружен)
@@ -9706,9 +9736,9 @@
     })();
     </script>
 
-    <!-- 🔑 VK MINI APP: скрываем бейдж Premium на мобиле, убираем кастомные кнопки хедера -->
+    <!-- 🔑 VK/OK MINI APP: скрываем бейдж Premium на мобиле, убираем кастомные кнопки хедера -->
     <script>
-        if (window.IS_VK) {
+        if (window.IS_VK_OR_OK) {
             // 🔑 Скрываем бейдж Premium на мобиле чтобы всё влезло
             var _hBadge = document.getElementById('headerBadge');
             if (_hBadge && (window.IS_VK_MOBILE || window.innerWidth <= 768)) _hBadge.style.display = 'none';

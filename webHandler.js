@@ -3845,26 +3845,26 @@ function getTopupPackages() {
  * или просто app_secret для клиентских уведомлений.
  * Для простоты: secret = VK_APP_SECRET (указывается в настройках приложения).
  */
-function verifyVKSignature(params, appSecret, rawBody) {
-    // 🔑 VK для платёжных уведомлений использует ЗАЩИЩЁННЫЙ КЛЮЧ (secure_key),
-    // а НЕ секрет приложения (app_secret). Это РАЗНЫЕ ключи:
-    //   - app_secret  → в dev.vk.com → «Информация» → «Секрет» (для VKID OAuth)
-    //   - secure_key  → в dev.vk.com → «Платежи» → «Защищённый ключ» (для подписи)
-    //
-    // В env может быть VK_SECURE_KEY (правильный) или VK_APP_SECRET (неправильный).
-    // Проверяем оба — если хотя бы один совпадёт, подпись валидна.
+function verifyVKSignature(params, appSecret, rawBody, env) {
+    // 🔑 Определяем платформу: OK шлёт site=OK в body, VK — не шлёт site.
+    // OK использует ТОТ ЖЕ callback URL /vk-payment-callback, но с другим ключом.
+    const platform = (env && env._paymentPlatform)
+                  || ((params.site === 'OK' || params.site === 'ok') ? 'ok' : 'vk');
+    const logPrefix = platform === 'ok' ? '[OK-Payment]' : '[VK-Payment]';
+
     const secureKey = process.env.VK_SECURE_KEY || '';
     const fallbackSecret = appSecret || process.env.VK_APP_SECRET || '';
+    const okSecret = process.env.OK_PAYMENT_SECRET_KEY || process.env.OK_SECRET_KEY || '';
 
-    if (!secureKey && !fallbackSecret) {
-        console.warn('[VK-Payment] Neither VK_SECURE_KEY nor VK_APP_SECRET set — skipping signature verification');
+    if (!secureKey && !fallbackSecret && !okSecret) {
+        console.warn(logPrefix + ' No secret keys set — skipping signature verification');
         return true;
     }
 
-    const sig = params.sig;
+    const sig = params.sig || params.signature;
     if (!sig) return false;
 
-    // 🔑 VK считает подпись по СЫРЫМ (URL-encoded) значениям, как они пришли в запросе.
+    // 🔑 VK/OK считают подпись по СЫРЫМ (URL-encoded) значениям, как они пришли в запросе.
     let paramsToUse = params;
     if (rawBody) {
         paramsToUse = {};
@@ -3880,11 +3880,21 @@ function verifyVKSignature(params, appSecret, rawBody) {
         });
     }
 
-    const sortedKeys = Object.keys(paramsToUse).filter(k => k !== 'sig').sort();
+    const sortedKeys = Object.keys(paramsToUse).filter(k => k !== 'sig' && k !== 'signature').sort();
     const concat = sortedKeys.map(k => `${k}=${paramsToUse[k]}`).join('');
     const crypto = require('crypto');
 
-    // Пробуем secure_key (правильный для платежей)
+    // 🔑 Для OK: пробуем OK_PAYMENT_SECRET_KEY (если задан)
+    if (platform === 'ok' && okSecret) {
+        const sigWithOk = crypto.createHash('md5').update(concat + okSecret).digest('hex');
+        if (sigWithOk === sig) {
+            console.log(logPrefix + ' Signature OK (OK_PAYMENT_SECRET_KEY)');
+            return true;
+        }
+        console.log(logPrefix + ' OK_PAYMENT_SECRET_KEY mismatch: expected=' + sigWithOk.substring(0, 16) + '...');
+    }
+
+    // Пробуем secure_key (правильный для VK платежей)
     if (secureKey) {
         const sigWithSecure = crypto.createHash('md5').update(concat + secureKey).digest('hex');
         if (sigWithSecure === sig) {
@@ -3937,7 +3947,7 @@ async function handleVKGetItem(params, env, rawBody) {
 
     // Проверяем подпись (если VK_APP_SECRET задан)
     const appSecret = env.VK_APP_SECRET || '';
-    if (!verifyVKSignature(params, appSecret, rawBody)) {
+    if (!verifyVKSignature(params, appSecret, rawBody, env)) {
         console.error('[VK-Payment] Invalid signature for get_item');
         return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
     }
@@ -3980,7 +3990,7 @@ async function handleVKOrderStatusChange(params, env, rawBody) {
 
     // Проверяем подпись
     const appSecret = env.VK_APP_SECRET || '';
-    if (!verifyVKSignature(params, appSecret, rawBody)) {
+    if (!verifyVKSignature(params, appSecret, rawBody, env)) {
         console.error('[VK-Payment] Invalid signature for order_status_change');
         return { error: { error_code: 10, error_msg: 'Invalid signature', critical: true } };
     }
@@ -3992,8 +4002,12 @@ async function handleVKOrderStatusChange(params, env, rawBody) {
         return { error: { error_code: 20, error_msg: 'Item not found', critical: true } };
     }
 
-    const chatId = String(userId); // VK user_id = наш chatId для VK-пользователей
-    const txKey = `vk_order_${orderId}`;
+    // 🔑 Для OK chatId имеет префикс 'ok_', для VK — без префикса
+    const platform = (env && env._paymentPlatform)
+                  || ((params.site === 'OK' || params.site === 'ok') ? 'ok' : 'vk');
+    const chatId = platform === 'ok' ? ('ok_' + String(userId)) : String(userId);
+    const txKey = platform === 'ok' ? `ok_order_${orderId}` : `vk_order_${orderId}`;
+    const curName = platform === 'ok' ? 'ОКи' : 'голоса';
 
     if (status === 'chargeable') {
         // Проверяем, не зачисляли ли уже этот заказ
@@ -4023,7 +4037,7 @@ async function handleVKOrderStatusChange(params, env, rawBody) {
 
                 // Логируем транзакцию
                 await logCreditTransaction(chatId, pkg.credits, 'purchase', env,
-                    `Покупка через VK голоса: ${pkg.credits}¢ (${pkg.votes} голосов)`);
+                    `Покупка через ${curName}: ${pkg.credits}¢ (${pkg.votes} ${curName})`);
 
                 // Сохраняем подтверждённую транзакцию
                 const appOrderId = Date.now(); // Уникальный ID заказа в нашем приложении
@@ -4034,12 +4048,12 @@ async function handleVKOrderStatusChange(params, env, rawBody) {
                     item: item,
                     credits: pkg.credits,
                     votes: pkg.votes,
-                    method: 'vk_votes',
+                    method: platform === 'ok' ? 'ok_payment' : 'vk_votes',
                     status: 'confirmed',
                     createdAt: Date.now()
                 }), { expirationTtl: 86400 * 30 }); // Храним 30 дней
 
-                console.log(`[VK-Payment] Credits added: +${pkg.credits}¢ for VK user ${chatId}, new balance: ${newBalance}`);
+                console.log(`[${platform === 'ok' ? 'OK-Payment' : 'VK-Payment'}] Credits added: +${pkg.credits}¢ for user ${chatId}, new balance: ${newBalance}`);
 
                 return {
                     response: {
@@ -4079,12 +4093,12 @@ async function handleVKOrderStatusChange(params, env, rawBody) {
                     await env.LAST_PHOTO_STORAGE.put(balanceKey, String(newBalance), { expirationTtl: 86400 * 365 });
 
                     await logCreditTransaction(chatId, -pkg.credits, 'refund', env,
-                        `Возврат VK голосов: -${pkg.credits}¢ (order ${orderId})`);
+                        `Возврат ${curName}: -${pkg.credits}¢ (order ${orderId})`);
 
                     tx.status = 'refunded';
                     await env.LAST_PHOTO_STORAGE.put(txKey, JSON.stringify(tx), { expirationTtl: 86400 * 30 });
 
-                    console.log(`[VK-Payment] Refund: -${pkg.credits}¢ for VK user ${chatId}, new balance: ${newBalance}`);
+                    console.log(`[${platform === 'ok' ? 'OK-Payment' : 'VK-Payment'}] Refund: -${pkg.credits}¢ for user ${chatId}, new balance: ${newBalance}`);
                 }
             }
         } catch (e) {

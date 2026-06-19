@@ -255,6 +255,11 @@ module.exports.handler = async (event, context) => {
                 const notificationType = params.notification_type;
                 console.log('[VK-Payment] notification_type:', notificationType, 'item:', params.item, 'order_id:', params.order_id);
 
+                // 🔑 OK Mini Apps шлют site=OK в body на ТОТ ЖЕ /vk-payment-callback.
+                // Определяем платформу для выбора секретного ключа в verifyVKSignature.
+                const _platform = (params.site === 'OK' || params.site === 'ok') ? 'ok' : 'vk';
+                if (_platform === 'ok') console.log('[VK-Payment] Detected OK platform (site=OK)');
+
                 const env = {
                     ...process.env,
                     LAST_PHOTO_STORAGE: USER_DB_ADAPTER,
@@ -264,6 +269,7 @@ module.exports.handler = async (event, context) => {
                     runQuery,
                     filesDriver,
                     nodeCrypto,
+                    _paymentPlatform: _platform,
                 };
 
                 if (notificationType === 'get_item' || notificationType === 'get_item_test') {
@@ -315,7 +321,8 @@ module.exports.handler = async (event, context) => {
                 });
 
                 const method = params.method;
-                console.log('[OK-Payment] method:', method, 'type:', params.type, 'product_code:', params.product_code);
+                const notificationType = params.notification_type;
+                console.log('[OK-Payment] method:', method, 'notification_type:', notificationType, 'product_code:', params.product_code);
 
                 const env = {
                     ...process.env,
@@ -326,8 +333,22 @@ module.exports.handler = async (event, context) => {
                     runQuery,
                     filesDriver,
                     nodeCrypto,
+                    _paymentPlatform: 'ok',
                 };
 
+                // 🔑 OK Mini Apps через vk-bridge используют VK-совместимый протокол:
+                // notification_type=get_item / order_status_change (с _test для тестов).
+                // Делегируем в VK-обработчики.
+                if (notificationType === 'get_item' || notificationType === 'get_item_test') {
+                    const result = await webHandler.handleVKGetItem(params, env, rawBody);
+                    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) };
+                }
+                if (notificationType === 'order_status_change' || notificationType === 'order_status_change_test') {
+                    const result = await webHandler.handleVKOrderStatusChange(params, env, rawBody);
+                    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) };
+                }
+
+                // Старый OK API (checkout.create / transaction.confirm)
                 const result = await webHandler.handleOKPayment(params, env, rawBody);
                 return {
                     statusCode: 200,
