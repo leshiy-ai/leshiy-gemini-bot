@@ -236,11 +236,25 @@ module.exports.handler = async (event, context) => {
     // https://dev.vk.com/ru/api/payments/virtual-goods/vk
     //
     // 🔑 ВАЖНО: event.path содержит ПАТТЕРН маршрута шлюза (например '/{proxy+}'),
-    // а НЕ реальный URL. Реальный URL — в заголовке x-envoy-original-path.
+    // а НЕ реальный URL. Реальный URL — в заголовке x-envoy-original-path ИЛИ в event.url.
     // 🔑 OK шлёт GET на /ok-payment-callback (для callbacks.payment — подтверждение оплаты),
     // поэтому проверяем и POST и GET.
     if (event.httpMethod === 'POST' || event.httpMethod === 'GET') {
-        const _actualPath = (event.headers && (event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'])) || requestPath || '';
+        // Получаем реальный путь: сначала из заголовка шлюза, потом из event.url
+        let _actualPath = (event.headers && (event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'])) || '';
+        if (!_actualPath && event.url) {
+            try { _actualPath = new URL(event.url).pathname; } catch(e) {}
+        }
+        if (!_actualPath) _actualPath = requestPath || '';
+        // Если path = /{proxy+} (паттерн шлюза) — пробуем извлечь из event.url
+        if (_actualPath.indexOf('{proxy+}') !== -1 && event.url) {
+            try { _actualPath = new URL(event.url).pathname; } catch(e) {}
+        }
+
+        // 🔑 Логируем для отладки (видеть какой путь определился)
+        if (event.httpMethod === 'GET' || _actualPath.indexOf('payment-callback') !== -1) {
+            console.log('[Routing] method=' + event.httpMethod + ' event.path=' + (event.path || '?') + ' requestPath=' + requestPath + ' _actualPath=' + _actualPath + ' event.url=' + (event.url || '?').substring(0, 150));
+        }
 
         // ===== VK PAYMENT CALLBACK =====
         if (_actualPath === '/vk-payment-callback' || _actualPath.endsWith('/vk-payment-callback')) {
