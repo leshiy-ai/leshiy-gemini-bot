@@ -116,13 +116,22 @@ module.exports.handler = async (event, context) => {
     }
     // Извлекаем реальный путь из всех возможных источников
     let _realPath = '';
-    // 1. Заголовок шлюза
+    // 1. Заголовок шлюза (без query string)
     if (event.headers) {
         _realPath = event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'] || '';
     }
-    // 2. event.url (полный URL)
+    // 2. event.url (полный URL или относительный с query string)
     if (!_realPath && event.url) {
-        try { _realPath = new URL(event.url).pathname; } catch(e) {}
+        try {
+            // event.url может быть относительным (/ok-payment-callback?...) или полным (https://...)
+            const _urlStr = event.url;
+            if (_urlStr.startsWith('http')) {
+                _realPath = new URL(_urlStr).pathname;
+            } else {
+                // Относительный URL — берём часть до '?'
+                _realPath = _urlStr.split('?')[0];
+            }
+        } catch(e) {}
     }
     // 3. requestPath если он не паттерн и не '/'
     if (!_realPath && requestPath && requestPath !== '/' && requestPath.indexOf('{proxy+}') === -1) {
@@ -130,12 +139,19 @@ module.exports.handler = async (event, context) => {
     }
     // 4. Если requestPath = /{proxy+} — пробуем event.url
     if ((!_realPath || _realPath.indexOf('{proxy+}') !== -1) && event.url) {
-        try { _realPath = new URL(event.url).pathname; } catch(e) {}
+        try {
+            const _urlStr = event.url;
+            if (_urlStr.startsWith('http')) {
+                _realPath = new URL(_urlStr).pathname;
+            } else {
+                _realPath = _urlStr.split('?')[0];
+            }
+        } catch(e) {}
     }
     // 5. Если ничего не нашли — используем requestPath
     if (!_realPath) _realPath = requestPath || '/';
 
-    // Обновляем requestPath реальным путём
+    // Обновляем requestPath реальным путём (без query string)
     if (_realPath && _realPath !== '/' && _realPath.indexOf('{proxy+}') === -1) {
         requestPath = _realPath;
     }
