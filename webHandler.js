@@ -3909,6 +3909,16 @@ function verifyVKSignature(params, appSecret, rawBody) {
     console.log('[VK-Payment]   concat    :', concat.substring(0, 300));
     console.log('[VK-Payment]   secure_key len:', secureKey.length, '| app_secret len:', fallbackSecret.length);
     console.log('[VK-Payment] Проверьте: dev.vk.com → Платежи → Защищённый ключ → добавить в GitHub Secrets как VK_SECURE_KEY');
+
+    // 🔑 ТЕСТОВЫЙ РЕЖИМ: для _test уведомлений (get_item_test, order_status_change_test)
+    // VK шлёт тестовые платежи тестировщикам. Пропускаем подпись, чтобы протестировать флоу.
+    // Для боевых уведомлений (без _test) подпись проверяется строго.
+    const notificationType = paramsToUse.notification_type || '';
+    if (notificationType.endsWith('_test')) {
+        console.warn('[VK-Payment] TEST mode: skipping signature verification for ' + notificationType);
+        return true;
+    }
+
     return false;
 }
 
