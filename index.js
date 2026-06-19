@@ -237,7 +237,9 @@ module.exports.handler = async (event, context) => {
     //
     // 🔑 ВАЖНО: event.path содержит ПАТТЕРН маршрута шлюза (например '/{proxy+}'),
     // а НЕ реальный URL. Реальный URL — в заголовке x-envoy-original-path.
-    if (event.httpMethod === 'POST') {
+    // 🔑 OK шлёт GET на /ok-payment-callback (для callbacks.payment — подтверждение оплаты),
+    // поэтому проверяем и POST и GET.
+    if (event.httpMethod === 'POST' || event.httpMethod === 'GET') {
         const _actualPath = (event.headers && (event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'])) || requestPath || '';
 
         // ===== VK PAYMENT CALLBACK =====
@@ -308,21 +310,39 @@ module.exports.handler = async (event, context) => {
 
         // ===== OK PAYMENT CALLBACK (Одноклассники) =====
         // https://dev.vk.com/ru/api/payments/virtual-goods/ok
+        // 🔑 OK шлёт GET на /ok-payment-callback с параметрами в query string
+        // (для callbacks.payment — подтверждение оплаты).
+        // Также OK шлёт POST на /ok-payment-callback для get_item/order_status_change.
         if (_actualPath === '/ok-payment-callback' || _actualPath.endsWith('/ok-payment-callback')) {
             try {
-                const rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : (event.body || '');
-                console.log('[OK-Payment] Callback received, actualPath=' + _actualPath + ', body:', rawBody.substring(0, 500));
+                // 🔑 Для GET параметры в query string, для POST — в body.
+                // Собираем rawBody из обоих источников.
+                let rawBody = '';
+                if (event.httpMethod === 'GET') {
+                    // GET: параметры в event.queryString
+                    const _qs = event.queryString || event.queryParams || {};
+                    rawBody = Object.keys(_qs).map(k => k + '=' + encodeURIComponent(_qs[k])).join('&');
+                } else {
+                    rawBody = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : (event.body || '');
+                }
+                console.log('[OK-Payment] Callback received, method=' + event.httpMethod + ', actualPath=' + _actualPath + ', body:', rawBody.substring(0, 500));
 
-                // OK шлёт параметры как application/x-www-form-urlencoded
+                // Парсим параметры (работает и для query string, и для form-urlencoded body)
                 const params = {};
-                rawBody.split('&').forEach(pair => {
-                    const [key, ...vals] = pair.split('=');
-                    params[decodeURIComponent(key)] = decodeURIComponent(vals.join('='));
-                });
+                if (event.httpMethod === 'GET' && (event.queryString || event.queryParams)) {
+                    // Уже распарсенные query параметры
+                    const _qs = event.queryString || event.queryParams;
+                    for (const k in _qs) params[k] = _qs[k];
+                } else {
+                    rawBody.split('&').forEach(pair => {
+                        const [key, ...vals] = pair.split('=');
+                        if (key) params[decodeURIComponent(key)] = decodeURIComponent(vals.join('='));
+                    });
+                }
 
                 const method = params.method;
                 const notificationType = params.notification_type;
-                console.log('[OK-Payment] method:', method, 'notification_type:', notificationType, 'product_code:', params.product_code);
+                console.log('[OK-Payment] method:', method, 'notification_type:', notificationType, 'product_code:', params.product_code, 'transaction_id:', params.transaction_id);
 
                 const env = {
                     ...process.env,
@@ -345,6 +365,27 @@ module.exports.handler = async (event, context) => {
                 }
                 if (notificationType === 'order_status_change' || notificationType === 'order_status_change_test') {
                     const result = await webHandler.handleVKOrderStatusChange(params, env, rawBody);
+                    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) };
+                }
+
+                // 🔑 OK callbacks.payment — подтверждение оплаты (GET-запрос).
+                // OK шлёт: method=callbacks.payment&transaction_id=...&uid=...&amount=...&product_code=...
+                // Это аналог order_status_change с status=chargeable.
+                // Зачисляем кредиты и возвращаем JSON с признаком успеха.
+                if (method === 'callbacks.payment') {
+                    console.log('[OK-Payment] callbacks.payment: transaction_id=' + params.transaction_id + ' uid=' + params.uid + ' product_code=' + params.product_code + ' amount=' + params.amount);
+
+                    // Преобразуем в формат order_status_change и делегируем
+                    const _okParams = {
+                        order_id: params.transaction_id,
+                        status: 'chargeable',
+                        item: params.product_code,
+                        user_id: params.uid,
+                        receiver_id: params.uid,
+                        sig: params.sig,
+                    };
+                    const result = await webHandler.handleVKOrderStatusChange(_okParams, env, rawBody);
+                    console.log('[OK-Payment] callbacks.payment result:', JSON.stringify(result));
                     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) };
                 }
 
