@@ -104,20 +104,63 @@ const monolithContext = {
 
 module.exports.handler = async (event, context) => {
     // ==========================================
-    // 1. РАЗДАЧА ФРОНТЕНДА (HTML/CSS/JS)
+    // 0. ОПРЕДЕЛЕНИЕ РЕАЛЬНОГО ПУТИ (до любой обработки)
     // ==========================================
+    // 🔑 event.path содержит ПАТТЕРН маршрута шлюза ('/{proxy+}'), а НЕ реальный URL.
+    // Реальный URL — в event.url или в заголовке x-envoy-original-path.
+    // Для GET-запросов OK на /ok-payment-callback шлюз может отдать event.path='/'.
+    // Поэтому проверяем ВСЕ источники ДО того, как HTML-обработчик перехватит запрос.
     let requestPath = event.path || '/';
     if (requestPath.startsWith('http')) {
         try { requestPath = new URL(requestPath).pathname; } catch(e) {}
     }
-    if ((!requestPath || requestPath === '/') && event.headers) {
-        const origPath = event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'];
-        if (origPath) requestPath = origPath;
+    // Извлекаем реальный путь из всех возможных источников
+    let _realPath = '';
+    // 1. Заголовок шлюза
+    if (event.headers) {
+        _realPath = event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'] || '';
     }
-    if (event.url && (!requestPath || requestPath === '/')) {
-        try { requestPath = new URL(event.url).pathname; } catch(e) {}
+    // 2. event.url (полный URL)
+    if (!_realPath && event.url) {
+        try { _realPath = new URL(event.url).pathname; } catch(e) {}
     }
-    
+    // 3. requestPath если он не паттерн и не '/'
+    if (!_realPath && requestPath && requestPath !== '/' && requestPath.indexOf('{proxy+}') === -1) {
+        _realPath = requestPath;
+    }
+    // 4. Если requestPath = /{proxy+} — пробуем event.url
+    if ((!_realPath || _realPath.indexOf('{proxy+}') !== -1) && event.url) {
+        try { _realPath = new URL(event.url).pathname; } catch(e) {}
+    }
+    // 5. Если ничего не нашли — используем requestPath
+    if (!_realPath) _realPath = requestPath || '/';
+
+    // Обновляем requestPath реальным путём
+    if (_realPath && _realPath !== '/' && _realPath.indexOf('{proxy+}') === -1) {
+        requestPath = _realPath;
+    }
+
+    // 🔑 РАННЯЯ ОБРАБОТКА PAYMENT CALLBACKS — до HTML и статики
+    // OK шлёт GET на /ok-payment-callback, и если не обработать здесь,
+    // запрос попадёт в HTML-обработчик и вернёт index.html.
+    if (event.httpMethod === 'POST' || event.httpMethod === 'GET') {
+        const _isPaymentCallback = _realPath === '/vk-payment-callback'
+                                 || _realPath.endsWith('/vk-payment-callback')
+                                 || _realPath === '/ok-payment-callback'
+                                 || _realPath.endsWith('/ok-payment-callback');
+        if (_isPaymentCallback) {
+            console.log('[Payment] Early intercept: method=' + event.httpMethod + ' realPath=' + _realPath);
+            // Возвращаемся к блоку payment callbacks ниже, пропуская HTML/статику
+            // Для этого используем goto-like подход: устанавливаем флаг
+            event._isPaymentCallback = true;
+        }
+    }
+
+    // ==========================================
+    // 1. РАЗДАЧА ФРОНТЕНДА (HTML/CSS/JS)
+    // ==========================================
+    // Пропускаем HTML/статику если это payment callback
+    if (!event._isPaymentCallback) {
     // Если зашли в корень сайта — отдаем HTML
     if (event.httpMethod === 'GET' && (requestPath === '/' || requestPath === '/index.html')) {
         try {
@@ -228,6 +271,7 @@ module.exports.handler = async (event, context) => {
             body: ''
         };
     }
+    } // end if (!event._isPaymentCallback)
 
     // ==========================================
     // 3b. VK PAYMENT CALLBACK — обработка уведомлений от VK
@@ -240,21 +284,11 @@ module.exports.handler = async (event, context) => {
     // 🔑 OK шлёт GET на /ok-payment-callback (для callbacks.payment — подтверждение оплаты),
     // поэтому проверяем и POST и GET.
     if (event.httpMethod === 'POST' || event.httpMethod === 'GET') {
-        // Получаем реальный путь: сначала из заголовка шлюза, потом из event.url
-        let _actualPath = (event.headers && (event.headers['x-envoy-original-path'] || event.headers['X-Envoy-Original-Path'])) || '';
-        if (!_actualPath && event.url) {
-            try { _actualPath = new URL(event.url).pathname; } catch(e) {}
-        }
-        if (!_actualPath) _actualPath = requestPath || '';
-        // Если path = /{proxy+} (паттерн шлюза) — пробуем извлечь из event.url
-        if (_actualPath.indexOf('{proxy+}') !== -1 && event.url) {
-            try { _actualPath = new URL(event.url).pathname; } catch(e) {}
-        }
+        // Используем _realPath определённый в начале handler
+        let _actualPath = _realPath;
 
-        // 🔑 Логируем для отладки (видеть какой путь определился)
-        if (event.httpMethod === 'GET' || _actualPath.indexOf('payment-callback') !== -1) {
-            console.log('[Routing] method=' + event.httpMethod + ' event.path=' + (event.path || '?') + ' requestPath=' + requestPath + ' _actualPath=' + _actualPath + ' event.url=' + (event.url || '?').substring(0, 150));
-        }
+        // 🔑 Логируем для отладки
+        console.log('[Routing] method=' + event.httpMethod + ' event.path=' + (event.path || '?') + ' _realPath=' + _realPath + ' event.url=' + (event.url || '?').substring(0, 150));
 
         // ===== VK PAYMENT CALLBACK =====
         if (_actualPath === '/vk-payment-callback' || _actualPath.endsWith('/vk-payment-callback')) {
