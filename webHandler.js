@@ -3413,6 +3413,7 @@ async function handleChatHistory(auth, payload, env, monolith) {
     const userId = String(auth.id);
     const s3Platform = auth.provider === 'vk' ? 'vk' : undefined; // 'vk' | undefined=telegram
     const { loadS3ChatHistory, clearS3ChatHistory, loadChatIndex, saveChatIndex, createS3Chat } = monolith;
+    console.log('[ChatHistory] action=' + (payload.action || 'load') + ' userId=' + userId + ' provider=' + auth.provider + ' s3Platform=' + s3Platform + ' loadS3ChatHistory=' + (typeof loadS3ChatHistory) + ' loadChatIndex=' + (typeof loadChatIndex));
     if (!loadS3ChatHistory) {
         return formatResponse(false, "S3 функции недоступны");
     }
@@ -3425,7 +3426,9 @@ async function handleChatHistory(auth, payload, env, monolith) {
             const offset = parseInt(payload.offset) || 0;
             const limit = parseInt(payload.limit) || 10;
             const knownTotal = parseInt(payload.knownTotal) || 0;
+            console.log('[ChatHistory] load: userId=' + userId + ' platform=' + s3Platform + ' offset=' + offset + ' limit=' + limit + ' chatId=' + activeChatId);
             const result = await loadS3ChatHistory(userId, env, s3Platform, offset, limit, knownTotal, activeChatId);
+            console.log('[ChatHistory] load result: messages=' + (result.messages ? result.messages.length : 'null') + ' total=' + result.total + ' hasMore=' + result.hasMore);
             return formatResponse(true, null, null, {
                 type: 'chat_history',
                 messages: result.messages,
