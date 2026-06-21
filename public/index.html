@@ -8747,7 +8747,9 @@
                         });
                     });
                 } else {
-                    // Первая загрузка — последние N сообщений
+                    // Первая загрузка — последние N сообщений.
+                    // Очищаем chatArea (могли быть сообщения из localStorage)
+                    chatArea.innerHTML = '';
                     chatHistory = loadedMessages;
                     welcomeScreen.style.display = 'none';
                     chatHistory.forEach(msg => appendMessageToDOM(msg.role === 'user' ? 'user' : 'bot', msg.text || msg.content));
