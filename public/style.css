@@ -1207,8 +1207,8 @@ body {
     .sub-header.wrap-allowed { max-height: none; overflow-y: visible; }
     .sub-option { padding: 7px 14px; font-size: 13px; min-height: 38px; }
     .model-select { font-size: 13px; padding: 7px 28px 7px 12px; max-width: 220px; }
-    /* На мобилке не обрезаем поле моделей */
     #chatModels .model-select { max-width: none; flex: 1; min-width: 0; }
+    #chatPriceLabel { margin-left: 10px; }
     
     .media-panel { padding: 16px 12px; gap: 14px; }
     
