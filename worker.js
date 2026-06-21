@@ -21855,6 +21855,14 @@ module.exports = {
     AI_MODEL_MENU_CONFIG,
     extractAndCleanModelResponse,
     syncS3Chat,
+    loadS3ChatHistory,
+    clearS3ChatHistory,
+    loadChatIndex,
+    saveChatIndex,
+    createS3Chat,
+    deleteS3Chat,
+    renameS3Chat,
     uploadBase64ImageToPublicUrl,
-    createTaskKieAi
+    createTaskKieAi,
+    getKieAiTaskResultForWeb
 };
