@@ -1,7 +1,7 @@
 // Worker для Cloudflare: Мультимодальный Telegram-бот "Pixel AI" by Leshiy
 // Автор: Огорельцев Александр Валерьевич @Leshiyalex
 
-const VERSION = 'v5.1.0 от 21.05.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
+const VERSION = 'v5.1.0 от 21.06.2026'; // <-- КОНСТАНТА ДЛЯ ВЕРСИИ
 
 // --- ГЛОБАЛЬНЫЕ КОНСТАНТЫ ---
 const GLOBAL_DEBUG_KEY = 'global_debug_setting'; // Отладка / Debug
