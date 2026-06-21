@@ -988,6 +988,55 @@ async function clearS3ChatHistory(userId, env, platform) {
     }).promise();
 }
 
+// ---- ИНДЕКС ЧАТОВ В S3 (мульти-чат) ----
+async function loadChatIndex(userId, env, platform) {
+    const platformLabel = platform === 'vk' ? 'VK' : 'Telegram';
+    const s3 = new AWS.S3({ accessKeyId: env.YANDEX_S3_KEY_ID, secretAccessKey: env.YANDEX_S3_SECRET, endpoint: S3_CONFIG.endpoint, s3ForcePathStyle: true, region: S3_CONFIG.region, apiVersion: 'latest' });
+    const key = `users/${userId}/chats/index_${platformLabel}.json`;
+    try {
+        const data = await s3.getObject({ Bucket: S3_CONFIG.bucket, Key: key }).promise();
+        return JSON.parse(data.Body.toString());
+    } catch (e) {
+        // Нет индекса — дефолтный с именем "Чат ВКонтакте" / "Чат в Телеграм"
+        const chatTitle = platform === 'vk' ? 'Чат ВКонтакте' : 'Чат в Телеграм';
+        return { activeChatId: 'default', chats: [{ id: 'default', title: chatTitle, lastUpdate: Date.now() }] };
+    }
+}
+async function saveChatIndex(userId, env, platform, index) {
+    const platformLabel = platform === 'vk' ? 'VK' : 'Telegram';
+    const s3 = new AWS.S3({ accessKeyId: env.YANDEX_S3_KEY_ID, secretAccessKey: env.YANDEX_S3_SECRET, endpoint: S3_CONFIG.endpoint, s3ForcePathStyle: true, region: S3_CONFIG.region, apiVersion: 'latest' });
+    const key = `users/${userId}/chats/index_${platformLabel}.json`;
+    await s3.putObject({ Bucket: S3_CONFIG.bucket, Key: key, Body: JSON.stringify(index, null, 2), ContentType: 'application/json' }).promise();
+}
+async function createS3Chat(userId, env, platform, title) {
+    const index = await loadChatIndex(userId, env, platform);
+    const chatId = 'chat_' + Date.now();
+    index.chats = index.chats || [];
+    index.chats.push({ id: chatId, title: title || 'Новый чат', lastUpdate: Date.now() });
+    index.activeChatId = chatId;
+    await saveChatIndex(userId, env, platform, index);
+    return { chatId, title: title || 'Новый чат', index };
+}
+async function deleteS3Chat(userId, env, platform, chatId) {
+    const index = await loadChatIndex(userId, env, platform);
+    index.chats = (index.chats || []).filter(c => c.id !== chatId);
+    if (index.activeChatId === chatId) index.activeChatId = 'default';
+    await saveChatIndex(userId, env, platform, index);
+    // Удаляем файл чата
+    const platformLabel = platform === 'vk' ? 'VK' : 'Telegram';
+    const s3 = new AWS.S3({ accessKeyId: env.YANDEX_S3_KEY_ID, secretAccessKey: env.YANDEX_S3_SECRET, endpoint: S3_CONFIG.endpoint, s3ForcePathStyle: true, region: S3_CONFIG.region, apiVersion: 'latest' });
+    const key = `users/${userId}/chats/chat_${platformLabel}_${chatId}.json`;
+    try { await s3.deleteObject({ Bucket: S3_CONFIG.bucket, Key: key }).promise(); } catch(e) {}
+    return { chats: index.chats, activeChatId: index.activeChatId };
+}
+async function renameS3Chat(userId, env, platform, chatId, newTitle) {
+    const index = await loadChatIndex(userId, env, platform);
+    const entry = (index.chats || []).find(c => c.id === chatId);
+    if (entry) { entry.title = newTitle; entry.lastUpdate = Date.now(); }
+    await saveChatIndex(userId, env, platform, index);
+    return { chats: index.chats };
+}
+
 // ----------------------------------------------------
 // --- I. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ TELEGRAM и КОНВЕРТАЦИИ ---
 // ----------------------------------------------------
